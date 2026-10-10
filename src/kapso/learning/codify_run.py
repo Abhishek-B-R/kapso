@@ -13,6 +13,7 @@
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -315,7 +316,7 @@ class LocalExecutor:
             (workspace / "outcome.yaml").write_text("{}\n")
             return workspace / "outcome.yaml"
         result = subprocess.run(
-            ["python", str(eval_path)], cwd=str(workspace),
+            [sys.executable, str(eval_path)], cwd=str(workspace),
             capture_output=True, text=True, timeout=self.timeout,
         )
         (workspace / "replay-stdout.txt").write_text(
