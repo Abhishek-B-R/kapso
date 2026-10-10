@@ -33,12 +33,13 @@ def bank_origin(home: Path) -> Optional[str]:
 
 
 def bank_remote_error(home: Path, url: str) -> Optional[str]:
-    """git's own failure text when the bank's attached origin is not
-    reachable with the caller's credentials; None when it is. The
-    diagnostic shape — `verify_bank_remote` raises on the same probe, and
-    preflight renders it as one requirement row."""
+    """git's own failure text when `url` is not reachable with the
+    caller's credentials; None when it is. The URL is probed directly, so
+    a remote can be checked before it is attached. The diagnostic shape:
+    `verify_bank_remote` raises on the same probe, and preflight renders
+    it as one requirement row."""
     result = subprocess.run(
-        ["git", "--git-dir", str(home), "ls-remote", "origin"],
+        ["git", "--git-dir", str(home), "ls-remote", url],
         capture_output=True, text=True, env=_git_env(), timeout=60,
     )
     if result.returncode != 0:
@@ -72,12 +73,19 @@ def connect_bank(home: Path, url: str) -> None:
     """Attach `url` as the bank's origin and push the current bank there.
     Validates reachability before touching anything; the push is plain
     (no force) — a remote with unrelated history is rejected loudly."""
+    error = bank_remote_error(home, url)
+    if error:
+        raise RuntimeError(
+            f"bank remote {url} is not reachable with your git "
+            f"credentials:\n{error}\n"
+            "The bank's origin was left as it was. Fix access (ssh key / "
+            "gh auth / credential helper) or the URL, then connect again."
+        )
     subcommand = "set-url" if bank_origin(home) else "add"
     subprocess.run(
         ["git", "--git-dir", str(home), "remote", subcommand, "origin", url],
         check=True, env=_git_env(),
     )
-    verify_bank_remote(home)
     subprocess.run(
         ["git", "--git-dir", str(home), "push", "origin", "main", "--tags"],
         check=True, env=_git_env(),

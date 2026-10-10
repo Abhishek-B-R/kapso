@@ -60,6 +60,23 @@ def test_connect_twice_moves_origin(tmp_path):
     assert git_head(second) == git_head(home)
 
 
+def test_connect_to_unreachable_url_leaves_the_bank_untouched(tmp_path):
+    # Regression: connect attached the URL before probing it, so a typo
+    # left a broken origin behind and every later learn() failed its
+    # preflight on it. A failed connect must keep the origin it found:
+    # none on a local-only bank, the old one on a connected bank.
+    home = make_home(tmp_path)
+    with pytest.raises(RuntimeError, match="not reachable"):
+        connect_bank(home, str(tmp_path / "typo.git"))
+    assert bank_origin(home) is None
+
+    share = make_share(tmp_path)
+    connect_bank(home, str(share))
+    with pytest.raises(RuntimeError, match="not reachable"):
+        connect_bank(home, str(tmp_path / "typo.git"))
+    assert bank_origin(home) == str(share)
+
+
 def test_verify_unreachable_raises_with_fix_guidance(tmp_path):
     # Regression: the preflight fails loud with the git error AND the
     # detach escape hatch — never a silent skip.
