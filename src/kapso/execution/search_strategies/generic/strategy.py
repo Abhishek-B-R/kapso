@@ -222,6 +222,9 @@ class GenericSearch(SearchStrategy):
         )
         self.cost_config = normalize_cost_config((config.params or {}).get("cost"))
         self.before_candidate_evaluation = None
+        # How each node's build session ended, keyed by node id: the lanes
+        # of one round run at once and each judge reads only its own node's.
+        self._session_end_facts: Dict[int, str] = {}
         super().__init__(config, workspace_dir, import_from_checkpoint)
         
         # Config params for ideation
@@ -1183,9 +1186,7 @@ class GenericSearch(SearchStrategy):
                 )
             ),
             note_session_end_facts=(
-                lambda facts: setattr(
-                    self, "_pending_session_end_facts", facts
-                )
+                lambda facts: self._session_end_facts.update({node_id: facts})
             ),
             await_registered_evaluation=self._await_registered_evaluation,
             node_id=node_id,
@@ -1619,7 +1620,7 @@ class GenericSearch(SearchStrategy):
         """Harness ground truth for the judge: how the build session ended
         and, when Kapso frame-ran the evaluator, how that run ended; the
         captured streams never show a deadline kill."""
-        session_facts = getattr(self, "_pending_session_end_facts", "")
+        session_facts = getattr(self, "_session_end_facts", {}).get(node.node_id, "")
         if not node.frame_run_outcome:
             return session_facts
         run_facts = f"Kapso's evaluation run {node.frame_run_outcome}"
