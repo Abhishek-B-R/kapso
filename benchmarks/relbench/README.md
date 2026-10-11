@@ -5,7 +5,7 @@ Rendered guide: [docs.leeroo.com/docs/benchmarks/relbench](https://docs.leeroo.c
 Every company's most valuable data has the same shape: customers, orders, events, and records
 spread across linked tables. [RelBench](https://relbench.stanford.edu) (Stanford STAR,
 [v2 paper](https://arxiv.org/abs/2602.12606)) turns that shape into a benchmark: 11 real
-relational databases (e-commerce reviews, online ads, fashion retail, online Q&A, clinical
+relational databases (e-commerce reviews, classified ads, fashion retail, online Q&A, clinical
 trials, and in v2 also SAP sales orders and ICU records) and 66 prediction tasks: who churns,
 what sells, which trial succeeds, what to recommend next. The official leaderboard scores 31
 of those tasks, all from the seven v1 databases.

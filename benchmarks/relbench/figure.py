@@ -47,7 +47,7 @@ fig.add_axes([0, 0, 1, 1]).set_axis_off()
 plt.scatter(gx, gy, s=2.2, color="#d9dce2", transform=fig.transFigure, zorder=0, clip_on=False)
 fig.text(0.5, 0.925, "Predictive Modelling on Relational Data (RelBench)", ha="center", va="center",
          fontsize=30, fontweight="bold", color=INK)
-fig.text(0.5, 0.878, "e-commerce reviews · online ads · event recommendation · fashion retail · online Q&A · clinical trials",
+fig.text(0.5, 0.878, "e-commerce reviews · classified ads · event recommendation · fashion retail · online Q&A · clinical trials",
          ha="center", va="center", fontsize=15, color=MUTED)
 
 mark = Image.open(LEEROO_MARK).convert("RGBA")
