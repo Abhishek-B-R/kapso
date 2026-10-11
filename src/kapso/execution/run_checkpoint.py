@@ -70,9 +70,11 @@ class RunCheckpoint:
     elapsed_seconds: float = 0.0
     cost_by_component: Dict[str, float] = field(default_factory=dict)
     last_stop: Optional[str] = None
+    # v3: the platform cost policy, so a resume rejects a changed estimator,
+    # cap or budget by name. Earlier schemas are not migrated (Rule 7).
     cost_config: Dict[str, Any] = field(default_factory=normalize_cost_config)
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
     VALID_STATUSES = {"running", "completed"}
     # waiting_for_user: the campaign paused for a reply in the inbox
     # (docs/research/evolve-hub-design.md v4); a resume continues the
@@ -125,9 +127,9 @@ class RunCheckpoint:
                 "Run checkpoint must contain a JSON object"
             )
 
-        # Reject other schema versions before field checks so a v1 file gets
-        # the clear story: pre-release formats are not migrated (CLAUDE.md
-        # Rule 7) — start a fresh campaign.
+        # Reject other schema versions before field checks so an earlier
+        # file gets the clear story: pre-release formats are not migrated
+        # (CLAUDE.md Rule 7) — start a fresh campaign.
         version = data.get("schema_version")
         if version != cls.SCHEMA_VERSION:
             raise RunCheckpointIncompatibleError(
