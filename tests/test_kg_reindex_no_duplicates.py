@@ -1,10 +1,12 @@
-"""Re-indexing a page must replace its Weaviate object instead of adding a duplicate."""
+"""Weaviate lookups by page id act on that exact page, never on a sibling that
+shares its tokens: a re-index replaces the page's object instead of adding a
+duplicate, and existence checks and edits leave the siblings alone."""
 
 import re
 import uuid
 from types import SimpleNamespace
 
-from kapso.knowledge_base.search.base import WikiPage
+from kapso.knowledge_base.search.base import KGEditInput, WikiPage
 from kapso.knowledge_base.search.kg_graph_search import KGGraphSearch
 
 
@@ -20,7 +22,7 @@ class _FakeQuery:
     def __init__(self, collection):
         self.collection = collection
 
-    def fetch_objects(self, *, filters, limit, return_properties):
+    def fetch_objects(self, *, filters, limit, return_properties=None):
         wanted = _tokens(filters.value)
         matched = [
             obj for obj in self.collection.objects
@@ -42,6 +44,10 @@ class _FakeData:
         assert where.target == "_id", where.target
         gone = {str(value) for value in where.value}
         self.collection.objects = [obj for obj in self.collection.objects if obj.uuid not in gone]
+
+    def update(self, *, uuid, properties, vector=None):
+        obj = next(obj for obj in self.collection.objects if obj.uuid == uuid)
+        obj.properties = {**obj.properties, **properties}
 
 
 class _FakeCollection:
@@ -75,6 +81,7 @@ def _search(collection):
     search._neo4j_driver = None
     search._embedder = None
     search.weaviate_collection = "KGWikiPages"
+    search._pages = []
     search._ensure_weaviate_collection = lambda: None
     search._embed_page = lambda page_id, text: [0.1, 0.2, 0.3]
     search._embed = lambda text: [0.1, 0.2, 0.3]
@@ -113,4 +120,28 @@ def test_single_page_reindex_keeps_its_sibling():
     assert sorted((obj.properties["page_id"], obj.properties["overview"]) for obj in collection.objects) == [
         ("Workflow/Page", "one again"),
         ("Workflow/Page_Sibling", "two"),
+    ]
+
+
+def test_page_exists_is_false_when_only_a_sibling_shares_the_tokens():
+    collection = _FakeCollection()
+    search = _search(collection)
+
+    search._index_to_weaviate([_page("Principle/Batch_Size_Config", "config")])
+    assert not search.page_exists("Principle/Batch_Size")
+
+    search._index_to_weaviate([_page("Principle/Batch_Size", "batch")])
+    assert search.page_exists("Principle/Batch_Size")
+
+
+def test_edit_changes_the_exact_page_even_when_a_sibling_was_indexed_first():
+    collection = _FakeCollection()
+    search = _search(collection)
+    search._index_to_weaviate([_page("Principle/Batch_Size_Config", "config"), _page("Principle/Batch_Size", "batch")])
+
+    assert search.edit(KGEditInput(page_id="Principle/Batch_Size", overview="edited", update_source_files=False))
+
+    assert sorted((obj.properties["page_id"], obj.properties["overview"]) for obj in collection.objects) == [
+        ("Principle/Batch_Size", "edited"),
+        ("Principle/Batch_Size_Config", "config"),
     ]

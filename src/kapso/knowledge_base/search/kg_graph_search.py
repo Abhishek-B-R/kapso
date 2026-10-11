@@ -95,6 +95,25 @@ _TYPE_TO_SUBDIR = {
 _PAGE_ID_TOKEN_MATCH_LIMIT = 1000
 
 
+def _weaviate_uuids_of_page(collection, page_id: str) -> List:
+    """Uuids of the objects whose page_id equals `page_id` exactly.
+
+    `equal` on the word-tokenized `page_id` also matches every page that
+    contains the id's tokens ("<id>_Config", "<id>_Test"), so the candidates
+    are narrowed to the exact id here. Every lookup by page id goes through
+    this, never through the bare filter.
+    """
+    candidates = collection.query.fetch_objects(
+        filters=wvc.query.Filter.by_property("page_id").equal(page_id),
+        limit=_PAGE_ID_TOKEN_MATCH_LIMIT,
+        return_properties=["page_id"],
+    )
+    return [
+        candidate.uuid for candidate in candidates.objects
+        if candidate.properties.get("page_id") == page_id
+    ]
+
+
 def parse_wiki_directory(
     wiki_dir: Path,
     domain_file: str = "domain_tag.txt",
@@ -1319,24 +1338,10 @@ Only include pages that would actually help answer the query.
         
         try:
             collection = self._weaviate_client.collections.get(self.weaviate_collection)
-
-            # `equal` on the word-tokenized `page_id` also matches sibling
-            # pages ("<id>_Config", "<id>_Test"), and whichever sorts first
-            # would come back. Fetch the candidates' ids only, keep the one
-            # that equals the request, then read that object.
-            candidates = collection.query.fetch_objects(
-                filters=wvc.query.Filter.by_property("page_id").equal(page_id),
-                limit=_PAGE_ID_TOKEN_MATCH_LIMIT,
-                return_properties=["page_id"],
-                include_vector=False,
-            )
-            exact = [
-                candidate for candidate in candidates.objects
-                if candidate.properties.get("page_id") == page_id
-            ]
-            if not exact:
+            uuids = _weaviate_uuids_of_page(collection, page_id)
+            if not uuids:
                 return None
-            obj = collection.query.fetch_object_by_id(exact[0].uuid, include_vector=False)
+            obj = collection.query.fetch_object_by_id(uuids[0], include_vector=False)
             if obj is None:
                 return None
             props = obj.properties
@@ -1628,21 +1633,8 @@ Only include pages that would actually help answer the query.
 
     @staticmethod
     def _delete_weaviate_page(collection, page_id: str) -> None:
-        """Delete the existing object(s) whose page_id equals this page's id.
-
-        `equal` on the word-tokenized `page_id` also matches every page that
-        contains the id's tokens ("<id>_Config", "<id>_Test"), so the
-        candidates are narrowed to the exact id before anything is deleted.
-        """
-        candidates = collection.query.fetch_objects(
-            filters=wvc.query.Filter.by_property("page_id").equal(page_id),
-            limit=_PAGE_ID_TOKEN_MATCH_LIMIT,
-            return_properties=["page_id"],
-        )
-        stale = [
-            candidate.uuid for candidate in candidates.objects
-            if candidate.properties.get("page_id") == page_id
-        ]
+        """Delete the existing object(s) whose page_id equals this page's id."""
+        stale = _weaviate_uuids_of_page(collection, page_id)
         if stale:
             collection.data.delete_many(
                 where=wvc.query.Filter.by_id().contains_any(stale)
@@ -1689,11 +1681,7 @@ Only include pages that would actually help answer the query.
         if self._weaviate_client:
             try:
                 collection = self._weaviate_client.collections.get(self.weaviate_collection)
-                response = collection.query.fetch_objects(
-                    filters=wvc.query.Filter.by_property("page_id").equal(page_id),
-                    limit=1,
-                )
-                if response.objects:
+                if _weaviate_uuids_of_page(collection, page_id):
                     return True
             except Exception:
                 pass
@@ -1917,17 +1905,10 @@ Only include pages that would actually help answer the query.
         
         collection = self._weaviate_client.collections.get(self.weaviate_collection)
         
-        # Find the object by page_id
-        response = collection.query.fetch_objects(
-            filters=wvc.query.Filter.by_property("page_id").equal(page_id),
-            limit=1,
-        )
-        
-        if not response.objects:
+        uuids = _weaviate_uuids_of_page(collection, page_id)
+        if not uuids:
             return False
-        
-        obj = response.objects[0]
-        obj_uuid = obj.uuid
+        obj_uuid = uuids[0]
         
         # Prepare property updates (map our field names to Weaviate properties)
         weaviate_updates = {}
