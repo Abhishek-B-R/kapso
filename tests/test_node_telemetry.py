@@ -107,6 +107,8 @@ def test_run_sums_attributed_phase_costs_onto_the_node():
         "agent output",
         {"cost_usd": 0.5, "duration_seconds": 2.0},
         None,
+        None,
+        None,
     )
     strategy._get_code_diff = lambda branch_name, parent_branch: ""
     strategy._extract_agent_result = lambda output: {}

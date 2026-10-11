@@ -83,7 +83,7 @@ def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
             "<evaluation_script_path>kapso_evaluation/evaluate.py</evaluation_script_path>"
             "<technical_difficulties>No build difficulties</technical_difficulties>"
             "<score>null</score>",
-            {}, None, suspended,
+            {}, None, suspended, None,
         )
 
     monkeypatch.setattr(strategy, "_implement", implement)

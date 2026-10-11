@@ -112,7 +112,7 @@ def run_implementation(
     inbox_settings: Optional[Dict[str, Any]] = None,
     continuation: Optional[Continuation] = None,
     defer_evaluation: bool = False,
-) -> Tuple[str, Dict[str, float], Optional[str], Optional[SuspendedSession]]:
+) -> Tuple[str, Dict[str, float], Optional[str], Optional[SuspendedSession], Optional[str]]:
     """
     Implementation using Claude Code with MCP gates (code, research).
     
@@ -135,7 +135,8 @@ def run_implementation(
     Returns:
         Tuple of (agent output string, phase telemetry with cost/duration,
         recovered manifest line, the suspended-session record when the
-        session asked the person and was stopped)
+        session asked the person and was stopped, the session's error when
+        it died without finishing its report and None when it finished)
     """
     from kapso.execution.coding_agents.base import CodingAgentConfig
     from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
@@ -473,7 +474,19 @@ def run_implementation(
     # workspace repo_lock — lane-safe under node expansion)
     workspace.finalize_session(session)
 
-    return agent_output, telemetry, recovered_manifest_line, suspended
+    # 10. How the build ended, as a fact the node can carry: the session
+    # that stands after the retry died without finishing its report, or
+    # it finished (a session stopped to ask the person is neither).
+    build_error = None
+    if suspended is None and not result.success:
+        if not result.error:
+            raise RuntimeError(
+                f"the implementation session for {branch_name} failed "
+                "without an error message"
+            )
+        build_error = result.error
+
+    return agent_output, telemetry, recovered_manifest_line, suspended, build_error
 
 
 def build_implementation_prompt(

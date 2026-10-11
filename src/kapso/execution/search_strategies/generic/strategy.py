@@ -601,10 +601,9 @@ class GenericSearch(SearchStrategy):
         )
 
         self._status_phase("implementation")
-        # _implement returns (output, telemetry, recovered manifest line) and,
-        # with the inbox wired, the suspended-session record as a fourth
-        # element; stubs that return three are still whole.
-        agent_output, implementation_telemetry, recovered, *rest = self._implement(
+        (
+            agent_output, implementation_telemetry, recovered, suspended, build_error,
+        ) = self._implement(
             solution=solution,
             problem=problem,
             branch_name=branch_name,
@@ -621,7 +620,7 @@ class GenericSearch(SearchStrategy):
         node.agent_output = agent_output
         node.code_diff = self._get_code_diff(branch_name, parent.branch_name)
         self._absorb_implementation(
-            node, agent_output, recovered, rest[0] if rest else None, lane_tag
+            node, agent_output, recovered, suspended, build_error, lane_tag
         )
         return node
 
@@ -631,10 +630,13 @@ class GenericSearch(SearchStrategy):
         agent_output: str,
         recovered: Optional[str],
         suspended,
+        build_error: Optional[str],
         lane_tag: str = "",
     ) -> None:
         """Steps 3–3c of the lane: the session's tags into the node, or the
-        suspension when the session asked the person and was stopped."""
+        suspension when the session asked the person and was stopped.
+        ``build_error`` is the session's error when it died without
+        finishing its report, None when it finished."""
         # Step 3: Extract results from agent output JSON
         agent_result = self._extract_agent_result(agent_output)
 
@@ -656,10 +658,15 @@ class GenericSearch(SearchStrategy):
             # A build-only session: its score and cost claims are void and
             # nothing is valid until a frame run says so. Its output stays
             # on the node as the judge's evidence for a build that errored;
-            # the frame run replaces it when one happens.
+            # the frame run replaces it when one happens. A session that
+            # died is an errored build: nothing to estimate or run. (In the
+            # default flow the session also evaluates, and the judge decides
+            # whether a dead session left a valid measurement.)
             node.score = None
             node.measured_cost = None
             node.evaluation_valid = False
+            node.had_error = build_error is not None
+            node.error_message = "" if build_error is None else build_error
 
         if suspended is not None:
             # The session asked the person and was stopped: nothing to
@@ -728,7 +735,9 @@ class GenericSearch(SearchStrategy):
         )
         continued_at_monotonic = time.monotonic()
         self._status_phase("implementation")
-        agent_output, implementation_telemetry, recovered, *rest = self._implement(
+        (
+            agent_output, implementation_telemetry, recovered, suspended, build_error,
+        ) = self._implement(
             solution=node.solution,
             problem=problem,
             branch_name=node.branch_name,
@@ -752,7 +761,7 @@ class GenericSearch(SearchStrategy):
         node.suspended = False
         node.request_ids = []
         self._absorb_implementation(
-            node, agent_output, recovered, rest[0] if rest else None
+            node, agent_output, recovered, suspended, build_error
         )
         if node.suspended:
             # Asked again: the orchestrator pauses the campaign again.
@@ -1126,10 +1135,10 @@ class GenericSearch(SearchStrategy):
         lane_index: int = 0,
         node_id: int = 0,
         continuation: Optional[Continuation] = None,
-    ) -> Tuple[str, Dict[str, float], Optional[str], Any]:
+    ) -> Tuple[str, Dict[str, float], Optional[str], Any, Optional[str]]:
         """Implementation session with MCP gates; returns (agent output,
         phase telemetry, recovered manifest line, suspended-session record
-        or None)."""
+        or None, the session's error when it died or None)."""
         lane_env = lane_env_overlay(self.expansion_lane_env, lane_index)
         return run_implementation(
             solution=solution,

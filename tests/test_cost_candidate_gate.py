@@ -276,8 +276,10 @@ def test_errored_build_is_judged_on_its_session_output_and_cannot_score_itself(t
         "items": 1, "total_items": 1, "score": 0.95,
     })
     nodes[0].technical_difficulties = "session died"
-    strategy._absorb_implementation(nodes[0], session_output, None, None)
-    nodes[0].had_error = True
+    # The lane's own facts: the session's output and the error it died with.
+    strategy._absorb_implementation(nodes[0], session_output, None, None, "provider kill")
+    assert nodes[0].had_error is True
+    assert nodes[0].error_message == "provider kill"
     strategy._finalize_nodes(nodes, time.monotonic(), append=True)
     assert strategy.feedback_generator.outputs == [session_output]
     assert nodes[0].evaluation_output == session_output
@@ -315,7 +317,7 @@ def test_suspended_build_cannot_publish_an_unestimated_score(tmp_path):
         "</evaluation_output>"
     )
     strategy._absorb_implementation(
-        nodes[0], output, None, SuspendedSession([1], "session"),
+        nodes[0], output, None, SuspendedSession([1], "session"), None,
     )
     strategy._finalize_nodes(nodes, time.monotonic(), append=True)
     assert nodes[0].suspended is True
