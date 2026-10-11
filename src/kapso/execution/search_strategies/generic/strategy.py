@@ -1188,7 +1188,9 @@ class GenericSearch(SearchStrategy):
             note_session_end_facts=(
                 lambda facts: self._session_end_facts.update({node_id: facts})
             ),
-            await_registered_evaluation=self._await_registered_evaluation,
+            await_registered_evaluation=(
+                lambda output: self._await_registered_evaluation(output, branch_name)
+            ),
             node_id=node_id,
             inbox_settings=getattr(self, "inbox_settings", None),
             continuation=continuation,
@@ -1386,12 +1388,13 @@ class GenericSearch(SearchStrategy):
             session_stream_path=self._session_stream_path,
         )
 
-    def _await_registered_evaluation(self, output_text: str):
+    def _await_registered_evaluation(self, output_text: str, session: str):
         """Teardown guard for the registered evaluation: wait for a live
         grader, then recover the manifest line from the durable run archive
-        (must run BEFORE finalize_session's rmtree)."""
+        of ``session`` (must run BEFORE finalize_session's rmtree)."""
         return await_registered_evaluation(
             output_text,
+            session=session,
             registered_evaluation_command=self.registered_evaluation_command,
             registered_evaluation_archive_glob=(
                 self.registered_evaluation_archive_glob

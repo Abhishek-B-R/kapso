@@ -9,6 +9,8 @@ workspace.
 import os
 import time
 
+import kapso.execution.search_strategies.generic.strategy as strategy_module
+from kapso.execution.evaluation_archive_sandbox import write_selection_label
 from kapso.execution.evaluation_maintainer.maintainer import MANIFEST_MARKER
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
@@ -26,10 +28,11 @@ def make_stub(tmp_path, archive_glob):
     return s
 
 
-def _write_archive(tmp_path, name, line):
+def _write_archive(tmp_path, name, line, session="candidate"):
     runs = tmp_path / "work" / "runs"
     run_dir = runs / name
-    run_dir.mkdir(parents=True)
+    (run_dir / "private").mkdir(parents=True)
+    write_selection_label(run_dir, session=session, evaluator_id="evaluator")
     (run_dir / "manifest.txt").write_text(line + "\n")
     return runs
 
@@ -39,7 +42,7 @@ def test_recovers_manifest_from_durable_archive(tmp_path):
     _write_archive(tmp_path, "run_0001", line)
     stub = make_stub(tmp_path, str(tmp_path / "work" / "runs"))
 
-    recovered = stub._await_registered_evaluation("session died, no manifest")
+    recovered = stub._await_registered_evaluation("session died, no manifest", "candidate")
 
     assert recovered == line
 
@@ -49,7 +52,7 @@ def test_manifest_already_in_output_short_circuits(tmp_path):
     stub = make_stub(tmp_path, str(tmp_path / "work" / "runs"))
 
     out = MANIFEST_MARKER + ' {"score": 0.5}'
-    assert stub._await_registered_evaluation(out) is None
+    assert stub._await_registered_evaluation(out, "candidate") is None
 
 
 def test_stale_archives_are_ignored(tmp_path):
@@ -61,10 +64,42 @@ def test_stale_archives_are_ignored(tmp_path):
     stub = make_stub(tmp_path, str(runs))
     stub._last_session_started_ts = time.time() - 60
 
-    assert stub._await_registered_evaluation("no manifest") is None
+    assert stub._await_registered_evaluation("no manifest", "candidate") is None
 
 
 def test_no_registered_command_is_a_noop(tmp_path):
     stub = make_stub(tmp_path, None)
     stub.registered_evaluation_command = None
-    assert stub._await_registered_evaluation("anything") is None
+    assert stub._await_registered_evaluation("anything", "candidate") is None
+
+
+def test_a_lane_recovers_only_its_own_sessions_archive(tmp_path, monkeypatch):
+    """Parallel lanes share one archive root: a lane whose session died
+    without its manifest must not take a sibling lane's score of record."""
+    sibling = MANIFEST_MARKER + ' {"fidelity": "full", "score": 0.9}'
+    _write_archive(tmp_path, "run_0001", sibling, session="generic_exp_1")
+    stub = make_stub(tmp_path, str(tmp_path / "work" / "runs"))
+    stub.__dict__.update(
+        expansion_lane_env=None, workspace=None, llm=None,
+        registered_evaluation_manifest=None, implementation_gates=[],
+        gate_failure_policy="skip", bank_serving=None, kg_index_path=None,
+        implementation_cli="claude_code", implementation_model="m",
+        implementation_fallback_model=None, implementation_web=False,
+        _claude_auth_settings={}, env_strip=[], env_defaults={},
+        session_effort=None, previous_errors=[], recent_error_count=3,
+        node_expansion_value=2,
+    )
+
+    def died_without_manifest(**kwargs):
+        recovered = kwargs["await_registered_evaluation"]("session died")
+        return "session died", {}, recovered, None, "provider kill"
+
+    monkeypatch.setattr(strategy_module, "run_implementation", died_without_manifest)
+
+    def recovered_for(branch_name):
+        return stub._implement(
+            solution="s", problem="p", branch_name=branch_name,
+        )[2]
+
+    assert recovered_for("generic_exp_0") is None
+    assert recovered_for("generic_exp_1") == sibling

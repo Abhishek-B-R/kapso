@@ -12,6 +12,7 @@ delegates here.
 """
 
 import glob
+import json
 import os
 import re
 import shlex
@@ -522,6 +523,7 @@ candidate passes its cost cap and the campaign budget.
 def await_registered_evaluation(
     output_text: str,
     *,
+    session: str,
     registered_evaluation_command: Optional[str],
     registered_evaluation_archive_glob: Optional[str],
     clamped_timeout: Callable[[float], float],
@@ -536,6 +538,8 @@ def await_registered_evaluation(
     recovery from the durable run archive — the grader archives the run
     (including manifest.txt) OUTSIDE the workspace before printing the
     manifest line — and return the recovered manifest line (or None).
+    Parallel lanes share the archive root, so only a run whose selection
+    label names ``session`` is this session's to recover.
     """
     if not registered_evaluation_command:
         return None
@@ -593,6 +597,11 @@ def await_registered_evaluation(
         manifest_path = os.path.join(run_dir, "manifest.txt")
         if not os.path.isfile(manifest_path):
             continue
+        with open(
+            os.path.join(run_dir, "private", "selection.json"), "r", encoding="utf-8"
+        ) as fh:
+            if json.load(fh)["session"] != session:
+                continue
         with open(manifest_path, "r", encoding="utf-8") as fh:
             line = fh.read().strip()
         if not line.startswith(MANIFEST_MARKER):
