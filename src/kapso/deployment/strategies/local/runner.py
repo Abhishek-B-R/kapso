@@ -20,10 +20,7 @@ _LOADED_CODE_PATHS: Set[str] = set()
 
 
 def _is_inside(path: str, folder: str) -> bool:
-    try:
-        return os.path.commonpath([path, folder]) == folder
-    except ValueError:  # different drives on Windows
-        return False
+    return Path(path).is_relative_to(folder)
 
 
 def _evict_modules_from_other_deployments(current_path: str) -> None:
@@ -91,6 +88,10 @@ class LocalRunner(Runner):
         # "helper") stay cached in sys.modules, so `import helper` here would
         # silently reuse the other solution's code. Drop them first, and put
         # this code path at the front so its own files are found first.
+        # This covers top-level imports only: an import done lazily inside
+        # predict() resolves against the cache at call time, so it can pick up
+        # a later deployment's module. Full isolation needs a process per
+        # deployment.
         _evict_modules_from_other_deployments(abs_code_path)
         if abs_code_path in sys.path:
             sys.path.remove(abs_code_path)
