@@ -30,7 +30,7 @@ Kapso installs a single `kapso` executable with nine commands.
 kapso --list-agents
 ```
 
-On a standard install the five agents are `claude_code`, `codex`, `gemini`, `openhands` and `oss_claude_code`; the legacy `aider` extra registers a sixth.
+On a standard install the six agents are `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code` and `vertex_claude_code`; the legacy `aider` extra registers a seventh.
 
 ## kapso evolve
 
@@ -47,7 +47,7 @@ Runs an experiment campaign against a goal and returns the best solution.
 | `--finalization-reserve-minutes` | Wall-clock escrowed for final checkout and evaluation | — |
 | `--resume` | Continue the compatible checkpoint in `--output`. The goal and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
 | `-m`, `--mode` | Config mode: `GENERIC` or `MINIMAL` | from config (`default_mode`) |
-| `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code` | from config |
+| `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code`, `vertex_claude_code` | from config |
 | `--eval-dir` | Evaluation files directory | — |
 | `--data-dir` | Data files directory | — |
 | `--initial-repo` | Starting repository, as a path or GitHub URL | — |
@@ -264,7 +264,7 @@ Renders the status of a running `evolve`, `learn` or `learn_knowledge` operation
 | `path` | Workspace, status file, or directory of status files. **Required** | — |
 | `--json` | Print the status file once, as JSON | off |
 | `--follow` | Re-render on each heartbeat until the operation ends | off |
-| `--tree` | Show the evolve campaign's search lineage from its checkpoint, each node with its score and the knowledge gates it consulted | off |
+| `--tree` | Show the evolve campaign's search lineage from its checkpoint, each node with its score, its platform cost and `refused` as the outcome of a cost-refused node when cost-aware selection is on, external baseline comparison, and the knowledge gates it consulted | off |
 
 ```bash
 kapso watch ./campaign

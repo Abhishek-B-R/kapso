@@ -19,6 +19,7 @@ from dataclasses import MISSING, dataclass, field, fields
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from kapso.execution.types import ContextData
+from kapso.execution.cost_estimator import validate_cost_refusal, validate_cost_value
 from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.environment.handlers.base import ProblemHandler
@@ -81,6 +82,15 @@ class SearchNode:
     evaluation_valid: bool = True
     evaluation_provenance: str = AGENT_GENERATED
     evaluation_integrity_error: str = ""
+
+    # Platform execution cost in the campaign's unit, distinct from model USD.
+    estimated_cost: Optional[Dict[str, Any]] = None
+    measured_cost: Optional[Dict[str, Any]] = None
+    cost_refusal: Optional[Dict[str, Any]] = None
+    # Cost mode: how Kapso's own frame run of the evaluator ended, empty
+    # until one ran. The manifest lookup keys on it, so a session that
+    # prints a manifest line cannot score itself.
+    frame_run_outcome: str = ""
 
     # Observational metrics from a caller-owned iteration evaluator. These do
     # not participate in search, stopping, or best-candidate selection.
@@ -195,6 +205,7 @@ class SearchNode:
             "evaluation_integrity_error",
             "started_at",
             "cli_session_id",
+            "frame_run_outcome",
         }
         invalid_strings = sorted(
             name
@@ -250,6 +261,14 @@ class SearchNode:
                     f"Search node {name} must be finite and non-negative "
                     "or null"
                 )
+
+        for name in ("estimated_cost", "measured_cost"):
+            if values.get(name) is not None:
+                values[name] = validate_cost_value(
+                    values[name], estimated=name == "estimated_cost"
+                )
+        if values.get("cost_refusal") is not None:
+            values["cost_refusal"] = validate_cost_refusal(values["cost_refusal"])
 
         phase_telemetry = values.get("phase_telemetry", {})
         if not isinstance(phase_telemetry, dict):
@@ -350,6 +369,9 @@ class ExperimentResult:
     evaluation_valid: bool = True
     evaluation_provenance: str = AGENT_GENERATED
     evaluation_integrity_error: str = ""
+    estimated_cost: Optional[Dict[str, Any]] = None
+    measured_cost: Optional[Dict[str, Any]] = None
+    cost_refusal: Optional[Dict[str, Any]] = None
     code_diff: str = ""
     workspace_dir: str = ""
     technical_difficulties: str = ""
@@ -392,6 +414,9 @@ class ExperimentResult:
             evaluation_valid=node.evaluation_valid,
             evaluation_provenance=node.evaluation_provenance,
             evaluation_integrity_error=node.evaluation_integrity_error,
+            estimated_cost=node.estimated_cost,
+            measured_cost=node.measured_cost,
+            cost_refusal=node.cost_refusal,
             code_diff=node.code_diff,
             workspace_dir=node.workspace_dir,
             metrics=dict(node.metrics),
@@ -866,4 +891,3 @@ class SearchStrategy(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not support resumable state"
         )
-

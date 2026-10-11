@@ -122,6 +122,50 @@ agents:
       streaming: true
 
   # ============================================================================
+  # Vertex AI Claude Code - Claude Code CLI on a Vertex AI Model Garden open model
+  # ============================================================================
+  vertex_claude_code:
+    description: "Claude Code CLI driven by a Vertex AI Model Garden open model (e.g. GLM 5.2) through a local LiteLLM bridge"
+    adapter_class: "VertexClaudeCodeCodingAgent"
+    adapter_module: "kapso.execution.coding_agents.adapters.vertex_claude_code_agent"
+    supports_native_git: false
+    default_model: "zai-org/glm-5.2-maas"
+    default_debug_model: "zai-org/glm-5.2-maas"
+    # Authenticates with Google application-default credentials (gcloud auth
+    # application-default login); the bridge reads them, Kapso never does.
+    env_vars: []
+    # The bridge needs litellm >= 1.103 (older releases do not know the
+    # Model Garden open models); Kapso's own environment pins an older
+    # litellm for its utility calls, so install the proxy in its own venv
+    # and put it on PATH.
+    install_command: "npm install -g @anthropic-ai/claude-code && pip install 'litellm[proxy]>=1.103' google-cloud-aiplatform"
+    documentation_url: "https://cloud.google.com/vertex-ai/generative-ai/docs/maas/use-open-models"
+    agent_specific:
+      # The Google Cloud project billed for the model (required).
+      vertex_project: null
+      # Where Vertex serves the open models.
+      vertex_location: "global"
+      # Seconds to wait for the local bridge to start serving.
+      bridge_startup_timeout: 60
+      # The open model's reasoning effort, set on the bridge for every
+      # request (Vertex accepts minimal / low / medium / high / max for
+      # GLM 5.2; xhigh is sent as max). null would leave the model's default.
+      effort: "xhigh"
+      # Open models write big files in one turn; the CLI's default 32k
+      # output cap killed 1 of 48 fleet runs (Vertex accepts 100k for GLM 5.2).
+      # Set-if-absent in the CLI's environment.
+      env_defaults:
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS: "64000"
+      planning_mode: false
+      timeout: 3600
+      allowed_tools:
+        - "Edit"
+        - "Read"
+        - "Write"
+        - "Bash"
+      streaming: true
+
+  # ============================================================================
   # OpenHands - Agent with sandboxed execution
   # ============================================================================
   openhands:

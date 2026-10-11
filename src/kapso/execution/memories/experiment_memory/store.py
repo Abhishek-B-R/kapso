@@ -24,9 +24,16 @@ import logging
 import os
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 from kapso.core.llm import LLMBackend
+from kapso.execution.cost_estimator import (
+    campaign_cost_used,
+    normalize_cost_config,
+    selection_score,
+)
+from kapso.execution.run_checkpoint import RunCheckpointStore
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +83,9 @@ class ExperimentRecord:
     evaluation_valid: bool = True
     evaluation_provenance: str = "agent_generated"
     evaluation_integrity_error: str = ""
+    estimated_cost: Optional[Dict[str, Any]] = None
+    measured_cost: Optional[Dict[str, Any]] = None
+    cost_refusal: Optional[Dict[str, Any]] = None
 
     def __str__(self) -> str:
         """Format for display."""
@@ -104,6 +114,8 @@ class ExperimentHistoryStore:
         json_path: str,
         goal: Optional[str] = None,
         llm: Optional[LLMBackend] = None,
+        cost_config: Optional[Mapping[str, Any]] = None,
+        maximize_scoring: bool = True,
     ):
         """
         Initialize experiment history store.
@@ -114,10 +126,18 @@ class ExperimentHistoryStore:
             llm: Backend whose "embedding" role powers write-time solution
                  embeddings and query-time semantic search. None → the
                  store is recency-only (search_similar returns recent).
+            cost_config: Platform cost policy the ranking uses. The MCP
+                 process takes it from the campaign checkpoint, see
+                 open_campaign_history.
+            maximize_scoring: Problem direction used by cost-aware ranking.
         """
         self.json_path = json_path
         self.goal = goal
         self._llm = llm
+        self.cost_config = normalize_cost_config(cost_config)
+        if not isinstance(maximize_scoring, bool):
+            raise ValueError("Experiment history maximize_scoring must be a boolean")
+        self.maximize_scoring = maximize_scoring
         self.experiments: List[ExperimentRecord] = []
         self._load_from_json()
 
@@ -186,6 +206,9 @@ class ExperimentHistoryStore:
             evaluation_valid=evaluation_valid,
             evaluation_provenance=evaluation_provenance,
             evaluation_integrity_error=evaluation_integrity_error,
+            estimated_cost=getattr(node, "estimated_cost", None),
+            measured_cost=getattr(node, "measured_cost", None),
+            cost_refusal=getattr(node, "cost_refusal", None),
         )
 
         # Embed the full solution BEFORE persisting so the saved record is
@@ -220,7 +243,25 @@ class ExperimentHistoryStore:
             and e.evaluation_valid
             and e.score is not None
         ]
-        return sorted(valid, key=lambda x: x.score or 0, reverse=True)[:k]
+        ranking_config = {
+            "cost": self.cost_config,
+            "maximize_scoring": (
+                self.maximize_scoring if self.cost_config["enabled"] else True
+            ),
+        }
+        return sorted(
+            valid,
+            key=lambda record: selection_score(record, ranking_config),
+            reverse=True,
+        )[:k]
+
+    def format_experiments(self, experiments: List[ExperimentRecord]) -> str:
+        """Render a subset with the full campaign's cost accounting."""
+        return format_experiments(
+            experiments,
+            cost_config=self.cost_config,
+            budget_used=campaign_cost_used(self.experiments, self.cost_config),
+        )
 
     def get_recent_experiments(self, k: int = 5) -> List[ExperimentRecord]:
         """
@@ -324,6 +365,9 @@ class ExperimentHistoryStore:
                 evaluation_integrity_error=e.get(
                     "evaluation_integrity_error", ""
                 ),
+                estimated_cost=e.get("estimated_cost"),
+                measured_cost=e.get("measured_cost"),
+                cost_refusal=e.get("cost_refusal"),
             )
             self.experiments.append(record)
         print(f"[ExperimentHistoryStore] Loaded {len(self.experiments)} experiments from {self.json_path}")
@@ -339,12 +383,37 @@ class ExperimentHistoryStore:
 # Standalone Functions for MCP Server
 # =============================================================================
 
+def open_campaign_history(
+    json_path: str, *, goal: Optional[str], llm: Optional[LLMBackend]
+) -> ExperimentHistoryStore:
+    """Open a campaign's history ranked the way the campaign ranks it.
+
+    The history file and the run checkpoint share the campaign's ``.kapso``
+    directory, so the checkpoint supplies the cost policy and the problem's
+    scoring direction. A history opened outside a campaign, with no
+    checkpoint beside it, gets the disabled default policy; a corrupt
+    checkpoint raises.
+    """
+    checkpoint_store = RunCheckpointStore(str(Path(json_path).parent.parent))
+    if not checkpoint_store.exists():
+        return ExperimentHistoryStore(json_path=json_path, goal=goal, llm=llm)
+    checkpoint = checkpoint_store.load()
+    return ExperimentHistoryStore(
+        json_path=json_path,
+        goal=goal,
+        llm=llm,
+        cost_config=checkpoint.cost_config,
+        maximize_scoring=checkpoint.maximize_scoring,
+    )
+
+
 def load_store_from_env() -> ExperimentHistoryStore:
     """
-    Load experiment store from environment variables.
+    Open the campaign's experiment store from environment variables.
 
-    Used by MCP server to access the store (env is the transport across
-    the server-process boundary; see get_mcp_config).
+    Used by the MCP server (env is the transport across the server-process
+    boundary; see get_mcp_config). The cost policy and the scoring
+    direction come from the campaign checkpoint, see open_campaign_history.
 
     Environment variables:
     - EXPERIMENT_HISTORY_PATH: Path to JSON file (required)
@@ -354,22 +423,21 @@ def load_store_from_env() -> ExperimentHistoryStore:
     """
     json_path = os.environ.get("EXPERIMENT_HISTORY_PATH", ".kapso/experiment_history.json")
     embedding_model = os.environ.get("EXPERIMENT_EMBEDDING_MODEL")
-    goal = os.environ.get("EXPERIMENT_GOAL")
-
     llm = (
         LLMBackend(models={"embedding": embedding_model})
         if embedding_model
         else None
     )
-
-    return ExperimentHistoryStore(
-        json_path=json_path,
-        goal=goal,
-        llm=llm,
+    return open_campaign_history(
+        json_path, goal=os.environ.get("EXPERIMENT_GOAL"), llm=llm
     )
 
 
-def format_experiments(experiments: List[ExperimentRecord]) -> str:
+def format_experiments(
+    experiments: List[ExperimentRecord],
+    cost_config: Optional[Mapping[str, Any]] = None,
+    budget_used: Optional[float] = None,
+) -> str:
     """
     Format experiments as markdown for agent consumption.
 
@@ -379,10 +447,19 @@ def format_experiments(experiments: List[ExperimentRecord]) -> str:
     Returns:
         Formatted markdown string
     """
-    if not experiments:
-        return "No experiments found."
-
     lines = []
+    show_cost = cost_config is not None and cost_config["enabled"]
+    if show_cost:
+        if budget_used is None:
+            raise ValueError("Cost history requires full campaign budget_used")
+        budget = cost_config["campaign_budget"]
+        cap = f" / {budget}" if budget is not None else ""
+        lines.append(
+            f"Campaign budget used: {budget_used}{cap} {cost_config['unit']}\n"
+        )
+    if not experiments:
+        lines.append("No experiments found.")
+        return "\n".join(lines)
     for exp in experiments:
         if not exp.evaluation_valid:
             status = "INVALID EVALUATION"
@@ -398,6 +475,14 @@ def format_experiments(experiments: List[ExperimentRecord]) -> str:
 
 **Feedback:**
 {exp.feedback}""")
+
+        if show_cost:
+            for cost_field in ("estimated_cost", "measured_cost"):
+                lines.append(
+                    f"\n**{cost_field}:** {json.dumps(getattr(exp, cost_field))}"
+                )
+            if exp.cost_refusal is not None:
+                lines.append(f"\n**cost_refusal:** {json.dumps(exp.cost_refusal)}")
 
         if exp.technical_difficulties:
             lines.append(f"""

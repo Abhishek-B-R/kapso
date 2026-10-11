@@ -51,9 +51,26 @@ _PACKAGED_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 # Agent types that run as an external CLI binary. Everything else in the
 # manifest is a Python SDK adapter, whose requirement is the package its
 # install_command names — surfaced from the manifest, not invented here.
+# Google credentials are found by google-auth inside the Vertex bridge, never
+# read by Kapso; the doctor only checks that one of its sources is present:
+# the gcloud application-default login, a key file it is pointed at, or the
+# service account of a Compute Engine machine (google-auth's own GCE test).
+ADC_PATH = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+GCE_PRODUCT_NAME_PATH = Path("/sys/class/dmi/id/product_name")
+
+
+def google_credentials_present() -> bool:
+    key_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    on_gce = (
+        GCE_PRODUCT_NAME_PATH.is_file()
+        and GCE_PRODUCT_NAME_PATH.read_text().strip() == "Google Compute Engine"
+    )
+    return ADC_PATH.is_file() or bool(key_file and Path(key_file).is_file()) or on_gce
+
 CLI_BINARIES = {
     "claude_code": "claude",
     "oss_claude_code": "claude",
+    "vertex_claude_code": "claude",
     "codex": "codex",
     "aider": "aider",
 }
@@ -409,6 +426,37 @@ def _auth_requirements(
             fix="codex login   (or set CODEX_API_KEY in .env)",
             origin=origin,
         )]
+
+    if cli == "vertex_claude_code":
+        projects = {
+            spec.agent_specific.get("vertex_project") for spec in specs
+        }
+        return [
+            Requirement(
+                label="litellm",
+                ok=shutil.which("litellm") is not None,
+                fix="pip install 'litellm[proxy]>=1.103' google-cloud-aiplatform in "
+                    "its own venv, on PATH   (the local bridge that speaks Anthropic "
+                    "to the CLI and Vertex to Google; Kapso's environment pins an "
+                    "older litellm)",
+                origin=origin,
+            ),
+            Requirement(
+                label="Google credentials",
+                ok=google_credentials_present(),
+                fix="gcloud auth application-default login   (or run on a "
+                    "Compute Engine machine whose service account may use "
+                    "Vertex AI)",
+                origin=origin,
+            ),
+            Requirement(
+                label="agent_specific.vertex_project",
+                ok=all(isinstance(p, str) and p.strip() for p in projects),
+                fix="set agent_specific.vertex_project to the Google Cloud "
+                    "project billed for the model",
+                origin=origin,
+            ),
+        ]
 
     if cli not in ("claude_code", "oss_claude_code"):
         return []
@@ -932,6 +980,10 @@ def live_model_requirements(
     for (cli, model), origins in sorted(probed.items()):
         binary = CLI_BINARIES.get(cli)
         if binary is None or shutil.which(binary) is None:
+            continue
+        if cli == "vertex_claude_code":
+            # A probe would need the bridge up; the static rows (litellm,
+            # the credential file, the project) are its readiness check.
             continue
         ok, detail = probe_model_access(cli, model)
         requirements.append(Requirement(

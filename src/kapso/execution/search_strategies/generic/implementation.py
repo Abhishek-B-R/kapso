@@ -111,7 +111,8 @@ def run_implementation(
     node_id: int = 0,
     inbox_settings: Optional[Dict[str, Any]] = None,
     continuation: Optional[Continuation] = None,
-) -> Tuple[str, Dict[str, float], Optional[str], Optional[SuspendedSession]]:
+    defer_evaluation: bool = False,
+) -> Tuple[str, Dict[str, float], Optional[str], Optional[SuspendedSession], Optional[str]]:
     """
     Implementation using Claude Code with MCP gates (code, research).
     
@@ -134,7 +135,8 @@ def run_implementation(
     Returns:
         Tuple of (agent output string, phase telemetry with cost/duration,
         recovered manifest line, the suspended-session record when the
-        session asked the person and was stopped)
+        session asked the person and was stopped, the session's error when
+        it died without finishing its report and None when it finished)
     """
     from kapso.execution.coding_agents.base import CodingAgentConfig
     from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
@@ -267,6 +269,14 @@ def run_implementation(
     
     if continuation is not None:
         prompt = continuation.follow_up
+        if defer_evaluation:
+            prompt += (
+                "\n\nThis is still a build-only session. Do not run the candidate "
+                "or evaluation, train models, submit platform jobs, or perform "
+                "paid platform operations. Complete the implementation and "
+                "return empty evaluation output and a null score. Kapso "
+                "estimates the finalized candidate and grants execution later."
+            )
     else:
         prompt = build_prompt(
             solution=solution,
@@ -400,7 +410,10 @@ def run_implementation(
                     + "\n\nNOTE: a previous session on this lane ended "
                     f"prematurely ({result.error}). Its partial work is in "
                     "the branch; continue from there and finish the "
-                    "implementation and evaluation."
+                    + (
+                        "implementation without executing the candidate or evaluation."
+                        if defer_evaluation else "implementation and evaluation."
+                    )
                 )
                 phase_cost += agent.get_cumulative_cost()
                 if fallback_result.output:
@@ -453,15 +466,27 @@ def run_implementation(
     
     # 8. Registered-evaluation teardown guard: wait for a live grader
     # and stash any durable-archive recovery BEFORE finalize's rmtree.
-    recovered_manifest_line = await_registered_evaluation(
-        agent_output
+    recovered_manifest_line = (
+        None if defer_evaluation else await_registered_evaluation(agent_output)
     )
 
     # 9. Finalize session (commits changes; push serialized by the
     # workspace repo_lock — lane-safe under node expansion)
     workspace.finalize_session(session)
 
-    return agent_output, telemetry, recovered_manifest_line, suspended
+    # 10. How the build ended, as a fact the node can carry: the session
+    # that stands after the retry died without finishing its report, or
+    # it finished (a session stopped to ask the person is neither).
+    build_error = None
+    if suspended is None and not result.success:
+        if not result.error:
+            raise RuntimeError(
+                f"the implementation session for {branch_name} failed "
+                "without an error message"
+            )
+        build_error = result.error
+
+    return agent_output, telemetry, recovered_manifest_line, suspended, build_error
 
 
 def build_implementation_prompt(
@@ -479,11 +504,15 @@ def build_implementation_prompt(
     inbox_section: str = "",
     knowledge_tools: str = "",
 ) -> str:
-    """Build the implementation prompt for Claude Code. With the inbox
-    off (empty ``inbox_section``) the render is byte-identical to the
-    prompt before the inbox existed. ``knowledge_tools`` is the guidance
-    of the gates this session mounted (empty for a session with none)."""
-    template = load_prompt("execution/search_strategies/generic/prompts/implementation_claude_code.md")
+    """Build the implementation prompt for Claude Code from the one template.
+    ``evaluation_instructions`` is the mode's evaluation contract (build and
+    run, the registered evaluator, or the cost mode's build-only session);
+    ``knowledge_tools`` is the guidance of the gates this session mounted
+    (empty for a session with none); with the inbox off (empty
+    ``inbox_section``) every inbox part renders empty."""
+    template = load_prompt(
+        "execution/search_strategies/generic/prompts/implementation_claude_code.md"
+    )
     inbox_on = bool(inbox_section)
     return render_prompt(
         template,

@@ -88,8 +88,8 @@ class Harness:
                 self.inbox, node=kwargs["node_id"], session="inbox-sid",
                 entries=[ENTRY if continuation is None else {**ENTRY, "key": "data/x.csv"}],
             )
-            return "partial work", telemetry, None, SuspendedSession([request_id], "cli-1")
-        return "finished output", telemetry, None, None
+            return "partial work", telemetry, None, SuspendedSession([request_id], "cli-1"), None
+        return "finished output", telemetry, None, None, None
 
     def _generate_feedback(self, node):
         self.calls["feedback"] += 1
@@ -170,7 +170,9 @@ def test_inbox_off_never_looks_at_the_file(tmp_path):
     harness = Harness(tmp_path)
     strategy = harness.strategy
     strategy.inbox_settings = {"enabled": False}
-    strategy._implement = lambda **kwargs: ("out", {"cost_usd": 0.0, "duration_seconds": 0.0}, None)
+    strategy._implement = lambda **kwargs: (
+        "out", {"cost_usd": 0.0, "duration_seconds": 0.0}, None, None, None,
+    )
     node = strategy.run("problem")
     assert node.suspended is False
     assert harness.calls["feedback"] == 1

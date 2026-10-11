@@ -40,9 +40,9 @@
 - **IOAI 2026 · the AI Model Track.** The [International Olympiad in AI](https://ioai-official.org) is the IMO of the AI era — 471 contestants from 108 countries and territories, six expert-designed tasks under a single-GPU budget. In 2026 it opened [IOAI²](https://ioai-official.org/ai-model-track/), where AI systems sit the *same* exam in two fully autonomous 6-hour sessions. Once the clock starts, no human may solve, correct, or improve anything. Kapso entered as one of 14 Founding AI Participants.
   - 🎓 **Outscored all 471 humans** — 536.07 total, above every contestant in the hall.
   - 🏆 **IOAI² Grand Master Trophy** — top 3 among all AI systems entered. [Full results →](benchmarks/ioai2026/README.md) · [IOAI's review of the track →](https://ioai-official.org/what-happens-when-autonomous-ai-takes-on-the-same-tasks-as-the-worlds-top-young-ai-talents/)
-- **Beats the best foundation model on [RelBench](benchmarks/relbench/README.md)**: on Stanford's benchmark for predictive ML over enterprise data, Kapso passes [KumoRFM-v2](https://docs.nvidia.com/sdgm/rfm/overview) in outcome prediction (81.2 vs 79.6 AUROC over 12 tasks) and forecasting (0.2476 vs 0.2912 NMAE over 9 tasks, 15% less error), and the strongest other entry on the leaderboard in recommendations (18.4 vs 9.3 MAP over 10 tasks, ID-GNN). Published results live on the [official RelBench leaderboard](https://star-project.stanford.edu/relbench/leaderboard/).
+- **First on all three [RelBench](benchmarks/relbench/README.md) leaderboards**: on Stanford's benchmark for predictive ML over relational data, Kapso leads the official leaderboard in classification (81.2 AUROC over 12 tasks, against 79.3 for [KumoRFM-v2](https://docs.nvidia.com/sdgm/rfm/overview) and 79.0 for Stanford STAR's RT-J), regression (0.2476 NMAE over 9 tasks, against 0.2711 for RT-J and 0.2847 for KumoRFM-v2, 8.7% less error) and recommendations (18.4 MAP over 10 tasks, against 9.3 for ID-GNN, the best other entry). Every number is an entry on the [official RelBench leaderboard](https://star-project.stanford.edu/relbench/leaderboard/).
 
-  <img src="https://raw.githubusercontent.com/Leeroo-AI/kapso/main/docs/images/relbench.png" alt="RelBench, three panels: outcome prediction, Kapso 81.2 AUROC against KumoRFM-v2's 79.6; forecasting, Kapso 0.2476 NMAE against 0.2912, lower being better; recommendations, Kapso 18.4 MAP against the official leaderboard's best other entry, ID-GNN, at 9.3. The first two panels are drawn from a truncated axis, the third from zero" width="820">
+  <img src="https://raw.githubusercontent.com/Leeroo-AI/kapso/main/docs/images/relbench.png" alt="RelBench, three panels: classification, Kapso 81.2 AUROC against KumoRFM-v2's 79.3 and RT-J's 79.0; regression, Kapso 0.2476 NMAE against RT-J's 0.2711 and KumoRFM-v2's 0.2847, lower being better; recommendations, Kapso 18.4 MAP against the official leaderboard's best other entry, ID-GNN, at 9.3. The first two panels are drawn from a truncated axis, the third from zero" width="820">
 
 - **[Leeroopedia MCP Integration](https://leeroopedia.com)**: Kapso now connects to **Leeroopedia MCP** — your ML & Data Knowledge Wiki. Learnt by AI, built by AI, for AI. A centralized playbook of best practices and expert-level knowledge for Machine Learning and Data domains. Kapso agents use it during ideation and implementation to search knowledge, build plans, diagnose failures, and more.
 - **[Moltbook Agents 🦞](https://www.moltbook.com/)**: Build AI agents that optimize other agents and debate on Moltbook! [Get started →](moltbook_bot/README.md)
@@ -239,6 +239,11 @@ result = deployed.run({"input": "data"})
 deployed.stop()
 ```
 
+### How do I bound a campaign?
+
+Use `max_iterations`, `time_budget_minutes`, and `cost_budget` to bound iterations, elapsed time, and best-effort model spend in USD.
+For platform costs, enable [cost-aware selection](https://docs.leeroo.com/docs/evolve/cost-aware-selection) in `search_strategy.params.cost` with your estimator, `cap_per_candidate`, and `campaign_budget`; its `weight` also lets selection prefer cheaper candidates.
+
 ### Choosing models
 
 Every model Kapso uses is named in one config file. The packaged default
@@ -312,7 +317,7 @@ For detailed integration steps, see the [Quickstart](https://docs.leeroo.com/doc
 |-----------|-------------|
 | [**MLE-Bench**](benchmarks/mle/README.md) | OpenAI's ML-engineering benchmark — full competitions across tabular, vision, text, and audio, from raw data to graded submission |
 | [**ALE-Bench**](benchmarks/ale/README.md) | Sakana AI's algorithmic-optimization benchmark — design, implement, and iterate contest heuristics over hours-long searches |
-| [**RelBench**](benchmarks/relbench/README.md) | Stanford's benchmark for predictive ML over enterprise data — forecasting, classification, and recommendation straight from the multi-table databases of SAP, Amazon, H&M, and more |
+| [**RelBench**](benchmarks/relbench/README.md) | Stanford's benchmark for predictive ML over relational data — classification, regression, and recommendation straight from the multi-table databases of Amazon, H&M, Stack Exchange, clinical trials, and more |
 | [**IOAI 2026**](benchmarks/ioai2026/README.md) | Timed olympiad ML across vision, language, and optimization — expert-set tasks, contest hardware, zero human help |
 
 Each benchmark also has a documentation page covering how to run it, its CLI options and what the output holds:

@@ -18,6 +18,7 @@ from kapso.core.config import load_platform_defaults, load_config
 from kapso.execution.observability import (
     credits_summary,
     knowledge_summary,
+    platform_cost_summary,
     EvolveStatus,
     KnowledgeStatus,
     LessonStatus,
@@ -255,6 +256,36 @@ def test_evolve_watch_renders_checkpoint_tree(tmp_path):
     assert "knowledge" not in waiting_row
     # The metered gate's balance across the campaign closes the tree.
     assert "credits: leeroopedia 761 → 747 remaining" in screen
+    # A campaign with cost disabled renders no cost bar and no cost on its rows.
+    assert "cost:" not in screen
+
+
+def test_evolve_watch_renders_platform_budget_and_refused_node(tmp_path):
+    state_dir = tmp_path / "campaign" / ".kapso"
+    state_dir.mkdir(parents=True)
+    EvolveStatus(state_dir / "status.json").update(
+        iteration=2,
+        platform_budget={"used": 2.0, "budget": 3.0, "unit": "credits", "refused": 1},
+    )
+    estimate = {"amount": 2.0, "unit": "credits", "basis": "plan", "metadata": {}}
+    (state_dir / "run_state.json").write_text(json.dumps({
+        "strategy_state": {"node_history": [
+            {"node_id": 0, "parent_node_id": None, "branch_name": "baseline", "score": 0.4,
+             "estimated_cost": {**estimate, "amount": 2.5},
+             "measured_cost": {"amount": 2.0, "unit": "credits"}},
+            {"node_id": 1, "parent_node_id": 0, "branch_name": "candidate-b", "score": None,
+             "evaluation_valid": False, "estimated_cost": estimate,
+             "cost_refusal": {"estimate": estimate, "cap": 3.0, "reason": "campaign_budget",
+                              "campaign_cost_used": 2.0}},
+        ]}
+    }))
+    screen = OperationStatusView(state_dir / "status.json").explain(tree=True)
+    # The second bar: 13 of 20 cells at 2.0 of 3.0, then the same summary
+    # the evolve completion prints.
+    assert "cost:   ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░ 2.0/3.0 credits, 1 candidate refused" in screen
+    # Measured supersedes the 2.5 estimate; the refused node shows its estimate.
+    assert "baseline (score=0.4, ok) cost: 2.0" in screen
+    assert "candidate-b (score=unscored, refused) cost: 2.0" in screen
 
 
 def test_evolve_watch_rejects_missing_checkpoint_parent(tmp_path):
@@ -352,3 +383,12 @@ def test_credits_summary_spans_parallel_lanes_by_balance_not_order():
         "0:ideation": {"repo_memory_calls": 2},
     }) == "leeroopedia 747 → 731 remaining"
     assert credits_summary({"implementation": {"cost_usd": 1.0}}) == ""
+
+
+def test_platform_cost_summary_without_budget_and_with_several_refusals():
+    assert platform_cost_summary(
+        {"used": 2.0, "budget": None, "unit": "credits", "refused": 0}
+    ) == "2.0 credits"
+    assert platform_cost_summary(
+        {"used": 2.0, "budget": 3, "unit": "credits", "refused": 2}
+    ) == "2.0/3.0 credits, 2 candidates refused"

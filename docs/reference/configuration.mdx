@@ -183,6 +183,13 @@ search_strategy:
     gate_failure_policy: warn
     ideation_gates: [research, experiment_history, repo_memory, leeroopedia]
     implementation_gates: [research, repo_memory, leeroopedia]
+    cost:
+      enabled: false
+      estimator: null
+      cap_per_candidate: null
+      campaign_budget: null
+      unit: credits
+      weight: 0.0
 ```
 
 | Key | What it does |
@@ -194,8 +201,22 @@ search_strategy:
 | `params.gate_failure_policy` | What to do when an MCP gate is unavailable. `warn` continues |
 | `params.ideation_gates` | MCP tools offered while designing a candidate |
 | `params.implementation_gates` | MCP tools offered while implementing it |
+| `params.cost.enabled` | Enable platform-cost estimation, admission checks, and selection; default `false` |
+| `params.cost.estimator` | Module-qualified caller-owned estimator; required when enabled |
+| `params.cost.cap_per_candidate` | Maximum estimate accepted for one candidate, in `unit`; `null` is unlimited |
+| `params.cost.campaign_budget` | Campaign platform budget, using measured cost when available and estimates otherwise; `null` is unlimited |
+| `params.cost.unit` | Shared estimate and measurement label; default `credits`, with no conversion |
+| `params.cost.weight` | Non-negative platform-cost penalty in selection; default `0.0` |
+
+The packaged cost defaults live in `defaults.search_strategy.params.cost` and
+are inherited by every mode. Override individual keys under
+`modes.<mode>.search_strategy.params.cost`. Cost-enabled runs require the generic
+strategy and `budget.fidelity.mode: off`. Platform cost settings are separate
+from model spend in USD controlled by `evolve(cost_budget=...)`.
 
 See [Capability-aware MCP gates](/docs/evolve/mcp-gates).
+See [Cost-aware selection](/docs/evolve/cost-aware-selection) for the estimator
+contract, measured-cost manifest, admission lifecycle, and resume checks.
 
 ### coding_agent and feedback_generator
 
@@ -213,7 +234,7 @@ coding_agent:
 
 | Key | What it does |
 |-----|--------------|
-| `type` | `claude_code`, `codex`, `gemini`, `openhands`, `openai_compatible` or `oss_claude_code` |
+| `type` | `claude_code`, `codex`, `gemini`, `openhands`, `openai_compatible`, `oss_claude_code` or `vertex_claude_code` |
 | `model` | Model for normal work |
 | `debug_model` | Model used when an experiment is being debugged |
 | `agent_specific.auth_mode` | `oauth` uses the CLI's stored login, `api_key` uses `ANTHROPIC_API_KEY`, `auto` takes either (never Bedrock), `bedrock` runs against Amazon Bedrock with AWS credentials and models named by inference profile id |
@@ -255,7 +276,7 @@ Bounded exponential backoff for transient model failures. See [Model routing and
 
 ### learner
 
-Two sub-blocks, `ingestor` and `merger`, controlling `learn_knowledge()`. Both take a `model`, an `auth_mode`, an `effort` and a `timeout` (shipped: `claude-opus-5-5`, `oauth`, `xhigh`, `null`). `effort` is the reasoning effort of every learning session, pinned here so a session never inherits the effort from the machine's own Claude settings. `timeout` is a deadline in seconds; `null`, the default, means a phase runs until it finishes. `ingestor` additionally takes `cleanup`, `cleanup_staging`, `fail_on_validation_errors`, `publish_workflows` and `github_repo_visibility`. `publish_workflows` (off by default) publishes each extracted Workflow as a runnable GitHub repository after the pages have been validated; `gh` authenticates with `GH_TOKEN`, which the preflight requires when publishing is on. Off, a Workflow page keeps a placeholder in its GitHub URL section. A failed phase stops the run: `learn_knowledge()` raises rather than returning a partial result as a success. A run stages its clone, phase reports and pages under `<wiki_dir>/_staging/<repo>/<branch>` and marks each finished phase, so a run that stopped continues from the first unfinished phase when the same source is learned again; `cleanup` removes the clone once a run completes, `cleanup_staging` the whole directory. Learning sessions hold five file tools (Read, Write, Edit, Glob, Grep) plus the knowledge tools and nothing else, so they cannot run commands, reach the network or delegate; only the publishing session also gets Bash, for `git` and `gh`.
+Two sub-blocks, `ingestor` and `merger`, controlling `learn_knowledge()`. Both take a `cli`, a `model`, an `auth_mode`, an `effort` and a `timeout` (shipped: `claude_code`, `claude-opus-5-5`, `oauth`, `xhigh`, `null`), plus an `agent_specific` map (shipped empty) that is passed to the agent. `cli` names the coding agent that runs the sessions: `claude_code` with the first-party login that `auth_mode` selects, or `vertex_claude_code` for an open model on Vertex AI, whose settings (`vertex_project`, `vertex_location`) go in `agent_specific`; on that agent `effort` is applied as the open model's `reasoning_effort` (Vertex accepts `minimal` to `max` for GLM 5.2; `xhigh` is sent as `max`); see [Coding Agents](/docs/evolve/coding-agents#vertex-ai-claude-code). `effort` is the reasoning effort of every learning session, pinned here so a session never inherits the effort from the machine's own Claude settings. `timeout` is a deadline in seconds; `null`, the default, means a phase runs until it finishes. `ingestor` additionally takes `cleanup`, `cleanup_staging`, `fail_on_validation_errors`, `publish_workflows` and `github_repo_visibility`. `publish_workflows` (off by default) publishes each extracted Workflow as a runnable GitHub repository after the pages have been validated; `gh` authenticates with `GH_TOKEN`, which the preflight requires when publishing is on. Off, a Workflow page keeps a placeholder in its GitHub URL section. A failed phase stops the run: `learn_knowledge()` raises rather than returning a partial result as a success. A run stages its clone, phase reports and pages under `<wiki_dir>/_staging/<repo>/<branch>` and marks each finished phase, so a run that stopped continues from the first unfinished phase when the same source is learned again; `cleanup` removes the clone once a run completes, `cleanup_staging` the whole directory. Learning sessions hold five file tools (Read, Write, Edit, Glob, Grep) plus the knowledge tools and nothing else, so they cannot run commands, reach the network or delegate; only the publishing session also gets Bash, for `git` and `gh`.
 
 ## learning
 

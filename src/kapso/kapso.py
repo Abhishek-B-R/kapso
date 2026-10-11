@@ -43,6 +43,7 @@ from kapso.execution.observability import (
     OperationStatusView,
     credits_summary,
     knowledge_summary,
+    platform_cost_summary,
 )
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.solution import SolutionResult
@@ -1555,7 +1556,11 @@ class Kapso:
         credits = credits_summary(campaign_phases)
         if credits:
             print(f"Knowledge credits: {credits}")
-        
+        # The campaign's platform spend against its budget, the same
+        # renderer as the watch bar, so the two never drift.
+        if solve_result.platform_budget is not None:
+            print(f"Platform cost: {platform_cost_summary(solve_result.platform_budget)}")
+
         return solution
 
     # =========================================================================

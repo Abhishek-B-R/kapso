@@ -15,6 +15,7 @@ import re
 import sys
 import threading
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -35,6 +36,14 @@ from kapso.core.cli_inference import CliInference, resolve_inference_config
 from kapso.core.config import load_mode_config
 from kapso.execution.search_strategies.base import ExperimentResult, SearchNode
 from kapso.execution.memories.experiment_memory import ExperimentHistoryStore
+from kapso.execution.cost_estimator import (
+    campaign_cost_used,
+    load_cost_estimator,
+    normalize_cost_config,
+    normalize_cost_estimate,
+    platform_cost_clause,
+    selection_score,
+)
 from kapso.execution.iteration_evaluator import (
     IterationEvaluationContext,
     IterationEvaluationError,
@@ -113,6 +122,9 @@ class SolveResult:
     # The open inbox requests when stopped_reason is "waiting_for_user":
     # what the person must answer before the campaign continues.
     requests: List[Dict[str, Any]] = field(default_factory=list)
+    # The campaign's platform spend {used, budget, unit, refused} in its
+    # own unit; None when cost-aware selection is disabled.
+    platform_budget: Optional[Dict[str, Any]] = None
 
 
 class OrchestratorAgent:
@@ -157,6 +169,9 @@ class OrchestratorAgent:
         strategy_params_overrides: Optional[Dict[str, Any]] = None,
     ):
         self.problem_handler = problem_handler
+        # The problem's scoring direction: the history store ranks by it and
+        # the checkpoint records it for the MCP history process.
+        self.maximize_scoring = getattr(problem_handler, "maximize_scoring", True)
         self.config_path = config_path
         self.mode = mode
         self.goal = goal or ""
@@ -195,6 +210,11 @@ class OrchestratorAgent:
             self.strategy_type,
             self.strategy_params,
         ) = self._resolve_search_strategy_config()
+        self.cost_config = normalize_cost_config(self.strategy_params.get("cost"))
+        self.strategy_params["cost"] = self.cost_config
+        if self.cost_config["enabled"] and self.strategy_type != "generic":
+            raise ValueError("cost.enabled requires the generic search strategy")
+        self._platform_budget_exhausted = False
         # The campaign inbox (docs/research/evolve-hub-design.md v4) rides
         # the mode config into the strategy params — fingerprinted like
         # every other setting, so a resume never flips it silently.
@@ -269,6 +289,7 @@ class OrchestratorAgent:
                 goal=self.goal,
                 strategy_type=self.strategy_type,
                 config_fingerprint=self.config_fingerprint,
+                cost_config=self.cost_config,
             )
             self._resume_checkpoint = checkpoint
             self.completed_iterations = checkpoint.completed_iterations
@@ -283,6 +304,8 @@ class OrchestratorAgent:
                 "resume=True or choose a new output path"
             )
         
+        self.cost_estimator = load_cost_estimator(self.cost_config)
+
         # Create experiment history store
         # Path is determined after search strategy creates workspace
         self.experiment_store: Optional[ExperimentHistoryStore] = None
@@ -304,6 +327,7 @@ class OrchestratorAgent:
             workspace_dir=workspace_dir,
             start_from_checkpoint=self.resume,
         )
+        self.search_strategy.before_candidate_evaluation = self._admit_candidate
 
         if self._resume_checkpoint is not None:
             try:
@@ -339,6 +363,8 @@ class OrchestratorAgent:
         self.fidelity_spec = FidelitySpec.resolve(
             self._config_budget.get("fidelity")
         )
+        if self.cost_config["enabled"] and self.fidelity_spec.mode != "off":
+            raise ValueError("cost.enabled requires budget.fidelity.mode: off")
         (
             self.evaluation_maintainer,
             self._max_change_requests,
@@ -373,6 +399,8 @@ class OrchestratorAgent:
             json_path=experiment_history_path,
             goal=self.goal,
             llm=self.llm if embedding_model else None,
+            cost_config=self.cost_config,
+            maximize_scoring=self.maximize_scoring,
         )
         
         # Create knowledge search backend (or use provided instance).
@@ -708,6 +736,11 @@ class OrchestratorAgent:
         defect just confirmed) must not decide the order. Persisted in the
         pending record so a crash replays the same priority.
         """
+        if self.cost_config["enabled"]:
+            raise ValueError(
+                "cost.enabled does not support evaluator transitions that "
+                "repeat a candidate's platform evaluation"
+            )
         strategy = self.search_strategy
         new_evaluator_id = strategy.registered_evaluator_id
         old_evaluator_id = strategy.scores_evaluator_id
@@ -760,10 +793,14 @@ class OrchestratorAgent:
                 if not node.had_error
                 and node.branch_name
                 and not node.evaluation_integrity_error
+                and not node.cost_refusal
             ),
-            key=lambda node: node.score if node.score is not None else float(
-                "-inf"
-            ),
+            key=lambda node: selection_score(node, {
+                "cost": self.cost_config,
+                "maximize_scoring": (
+                    self.maximize_scoring if self.cost_config["enabled"] else True
+                ),
+            }),
             reverse=True,
         )
         if priority_node_id is not None:
@@ -858,6 +895,11 @@ class OrchestratorAgent:
             match = CHANGE_REQUEST_PATTERN.search(candidate.agent_output or "")
             if match is None:
                 continue
+            if self.cost_config["enabled"]:
+                raise ValueError(
+                    "cost.enabled does not support evaluation change requests "
+                    "that repeat candidate evaluations"
+                )
             # Late-transition freeze: an evaluator change accepted near the
             # deadline orphans final selection (only the bridge run is
             # head-stamped — observed 2026-08-16, one eligible final from a
@@ -951,6 +993,8 @@ class OrchestratorAgent:
             elapsed_seconds=self.get_elapsed_seconds(),
             cost_by_component=self.budget_ledger.cost_by_component(),
             last_stop=last_stop,
+            cost_config=self.cost_config,
+            maximize_scoring=self.maximize_scoring,
         )
         with self._checkpoint_lock:
             self.checkpoint_store.save(checkpoint)
@@ -961,6 +1005,24 @@ class OrchestratorAgent:
             "elapsed_min": round(self.get_elapsed_seconds() / 60, 1),
             "total_min": self._status_budget_total_min,
         }
+
+    def _platform_budget_view(self) -> Optional[Dict[str, Any]]:
+        """The campaign's platform spend against its budget, in the
+        campaign's own unit; None when cost is disabled."""
+        if not self.cost_config["enabled"]:
+            return None
+        history = self.search_strategy.get_experiment_history()
+        return {
+            "used": campaign_cost_used(history, self.cost_config),
+            "budget": self.cost_config["campaign_budget"],
+            "unit": self.cost_config["unit"],
+            "refused": sum(1 for node in history if node.cost_refusal),
+        }
+
+    def _status_platform_budget_payload(self) -> Dict[str, Any]:
+        """The status file's platform_budget key, present only when cost is enabled."""
+        view = self._platform_budget_view()
+        return {} if view is None else {"platform_budget": view}
 
     def _run_checkpoint_heartbeat(self, interval_seconds: float) -> None:
         """Daemon loop: keep the durable clock fresh between boundary
@@ -1058,6 +1120,90 @@ class OrchestratorAgent:
             requests=list(self._waiting_payload),
         )
 
+    def _admit_candidate(self, candidate: SearchNode) -> bool:
+        """Estimate a finalized candidate before any platform evaluation."""
+        if not self.cost_config["enabled"]:
+            return True
+        if not candidate.branch_name:
+            raise ValueError("Cost estimation requires a finalized candidate branch")
+        with self.search_strategy.workspace.materialize_ref(
+            candidate.branch_name
+        ) as materialized_dir:
+            snapshot = SearchNode.from_dict(deepcopy(candidate.to_dict()))
+            snapshot.workspace_dir = str(materialized_dir)
+            estimate = normalize_cost_estimate(
+                self.cost_estimator(IterationEvaluationContext(
+                    iteration=self.completed_iterations + 1,
+                    goal=self.goal,
+                    workspace_dir=Path(materialized_dir),
+                    git_ref=candidate.branch_name,
+                    parent_ref=candidate.parent_branch_name or "main",
+                    node=snapshot,
+                )),
+                self.cost_config["unit"],
+            )
+        candidate.estimated_cost = estimate
+        used = campaign_cost_used(
+            [node for node in self.search_strategy.get_experiment_history()
+             if node.node_id != candidate.node_id],
+            self.cost_config,
+        )
+        cap = self.cost_config["cap_per_candidate"]
+        campaign_budget = self.cost_config["campaign_budget"]
+        # The spend before this candidate, the figure the refusal records.
+        budget_text = (
+            f"{used}/{float(campaign_budget)}" if campaign_budget is not None
+            else f"{used}"
+        )
+        reason = None
+        if self._platform_budget_exhausted or (
+            campaign_budget is not None
+            and used + estimate["amount"] > campaign_budget
+        ):
+            reason = "campaign_budget"
+            cap = campaign_budget
+            self._platform_budget_exhausted = True
+        elif cap is not None and estimate["amount"] > cap:
+            reason = "cap_per_candidate"
+        if reason is None:
+            print(
+                f"[Orchestrator] node {candidate.node_id} estimated "
+                f"{estimate['amount']} {estimate['unit']}; campaign "
+                f"{budget_text} used; running evaluation"
+            )
+            return True
+        print(
+            f"[Orchestrator] node {candidate.node_id} refused: {reason} "
+            f"(estimate {estimate['amount']} {estimate['unit']}, {budget_text} used)"
+        )
+        candidate.score = None
+        candidate.evaluation_valid = False
+        candidate.should_stop = False
+        candidate.cost_refusal = {
+            "estimate": estimate,
+            "cap": cap,
+            "reason": reason,
+            "campaign_cost_used": used,
+        }
+        candidate.feedback = (
+            f"Too expensive by estimate: {estimate['amount']} {estimate['unit']}; "
+            f"{reason} cap {cap} {estimate['unit']}. "
+            f"Campaign cost used: {used} {estimate['unit']}. "
+            "Candidate was not evaluated. Propose a cheaper design."
+        )
+        return False
+
+    def _platform_budget_spent(self) -> bool:
+        """True once the campaign's recorded platform spend has reached its budget."""
+        campaign_budget = self.cost_config["campaign_budget"]
+        return (
+            self.cost_config["enabled"]
+            and campaign_budget is not None
+            and campaign_cost_used(
+                self.search_strategy.get_experiment_history(), self.cost_config
+            ) >= campaign_budget
+        )
+
     def _evaluate_candidates(
         self,
         candidates: List[SearchNode],
@@ -1069,6 +1215,10 @@ class OrchestratorAgent:
             return
 
         for candidate in candidates:
+            if candidate.cost_refusal or (
+                self.cost_config["enabled"] and candidate.estimated_cost is None
+            ):
+                continue
             git_ref = candidate.branch_name
             parent_ref = candidate.parent_branch_name or "main"
             try:
@@ -1191,6 +1341,7 @@ class OrchestratorAgent:
         insured_logged = False
 
         stopped_reason = "max_iterations"  # default
+        self._platform_budget_exhausted = False
         stop_detail: Optional[str] = None
         iterations_run = 0
 
@@ -1215,6 +1366,7 @@ class OrchestratorAgent:
             ),
             on_status=on_status,
             budget=self._status_budget_view(),
+            **self._status_platform_budget_payload(),
         )
         self.search_strategy.operation_status = self.operation_status
         print(f"status: {self.operation_status.path}")
@@ -1238,6 +1390,20 @@ class OrchestratorAgent:
                 if waiting:
                     self._pause_for_user(waiting)
                     stopped_reason = "waiting_for_user"
+                    break
+
+                # The platform budget is read from history before the
+                # iteration spends anything: a slice whose recorded spend has
+                # reached campaign_budget stops here instead of ideating and
+                # building a candidate that admission must then refuse. The
+                # refusal flag resets with every solve(); the history does not.
+                if self._platform_budget_spent():
+                    print("[Orchestrator] Stopping: platform budget spent")
+                    stopped_reason = "cost_budget_exhausted"
+                    stop_detail = stopped_reason
+                    self._save_run_checkpoint(
+                        status="running", last_stop=stopped_reason,
+                    )
                     break
 
                 # The escrow is re-derived from history each round: once a
@@ -1465,9 +1631,18 @@ class OrchestratorAgent:
                     for candidate in finalized_candidates:
                         self.experiment_store.add_experiment(candidate)
 
-                self._route_change_requests(finalized_candidates)
+                if not self._platform_budget_exhausted:
+                    self._route_change_requests([
+                        candidate for candidate in finalized_candidates
+                        if not candidate.cost_refusal
+                    ])
                 
-                if getattr(node, "suspended", False):
+                # A sibling's campaign-budget refusal takes precedence
+                # over the representative waiting for user input.
+                if (
+                    getattr(node, "suspended", False)
+                    and not self._platform_budget_exhausted
+                ):
                     # The session asked the person and was stopped: no
                     # judgement, no iteration counted — pause until the
                     # reply is in (design v4 §4.3).
@@ -1484,19 +1659,33 @@ class OrchestratorAgent:
                 knowledge = knowledge_summary(node.phase_telemetry)
                 if knowledge:
                     print(f"  - Knowledge consulted: {knowledge}")
+                cost_clause = platform_cost_clause(node, self.cost_config)
+                if cost_clause:
+                    print(f"  - Platform cost: {cost_clause}")
 
                 best_node = self.search_strategy.get_best_experiment()
+                external_status = {}
+                if self.iteration_evaluator is not None:
+                    external_status["external_evaluation"] = {
+                        "node": node.node_id,
+                        "metadata": node.external_evaluation_metadata,
+                        "error": node.external_evaluation_error,
+                    }
                 self.operation_status.note(
                     f"node {node.node_id} completed score={node.score}"
-                    + (f"; knowledge: {knowledge}" if knowledge else ""),
+                    + (f"; knowledge: {knowledge}" if knowledge else "")
+                    + (f"; {cost_clause}" if cost_clause else ""),
                     last={"score": node.score, "node": node.node_id},
                     best=(
                         {
                             "score": getattr(best_node, "score", None),
                             "node": getattr(best_node, "node_id", None),
                         }
-                        if best_node is not None else None
+                        if best_node is not None
+                        else None
                     ),
+                    **external_status,
+                    **self._status_platform_budget_payload(),
                 )
                 
                 # Store feedback result for return value
@@ -1511,6 +1700,13 @@ class OrchestratorAgent:
 
                 self.current_feedback = node.feedback
                 self.completed_iterations += 1
+                if self._platform_budget_exhausted:
+                    stopped_reason = "cost_budget_exhausted"
+                    stop_detail = stopped_reason
+                    self._save_run_checkpoint(
+                        status="running", last_stop=stopped_reason,
+                    )
+                    break
                 time_budget_exhausted = (
                     budget_spec.time_budget_seconds is not None
                     and self.get_elapsed_seconds()
@@ -1634,6 +1830,7 @@ class OrchestratorAgent:
                     stopped_reason=stopped_reason,
                     stop_detail=stop_detail,
                     budget=self._status_budget_view(),
+                    **self._status_platform_budget_payload(),
                     **(
                         {"requests": list(self._waiting_payload)}
                         if stopped_reason == "waiting_for_user" else {}
@@ -1660,4 +1857,5 @@ class OrchestratorAgent:
                 list(self._waiting_payload)
                 if stopped_reason == "waiting_for_user" else []
             ),
+            platform_budget=self._platform_budget_view(),
         )
