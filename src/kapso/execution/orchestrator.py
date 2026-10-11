@@ -1154,6 +1154,17 @@ class OrchestratorAgent:
         )
         return False
 
+    def _platform_budget_spent(self) -> bool:
+        """True once the campaign's recorded platform spend has reached its budget."""
+        campaign_budget = self.cost_config["campaign_budget"]
+        return (
+            self.cost_config["enabled"]
+            and campaign_budget is not None
+            and campaign_cost_used(
+                self.search_strategy.get_experiment_history(), self.cost_config
+            ) >= campaign_budget
+        )
+
     def _evaluate_candidates(
         self,
         candidates: List[SearchNode],
@@ -1339,6 +1350,20 @@ class OrchestratorAgent:
                 if waiting:
                     self._pause_for_user(waiting)
                     stopped_reason = "waiting_for_user"
+                    break
+
+                # The platform budget is read from history before the
+                # iteration spends anything: a slice whose recorded spend has
+                # reached campaign_budget stops here instead of ideating and
+                # building a candidate that admission must then refuse. The
+                # refusal flag resets with every solve(); the history does not.
+                if self._platform_budget_spent():
+                    print("[Orchestrator] Stopping: platform budget spent")
+                    stopped_reason = "cost_budget_exhausted"
+                    stop_detail = stopped_reason
+                    self._save_run_checkpoint(
+                        status="running", last_stop=stopped_reason,
+                    )
                     break
 
                 # The escrow is re-derived from history each round: once a

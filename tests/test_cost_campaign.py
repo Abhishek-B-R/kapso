@@ -1,4 +1,5 @@
-"""A platform budget refusal survives the real search loop and checkpoint."""
+"""Platform budget stops in the real search loop: a refusal survives the
+checkpoint, and a spent budget stops the next slice before ideation."""
 
 import json
 import threading
@@ -18,10 +19,14 @@ from kapso.execution.search_strategies.generic.implementation import SuspendedSe
 from test_cost_candidate_gate import candidate_strategy
 
 
-@pytest.mark.parametrize("suspended_lane", [False, True], ids=["single-lane", "suspended-sibling"])
-def test_campaign_budget_stop_persists_refusal_after_measured_spend(
-    tmp_path, monkeypatch, suspended_lane,
-):
+def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
+    """The production search loop with the agent-session boundaries as fixtures.
+
+    SearchNode construction, admission, subprocess execution, ranking, and
+    checkpoint/history writes all run through the real lifecycle. Every
+    candidate is estimated at 2.0 credits and its evaluator measures 3.0.
+    Returns the orchestrator and the list of ideation calls made so far.
+    """
     strategy, _, folders = candidate_strategy(tmp_path, count=3 if suspended_lane else 2)
     strategy.workspace.folders = {
         f"generic_exp_{node_id}": folder
@@ -44,21 +49,21 @@ def test_campaign_budget_stop_persists_refusal_after_measured_spend(
         "enabled": True,
         "estimator": "test_cost_campaign.estimate_candidate",
         "cap_per_candidate": 10.0,
-        "campaign_budget": 4.0,
+        "campaign_budget": campaign_budget,
     })
     strategy.cost_config = policy
 
-    # Agent-session boundaries supply the finalized local evaluator fixture.
-    # SearchNode construction, admission, subprocess execution, ranking, and
-    # checkpoint/history writes all run through the production lifecycle.
-    monkeypatch.setattr(
-        strategy, "_generate_solution",
-        lambda problem, parent: (
+    ideations = []
+
+    def generate_solution(problem, parent):
+        ideations.append(problem)
+        return (
             ["Ask for missing access", "Use a smaller plan"]
             if suspended_lane and strategy.node_history else ["Use a smaller plan"],
             [], {},
-        ),
-    )
+        )
+
+    monkeypatch.setattr(strategy, "_generate_solution", generate_solution)
 
     def implement(**kwargs):
         suspended = None
@@ -110,6 +115,16 @@ def test_campaign_budget_stop_persists_refusal_after_measured_spend(
         str(tmp_path / ".kapso" / "experiment_history.json"), cost_config=policy
     )
     strategy.before_candidate_evaluation = orchestrator._admit_candidate
+    return orchestrator, ideations
+
+
+@pytest.mark.parametrize("suspended_lane", [False, True], ids=["single-lane", "suspended-sibling"])
+def test_campaign_budget_stop_persists_refusal_after_measured_spend(
+    tmp_path, monkeypatch, suspended_lane,
+):
+    orchestrator, _ = campaign(
+        tmp_path, monkeypatch, campaign_budget=4.0, suspended_lane=suspended_lane,
+    )
 
     result = orchestrator.solve(experiment_max_iter=5)
 
@@ -147,3 +162,33 @@ def test_campaign_budget_stop_persists_refusal_after_measured_spend(
         assert load_requests(inbox_path(tmp_path))[1].open is True
         assert refused["node_id"] == history[1]["node_id"] == 2
         assert not (tmp_path / "2" / "executed").exists()
+
+
+def test_spent_campaign_budget_stops_before_ideation(tmp_path, monkeypatch):
+    orchestrator, ideations = campaign(tmp_path, monkeypatch, campaign_budget=3.0)
+
+    result = orchestrator.solve(experiment_max_iter=5)
+
+    # Node 0 was admitted (0.0 + 2.0 estimate <= 3.0) and measured 3.0; the
+    # second iteration read the spent budget and stopped without ideating.
+    assert len(ideations) == 1
+    assert result.iterations_run == 1
+    assert result.stopped_reason == "cost_budget_exhausted"
+    assert result.stop_detail == "cost_budget_exhausted"
+    assert (tmp_path / "0" / "executed").read_text() == "yes"
+    assert not (tmp_path / "1" / "executed").exists()
+    assert orchestrator.checkpoint_store.load().last_stop == "cost_budget_exhausted"
+
+    # The next slice: solve() resets the refusal flag, and the history still
+    # says the budget is spent, so nothing is ideated or built.
+    resumed = orchestrator.solve(experiment_max_iter=5)
+
+    assert len(ideations) == 1
+    assert resumed.iterations_run == 0
+    assert resumed.cumulative_iterations == 1
+    assert resumed.stopped_reason == "cost_budget_exhausted"
+    assert resumed.stop_detail == "cost_budget_exhausted"
+    assert orchestrator.checkpoint_store.load().last_stop == "cost_budget_exhausted"
+    status = json.loads((tmp_path / ".kapso" / "status.json").read_text())
+    assert status["state"] == "done"
+    assert status["stopped_reason"] == "cost_budget_exhausted"

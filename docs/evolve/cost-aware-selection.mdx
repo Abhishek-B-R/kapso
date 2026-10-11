@@ -109,6 +109,8 @@ next estimate would exceed `campaign_budget`, the campaign stops with
 `cost_budget_exhausted` in the checkpoint's `last_stop` and the solution's
 `metadata["stopped_reason"]`. An estimate equal to either limit is allowed.
 When both limits would be exceeded, the campaign budget stop takes precedence.
+A slice whose recorded spend has already reached `campaign_budget` stops before
+ideating, so a resumed campaign does not build a candidate only to refuse it.
 Candidates that fail or pause before admission, with no estimate or measurement,
 have no recorded platform charge. A scored candidate with an unknown cost is
 rejected when cost-aware ranking is enabled.
