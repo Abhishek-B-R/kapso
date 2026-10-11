@@ -31,6 +31,9 @@ class _FakeWeaviate:
     def __init__(self, collection):
         self.collections = SimpleNamespace(get=lambda name: collection)
 
+    def close(self):
+        pass
+
 
 def _page(page_id, overview):
     return WikiPage(
@@ -46,6 +49,7 @@ def _search(collection):
     search = object.__new__(KGGraphSearch)
     search._weaviate_client = _FakeWeaviate(collection)
     search._neo4j_driver = None
+    search._embedder = None
     search.weaviate_collection = "KGWikiPages"
     search._ensure_weaviate_collection = lambda: None
     search._embed_page = lambda page_id, text: [0.1, 0.2, 0.3]
