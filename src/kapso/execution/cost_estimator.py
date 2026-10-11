@@ -179,6 +179,31 @@ def campaign_cost_used(nodes: Iterable[Any], config: Mapping[str, Any]) -> float
     return used
 
 
+def platform_cost_clause(node: Any, config: Mapping[str, Any]) -> str:
+    """The cost clause of a node's completed note; empty when cost is off.
+
+    A refusal names its reason and the figures behind it; an evaluated
+    node its measurement, else its estimate; a build that never reached
+    admission (errored or suspended) says so.
+    """
+    if not config["enabled"]:
+        return ""
+    refusal = node.cost_refusal
+    if refusal:
+        estimate = float(refusal["estimate"]["amount"])
+        if refusal["reason"] == "campaign_budget":
+            return (
+                f"refused: campaign_budget ({estimate} estimate, "
+                f"{float(refusal['campaign_cost_used'])}/{float(refusal['cap'])} used)"
+            )
+        return f"refused: {refusal['reason']} ({estimate} estimate, cap {float(refusal['cap'])})"
+    if node.measured_cost is not None:
+        return f"cost: {float(node.measured_cost['amount'])} {node.measured_cost['unit']} (measured)"
+    if node.estimated_cost is not None:
+        return f"cost: {float(node.estimated_cost['amount'])} {node.estimated_cost['unit']} (estimate)"
+    return "cost: not estimated"
+
+
 def selection_score(node: Any, config: Mapping[str, Any]) -> float:
     """Higher is better: signed score minus weighted platform cost.
 

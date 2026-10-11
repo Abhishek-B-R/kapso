@@ -159,6 +159,26 @@ top-experiment queries, and the strategy template's ranking. With `weight: 0.0`,
 caps still apply without a cost penalty in selection. With `enabled: false`,
 existing rankings and agent-facing history remain unchanged.
 
+## Where cost decisions show up
+
+Every cost decision is a campaign event, surfaced where the time budget and the
+knowledge tallies already are. The `X/Y used` figure on the console lines and in
+the refusal clause is the campaign's spend before that candidate, the same
+number the refusal records as `campaign_cost_used`.
+
+| Surface | What the surface shows |
+|---------|---------------|
+| Console, at admission | `[Orchestrator] node 1 estimated 2.0 credits; campaign 2.0/3.0 used; running evaluation` |
+| Console, at refusal | `[Orchestrator] node 2 refused: campaign_budget (estimate 2.0 credits, 2.0/3.0 used)` |
+| Console, after a completed run | `[GenericSearch] node 1 evaluation ran in 4.0s; measured 1.5 credits`; a failed or overrun run keeps its own line |
+| `.kapso/status.json`, recent ring | The node-completed note gains a clause: `cost: 1.5 credits (measured)`, `cost: 2.0 credits (estimate)`, `refused: campaign_budget (2.0 estimate, 2.0/3.0 used)`, or `cost: not estimated` for a build that never reached admission |
+| `.kapso/status.json`, payload | `platform_budget: {used, budget, unit, refused}`, present only when cost is enabled; `kapso watch --json` passes it through |
+| `kapso watch ./campaign` | A second bar under the time bar: `cost:   ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░ 2.0/3.0 credits, 1 candidate refused` |
+| `kapso watch ./campaign --tree` | `cost: 2.0` on each node's row after its score, measured over estimated, and `refused` as the outcome of a cost-refused node |
+| `kapso evolve`, the completion summary | `Platform cost: 2.0/3.0 credits, 1 candidate refused` |
+
+A campaign with cost disabled prints, writes and renders none of this.
+
 ## History and resume
 
 The experiment-history tools show each candidate's estimate, measurement, unit,

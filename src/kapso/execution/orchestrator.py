@@ -41,6 +41,7 @@ from kapso.execution.cost_estimator import (
     load_cost_estimator,
     normalize_cost_config,
     normalize_cost_estimate,
+    platform_cost_clause,
     selection_score,
 )
 from kapso.execution.iteration_evaluator import (
@@ -121,6 +122,9 @@ class SolveResult:
     # The open inbox requests when stopped_reason is "waiting_for_user":
     # what the person must answer before the campaign continues.
     requests: List[Dict[str, Any]] = field(default_factory=list)
+    # The campaign's platform spend {used, budget, unit, refused} in its
+    # own unit; None when cost-aware selection is disabled.
+    platform_budget: Optional[Dict[str, Any]] = None
 
 
 class OrchestratorAgent:
@@ -999,6 +1003,24 @@ class OrchestratorAgent:
             "total_min": self._status_budget_total_min,
         }
 
+    def _platform_budget_view(self) -> Optional[Dict[str, Any]]:
+        """The campaign's platform spend against its budget, in the
+        campaign's own unit; None when cost is disabled."""
+        if not self.cost_config["enabled"]:
+            return None
+        history = self.search_strategy.get_experiment_history()
+        return {
+            "used": campaign_cost_used(history, self.cost_config),
+            "budget": self.cost_config["campaign_budget"],
+            "unit": self.cost_config["unit"],
+            "refused": sum(1 for node in history if node.cost_refusal),
+        }
+
+    def _status_platform_budget_payload(self) -> Dict[str, Any]:
+        """The status file's platform_budget key, present only when cost is enabled."""
+        view = self._platform_budget_view()
+        return {} if view is None else {"platform_budget": view}
+
     def _run_checkpoint_heartbeat(self, interval_seconds: float) -> None:
         """Daemon loop: keep the durable clock fresh between boundary
         checkpoints so a preemption cannot rewind the budget on resume.
@@ -1125,6 +1147,11 @@ class OrchestratorAgent:
         )
         cap = self.cost_config["cap_per_candidate"]
         campaign_budget = self.cost_config["campaign_budget"]
+        # The spend before this candidate, the figure the refusal records.
+        budget_text = (
+            f"{used}/{float(campaign_budget)}" if campaign_budget is not None
+            else f"{used}"
+        )
         reason = None
         if self._platform_budget_exhausted or (
             campaign_budget is not None
@@ -1136,7 +1163,16 @@ class OrchestratorAgent:
         elif cap is not None and estimate["amount"] > cap:
             reason = "cap_per_candidate"
         if reason is None:
+            print(
+                f"[Orchestrator] node {candidate.node_id} estimated "
+                f"{estimate['amount']} {estimate['unit']}; campaign "
+                f"{budget_text} used; running evaluation"
+            )
             return True
+        print(
+            f"[Orchestrator] node {candidate.node_id} refused: {reason} "
+            f"(estimate {estimate['amount']} {estimate['unit']}, {budget_text} used)"
+        )
         candidate.score = None
         candidate.evaluation_valid = False
         candidate.should_stop = False
@@ -1327,6 +1363,7 @@ class OrchestratorAgent:
             ),
             on_status=on_status,
             budget=self._status_budget_view(),
+            **self._status_platform_budget_payload(),
         )
         self.search_strategy.operation_status = self.operation_status
         print(f"status: {self.operation_status.path}")
@@ -1619,6 +1656,9 @@ class OrchestratorAgent:
                 knowledge = knowledge_summary(node.phase_telemetry)
                 if knowledge:
                     print(f"  - Knowledge consulted: {knowledge}")
+                cost_clause = platform_cost_clause(node, self.cost_config)
+                if cost_clause:
+                    print(f"  - Platform cost: {cost_clause}")
 
                 best_node = self.search_strategy.get_best_experiment()
                 external_status = {}
@@ -1630,7 +1670,8 @@ class OrchestratorAgent:
                     }
                 self.operation_status.note(
                     f"node {node.node_id} completed score={node.score}"
-                    + (f"; knowledge: {knowledge}" if knowledge else ""),
+                    + (f"; knowledge: {knowledge}" if knowledge else "")
+                    + (f"; {cost_clause}" if cost_clause else ""),
                     last={"score": node.score, "node": node.node_id},
                     best=(
                         {
@@ -1641,6 +1682,7 @@ class OrchestratorAgent:
                         else None
                     ),
                     **external_status,
+                    **self._status_platform_budget_payload(),
                 )
                 
                 # Store feedback result for return value
@@ -1785,6 +1827,7 @@ class OrchestratorAgent:
                     stopped_reason=stopped_reason,
                     stop_detail=stop_detail,
                     budget=self._status_budget_view(),
+                    **self._status_platform_budget_payload(),
                     **(
                         {"requests": list(self._waiting_payload)}
                         if stopped_reason == "waiting_for_user" else {}
@@ -1811,4 +1854,5 @@ class OrchestratorAgent:
                 list(self._waiting_payload)
                 if stopped_reason == "waiting_for_user" else []
             ),
+            platform_budget=self._platform_budget_view(),
         )

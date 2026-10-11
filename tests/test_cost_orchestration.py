@@ -5,7 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from kapso.execution.cost_estimator import CostEstimate, normalize_cost_config
+from kapso.execution.cost_estimator import (
+    CostEstimate,
+    normalize_cost_config,
+    platform_cost_clause,
+)
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.run_checkpoint import (
     RunCheckpoint,
@@ -136,6 +140,38 @@ def test_budget_uses_measured_cost_and_does_not_charge_refused_candidates(tmp_pa
     assert blocked.cost_refusal["reason"] == "campaign_budget"
     assert blocked.cost_refusal["campaign_cost_used"] == 10
     assert blocked.cost_refusal["cap"] == 10
+
+
+ESTIMATE = {"amount": 2.0, "unit": "credits"}
+ENABLED = normalize_cost_config({
+    "enabled": True, "estimator": "campaign.estimate", "campaign_budget": 3.0,
+})
+
+
+@pytest.mark.parametrize("node,expected", [
+    (SearchNode(node_id=1, estimated_cost=ESTIMATE), "cost: 2.0 credits (estimate)"),
+    (
+        SearchNode(node_id=1, estimated_cost=ESTIMATE, measured_cost={"amount": 1.5, "unit": "credits"}),
+        "cost: 1.5 credits (measured)",
+    ),
+    (
+        SearchNode(node_id=2, estimated_cost=ESTIMATE, cost_refusal={
+            "estimate": ESTIMATE, "cap": 3.0, "reason": "campaign_budget", "campaign_cost_used": 2.0,
+        }),
+        "refused: campaign_budget (2.0 estimate, 2.0/3.0 used)",
+    ),
+    (
+        SearchNode(node_id=2, cost_refusal={
+            "estimate": {"amount": 6.0, "unit": "credits"}, "cap": 5, "reason": "cap_per_candidate",
+        }),
+        "refused: cap_per_candidate (6.0 estimate, cap 5.0)",
+    ),
+    (SearchNode(node_id=3, had_error=True), "cost: not estimated"),
+], ids=["estimate", "measured", "campaign_budget", "cap_per_candidate", "never_admitted"])
+def test_node_note_clause_per_cost_case(node, expected):
+    assert platform_cost_clause(node, ENABLED) == expected
+    # A disabled campaign's note is unchanged.
+    assert platform_cost_clause(node, {"enabled": False}) == ""
 
 
 def test_refused_candidate_never_reaches_external_evaluator():

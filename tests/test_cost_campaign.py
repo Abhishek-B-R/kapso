@@ -120,7 +120,7 @@ def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
 
 @pytest.mark.parametrize("suspended_lane", [False, True], ids=["single-lane", "suspended-sibling"])
 def test_campaign_budget_stop_persists_refusal_after_measured_spend(
-    tmp_path, monkeypatch, suspended_lane,
+    tmp_path, monkeypatch, suspended_lane, capsys,
 ):
     orchestrator, _ = campaign(
         tmp_path, monkeypatch, campaign_budget=4.0, suspended_lane=suspended_lane,
@@ -128,6 +128,17 @@ def test_campaign_budget_stop_persists_refusal_after_measured_spend(
 
     result = orchestrator.solve(experiment_max_iter=5)
 
+    refused_id = 2 if suspended_lane else 1
+    console = capsys.readouterr().out
+    assert (
+        "[Orchestrator] node 0 estimated 2.0 credits; campaign 0.0/4.0 used; "
+        "running evaluation"
+    ) in console
+    assert "evaluation ran in " in console and "; measured 3.0 credits" in console
+    assert (
+        f"[Orchestrator] node {refused_id} refused: campaign_budget "
+        "(estimate 2.0 credits, 3.0/4.0 used)"
+    ) in console
     assert result.stopped_reason == "cost_budget_exhausted"
     assert result.stop_detail == "cost_budget_exhausted"
     assert result.iterations_run == 2
@@ -153,6 +164,23 @@ def test_campaign_budget_stop_persists_refusal_after_measured_spend(
     assert status["stopped_reason"] == "cost_budget_exhausted"
     assert status["stop_detail"] == "cost_budget_exhausted"
     assert not status.get("requests")
+    assert status["platform_budget"] == {
+        "used": 3.0, "budget": 4.0, "unit": "credits", "refused": 1,
+    }
+    # The completion summary prints from the result, the same figures.
+    assert result.platform_budget == status["platform_budget"]
+    recent = status["recent"]
+    assert any(
+        "node 0 completed" in line and line.endswith("; cost: 3.0 credits (measured)")
+        for line in recent
+    )
+    # The second round's note names its representative: the refused node
+    # alone, or the suspended sibling that never reached admission.
+    representative_note = (
+        "node 1 completed score=None; cost: not estimated" if suspended_lane
+        else "node 1 completed score=None; refused: campaign_budget (2.0 estimate, 3.0/4.0 used)"
+    )
+    assert any(line.endswith(representative_note) for line in recent)
     if suspended_lane:
         suspended = checkpoint.strategy_state["node_history"][1]
         assert suspended["suspended"] is True

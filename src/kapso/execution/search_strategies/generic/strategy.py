@@ -900,7 +900,7 @@ class GenericSearch(SearchStrategy):
         validate_cost_value(node.estimated_cost, self.cost_config["unit"])
         self._status_phase("evaluation")
         started = time.monotonic()
-        execute_candidate_evaluation(
+        run = execute_candidate_evaluation(
             node,
             deadline_seconds=self._clamped_timeout(self.implementation_timeout),
             registered_evaluation_command=self.registered_evaluation_command,
@@ -915,6 +915,19 @@ class GenericSearch(SearchStrategy):
         node.measured_cost = measured_cost_from_output(
             node.evaluation_output, self.cost_config["unit"],
         )
+        # The failed and overran lines are the runner's; this is the
+        # success line, with what the run measured or that it did not.
+        if run.completed:
+            measured = (
+                f"measured {node.measured_cost['amount']} {node.measured_cost['unit']}"
+                if node.measured_cost is not None else
+                f"no measured cost; estimate {node.estimated_cost['amount']} "
+                f"{node.estimated_cost['unit']} stands"
+            )
+            print(
+                f"[GenericSearch] node {node.node_id} evaluation ran in "
+                f"{run.duration_seconds:.1f}s; {measured}"
+            )
         return node
 
     def _generate_solution(
