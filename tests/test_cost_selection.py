@@ -113,7 +113,6 @@ def test_omitted_cost_policy_uses_disabled_default():
     ({"campaign_budget": float("inf")}, "campaign_budget"),
     ({"weight": True}, "weight"),
     ({"unit": ""}, "unit"),
-    ({"history_field": "cost_usd"}, "history_field"),
     ({"estimator": "unqualified"}, "estimator"),
     ({"cap_per_candiate": 2}, "cap_per_candiate"),
 ])

@@ -65,8 +65,6 @@ def normalize_cost_config(config: Optional[Mapping[str, Any]] = None) -> dict:
     _validate_amount(values["weight"], "cost.weight")
     if not isinstance(values["unit"], str) or not values["unit"].strip():
         raise ValueError("cost.unit must be a non-empty string")
-    if values["history_field"] not in ("estimated_cost", "measured_cost"):
-        raise ValueError("cost.history_field must be estimated_cost or measured_cost")
     return values
 
 

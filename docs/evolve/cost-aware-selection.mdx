@@ -29,13 +29,12 @@ modes:
           campaign_budget: 50.0
           unit: credits
           weight: 0.1
-          history_field: estimated_cost
 ```
 
 The packaged defaults are `enabled: false`, `estimator: null`,
-`cap_per_candidate: null`, `campaign_budget: null`, `unit: "credits"`,
-`weight: 0.0`, and `history_field: "estimated_cost"`. A null cap or budget has no
-limit. Enabling the policy without an estimator fails during initialization.
+`cap_per_candidate: null`, `campaign_budget: null`, `unit: "credits"`, and
+`weight: 0.0`. A null cap or budget has no limit. Enabling the policy without
+an estimator fails during initialization.
 Amounts, caps, budgets, and weights must be finite and non-negative.
 
 The packaged source is `defaults.search_strategy.params.cost`, inherited by
@@ -45,9 +44,8 @@ evaluator transitions before running a bridge evaluation. Those features can
 remeasure a candidate, while this policy accounts for one evaluation per node.
 
 `unit` is a label, with no currency conversion or provider pricing lookup.
-Estimates and measurements must use that same label. `history_field` chooses
-which cost field the history tools show first: `estimated_cost` or
-`measured_cost`. Both fields are shown when present, and measured cost always
+Estimates and measurements must use that same label. The history tools show
+both the estimate and the measurement when present, and measured cost always
 takes precedence in ranking and budget accounting.
 
 ## Estimator contract

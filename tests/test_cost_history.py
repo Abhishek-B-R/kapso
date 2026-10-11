@@ -21,7 +21,6 @@ def cost_config(**overrides):
         "campaign_budget": 50.0,
         "unit": "credits",
         "weight": 1.0,
-        "history_field": "estimated_cost",
         **overrides,
     }
 
@@ -146,8 +145,7 @@ def test_disabled_history_keeps_ranking_and_prompt_bytes(tmp_path):
 
 def test_history_preserves_complete_cost_refusal_and_prompt_content(tmp_path):
     store = ExperimentHistoryStore(
-        str(tmp_path / "history.json"),
-        cost_config=cost_config(history_field="measured_cost"),
+        str(tmp_path / "history.json"), cost_config=cost_config()
     )
     refused = candidate(0, None, 40.0)
     refused.solution = "complete solution " * 500
@@ -172,7 +170,6 @@ def test_history_preserves_complete_cost_refusal_and_prompt_content(tmp_path):
         refused.cost_refusal["reason"],
     ):
         assert full_text in rendered
-    assert rendered.index("**measured_cost:") < rendered.index("**estimated_cost:")
     assert "**measured_cost:** null" in rendered
 
 

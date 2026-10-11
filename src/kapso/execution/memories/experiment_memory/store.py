@@ -468,12 +468,7 @@ def format_experiments(
 {exp.feedback}""")
 
         if show_cost:
-            primary_field = cost_config["history_field"]
-            secondary_field = (
-                "measured_cost" if primary_field == "estimated_cost"
-                else "estimated_cost"
-            )
-            for cost_field in (primary_field, secondary_field):
+            for cost_field in ("estimated_cost", "measured_cost"):
                 lines.append(
                     f"\n**{cost_field}:** {json.dumps(getattr(exp, cost_field))}"
                 )

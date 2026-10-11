@@ -108,7 +108,6 @@ defaults:
         campaign_budget: null
         unit: "credits"
         weight: 0.0
-        history_field: "estimated_cost"
   models:
     # Semantic search over past experiments (`search_similar_experiments`
     # and the ideation gate's similarity lookup) embeds every node's

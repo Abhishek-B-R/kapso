@@ -190,7 +190,6 @@ search_strategy:
       campaign_budget: null
       unit: credits
       weight: 0.0
-      history_field: estimated_cost
 ```
 
 | Key | What it does |
@@ -208,7 +207,6 @@ search_strategy:
 | `params.cost.campaign_budget` | Campaign platform budget, using measured cost when available and estimates otherwise; `null` is unlimited |
 | `params.cost.unit` | Shared estimate and measurement label; default `credits`, with no conversion |
 | `params.cost.weight` | Non-negative platform-cost penalty in selection; default `0.0` |
-| `params.cost.history_field` | Cost field shown first in history: `estimated_cost` (default) or `measured_cost`; both are shown when present |
 
 The packaged cost defaults live in `defaults.search_strategy.params.cost` and
 are inherited by every mode. Override individual keys under
