@@ -91,6 +91,7 @@ from kapso.execution.search_strategies.generic.lens_planning import (
 from kapso.execution.search_strategies.generic.registered_evaluation import (
     await_registered_evaluation,
     evaluation_instructions,
+    execute_candidate_evaluation,
     execute_registered_evaluation,
     manifest_of_record,
     manifest_score_of_record,
@@ -897,18 +898,11 @@ class GenericSearch(SearchStrategy):
         validate_cost_value(node.estimated_cost, self.cost_config["unit"])
         self._status_phase("evaluation")
         started = time.monotonic()
-        decision = self.fidelity_decision
-        execute_registered_evaluation(
-            node, fidelity=node.eval_fidelity,
-            fraction=decision.eval_fraction if decision is not None else 1.0,
+        execute_candidate_evaluation(
+            node,
             deadline_seconds=self._clamped_timeout(self.implementation_timeout),
-            registered_evaluator_id=self.registered_evaluator_id,
-            registered_subsample_seed=self.registered_subsample_seed,
-            registered_data_manifest=self.registered_data_manifest,
-            workspace=self.workspace, workspace_dir=self.workspace_dir,
-            record_eval_duration=self.record_eval_duration,
-            candidate_evaluation=True,
             registered_evaluation_command=self.registered_evaluation_command,
+            workspace=self.workspace, workspace_dir=self.workspace_dir,
             env_strip=self.env_strip,
             env_defaults=self.env_defaults,
             env_overrides=lane_env_overlay(self.expansion_lane_env, lane_index),

@@ -3,10 +3,12 @@
 Owns the maintainer-registered evaluation feature: the manifest-of-record
 parsing chain (the wrapper's machine-readable line is the score of record),
 evaluation-attempt recording, frame-run execution under Kapso's own
-deadline-bounded subprocess, the session-teardown guard with durable-archive
-recovery, registered-tree sync into sessions, and the evaluation
-instructions rendered into implementation prompts. Stateless functions only
-— GenericSearch assembles arguments from its state and delegates here.
+deadline-bounded subprocess (the registered re-measurements and the cost
+mode candidate run share one runner), the session-teardown guard with
+durable-archive recovery, registered-tree sync into sessions, and the
+evaluation instructions rendered into implementation prompts. Stateless
+functions only — GenericSearch assembles arguments from its state and
+delegates here.
 """
 
 import glob
@@ -19,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from kapso.execution.evaluation_integrity import verify_data_manifest
@@ -186,6 +189,94 @@ def record_evaluation_attempt(
     )
 
 
+@dataclass(frozen=True)
+class FrameRun:
+    """How one evaluator subprocess under Kapso's own deadline ended."""
+
+    stdout: str
+    stderr: str
+    returncode: int
+    overran: bool
+    duration_seconds: float
+
+    @property
+    def completed(self) -> bool:
+        """The process ran to a clean exit inside its deadline."""
+        return not self.overran and self.returncode == 0
+
+
+def run_frame_subprocess(
+    command: List[str], *, cwd: str, deadline_seconds: Optional[float],
+) -> FrameRun:
+    """Run one evaluator command under Kapso's deadline, capturing both
+    streams.
+
+    This is the staged-execution-ownership step from the design: the
+    eval-only runs whose integrity matters most execute under Kapso's
+    own deadline-bounded subprocess, not inside an agent session. The
+    deadline is the affordability window and an overrun is an
+    operational outcome, never a campaign failure: the process group
+    is killed and the run reports as not completed, exactly like a
+    non-zero exit. Timing estimates gate admission; they do not kill
+    campaigns.
+    """
+    # Spooled files, never PIPE: an evolved evaluator may emit
+    # per-window progress lines, and an undrained 64KB pipe
+    # deadlocks the child mid-write while this loop sleeps
+    # (observed live: rel-event/user-ignore froze 6h inside
+    # _emit_process_line, 2026-08-12).
+    stdout_file = tempfile.TemporaryFile(mode="w+")
+    stderr_file = tempfile.TemporaryFile(mode="w+")
+    run_started = time.monotonic()
+    overran = False
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=stdout_file,
+        stderr=stderr_file,
+        text=True,
+        start_new_session=True,
+    )
+    while process.poll() is None:
+        overran = (
+            deadline_seconds is not None
+            and time.monotonic() - run_started >= deadline_seconds
+        )
+        if overran:
+            os.killpg(process.pid, signal.SIGTERM)
+            grace = time.monotonic() + _FRAME_RUN_KILL_GRACE_SECONDS
+            while process.poll() is None and time.monotonic() < grace:
+                time.sleep(0.2)
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            break
+        time.sleep(0.5)
+    process.wait()
+    duration = time.monotonic() - run_started
+    stdout_file.seek(0)
+    stdout = stdout_file.read()
+    stdout_file.close()
+    stderr_file.seek(0)
+    stderr = stderr_file.read()
+    stderr_file.close()
+    if overran:
+        print(
+            "[GenericSearch] Registered evaluation exceeded its "
+            f"{deadline_seconds:.0f}s affordability window; "
+            "recorded as a failed attempt"
+        )
+    elif process.returncode != 0:
+        print(
+            "[GenericSearch] Registered evaluation failed "
+            f"(exit {process.returncode}): {stderr}"
+        )
+    return FrameRun(
+        stdout=stdout, stderr=stderr, returncode=process.returncode,
+        overran=overran, duration_seconds=duration,
+    )
+
+
 def execute_registered_evaluation(
     target: SearchNode,
     *,
@@ -198,43 +289,15 @@ def execute_registered_evaluation(
     workspace,
     workspace_dir: str,
     record_eval_duration,
-    candidate_evaluation: bool = False,
-    registered_evaluation_command: Optional[str] = None,
-    env_strip: Optional[List[str]] = None,
-    env_defaults: Optional[Dict[str, str]] = None,
-    env_overrides: Optional[Dict[str, str]] = None,
 ) -> Optional[float]:
-    """Frame-run the registered evaluation on an existing artifact.
-
-    This is the staged-execution-ownership step from the design: the
-    eval-only runs whose integrity matters most execute under Kapso's
-    own deadline-bounded subprocess, not inside an agent session. The
-    deadline is the affordability window and an overrun is an
-    operational outcome, never a campaign failure: the process group
-    is killed and the attempt reports None, exactly like a non-zero
-    exit. Timing estimates gate admission; they do not kill campaigns.
-    """
-    if candidate_evaluation:
-        target.evaluation_valid = False
-        target.score = None
-        target.should_stop = False
-        target.evaluation_output = ""
-    command = (
-        [sys.executable, "kapso_evaluation/evaluate.py"]
-        if candidate_evaluation and not registered_evaluation_command
-        else shlex.split(registered_evaluation_command or evaluation_command(
-            fidelity=fidelity,
-            fraction=fraction,
-            seed=registered_subsample_seed,
-        ))
-    )
-    if candidate_evaluation:
-        command = candidate_environment_command(
-            command, env_strip=env_strip or [], env_defaults=env_defaults or {},
-            env_overrides=env_overrides,
-        )
-    run_started = time.monotonic()
-    overran = False
+    """Frame-run the registered evaluation on an existing artifact (a
+    VALIDATE grant or a bridge), appending the measurement as an
+    evaluation attempt. A run that failed or overran reports None."""
+    command = shlex.split(evaluation_command(
+        fidelity=fidelity,
+        fraction=fraction,
+        seed=registered_subsample_seed,
+    ))
     with workspace.materialize_ref(target.branch_name) as worktree:
         # The branch's own evaluation tree is whatever version its
         # session ran under — a frame run trusting it would execute a
@@ -242,8 +305,7 @@ def execute_registered_evaluation(
         # id (observed live: a bridge labeled v2 executed the branch's
         # v1 tree). The registered head is the only ruler frame runs
         # execute.
-        if not candidate_evaluation or registered_evaluation_command:
-            sync_registered_evaluation(worktree, workspace_dir)
+        sync_registered_evaluation(worktree, workspace_dir)
         if registered_data_manifest:
             data_problem = verify_data_manifest(
                 worktree, registered_data_manifest
@@ -254,75 +316,13 @@ def execute_registered_evaluation(
                     f"{data_problem}"
                 )
                 return None
-        # Spooled files, never PIPE: an evolved evaluator may emit
-        # per-window progress lines, and an undrained 64KB pipe
-        # deadlocks the child mid-write while this loop sleeps
-        # (observed live: rel-event/user-ignore froze 6h inside
-        # _emit_process_line, 2026-08-12).
-        stdout_file = tempfile.TemporaryFile(mode="w+")
-        stderr_file = tempfile.TemporaryFile(mode="w+")
-        process = subprocess.Popen(
-            command,
-            cwd=worktree,
-            stdout=stdout_file,
-            stderr=stderr_file,
-            text=True,
-            start_new_session=True,
+        run = run_frame_subprocess(
+            command, cwd=worktree, deadline_seconds=deadline_seconds,
         )
-        while process.poll() is None:
-            overran = (
-                deadline_seconds is not None
-                and time.monotonic() - run_started >= deadline_seconds
-            )
-            if overran:
-                os.killpg(process.pid, signal.SIGTERM)
-                grace = time.monotonic() + _FRAME_RUN_KILL_GRACE_SECONDS
-                while process.poll() is None and time.monotonic() < grace:
-                    time.sleep(0.2)
-                if process.poll() is None:
-                    os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
-                break
-            time.sleep(0.5)
-        process.wait()
-        stdout_file.seek(0)
-        stdout = stdout_file.read()
-        stdout_file.close()
-        stderr_file.seek(0)
-        stderr = stderr_file.read()
-        stderr_file.close()
-    duration = time.monotonic() - run_started
-    if candidate_evaluation:
-        target.evaluation_output = stdout + stderr
-        target.evaluation_script_path = (
-            "kapso_evaluation/kapso_eval.py" if registered_evaluation_command
-            else "kapso_evaluation/evaluate.py"
-        )
-    if overran:
-        print(
-            "[GenericSearch] Registered evaluation exceeded its "
-            f"{deadline_seconds:.0f}s affordability window; "
-            "recorded as a failed attempt"
-        )
+    if not run.completed:
         return None
-    if process.returncode != 0:
-        if candidate_evaluation:
-            target.evaluation_valid = False
-            target.score = None
-        print(
-            "[GenericSearch] Registered evaluation failed "
-            f"(exit {process.returncode}): {stderr}"
-        )
-        return None
-    if candidate_evaluation:
-        target.evaluation_valid = True
-        if not registered_evaluation_command:
-            return None
-    manifest = parse_manifest_line(stdout)
+    manifest = parse_manifest_line(run.stdout)
     score = float(manifest["score"])
-    if candidate_evaluation:
-        target.score = score
-        return score
     target.evaluation_attempts.append(
         EvaluationAttempt(
             commit_sha=workspace.repo.commit(
@@ -333,7 +333,7 @@ def execute_registered_evaluation(
             fraction=fraction,
             seed=registered_subsample_seed,
             score=score,
-            duration_seconds=duration,
+            duration_seconds=run.duration_seconds,
         )
     )
     if record_eval_duration is not None:
@@ -342,9 +342,59 @@ def execute_registered_evaluation(
         # persist in the registry; the provider-backed policy sees the
         # tightened upper immediately).
         record_eval_duration(
-            fraction=fraction, duration_seconds=duration
+            fraction=fraction, duration_seconds=run.duration_seconds
         )
     return score
+
+
+def execute_candidate_evaluation(
+    node: SearchNode,
+    *,
+    deadline_seconds: Optional[float],
+    registered_evaluation_command: Optional[str],
+    workspace,
+    workspace_dir: str,
+    env_strip: List[str],
+    env_defaults: Dict[str, str],
+    env_overrides: Optional[Dict[str, str]],
+) -> FrameRun:
+    """Cost mode: Kapso runs the admitted candidate's evaluator itself.
+
+    The registered evaluator when one is registered (synced from the
+    head, as every frame run), otherwise the candidate's own
+    `kapso_evaluation/evaluate.py`, under the session's configured
+    environment transport. The run's capture replaces the node's
+    evaluation output; the node is valid only when the run completed,
+    and in registered mode its score is the manifest's. The data
+    manifest is not re-verified here: enforce_evaluation_integrity
+    verified this ref moments earlier in the same finalization.
+    """
+    node.evaluation_valid = False
+    node.score = None
+    node.should_stop = False
+    node.evaluation_output = ""
+    command = candidate_environment_command(
+        shlex.split(registered_evaluation_command)
+        if registered_evaluation_command
+        else [sys.executable, "kapso_evaluation/evaluate.py"],
+        env_strip=env_strip, env_defaults=env_defaults,
+        env_overrides=env_overrides,
+    )
+    with workspace.materialize_ref(node.branch_name) as worktree:
+        if registered_evaluation_command:
+            sync_registered_evaluation(worktree, workspace_dir)
+        run = run_frame_subprocess(
+            command, cwd=worktree, deadline_seconds=deadline_seconds,
+        )
+    node.evaluation_output = run.stdout + run.stderr
+    node.evaluation_script_path = (
+        "kapso_evaluation/kapso_eval.py" if registered_evaluation_command
+        else "kapso_evaluation/evaluate.py"
+    )
+    node.evaluation_valid = run.completed
+    if registered_evaluation_command and run.completed:
+        node.score = float(parse_manifest_line(run.stdout)["score"])
+    return run
 
 
 def sync_registered_evaluation(session_folder: str, workspace_dir: str) -> None:
