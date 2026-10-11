@@ -169,6 +169,9 @@ class OrchestratorAgent:
         strategy_params_overrides: Optional[Dict[str, Any]] = None,
     ):
         self.problem_handler = problem_handler
+        # The problem's scoring direction: the history store ranks by it and
+        # the checkpoint records it for the MCP history process.
+        self.maximize_scoring = getattr(problem_handler, "maximize_scoring", True)
         self.config_path = config_path
         self.mode = mode
         self.goal = goal or ""
@@ -397,7 +400,7 @@ class OrchestratorAgent:
             goal=self.goal,
             llm=self.llm if embedding_model else None,
             cost_config=self.cost_config,
-            maximize_scoring=getattr(self.problem_handler, "maximize_scoring", True),
+            maximize_scoring=self.maximize_scoring,
         )
         
         # Create knowledge search backend (or use provided instance).
@@ -795,8 +798,7 @@ class OrchestratorAgent:
             key=lambda node: selection_score(node, {
                 "cost": self.cost_config,
                 "maximize_scoring": (
-                    self.problem_handler.maximize_scoring
-                    if self.cost_config["enabled"] else True
+                    self.maximize_scoring if self.cost_config["enabled"] else True
                 ),
             }),
             reverse=True,
@@ -992,6 +994,7 @@ class OrchestratorAgent:
             cost_by_component=self.budget_ledger.cost_by_component(),
             last_stop=last_stop,
             cost_config=self.cost_config,
+            maximize_scoring=self.maximize_scoring,
         )
         with self._checkpoint_lock:
             self.checkpoint_store.save(checkpoint)

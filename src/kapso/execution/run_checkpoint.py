@@ -71,8 +71,11 @@ class RunCheckpoint:
     cost_by_component: Dict[str, float] = field(default_factory=dict)
     last_stop: Optional[str] = None
     # v3: the platform cost policy, so a resume rejects a changed estimator,
-    # cap or budget by name. Earlier schemas are not migrated (Rule 7).
+    # cap or budget by name, and the problem's scoring direction, which the
+    # MCP history process reads to rank as the campaign does. Earlier
+    # schemas are not migrated (Rule 7).
     cost_config: Dict[str, Any] = field(default_factory=normalize_cost_config)
+    maximize_scoring: bool = True
 
     SCHEMA_VERSION = 3
     VALID_STATUSES = {"running", "completed"}
@@ -100,6 +103,7 @@ class RunCheckpoint:
         cost_by_component: Optional[Dict[str, float]] = None,
         last_stop: Optional[str] = None,
         cost_config: Optional[Dict[str, Any]] = None,
+        maximize_scoring: bool = True,
     ) -> "RunCheckpoint":
         checkpoint = cls(
             schema_version=cls.SCHEMA_VERSION,
@@ -116,6 +120,7 @@ class RunCheckpoint:
             cost_by_component=dict(cost_by_component or {}),
             last_stop=last_stop,
             cost_config=normalize_cost_config(cost_config),
+            maximize_scoring=maximize_scoring,
         )
         checkpoint.validate_structure()
         return checkpoint
@@ -153,6 +158,7 @@ class RunCheckpoint:
             "cost_by_component",
             "last_stop",
             "cost_config",
+            "maximize_scoring",
         }
         missing = sorted(required - set(data))
         if missing:
@@ -167,6 +173,10 @@ class RunCheckpoint:
     def validate_structure(self) -> None:
         if not isinstance(self.cost_config, dict):
             raise RunCheckpointCorruptError("Run checkpoint cost_config must be an object")
+        if not isinstance(self.maximize_scoring, bool):
+            raise RunCheckpointCorruptError(
+                "Run checkpoint maximize_scoring must be a boolean"
+            )
         if (
             isinstance(self.schema_version, bool)
             or not isinstance(self.schema_version, int)

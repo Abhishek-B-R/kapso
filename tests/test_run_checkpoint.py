@@ -311,6 +311,12 @@ def test_structurally_invalid_json_is_rejected_as_checkpoint_error() -> None:
     with pytest.raises(RunCheckpointIncompatibleError, match="schema version"):
         RunCheckpoint.from_dict(data)
 
+    # The MCP history process ranks by this field; a string would flip it.
+    data = _checkpoint().to_dict()
+    data["maximize_scoring"] = "false"
+    with pytest.raises(RunCheckpointCorruptError, match="maximize_scoring"):
+        RunCheckpoint.from_dict(data)
+
 
 @pytest.mark.parametrize(
     ("field", "value", "error"),
@@ -618,6 +624,7 @@ def test_v2_checkpoint_is_rejected_without_migration(tmp_path: Path) -> None:
     v2_data = _checkpoint().to_dict()
     v2_data["schema_version"] = 2
     del v2_data["cost_config"]
+    del v2_data["maximize_scoring"]
     store.path.parent.mkdir(parents=True)
     store.path.write_text(checkpoint_module.json.dumps(v2_data))
 

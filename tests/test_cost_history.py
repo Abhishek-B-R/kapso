@@ -1,7 +1,6 @@
 """Cost policy survives the history/MCP boundary without losing prompt content."""
 
 import asyncio
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +8,9 @@ import pytest
 from kapso.execution.memories.experiment_memory.store import (
     ExperimentHistoryStore,
     format_experiments,
+    open_campaign_history,
 )
+from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore
 from kapso.gated_mcp.gates.experiment_history_gate import ExperimentHistoryGate
 
 
@@ -23,6 +24,17 @@ def cost_config(**overrides):
         "weight": 1.0,
         **overrides,
     }
+
+
+def campaign_history_path(tmp_path, maximize_scoring=True):
+    """A campaign workspace: the checkpoint the MCP process reads the policy
+    and the scoring direction from, and the history file beside it."""
+    RunCheckpointStore(str(tmp_path)).save(RunCheckpoint.create(
+        strategy_type="generic", goal="g", config_fingerprint="f", status="running",
+        completed_iterations=0, cumulative_cost=0.0, current_feedback=None,
+        strategy_state={}, cost_config=cost_config(), maximize_scoring=maximize_scoring,
+    ))
+    return str(tmp_path / ".kapso" / "experiment_history.json")
 
 
 def candidate(node_id, score, estimated, measured=None, refusal=None):
@@ -57,17 +69,16 @@ def candidate(node_id, score, estimated, measured=None, refusal=None):
 def test_reopened_history_keeps_cost_policy_and_problem_direction(
     tmp_path, maximize_scoring, scores, expected
 ):
-    history_path = tmp_path / "history.json"
+    history_path = campaign_history_path(tmp_path, maximize_scoring)
     store = ExperimentHistoryStore(
-        str(history_path),
-        cost_config=cost_config(),
-        maximize_scoring=maximize_scoring,
+        history_path, cost_config=cost_config(), maximize_scoring=maximize_scoring
     )
     store.add_experiment(candidate(0, scores[0], 1.0, measured=8.0))
     store.add_experiment(candidate(1, scores[1], 2.0))
 
-    reopened = ExperimentHistoryStore(str(history_path))
+    reopened = open_campaign_history(history_path, goal=None, llm=None)
 
+    assert reopened.maximize_scoring is maximize_scoring
     assert [record.node_id for record in reopened.get_top_experiments()] == expected
     assert reopened.experiments[0].measured_cost == {
         "amount": 8.0, "unit": "credits"
@@ -87,7 +98,7 @@ def test_mcp_reports_whole_campaign_cost_once_above_subset(
     tmp_path, tool_name, arguments
 ):
     store = ExperimentHistoryStore(
-        str(tmp_path / "history.json"), cost_config=cost_config()
+        campaign_history_path(tmp_path), cost_config=cost_config()
     )
     store.add_experiment(candidate(0, 10.0, 10.0, measured=4.0))
     store.add_experiment(candidate(1, 9.0, 3.0))
@@ -103,7 +114,7 @@ def test_mcp_reports_whole_campaign_cost_once_above_subset(
     }
     store.add_experiment(candidate(2, None, 40.0, refusal=refusal))
     gate = ExperimentHistoryGate()
-    gate._store = ExperimentHistoryStore(store.json_path)
+    gate._store = open_campaign_history(store.json_path, goal=None, llm=None)
 
     response = asyncio.run(gate.handle_call(tool_name, arguments))
     rendered = response[0].text
@@ -141,11 +152,15 @@ def test_disabled_history_keeps_ranking_and_prompt_bytes(tmp_path):
         "# Top 1 Experiments by Score\n\n"
         + format_experiments(store.experiments[:1])
     )
+    # A history opened outside a campaign has no checkpoint beside it and
+    # gets the documented default: cost off.
+    outside = open_campaign_history(store.json_path, goal=None, llm=None)
+    assert outside.cost_config["enabled"] is False and outside.maximize_scoring is True
 
 
 def test_history_preserves_complete_cost_refusal_and_prompt_content(tmp_path):
     store = ExperimentHistoryStore(
-        str(tmp_path / "history.json"), cost_config=cost_config()
+        campaign_history_path(tmp_path), cost_config=cost_config()
     )
     refused = candidate(0, None, 40.0)
     refused.solution = "complete solution " * 500
@@ -159,7 +174,7 @@ def test_history_preserves_complete_cost_refusal_and_prompt_content(tmp_path):
     }
     store.add_experiment(refused)
 
-    reopened = ExperimentHistoryStore(store.json_path)
+    reopened = open_campaign_history(store.json_path, goal=None, llm=None)
     rendered = reopened.format_experiments(reopened.experiments)
 
     assert reopened.experiments[0].cost_refusal == refused.cost_refusal
@@ -184,25 +199,3 @@ def test_measured_zero_replaces_estimate_in_history_ranking_and_budget(tmp_path)
     assert "Campaign budget used: 1.0 / 50.0 credits" in store.format_experiments(
         store.get_top_experiments(k=1)
     )
-
-
-def test_corrupt_cost_context_fails_loudly(tmp_path):
-    store = ExperimentHistoryStore(
-        str(tmp_path / "history.json"), cost_config=cost_config()
-    )
-    store.add_experiment(candidate(0, 1.0, 1.0))
-    (tmp_path / "history.cost.json").write_text("{malformed")
-
-    with pytest.raises(json.JSONDecodeError):
-        ExperimentHistoryStore(store.json_path)
-
-
-def test_nonboolean_persisted_problem_direction_fails_loudly(tmp_path):
-    history_path = tmp_path / "history.json"
-    history_path.with_suffix(".cost.json").write_text(json.dumps({
-        "cost": cost_config(),
-        "maximize_scoring": "false",
-    }))
-
-    with pytest.raises(ValueError, match="maximize_scoring must be a boolean"):
-        ExperimentHistoryStore(str(history_path))

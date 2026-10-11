@@ -184,8 +184,9 @@ and refusal when present. They report the full campaign's budget usage once at
 the top, even when a query returns only one candidate. Estimate basis, metadata,
 feedback, and query text are passed to ideation in full.
 
-The history store persists the cost policy beside its experiment records so the
-MCP process uses the campaign's actual weight, unit, and scoring direction.
+The MCP history process reads the cost policy and the problem's scoring
+direction from the campaign checkpoint (`.kapso/run_state.json`), so it ranks
+with the campaign's actual weight, unit, and direction.
 The estimator entry point and all cost settings are part of the run
 configuration fingerprint. Resume rejects a changed estimator, cap, or other
 cost setting by name. Keep the estimator's implementation and its external

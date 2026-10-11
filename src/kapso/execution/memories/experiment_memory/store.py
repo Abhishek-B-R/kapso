@@ -33,6 +33,7 @@ from kapso.execution.cost_estimator import (
     normalize_cost_config,
     selection_score,
 )
+from kapso.execution.run_checkpoint import RunCheckpointStore
 
 logger = logging.getLogger(__name__)
 
@@ -125,30 +126,18 @@ class ExperimentHistoryStore:
             llm: Backend whose "embedding" role powers write-time solution
                  embeddings and query-time semantic search. None → the
                  store is recency-only (search_similar returns recent).
-            cost_config: Platform cost policy, persisted for MCP readers.
+            cost_config: Platform cost policy the ranking uses. The MCP
+                 process takes it from the campaign checkpoint, see
+                 open_campaign_history.
             maximize_scoring: Problem direction used by cost-aware ranking.
         """
         self.json_path = json_path
         self.goal = goal
         self._llm = llm
         self.cost_config = normalize_cost_config(cost_config)
-        self.maximize_scoring = maximize_scoring
-        cost_path = Path(json_path).with_suffix(".cost.json")
-        if cost_config is None and cost_path.exists():
-            saved_config = json.loads(cost_path.read_text())
-            self.cost_config = normalize_cost_config(saved_config["cost"])
-            self.maximize_scoring = saved_config["maximize_scoring"]
-        if not isinstance(self.maximize_scoring, bool):
+        if not isinstance(maximize_scoring, bool):
             raise ValueError("Experiment history maximize_scoring must be a boolean")
-        if cost_config is not None:
-            if self.cost_config["enabled"]:
-                cost_path.parent.mkdir(parents=True, exist_ok=True)
-                cost_path.write_text(json.dumps({
-                    "cost": self.cost_config,
-                    "maximize_scoring": self.maximize_scoring,
-                }, indent=2))
-            elif cost_path.exists():
-                cost_path.unlink()
+        self.maximize_scoring = maximize_scoring
         self.experiments: List[ExperimentRecord] = []
         self._load_from_json()
 
@@ -394,12 +383,37 @@ class ExperimentHistoryStore:
 # Standalone Functions for MCP Server
 # =============================================================================
 
+def open_campaign_history(
+    json_path: str, *, goal: Optional[str], llm: Optional[LLMBackend]
+) -> ExperimentHistoryStore:
+    """Open a campaign's history ranked the way the campaign ranks it.
+
+    The history file and the run checkpoint share the campaign's ``.kapso``
+    directory, so the checkpoint supplies the cost policy and the problem's
+    scoring direction. A history opened outside a campaign, with no
+    checkpoint beside it, gets the disabled default policy; a corrupt
+    checkpoint raises.
+    """
+    checkpoint_store = RunCheckpointStore(str(Path(json_path).parent.parent))
+    if not checkpoint_store.exists():
+        return ExperimentHistoryStore(json_path=json_path, goal=goal, llm=llm)
+    checkpoint = checkpoint_store.load()
+    return ExperimentHistoryStore(
+        json_path=json_path,
+        goal=goal,
+        llm=llm,
+        cost_config=checkpoint.cost_config,
+        maximize_scoring=checkpoint.maximize_scoring,
+    )
+
+
 def load_store_from_env() -> ExperimentHistoryStore:
     """
-    Load experiment store from environment variables.
+    Open the campaign's experiment store from environment variables.
 
-    Used by MCP server to access the store (env is the transport across
-    the server-process boundary; see get_mcp_config).
+    Used by the MCP server (env is the transport across the server-process
+    boundary; see get_mcp_config). The cost policy and the scoring
+    direction come from the campaign checkpoint, see open_campaign_history.
 
     Environment variables:
     - EXPERIMENT_HISTORY_PATH: Path to JSON file (required)
@@ -409,18 +423,13 @@ def load_store_from_env() -> ExperimentHistoryStore:
     """
     json_path = os.environ.get("EXPERIMENT_HISTORY_PATH", ".kapso/experiment_history.json")
     embedding_model = os.environ.get("EXPERIMENT_EMBEDDING_MODEL")
-    goal = os.environ.get("EXPERIMENT_GOAL")
-
     llm = (
         LLMBackend(models={"embedding": embedding_model})
         if embedding_model
         else None
     )
-
-    return ExperimentHistoryStore(
-        json_path=json_path,
-        goal=goal,
-        llm=llm,
+    return open_campaign_history(
+        json_path, goal=os.environ.get("EXPERIMENT_GOAL"), llm=llm
     )
 
 

@@ -93,6 +93,7 @@ def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
     orchestrator = OrchestratorAgent.__new__(OrchestratorAgent)
     orchestrator.search_strategy = strategy
     orchestrator.problem_handler = strategy.problem_handler
+    orchestrator.maximize_scoring = True
     orchestrator.cost_config = policy
     orchestrator.cost_estimator = lambda context: CostEstimate(
         amount=2.0, unit="credits", basis="Candidate plan"
