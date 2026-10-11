@@ -649,3 +649,5 @@ def test_status_omits_external_payload_without_evaluator(
     orchestrator.solve(experiment_max_iter=1)
     status = OperationStatusView(workspace).data
     assert "external_evaluation" not in status
+    # Cost is off by default, so the platform-budget payload is absent too.
+    assert "platform_budget" not in status

@@ -6,7 +6,9 @@
 # and each operation contributes ONLY its phase list and payload fields
 # (subclasses may add fields and phases, never mechanics). The surface is
 # deliberately TIME-ONLY: codex sessions report $0.00, so any displayed
-# dollar figure would lie for the platform's default implementor.
+# dollar figure would lie for the platform's default implementor. The
+# platform-cost bar is in the campaign's own unit (cost.unit, e.g.
+# credits), never dollars, so that stance holds.
 
 import json
 import os
@@ -77,6 +79,30 @@ def credits_summary(phase_telemetry: Mapping[str, Mapping[str, float]]) -> str:
         f"{gate} {int(first[gate])} → {int(last[gate])} remaining"
         for gate in sorted(first) if gate in last
     )
+
+
+def platform_cost_summary(platform_budget: Mapping[str, Any]) -> str:
+    """The status payload's platform_budget {used, budget, unit, refused}
+    as one clause: "2.0/3.0 credits, 1 candidate refused". No budget
+    renders "2.0 credits"; the refusal clause appears only when a
+    candidate was refused."""
+    used = float(platform_budget["used"])
+    budget = platform_budget["budget"]
+    text = (
+        f"{used}/{float(budget)} {platform_budget['unit']}" if budget is not None
+        else f"{used} {platform_budget['unit']}"
+    )
+    refused = platform_budget["refused"]
+    if refused == 1:
+        text += ", 1 candidate refused"
+    elif refused > 1:
+        text += f", {refused} candidates refused"
+    return text
+
+
+def _progress_bar(fraction: float) -> str:
+    filled = int(round(20 * min(1.0, fraction)))
+    return "▓" * filled + "░" * (20 - filled)
 
 
 def _utcnow() -> str:
@@ -265,7 +291,9 @@ class EvolveStatus(OperationStatus):
         "feedback",
     )
     # payload: budget{elapsed_min,total_min}, best{score,node},
-    #          last{score,node}, iteration, active_stream
+    #          last{score,node}, iteration, active_stream,
+    #          platform_budget{used,budget,unit,refused} (only when cost
+    #          is enabled)
 
 
 class LessonStatus(OperationStatus):
@@ -497,6 +525,11 @@ class OperationStatusView:
             outcome = "error" if node.get("had_error") else "ok"
             if node.get("suspended"):
                 outcome = "waiting"
+            if node.get("cost_refusal"):
+                outcome = "refused"
+            # Measured cost supersedes the estimate; a refused node
+            # carries its estimate, so the row shows what it would cost.
+            cost = node.get("measured_cost") or node.get("estimated_cost")
             knowledge = knowledge_summary(node.get("phase_telemetry") or {})
             connector = "└─" if is_last else "├─"
             comparison = comparison_summary(
@@ -505,6 +538,7 @@ class OperationStatusView:
             tree_lines.append(
                 f"{prefix}{connector} {branch_name} "
                 f"(score={score_text}, {outcome})"
+                + (f" cost: {float(cost['amount'])}" if cost else "")
                 + (f" knowledge: {knowledge}" if knowledge else "")
                 + (f" external: {comparison}" if comparison else "")
             )
@@ -533,11 +567,18 @@ class OperationStatusView:
             if budget.get("total_min"):
                 elapsed = float(budget.get("elapsed_min") or 0.0)
                 total = float(budget["total_min"])
-                filled = int(round(20 * min(1.0, elapsed / total)))
                 lines.append(
-                    f"budget: {'▓' * filled}{'░' * (20 - filled)} "
+                    f"budget: {_progress_bar(elapsed / total)} "
                     f"{elapsed:.0f}/{total:.0f} min"
                 )
+            platform = d.get("platform_budget")
+            if platform:
+                summary = platform_cost_summary(platform)
+                if platform["budget"]:
+                    bar = _progress_bar(platform["used"] / platform["budget"])
+                    lines.append(f"cost:   {bar} {summary}")
+                else:
+                    lines.append(f"cost:   {summary}")
             if d.get("iteration") is not None:
                 lines.append(f"iteration {d['iteration']}")
             if d.get("stopped_reason") == "waiting_for_user":

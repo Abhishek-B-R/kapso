@@ -8,12 +8,13 @@ You have access to the full workspace at: `{{workspace_dir}}`
 ## Goal
 {{goal}}
 
-## How the implementation session ended (ground truth from the harness)
+## How the implementation session and any Kapso evaluation run ended (ground truth from the harness)
 {{session_end_facts}}
 
 If the session died prematurely, diagnose the ACTUAL cause from the facts
 above (e.g. a kill command whose pattern matched the session's own process)
-— do not assume the time limit.
+— do not assume the time limit. An evaluation run killed at its deadline
+leaves no trace in its captured output; the facts above are its only record.
 
 ## Solution Approach (Idea)
 {{idea}}

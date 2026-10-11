@@ -126,7 +126,7 @@ def test_iteration_uses_the_same_selected_parent_everywhere(
 
     def implement(**kwargs):
         calls["implementation"] = kwargs["parent_branch_name"]
-        return "agent output", {"cost_usd": 0.0, "duration_seconds": 0.0}, None
+        return "agent output", {"cost_usd": 0.0, "duration_seconds": 0.0}, None, None, None
 
     def code_diff(branch_name, parent_branch):
         calls["diff"] = parent_branch

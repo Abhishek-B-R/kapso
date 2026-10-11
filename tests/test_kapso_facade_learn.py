@@ -346,7 +346,7 @@ def test_evolve_serving_staging_and_disabled_byte_identity(
                 final_feedback=None, iterations_run=0,
                 cumulative_iterations=0, total_cost=0.0,
                 stopped_reason="max_iterations", stop_detail=None,
-                best_experiment=None,
+                best_experiment=None, platform_budget=None,
             )
 
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", FakeOrchestrator)

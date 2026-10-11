@@ -71,7 +71,9 @@ With `resume=True`:
 - `output_path` is required and must already be a directory.
 - The path must be a non-bare Git repository.
 - `.kapso/run_state.json` must exist.
-- The checkpoint schema must be supported and structurally valid.
+- The checkpoint schema must be supported and structurally valid. A campaign
+  started before checkpoint schema 3 cannot resume; start it again in a new
+  output path.
 - The goal, when passed, must match the checkpoint's exactly; left out, it
   comes from the checkpoint.
 - Every other launch argument comes from `.kapso/launch.json` when left out. A
@@ -90,7 +92,7 @@ The current schema is:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "strategy_type": "generic",
   "goal": "Improve the support agent",
   "goal_hash": "sha256...",
@@ -101,6 +103,15 @@ The current schema is:
   "elapsed_seconds": 812.4,
   "cost_by_component": {"implementation": 0.31, "feedback": 0.11},
   "last_stop": null,
+  "cost_config": {
+    "enabled": false,
+    "estimator": null,
+    "cap_per_candidate": null,
+    "campaign_budget": null,
+    "unit": "credits",
+    "weight": 0.0
+  },
+  "maximize_scoring": true,
   "current_feedback": "Address the failing edge case",
   "strategy_state": {
     "node_history": [],
@@ -114,7 +125,8 @@ The configuration fingerprint includes the selected mode configuration,
 strategy type and parameters, any coding-agent override, and the external
 evaluator identity and failure policy when one is configured. It prevents a
 run from silently continuing under different search, model, or measurement
-settings.
+settings. The platform cost policy (`search_strategy.params.cost`) is stored
+in `cost_config` and compared as well; the refusal names the changed key.
 
 When `eval_dir` is provided, its content fingerprint is also part of strict
 compatibility. Pass the same unchanged suite to every resumed call.

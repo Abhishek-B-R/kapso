@@ -23,6 +23,12 @@ from kapso.execution.search_strategies.base import (
     SearchNode,
 )
 from kapso.execution.search_strategies.factory import register_strategy
+from kapso.execution.cost_estimator import (
+    DEFAULT_COST_CONFIG,
+    normalize_cost_config,
+    selection_score,
+    validate_cost_value,
+)
 from kapso.execution.fidelity import (
     FULL_PASSTHROUGH,
     PROFILE_VALIDATE,
@@ -42,6 +48,7 @@ from kapso.execution.search_strategies.generic.expansion_lanes import (
 from kapso.execution.search_strategies.generic.feedback_flow import (
     extract_agent_result,
     generate_feedback,
+    measured_cost_from_output,
 )
 from kapso.execution.search_strategies.generic.ideation import (
     ENSEMBLE_CANDIDATES_PER_MEMBER,
@@ -83,10 +90,11 @@ from kapso.execution.search_strategies.generic.lens_planning import (
 )
 from kapso.execution.search_strategies.generic.registered_evaluation import (
     await_registered_evaluation,
+    deferred_evaluation_instructions,
     evaluation_instructions,
+    execute_candidate_evaluation,
     execute_registered_evaluation,
     manifest_of_record,
-    manifest_score_of_record,
     record_evaluation_attempt,
     sync_registered_evaluation,
 )
@@ -212,6 +220,8 @@ class GenericSearch(SearchStrategy):
         parent_policy = normalize_parent_policy(
             (config.params or {}).get("parent_policy", "best")
         )
+        self.cost_config = normalize_cost_config((config.params or {}).get("cost"))
+        self.before_candidate_evaluation = None
         super().__init__(config, workspace_dir, import_from_checkpoint)
         
         # Config params for ideation
@@ -591,10 +601,9 @@ class GenericSearch(SearchStrategy):
         )
 
         self._status_phase("implementation")
-        # _implement returns (output, telemetry, recovered manifest line) and,
-        # with the inbox wired, the suspended-session record as a fourth
-        # element; stubs that return three are still whole.
-        agent_output, implementation_telemetry, recovered, *rest = self._implement(
+        (
+            agent_output, implementation_telemetry, recovered, suspended, build_error,
+        ) = self._implement(
             solution=solution,
             problem=problem,
             branch_name=branch_name,
@@ -611,7 +620,7 @@ class GenericSearch(SearchStrategy):
         node.agent_output = agent_output
         node.code_diff = self._get_code_diff(branch_name, parent.branch_name)
         self._absorb_implementation(
-            node, agent_output, recovered, rest[0] if rest else None, lane_tag
+            node, agent_output, recovered, suspended, build_error, lane_tag
         )
         return node
 
@@ -621,10 +630,13 @@ class GenericSearch(SearchStrategy):
         agent_output: str,
         recovered: Optional[str],
         suspended,
+        build_error: Optional[str],
         lane_tag: str = "",
     ) -> None:
         """Steps 3–3c of the lane: the session's tags into the node, or the
-        suspension when the session asked the person and was stopped."""
+        suspension when the session asked the person and was stopped.
+        ``build_error`` is the session's error when it died without
+        finishing its report, None when it finished."""
         # Step 3: Extract results from agent output JSON
         agent_result = self._extract_agent_result(agent_output)
 
@@ -641,6 +653,20 @@ class GenericSearch(SearchStrategy):
             # Fallback: use raw agent output
             node.evaluation_output = agent_output
             print(f"{lane_tag}[GenericSearch] Warning: No JSON result from agent, using raw output")
+
+        if self._cost_enabled():
+            # A build-only session: its score and cost claims are void and
+            # nothing is valid until a frame run says so. Its output stays
+            # on the node as the judge's evidence for a build that errored;
+            # the frame run replaces it when one happens. A session that
+            # died is an errored build: nothing to estimate or run. (In the
+            # default flow the session also evaluates, and the judge decides
+            # whether a dead session left a valid measurement.)
+            node.score = None
+            node.measured_cost = None
+            node.evaluation_valid = False
+            node.had_error = build_error is not None
+            node.error_message = "" if build_error is None else build_error
 
         if suspended is not None:
             # The session asked the person and was stopped: nothing to
@@ -664,7 +690,7 @@ class GenericSearch(SearchStrategy):
         # Step 3c: inject the manifest recovered from the durable run archive
         # (returned by this lane's own _implement) so the score of record
         # survives a session that died before printing it.
-        if recovered and self._manifest_score_of_record(node) is None:
+        if not self._cost_enabled() and recovered and self._manifest_score_of_record(node) is None:
             node.evaluation_output = (
                 (node.evaluation_output or "") + "\n" + recovered
             )
@@ -709,7 +735,9 @@ class GenericSearch(SearchStrategy):
         )
         continued_at_monotonic = time.monotonic()
         self._status_phase("implementation")
-        agent_output, implementation_telemetry, recovered, *rest = self._implement(
+        (
+            agent_output, implementation_telemetry, recovered, suspended, build_error,
+        ) = self._implement(
             solution=node.solution,
             problem=problem,
             branch_name=node.branch_name,
@@ -733,7 +761,7 @@ class GenericSearch(SearchStrategy):
         node.suspended = False
         node.request_ids = []
         self._absorb_implementation(
-            node, agent_output, recovered, rest[0] if rest else None
+            node, agent_output, recovered, suspended, build_error
         )
         if node.suspended:
             # Asked again: the orchestrator pauses the campaign again.
@@ -796,7 +824,8 @@ class GenericSearch(SearchStrategy):
         self._finalize_nodes(nodes, iteration_started_monotonic, append=True)
 
         representative = pick_representative(
-            nodes, self.problem_handler.maximize_scoring
+            nodes, self.problem_handler.maximize_scoring,
+            getattr(self, "cost_config", None),
         )
         if lane_count > 1:
             representative.should_stop = any(n.should_stop for n in nodes)
@@ -816,17 +845,20 @@ class GenericSearch(SearchStrategy):
         """Post-barrier: integrity + feedback serialized in node-id order —
         deterministic history, no interleaved feedback sessions. A node
         that asked the person is stamped and recorded, never judged: it
-        is not finished."""
+        is not finished. In cost mode a build refused by the cost check is
+        recorded with its refusal as feedback, never judged; every other
+        finalized node is judged."""
         self._status_phase("feedback")
-        for node in nodes:
+        for lane_index, node in enumerate(nodes):
             if getattr(node, "suspended", False):
                 print(
                     f"[GenericSearch] node {node.node_id} waits for the person "
                     "— not judged until it is continued"
                 )
             elif self.enforce_evaluation_integrity(node):
-                self._generate_feedback(node)
-                self._record_evaluation_attempt(node)
+                if self._evaluate_admitted_candidate(node, lane_index=lane_index):
+                    self._generate_feedback(node)
+                    self._record_evaluation_attempt(node)
             else:
                 print(
                     "[GenericSearch] Rejected invalid provided evaluation: "
@@ -848,6 +880,65 @@ class GenericSearch(SearchStrategy):
                     f"[GenericSearch] ✓ Node {node.node_id} completed: "
                     f"score={node.score}, should_stop={node.should_stop}"
                 )
+
+    def _cost_enabled(self) -> bool:
+        return bool(getattr(self, "cost_config", {}).get("enabled"))
+
+    def _evaluate_admitted_candidate(self, node: SearchNode, *, lane_index: int = 0) -> bool:
+        """Cost mode: estimate a finalized build and frame-run it when
+        admitted. Returns whether the judge reads the node, which is every
+        node except a refused one: an errored build gets no estimate and
+        no run and is judged on its session output; a failed run is judged
+        on what it captured."""
+        if not self._cost_enabled() or node.had_error:
+            return True
+        if self.before_candidate_evaluation is None:
+            raise ValueError("Cost-enabled search requires before_candidate_evaluation")
+        if not self.before_candidate_evaluation(node):
+            return False
+        self.evaluate_candidate(node, lane_index=lane_index)
+        return True
+
+    def evaluate_candidate(self, node: SearchNode, *, lane_index: int = 0) -> SearchNode:
+        """Execute a finalized candidate after its cost estimate was admitted.
+
+        The run's capture replaces the session's output as the judge's
+        evidence; the session's manifest line and score never count.
+        """
+        if not self._cost_enabled() or node.estimated_cost is None or node.cost_refusal:
+            raise ValueError("Deferred evaluation requires an admitted cost estimate")
+        validate_cost_value(node.estimated_cost, self.cost_config["unit"])
+        self._status_phase("evaluation")
+        started = time.monotonic()
+        run = execute_candidate_evaluation(
+            node,
+            deadline_seconds=self._clamped_timeout(self.implementation_timeout),
+            registered_evaluation_command=self.registered_evaluation_command,
+            workspace=self.workspace, workspace_dir=self.workspace_dir,
+            env_strip=self.env_strip,
+            env_defaults=self.env_defaults,
+            env_overrides=lane_env_overlay(self.expansion_lane_env, lane_index),
+        )
+        node.phase_telemetry["evaluation"] = {
+            "duration_seconds": time.monotonic() - started,
+        }
+        node.measured_cost = measured_cost_from_output(
+            node.evaluation_output, self.cost_config["unit"],
+        )
+        # The failed and overran lines are the runner's; this is the
+        # success line, with what the run measured or that it did not.
+        if run.completed:
+            measured = (
+                f"measured {node.measured_cost['amount']} {node.measured_cost['unit']}"
+                if node.measured_cost is not None else
+                f"no measured cost; estimate {node.estimated_cost['amount']} "
+                f"{node.estimated_cost['unit']} stands"
+            )
+            print(
+                f"[GenericSearch] node {node.node_id} evaluation ran in "
+                f"{run.duration_seconds:.1f}s; {measured}"
+            )
+        return node
 
     def _generate_solution(
         self, problem: str, parent_branch: str
@@ -1044,10 +1135,10 @@ class GenericSearch(SearchStrategy):
         lane_index: int = 0,
         node_id: int = 0,
         continuation: Optional[Continuation] = None,
-    ) -> Tuple[str, Dict[str, float], Optional[str], Any]:
+    ) -> Tuple[str, Dict[str, float], Optional[str], Any, Optional[str]]:
         """Implementation session with MCP gates; returns (agent output,
         phase telemetry, recovered manifest line, suspended-session record
-        or None)."""
+        or None, the session's error when it died or None)."""
         lane_env = lane_env_overlay(self.expansion_lane_env, lane_index)
         return run_implementation(
             solution=solution,
@@ -1100,6 +1191,7 @@ class GenericSearch(SearchStrategy):
             node_id=node_id,
             inbox_settings=getattr(self, "inbox_settings", None),
             continuation=continuation,
+            defer_evaluation=self._cost_enabled(),
         )
 
     def _build_implementation_prompt(
@@ -1135,8 +1227,12 @@ class GenericSearch(SearchStrategy):
         )
 
     def _manifest_of_record(self, node: SearchNode) -> Optional[Dict[str, Any]]:
-        """The granted-class manifest from the session's last manifest line."""
+        """The granted-class manifest from the last manifest line of the
+        evaluation that ran: the session's in the default flow, Kapso's
+        frame run in cost mode, where a session's own line never counts."""
         if not self.registered_evaluation_command:
+            return None
+        if self._cost_enabled() and not node.frame_run_outcome:
             return None
         return manifest_of_record(
             node,
@@ -1146,15 +1242,9 @@ class GenericSearch(SearchStrategy):
         )
 
     def _manifest_score_of_record(self, node: SearchNode) -> Optional[float]:
-        """The granted-class score from the session's last manifest line."""
-        if not self.registered_evaluation_command:
-            return None
-        return manifest_score_of_record(
-            node,
-            registered_evaluation_command=self.registered_evaluation_command,
-            fidelity_decision=self.fidelity_decision,
-            registered_subsample_seed=self.registered_subsample_seed,
-        )
+        """The granted-class score from the manifest of record."""
+        manifest = self._manifest_of_record(node)
+        return None if manifest is None else float(manifest["score"])
 
     def _record_evaluation_attempt(self, node: SearchNode) -> None:
         """Append the node's measurement under the registered evaluator."""
@@ -1269,8 +1359,12 @@ class GenericSearch(SearchStrategy):
         sync_registered_evaluation(session_folder, self.workspace_dir)
 
     def _evaluation_instructions(self) -> str:
-        """Registered-evaluation contract when a maintainer owns evaluation;
-        the historical build-your-own instructions otherwise."""
+        """The evaluation contract the implementer follows: build-only in
+        cost mode, where Kapso runs the evaluator after admission; otherwise
+        the registered contract when a maintainer owns evaluation, or the
+        historical build-your-own instructions."""
+        if self._cost_enabled():
+            return deferred_evaluation_instructions(self.registered_evaluation_command)
         return evaluation_instructions(self.registered_evaluation_command)
 
     def _ensure_technical_difficulties(self, node) -> None:
@@ -1412,6 +1506,7 @@ class GenericSearch(SearchStrategy):
             for node in self.node_history
             if not node.had_error
             and not node.evaluation_integrity_error
+            and not node.cost_refusal
             and not getattr(node, "suspended", False)
             and node.code_diff.strip()
             and node.branch_name
@@ -1432,7 +1527,7 @@ class GenericSearch(SearchStrategy):
                 key=lambda node: (
                     not node.had_error and node.evaluation_valid and node.score is not None,
                     0.0 if node.score is None
-                    else (node.score if self.problem_handler.maximize_scoring else -node.score),
+                    else selection_score(node, self._selection_config()),
                 )
             )
         return self.node_history
@@ -1450,8 +1545,14 @@ class GenericSearch(SearchStrategy):
             return None
         return max(
             valid,
-            key=lambda x: x.score if self.problem_handler.maximize_scoring else -x.score
+            key=lambda node: selection_score(node, self._selection_config())
         )
+
+    def _selection_config(self) -> Dict[str, Any]:
+        return {
+            "cost": getattr(self, "cost_config", DEFAULT_COST_CONFIG),
+            "maximize_scoring": self.problem_handler.maximize_scoring,
+        }
 
     def get_deliverable_experiment(self) -> Optional[SearchNode]:
         """The committed-slot winner: evidence tiers, never raw scores.
@@ -1462,7 +1563,7 @@ class GenericSearch(SearchStrategy):
         full-tier candidate at delivery. Without registered evidence the
         score leader stands.
         """
-        if self.registered_evaluator_id:
+        if self.registered_evaluator_id and not self._cost_enabled():
             committed = select_committed_candidate(
                 self.node_history,
                 evaluator_id=self.registered_evaluator_id,
@@ -1514,6 +1615,16 @@ class GenericSearch(SearchStrategy):
     # Feedback and Result Extraction (Generic-specific)
     # =========================================================================
 
+    def _judge_end_facts(self, node: SearchNode) -> str:
+        """Harness ground truth for the judge: how the build session ended
+        and, when Kapso frame-ran the evaluator, how that run ended; the
+        captured streams never show a deadline kill."""
+        session_facts = getattr(self, "_pending_session_end_facts", "")
+        if not node.frame_run_outcome:
+            return session_facts
+        run_facts = f"Kapso's evaluation run {node.frame_run_outcome}"
+        return f"{session_facts}; {run_facts}" if session_facts else run_facts
+
     def _generate_feedback(self, node: SearchNode) -> SearchNode:
         """Judge one node with the FeedbackGenerator (updates the node
         in-place with feedback, score, and should_stop)."""
@@ -1522,15 +1633,16 @@ class GenericSearch(SearchStrategy):
             feedback_generator=self.feedback_generator,
             goal=self.goal,
             design_axes=design_axes_brief(self.design_axes),
-            session_end_facts=getattr(
-                self, "_pending_session_end_facts", ""
-            ),
+            session_end_facts=self._judge_end_facts(node),
             clamped_timeout=self._clamped_timeout,
             manifest_of_record=self._manifest_of_record,
             finalize_run_selection=(
                 lambda manifest, valid:
                 self.problem_handler.finalize_run_selection(manifest, valid)
             ),
+            # The frame run's verdict: in cost mode a session's own claim
+            # of validity never reaches the judge.
+            execution_valid=node.evaluation_valid if self._cost_enabled() else True,
         )
 
     def _extract_agent_result(self, agent_output: str) -> dict:
