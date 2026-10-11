@@ -290,9 +290,11 @@ def test_index_build_stops_on_an_embedding_failure(vertex_session, offline_backe
     vertex_session([OK, FakeResponse(403, {"error": {"message": "permission denied"}})])
     search = KnowledgeSearchFactory.create("kg_graph_search", params=VERTEX_PARAMS)
     inserted = []
-    collection = SimpleNamespace(data=SimpleNamespace(
-        insert=lambda properties, vector: inserted.append(properties["page_id"]),
-        delete_many=lambda where: None))
+    collection = SimpleNamespace(
+        data=SimpleNamespace(
+            insert=lambda properties, vector: inserted.append(properties["page_id"]),
+            delete_many=lambda where: None),
+        query=SimpleNamespace(fetch_objects=lambda **kw: SimpleNamespace(objects=[])))
     search._weaviate_client = SimpleNamespace(collections=SimpleNamespace(get=lambda name: collection))
     monkeypatch.setattr(search, "_ensure_weaviate_collection", lambda: None)
 

@@ -1628,10 +1628,25 @@ Only include pages that would actually help answer the query.
 
     @staticmethod
     def _delete_weaviate_page(collection, page_id: str) -> None:
-        """Delete any existing Weaviate objects for this page_id."""
-        collection.data.delete_many(
-            where=wvc.query.Filter.by_property("page_id").equal(page_id)
+        """Delete the existing object(s) whose page_id equals this page's id.
+
+        `equal` on the word-tokenized `page_id` also matches every page that
+        contains the id's tokens ("<id>_Config", "<id>_Test"), so the
+        candidates are narrowed to the exact id before anything is deleted.
+        """
+        candidates = collection.query.fetch_objects(
+            filters=wvc.query.Filter.by_property("page_id").equal(page_id),
+            limit=_PAGE_ID_TOKEN_MATCH_LIMIT,
+            return_properties=["page_id"],
         )
+        stale = [
+            candidate.uuid for candidate in candidates.objects
+            if candidate.properties.get("page_id") == page_id
+        ]
+        if stale:
+            collection.data.delete_many(
+                where=wvc.query.Filter.by_id().contains_any(stale)
+            )
     
     def _index_single_page_to_neo4j(self, page: WikiPage) -> bool:
         """
