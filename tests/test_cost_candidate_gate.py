@@ -19,6 +19,7 @@ from kapso.execution.search_strategies.generic.implementation import (
 )
 from kapso.execution.search_strategies.generic.registered_evaluation import (
     candidate_environment_command,
+    deferred_evaluation_instructions,
 )
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
@@ -389,13 +390,23 @@ def test_corrupt_cost_manifest_fails_loud():
 
 
 def test_cost_build_prompt_defers_all_evaluation_to_orchestrator():
+    strategy = GenericSearch.__new__(GenericSearch)
+    strategy.cost_config = {"enabled": True}
+    strategy.registered_evaluation_command = "python kapso_evaluation/kapso_eval.py"
+    registered = strategy._evaluation_instructions()
+    assert "Do not run the candidate or evaluation" in registered
+    assert strategy.registered_evaluation_command in registered
+
     prompt = build_implementation_prompt(
         solution="full solution", problem="full problem", branch_name="candidate",
         repo_memory_brief="memory", repo_memory_detail_access_instructions="details",
-        previous_errors="", budget_status="budget", evaluation_instructions="RUN EVALUATION NOW",
-        shared_artifacts_brief="cache", defer_evaluation=True,
+        previous_errors="", budget_status="budget",
+        evaluation_instructions=deferred_evaluation_instructions(None),
+        shared_artifacts_brief="cache",
     )
     assert "Do not run the candidate or evaluation" in prompt
-    assert "RUN EVALUATION NOW" not in prompt
     assert "<score>null</score>" in prompt
+    # One template: cost mode keeps the recon and knowledge-bank sections.
+    assert "Characterize the Measurement" in prompt
+    assert "## Knowledge bank" in prompt
     assert "full solution" in prompt and "full problem" in prompt

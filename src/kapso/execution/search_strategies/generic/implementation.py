@@ -490,19 +490,16 @@ def build_implementation_prompt(
     lane_brief: str = "",
     inbox_section: str = "",
     knowledge_tools: str = "",
-    defer_evaluation: bool = False,
 ) -> str:
-    """Build the implementation prompt for Claude Code. With the inbox
-    off (empty ``inbox_section``) the render is byte-identical to the
-    prompt before the inbox existed. ``knowledge_tools`` is the guidance
-    of the gates this session mounted (empty for a session with none).
-    ``defer_evaluation`` selects the cost-gated template, which asks the
-    implementer to stop before the evaluation so the estimator runs first."""
-    template_name = (
-        "implementation_cost_gated.md" if defer_evaluation
-        else "implementation_claude_code.md"
+    """Build the implementation prompt for Claude Code from the one template.
+    ``evaluation_instructions`` is the mode's evaluation contract (build and
+    run, the registered evaluator, or the cost mode's build-only session);
+    ``knowledge_tools`` is the guidance of the gates this session mounted
+    (empty for a session with none); with the inbox off (empty
+    ``inbox_section``) every inbox part renders empty."""
+    template = load_prompt(
+        "execution/search_strategies/generic/prompts/implementation_claude_code.md"
     )
-    template = load_prompt(f"execution/search_strategies/generic/prompts/{template_name}")
     inbox_on = bool(inbox_section)
     return render_prompt(
         template,

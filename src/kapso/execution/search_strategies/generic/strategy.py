@@ -90,6 +90,7 @@ from kapso.execution.search_strategies.generic.lens_planning import (
 )
 from kapso.execution.search_strategies.generic.registered_evaluation import (
     await_registered_evaluation,
+    deferred_evaluation_instructions,
     evaluation_instructions,
     execute_candidate_evaluation,
     execute_registered_evaluation,
@@ -1214,7 +1215,6 @@ class GenericSearch(SearchStrategy):
             lane_brief=lane_brief,
             inbox_section=inbox_section,
             knowledge_tools=knowledge_tools_block("implementation", allowed_tools),
-            defer_evaluation=self._cost_enabled(),
         )
 
     def _manifest_of_record(self, node: SearchNode) -> Optional[Dict[str, Any]]:
@@ -1350,8 +1350,12 @@ class GenericSearch(SearchStrategy):
         sync_registered_evaluation(session_folder, self.workspace_dir)
 
     def _evaluation_instructions(self) -> str:
-        """Registered-evaluation contract when a maintainer owns evaluation;
-        the historical build-your-own instructions otherwise."""
+        """The evaluation contract the implementer follows: build-only in
+        cost mode, where Kapso runs the evaluator after admission; otherwise
+        the registered contract when a maintainer owns evaluation, or the
+        historical build-your-own instructions."""
+        if self._cost_enabled():
+            return deferred_evaluation_instructions(self.registered_evaluation_command)
         return evaluation_instructions(self.registered_evaluation_command)
 
     def _ensure_technical_difficulties(self, node) -> None:

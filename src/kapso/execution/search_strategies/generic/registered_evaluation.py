@@ -488,6 +488,37 @@ def evaluation_instructions(registered_evaluation_command: Optional[str]) -> str
 5. **Retry on transient crashes** of your own code (max 3 attempts)."""
 
 
+def deferred_evaluation_instructions(registered_evaluation_command: Optional[str]) -> str:
+    """The build-only contract of a cost-aware campaign: Kapso estimates the
+    finalized candidate's platform cost and runs the evaluator itself once
+    the candidate passes its cap and the campaign budget."""
+    if registered_evaluation_command:
+        evaluation_code = (
+            "The evaluation is maintained by the system and is read-and-execute "
+            f"only: `{registered_evaluation_command}` keeps its manifest fields and "
+            "its entrypoint, and altering its behavior at rest or at runtime voids "
+            "the score."
+        )
+    else:
+        evaluation_code = (
+            "Create `kapso_evaluation/evaluate.py`; it must test the solution "
+            "against the goal fairly, print a clear score, and not be hardcoded or "
+            "trivially pass. It may report measured platform cost with one manifest "
+            'line: `KAPSO_EVAL_MANIFEST {"cost": "2.5 credits"}`.'
+        )
+    return f"""This is a build-only session. Kapso estimates platform cost on the finalized
+candidate before granting execution and runs the evaluator itself once the
+candidate passes its cost cap and the campaign budget.
+
+1. **Do not run the candidate or evaluation**: no training, no platform jobs, no
+   paid platform operations, no expensive artifacts in the shared cache. Reading
+   code and writing the candidate are allowed.
+2. **Evaluation code**: {evaluation_code}
+3. **Final tags**: leave `<evaluation_output>` empty and report `<score>null</score>`.
+   The measurement recon above still applies to how you build; per-stratum
+   scores come from Kapso's run."""
+
+
 def await_registered_evaluation(
     output_text: str,
     *,
