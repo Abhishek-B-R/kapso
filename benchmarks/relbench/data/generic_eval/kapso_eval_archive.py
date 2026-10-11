@@ -57,7 +57,8 @@ def tree_manifest(directory: Path) -> dict:
             continue
         if path.is_symlink():
             raise ValueError(
-                f"Evaluation trees cannot contain symlinks: {relative.as_posix()}"
+                "Evaluation trees cannot contain symlinks: "
+                f"{relative.as_posix()}"
             )
         if not path.is_file():
             continue
@@ -134,16 +135,22 @@ def snapshot_evaluator_tree(
     logic.
     """
     destination = Path(archive_root) / "evaluators" / evaluator_id
-    if destination.exists():
-        return destination
-    staging = destination.with_name(destination.name + ".partial")
-    shutil.rmtree(staging, ignore_errors=True)
-    source = Path(evaluation_dir)
-    for relative in sorted(tree_manifest(source)):
-        target = staging / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source / relative, target)
-    staging.replace(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Parallel sessions share the staging path. Serialize the existence
+    # check and publication so one cannot remove another's in-flight copy.
+    lock_path = destination.with_name(destination.name + ".lock")
+    with open(lock_path, "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if destination.exists():
+            return destination
+        staging = destination.with_name(destination.name + ".partial")
+        shutil.rmtree(staging, ignore_errors=True)
+        source = Path(evaluation_dir)
+        for relative in sorted(tree_manifest(source)):
+            target = staging / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source / relative, target)
+        staging.replace(destination)
     return destination
 
 
