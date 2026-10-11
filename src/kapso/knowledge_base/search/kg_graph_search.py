@@ -875,6 +875,9 @@ class KGGraphSearch(KnowledgeSearch):
                 "domains": page.domains,
             }
             
+            # Re-indexing must replace the page, not add a second copy
+            self._delete_weaviate_page(collection, page.id)
+
             # Insert with named vector (Weaviate 1.27+ with vectorizer_config=None
             # creates a named vector "default", so we must use this format)
             collection.data.insert(
@@ -1611,6 +1614,9 @@ Only include pages that would actually help answer the query.
         # Get collection
         collection = self._weaviate_client.collections.get(self.weaviate_collection)
         
+        # Re-indexing must replace the page, not add a second copy
+        self._delete_weaviate_page(collection, page.id)
+
         # Insert with named vector
         collection.data.insert(
             properties=properties,
@@ -1619,6 +1625,28 @@ Only include pages that would actually help answer the query.
         
         logger.debug(f"Indexed page to Weaviate: {page.id}")
         return True
+
+    @staticmethod
+    def _delete_weaviate_page(collection, page_id: str) -> None:
+        """Delete the existing object(s) whose page_id equals this page's id.
+
+        `equal` on the word-tokenized `page_id` also matches every page that
+        contains the id's tokens ("<id>_Config", "<id>_Test"), so the
+        candidates are narrowed to the exact id before anything is deleted.
+        """
+        candidates = collection.query.fetch_objects(
+            filters=wvc.query.Filter.by_property("page_id").equal(page_id),
+            limit=_PAGE_ID_TOKEN_MATCH_LIMIT,
+            return_properties=["page_id"],
+        )
+        stale = [
+            candidate.uuid for candidate in candidates.objects
+            if candidate.properties.get("page_id") == page_id
+        ]
+        if stale:
+            collection.data.delete_many(
+                where=wvc.query.Filter.by_id().contains_any(stale)
+            )
     
     def _index_single_page_to_neo4j(self, page: WikiPage) -> bool:
         """
