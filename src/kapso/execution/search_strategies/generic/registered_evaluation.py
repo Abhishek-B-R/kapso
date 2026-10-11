@@ -86,7 +86,8 @@ def manifest_of_record(
     fidelity_decision: Optional[FidelityDecision],
     registered_subsample_seed: int,
 ) -> Optional[Dict[str, Any]]:
-    """The granted-class manifest from the session's last manifest line.
+    """The granted-class manifest from the evaluation output's last
+    manifest line.
 
     Registered mode only: the wrapper contractually prints one
     machine-readable KAPSO_EVAL_MANIFEST line per run, so an LLM never
@@ -130,25 +131,6 @@ def manifest_of_record(
     if "score" not in manifest:
         return None
     return manifest
-
-
-def manifest_score_of_record(
-    node: SearchNode,
-    *,
-    registered_evaluation_command: Optional[str],
-    fidelity_decision: Optional[FidelityDecision],
-    registered_subsample_seed: int,
-) -> Optional[float]:
-    """The granted-class score from the session's last manifest line."""
-    manifest = manifest_of_record(
-        node,
-        registered_evaluation_command=registered_evaluation_command,
-        fidelity_decision=fidelity_decision,
-        registered_subsample_seed=registered_subsample_seed,
-    )
-    if manifest is None:
-        return None
-    return float(manifest["score"])
 
 
 def record_evaluation_attempt(
@@ -197,12 +179,27 @@ class FrameRun:
     stderr: str
     returncode: int
     overran: bool
+    deadline_seconds: Optional[float]
     duration_seconds: float
 
     @property
     def completed(self) -> bool:
         """The process ran to a clean exit inside its deadline."""
         return not self.overran and self.returncode == 0
+
+    @property
+    def outcome(self) -> str:
+        """One clause on how the run ended, predicated of the run: the
+        node keeps it and the judge reads it, since a deadline kill
+        leaves no trace in the captured streams."""
+        if self.overran:
+            return (
+                f"was killed at its {self.deadline_seconds:g}s deadline "
+                f"after {self.duration_seconds:.1f}s"
+            )
+        if self.returncode != 0:
+            return f"exited {self.returncode} after {self.duration_seconds:.1f}s"
+        return f"completed in {self.duration_seconds:.1f}s"
 
 
 def run_frame_subprocess(
@@ -273,7 +270,8 @@ def run_frame_subprocess(
         )
     return FrameRun(
         stdout=stdout, stderr=stderr, returncode=process.returncode,
-        overran=overran, duration_seconds=duration,
+        overran=overran, deadline_seconds=deadline_seconds,
+        duration_seconds=duration,
     )
 
 
@@ -363,16 +361,13 @@ def execute_candidate_evaluation(
     The registered evaluator when one is registered (synced from the
     head, as every frame run), otherwise the candidate's own
     `kapso_evaluation/evaluate.py`, under the session's configured
-    environment transport. The run's capture replaces the node's
-    evaluation output; the node is valid only when the run completed,
-    and in registered mode its score is the manifest's. The data
+    environment transport. The run's capture replaces the session's
+    output as the judge's evidence and its outcome marks that a run
+    happened; the node is valid only when the run completed, and in
+    registered mode its score is then the manifest's. The data
     manifest is not re-verified here: enforce_evaluation_integrity
     verified this ref moments earlier in the same finalization.
     """
-    node.evaluation_valid = False
-    node.score = None
-    node.should_stop = False
-    node.evaluation_output = ""
     command = candidate_environment_command(
         shlex.split(registered_evaluation_command)
         if registered_evaluation_command
@@ -391,9 +386,13 @@ def execute_candidate_evaluation(
         "kapso_evaluation/kapso_eval.py" if registered_evaluation_command
         else "kapso_evaluation/evaluate.py"
     )
+    node.frame_run_outcome = run.outcome
     node.evaluation_valid = run.completed
-    if registered_evaluation_command and run.completed:
-        node.score = float(parse_manifest_line(run.stdout)["score"])
+    node.score = (
+        float(parse_manifest_line(run.stdout)["score"])
+        if registered_evaluation_command and run.completed
+        else None
+    )
     return run
 
 

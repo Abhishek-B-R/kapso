@@ -167,3 +167,5 @@ def test_node_costs_and_refusal_round_trip_and_validate():
     assert restored.cost_refusal == refusal
     with pytest.raises(ValueError, match="amount"):
         SearchNode.from_dict({"node_id": 0, "measured_cost": {"amount": -1, "unit": "credits"}})
+    with pytest.raises(ValueError, match="string fields"):
+        SearchNode.from_dict({"node_id": 0, "frame_run_outcome": 1})

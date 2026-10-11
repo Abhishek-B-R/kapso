@@ -92,6 +92,13 @@ checks evaluator integrity, calls the estimator, and admits evaluation only
 after checking the caps. The admitted run uses the registered evaluator when available, otherwise
 `kapso_evaluation/evaluate.py`.
 
+The judge then reads what the run captured, stdout and stderr, together with
+how the run ended; the session's own evaluation claims never count, and in
+cost mode the manifest of record is the line the frame run printed. A run
+that fails or overruns its deadline, and a build that errored before any run,
+are judged on that output too and stay unscored and invalid, with feedback
+that explains why. Only a candidate refused by the cost check skips the judge.
+
 The evaluator retains the session's configured `env_strip`,
 `session_env_defaults`, and `expansion_lane_env`: stripped names are removed,
 lane values override inherited values, and defaults apply only to absent names.

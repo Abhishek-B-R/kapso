@@ -93,8 +93,10 @@ When `search_strategy.params.cost.enabled` is true, the coding session builds
 the candidate and prepares evaluation without running either. After the branch
 is finalized and evaluator integrity is checked, the orchestrator estimates
 the materialized candidate's platform cost. Kapso runs evaluation only if the
-estimate passes the candidate cap and remaining campaign budget, then the
-feedback generator judges the resulting output.
+estimate passes the candidate cap and remaining campaign budget. The feedback
+generator judges every finalized candidate: on the run's captured output when
+a run happened, on the session's output for a build that errored. Only a
+completed run can validate a score.
 
 A refused candidate is recorded with `score = None`, an invalid evaluation,
 and cost feedback for the next idea. It skips both internal evaluation and the

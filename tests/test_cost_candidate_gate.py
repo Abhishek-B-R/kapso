@@ -37,9 +37,11 @@ class FeedbackProvider:
 
     def __init__(self):
         self.outputs = []
+        self.end_facts = []
 
     def generate(self, **kwargs):
         self.outputs.append(kwargs["evaluation_result"])
+        self.end_facts.append(kwargs["session_end_facts"])
         return SimpleNamespace(
             feedback="Evaluation succeeded", evaluation_valid=True,
             score=0.8, stop=False, duration_seconds=None,
@@ -229,7 +231,7 @@ def test_registered_manifest_keeps_raw_score_and_records_measured_cost(tmp_path)
 
 
 @pytest.mark.parametrize("failure", ["exit", "deadline"])
-def test_failed_evaluator_cannot_be_revalidated_by_feedback(tmp_path, failure):
+def test_failed_frame_run_is_judged_but_cannot_be_revalidated_by_feedback(tmp_path, failure):
     strategy, nodes, folders = candidate_strategy(tmp_path)
     script = folders[nodes[0].branch_name] / "kapso_evaluation" / "evaluate.py"
     script.write_text(script.read_text() + (
@@ -240,12 +242,53 @@ def test_failed_evaluator_cannot_be_revalidated_by_feedback(tmp_path, failure):
         strategy.implementation_timeout = 0.5
     strategy.before_candidate_evaluation = admit_estimate
     strategy._finalize_nodes(nodes, time.monotonic(), append=True)
+    assert strategy.feedback_generator.outputs == [nodes[0].evaluation_output]
+    assert "KAPSO_EVAL_MANIFEST" in nodes[0].evaluation_output
+    assert nodes[0].feedback == "Evaluation succeeded"
     assert nodes[0].evaluation_valid is False
     assert nodes[0].score is None
     assert nodes[0].should_stop is False
     assert nodes[0].measured_cost == {"amount": 3.0, "unit": "credits"}
     assert strategy.node_history == nodes
-    assert strategy.feedback_generator.outputs == []
+    assert nodes[0].frame_run_outcome.startswith(
+        "was killed at its 0.5s deadline" if failure == "deadline" else "exited 1"
+    )
+    assert strategy.feedback_generator.end_facts == [
+        f"Kapso's evaluation run {nodes[0].frame_run_outcome}"
+    ]
+
+
+def test_errored_build_is_judged_on_its_session_output_and_cannot_score_itself(tmp_path):
+    strategy, nodes, folders = candidate_strategy(tmp_path)
+    strategy.registered_evaluation_command = (
+        f"{shlex.quote(sys.executable)} kapso_evaluation/evaluate.py"
+    )
+    finalized = []
+    strategy.problem_handler.finalize_run_selection = (
+        lambda record, valid: finalized.append((record, valid))
+    )
+    strategy.before_candidate_evaluation = (
+        lambda node: pytest.fail("an errored build is never estimated")
+    )
+    session_output = "Implementation failed: provider kill\n\nKAPSO_EVAL_MANIFEST " + json.dumps({
+        "fidelity": "full", "fraction": 1.0, "seed": 1337,
+        "items": 1, "total_items": 1, "score": 0.95,
+    })
+    nodes[0].technical_difficulties = "session died"
+    strategy._absorb_implementation(nodes[0], session_output, None, None)
+    nodes[0].had_error = True
+    strategy._finalize_nodes(nodes, time.monotonic(), append=True)
+    assert strategy.feedback_generator.outputs == [session_output]
+    assert nodes[0].evaluation_output == session_output
+    assert nodes[0].feedback == "Evaluation succeeded"
+    assert nodes[0].evaluation_valid is False
+    assert nodes[0].score is None
+    assert nodes[0].estimated_cost is None
+    assert nodes[0].measured_cost is None
+    assert nodes[0].frame_run_outcome == ""
+    assert finalized == []
+    assert not (folders[nodes[0].branch_name] / "executed").exists()
+    assert strategy._select_parent().branch_name == "main"
 
 
 def test_inconsistent_measured_unit_fails_before_feedback(tmp_path):
@@ -277,9 +320,10 @@ def test_suspended_build_cannot_publish_an_unestimated_score(tmp_path):
     assert nodes[0].suspended is True
     assert nodes[0].score is None
     assert nodes[0].evaluation_valid is False
-    assert nodes[0].evaluation_output == ""
+    assert nodes[0].evaluation_output == 'KAPSO_EVAL_MANIFEST {"cost": "9 credits"}'
     assert nodes[0].measured_cost is None
     assert nodes[0].estimated_cost is None
+    assert strategy.feedback_generator.outputs == []
     assert strategy.get_best_experiment() is None
     assert strategy.get_experiment_history(best_last=True) == nodes
     assert strategy._select_parent().branch_name == "main"

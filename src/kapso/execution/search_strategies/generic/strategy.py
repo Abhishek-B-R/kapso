@@ -94,7 +94,6 @@ from kapso.execution.search_strategies.generic.registered_evaluation import (
     execute_candidate_evaluation,
     execute_registered_evaluation,
     manifest_of_record,
-    manifest_score_of_record,
     record_evaluation_attempt,
     sync_registered_evaluation,
 )
@@ -653,8 +652,11 @@ class GenericSearch(SearchStrategy):
             print(f"{lane_tag}[GenericSearch] Warning: No JSON result from agent, using raw output")
 
         if self._cost_enabled():
+            # A build-only session: its score and cost claims are void and
+            # nothing is valid until a frame run says so. Its output stays
+            # on the node as the judge's evidence for a build that errored;
+            # the frame run replaces it when one happens.
             node.score = None
-            node.evaluation_output = ""
             node.measured_cost = None
             node.evaluation_valid = False
 
@@ -833,7 +835,9 @@ class GenericSearch(SearchStrategy):
         """Post-barrier: integrity + feedback serialized in node-id order —
         deterministic history, no interleaved feedback sessions. A node
         that asked the person is stamped and recorded, never judged: it
-        is not finished."""
+        is not finished. In cost mode a build refused by the cost check is
+        recorded with its refusal as feedback, never judged; every other
+        finalized node is judged."""
         self._status_phase("feedback")
         for lane_index, node in enumerate(nodes):
             if getattr(node, "suspended", False):
@@ -842,8 +846,7 @@ class GenericSearch(SearchStrategy):
                     "— not judged until it is continued"
                 )
             elif self.enforce_evaluation_integrity(node):
-                admitted = self._evaluate_admitted_candidate(node, lane_index=lane_index)
-                if admitted:
+                if self._evaluate_admitted_candidate(node, lane_index=lane_index):
                     self._generate_feedback(node)
                     self._record_evaluation_attempt(node)
             else:
@@ -872,26 +875,25 @@ class GenericSearch(SearchStrategy):
         return bool(getattr(self, "cost_config", {}).get("enabled"))
 
     def _evaluate_admitted_candidate(self, node: SearchNode, *, lane_index: int = 0) -> bool:
-        """Estimate a finalized build before its first platform execution."""
-        if not self._cost_enabled():
+        """Cost mode: estimate a finalized build and frame-run it when
+        admitted. Returns whether the judge reads the node, which is every
+        node except a refused one: an errored build gets no estimate and
+        no run and is judged on its session output; a failed run is judged
+        on what it captured."""
+        if not self._cost_enabled() or node.had_error:
             return True
-        if node.had_error:
-            return False
         if self.before_candidate_evaluation is None:
             raise ValueError("Cost-enabled search requires before_candidate_evaluation")
-        node.score = None
-        node.evaluation_output = ""
-        node.measured_cost = None
         if not self.before_candidate_evaluation(node):
             return False
         self.evaluate_candidate(node, lane_index=lane_index)
-        return node.evaluation_valid
+        return True
 
     def evaluate_candidate(self, node: SearchNode, *, lane_index: int = 0) -> SearchNode:
         """Execute a finalized candidate after its cost estimate was admitted.
 
-        The caller generates feedback from the captured evaluator output;
-        implementation-session output never becomes evaluation evidence.
+        The run's capture replaces the session's output as the judge's
+        evidence; the session's manifest line and score never count.
         """
         if not self._cost_enabled() or node.estimated_cost is None or node.cost_refusal:
             raise ValueError("Deferred evaluation requires an admitted cost estimate")
@@ -1203,8 +1205,12 @@ class GenericSearch(SearchStrategy):
         )
 
     def _manifest_of_record(self, node: SearchNode) -> Optional[Dict[str, Any]]:
-        """The granted-class manifest from the session's last manifest line."""
+        """The granted-class manifest from the last manifest line of the
+        evaluation that ran: the session's in the default flow, Kapso's
+        frame run in cost mode, where a session's own line never counts."""
         if not self.registered_evaluation_command:
+            return None
+        if self._cost_enabled() and not node.frame_run_outcome:
             return None
         return manifest_of_record(
             node,
@@ -1214,15 +1220,9 @@ class GenericSearch(SearchStrategy):
         )
 
     def _manifest_score_of_record(self, node: SearchNode) -> Optional[float]:
-        """The granted-class score from the session's last manifest line."""
-        if not self.registered_evaluation_command:
-            return None
-        return manifest_score_of_record(
-            node,
-            registered_evaluation_command=self.registered_evaluation_command,
-            fidelity_decision=self.fidelity_decision,
-            registered_subsample_seed=self.registered_subsample_seed,
-        )
+        """The granted-class score from the manifest of record."""
+        manifest = self._manifest_of_record(node)
+        return None if manifest is None else float(manifest["score"])
 
     def _record_evaluation_attempt(self, node: SearchNode) -> None:
         """Append the node's measurement under the registered evaluator."""
@@ -1589,6 +1589,16 @@ class GenericSearch(SearchStrategy):
     # Feedback and Result Extraction (Generic-specific)
     # =========================================================================
 
+    def _judge_end_facts(self, node: SearchNode) -> str:
+        """Harness ground truth for the judge: how the build session ended
+        and, when Kapso frame-ran the evaluator, how that run ended; the
+        captured streams never show a deadline kill."""
+        session_facts = getattr(self, "_pending_session_end_facts", "")
+        if not node.frame_run_outcome:
+            return session_facts
+        run_facts = f"Kapso's evaluation run {node.frame_run_outcome}"
+        return f"{session_facts}; {run_facts}" if session_facts else run_facts
+
     def _generate_feedback(self, node: SearchNode) -> SearchNode:
         """Judge one node with the FeedbackGenerator (updates the node
         in-place with feedback, score, and should_stop)."""
@@ -1597,15 +1607,15 @@ class GenericSearch(SearchStrategy):
             feedback_generator=self.feedback_generator,
             goal=self.goal,
             design_axes=design_axes_brief(self.design_axes),
-            session_end_facts=getattr(
-                self, "_pending_session_end_facts", ""
-            ),
+            session_end_facts=self._judge_end_facts(node),
             clamped_timeout=self._clamped_timeout,
             manifest_of_record=self._manifest_of_record,
             finalize_run_selection=(
                 lambda manifest, valid:
                 self.problem_handler.finalize_run_selection(manifest, valid)
             ),
+            # The frame run's verdict: in cost mode a session's own claim
+            # of validity never reaches the judge.
             execution_valid=node.evaluation_valid if self._cost_enabled() else True,
         )
 

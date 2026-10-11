@@ -87,6 +87,10 @@ class SearchNode:
     estimated_cost: Optional[Dict[str, Any]] = None
     measured_cost: Optional[Dict[str, Any]] = None
     cost_refusal: Optional[Dict[str, Any]] = None
+    # Cost mode: how Kapso's own frame run of the evaluator ended, empty
+    # until one ran. The manifest lookup keys on it, so a session that
+    # prints a manifest line cannot score itself.
+    frame_run_outcome: str = ""
 
     # Observational metrics from a caller-owned iteration evaluator. These do
     # not participate in search, stopping, or best-candidate selection.
@@ -201,6 +205,7 @@ class SearchNode:
             "evaluation_integrity_error",
             "started_at",
             "cli_session_id",
+            "frame_run_outcome",
         }
         invalid_strings = sorted(
             name
