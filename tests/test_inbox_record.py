@@ -155,6 +155,17 @@ def test_inbox_path_is_absolute_whatever_the_workspace_argument(tmp_path, monkey
     assert inbox_path("campaign").is_absolute()
 
 
+def test_a_credential_shaped_reply_is_refused_by_the_record_itself(tmp_path):
+    """The guard holds for every caller, not only the CLI's --yes check."""
+    path = tmp_path / "inbox.jsonl"
+    file_requests(path, node=1, session="s", entries=[ENTRY])
+    token = "sk-abcdefghijklmnopqrstuvwxyz0123"
+    with pytest.raises(ValueError, match="looks like a credential"):
+        record_reply(path, 1, f"added {token}")
+    assert load_requests(path)[1].open
+    assert record_reply(path, 1, token, allow_secret=True).reply == token
+
+
 def test_launch_record_round_trip_and_missing_default(tmp_path):
     assert read_launch_record(tmp_path) is None
     write_launch_record(tmp_path, {"output_path": str(tmp_path), "max_iterations": 4})

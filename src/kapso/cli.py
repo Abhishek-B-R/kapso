@@ -20,7 +20,6 @@
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -39,7 +38,11 @@ load_dotenv(find_dotenv(usecwd=True))
 
 from kapso.kapso import Kapso, DeployStrategy, DEFAULT_CONFIG_PATH, DEFAULT_MAX_ITERATIONS
 from kapso.core.config import load_config, load_mode_config
-from kapso.execution.inbox import list_registered_campaigns, render_requests
+from kapso.execution.inbox import (
+    list_registered_campaigns,
+    looks_like_a_secret,
+    render_requests,
+)
 from kapso.execution.observability import OperationStatusView
 from kapso.execution.run_checkpoint import RunCheckpointStore
 from kapso.core.preflight import (
@@ -149,22 +152,6 @@ def _print_evolve_summary(solution) -> None:
 # INBOX (docs/research/evolve-hub-design.md v4 §4.6)
 # =============================================================================
 
-# A reply that looks like a credential. Replies are stored in plain text
-# and handed to the coder as text, so the value belongs in the file the
-# fix names, never here. Shapes of common tokens — structural, not knobs.
-_SECRET_SHAPES = (
-    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
-    re.compile(r"hf_[A-Za-z0-9]{16,}"),
-    re.compile(r"AKIA[0-9A-Z]{16}"),
-    re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
-    re.compile(r"xox[abp]-[A-Za-z0-9-]{20,}"),
-)
-
-
-def _looks_like_a_secret(note: str) -> bool:
-    return any(shape.search(note) for shape in _SECRET_SHAPES)
-
-
 def _campaign_here(start: Path) -> Optional[Path]:
     """The nearest ancestor of `start` that is a campaign directory."""
     for candidate in (start, *start.parents):
@@ -267,7 +254,7 @@ def cmd_inbox_reply(words, *, yes: bool) -> None:
             sys.exit(1)
         request_id = open_requests[0].id
     note = " ".join(words)
-    if _looks_like_a_secret(note) and not yes:
+    if looks_like_a_secret(note) and not yes:
         print(
             "This reply looks like a credential. Replies are stored in plain "
             "text and handed to the coder as text; put the value where the "
@@ -275,7 +262,7 @@ def cmd_inbox_reply(words, *, yes: bool) -> None:
             "instead. To store it anyway, add --yes at the end."
         )
         sys.exit(1)
-    solution = Kapso.reply(str(campaign), request_id, note)
+    solution = Kapso.reply(str(campaign), request_id, note, allow_secret=yes)
     if solution is not None:
         _print_evolve_summary(solution)
 

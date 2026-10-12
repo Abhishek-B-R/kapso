@@ -57,8 +57,8 @@ def _run(monkeypatch, *argv: str) -> None:
 def _capture_reply(monkeypatch, result=None) -> List[Any]:
     calls: List[Any] = []
 
-    def reply(cls, campaign, request_id, note=""):
-        calls.append((campaign, request_id, note))
+    def reply(cls, campaign, request_id, note="", *, allow_secret=False):
+        calls.append((campaign, request_id, note, allow_secret))
         return result
 
     monkeypatch.setattr(Kapso, "reply", classmethod(reply))
@@ -123,9 +123,9 @@ def test_reply_resolves_the_campaign_and_the_id(tmp_path, monkeypatch, capsys):
 
     resolved = str(workspace.resolve())
     assert calls == [
-        (resolved, 1, "added the key"),
-        (resolved, 1, "added the key"),
-        (resolved, 1, ""),
+        (resolved, 1, "added the key", False),
+        (resolved, 1, "added the key", False),
+        (resolved, 1, "", False),
     ]
     assert capsys.readouterr().out == ""
 
@@ -139,7 +139,7 @@ def test_reply_needs_the_id_when_several_are_open(tmp_path, monkeypatch, capsys)
     assert "which request?" in capsys.readouterr().out and calls == []
 
     _run(monkeypatch, "inbox", "reply", "2", "done")
-    assert calls == [(str(workspace.resolve()), 2, "done")]
+    assert calls == [(str(workspace.resolve()), 2, "done", False)]
 
 
 def test_reply_outside_a_campaign_must_name_it(tmp_path, monkeypatch, capsys):
@@ -160,7 +160,7 @@ def test_reply_refuses_a_credential_without_yes(tmp_path, monkeypatch, capsys):
     assert "looks like a credential" in capsys.readouterr().out and calls == []
 
     _run(monkeypatch, "inbox", "reply", "1", token, "--yes")
-    assert calls == [(str(workspace.resolve()), 1, token)]
+    assert calls == [(str(workspace.resolve()), 1, token, True)]
 
 
 def _solution(workspace: Path, metadata: Dict[str, Any]) -> SolutionResult:

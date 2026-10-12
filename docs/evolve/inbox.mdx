@@ -87,7 +87,9 @@ The command refuses to run while a live process holds the campaign, so nothing r
   Replies are stored in plain text in `.kapso/inbox.jsonl` and handed to the
   coding agent as text. Put a credential where the `fix` row says, usually the
   `.env` the run loaded, and reply with a note. A reply shaped like a token is
-  refused unless you add `--yes` at the end of the line.
+  refused unless you add `--yes` at the end of the line; `Kapso.reply` refuses
+  it the same way unless `allow_secret=True`, so a script or a plugin cannot
+  store one by accident.
 </Warning>
 
 A reply that says the resource is not available is an instruction: the coding agent proceeds without the resource, and no later session in the campaign asks for that key again.

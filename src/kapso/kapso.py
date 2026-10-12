@@ -1603,7 +1603,8 @@ class Kapso:
 
     @classmethod
     def reply(
-        cls, campaign: str, request_id: int, note: str = ""
+        cls, campaign: str, request_id: int, note: str = "", *,
+        allow_secret: bool = False,
     ) -> Optional[SolutionResult]:
         """Answer a request and, when the node that asked has every request
         answered, resume the campaign in this process: the session that
@@ -1613,7 +1614,10 @@ class Kapso:
         it from the script with resume=True).
 
         Refuses while a live process holds the campaign, so nothing runs
-        twice. An empty note means "done"."""
+        twice, and refuses a note shaped like a credential unless
+        allow_secret is True (replies are plain text handed to the coder;
+        the value belongs in the .env the fix names). An empty note means
+        "done"."""
         campaign_dir = str(Path(campaign).resolve())
         if not Path(campaign_dir, ".kapso").is_dir():
             raise FileNotFoundError(
@@ -1627,7 +1631,7 @@ class Kapso:
                 "before replying"
             )
         path = inbox_path(campaign_dir)
-        request = record_reply(path, request_id, note)
+        request = record_reply(path, request_id, note, allow_secret=allow_secret)
         print(f"#{request_id} answered.")
         still_open = sorted(
             other.id

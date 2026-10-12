@@ -20,6 +20,7 @@ missing file is the documented "no requests" default.
 
 import fcntl
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -264,8 +265,38 @@ def file_requests(
     return results
 
 
-def record_reply(path: str | Path, request_id: int, note: str) -> Request:
-    """The person's answer. The request must exist and be open."""
+# A reply that looks like a credential. Replies are stored in plain text
+# and handed to the coder as text, so the value belongs in the file the
+# fix names, never here. Shapes of common tokens — structural, not knobs.
+SECRET_SHAPES = (
+    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"hf_[A-Za-z0-9]{16,}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"xox[abp]-[A-Za-z0-9-]{20,}"),
+)
+
+
+def looks_like_a_secret(note: str) -> bool:
+    return any(shape.search(note) for shape in SECRET_SHAPES)
+
+
+def record_reply(
+    path: str | Path, request_id: int, note: str, *, allow_secret: bool = False
+) -> Request:
+    """The person's answer. The request must exist and be open.
+
+    A note shaped like a credential is refused unless the caller says it
+    knows (`allow_secret=True`, the CLI's --yes): the guard holds for every
+    caller — the CLI, a script, a host plugin — not only the command line.
+    """
+    if looks_like_a_secret(note) and not allow_secret:
+        raise ValueError(
+            "reply looks like a credential; replies are stored in plain text "
+            "and handed to the coder as text — put the value where the "
+            "request's fix says (usually the .env the run loaded) and reply "
+            "with a note, or pass allow_secret=True to store it anyway"
+        )
     path = Path(path)
     with _locked(path) as handle:
         requests = fold(_parse_events(handle.read(), str(path)))
