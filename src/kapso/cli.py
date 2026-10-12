@@ -26,7 +26,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Sequence
 
 import yaml
 
@@ -85,6 +85,57 @@ def list_agents() -> None:
     CodingAgentFactory.print_agents_info()
 
 
+# =============================================================================
+# DETACHED RUNS
+# =============================================================================
+
+def _without_detach_flags(argv: Sequence[str]) -> List[str]:
+    """This command line without --detach and --log, for the child."""
+    kept: List[str] = []
+    skip = False
+    for word in argv:
+        if skip:
+            skip = False
+        elif word == "--detach" or word.startswith("--log="):
+            continue
+        elif word == "--log":
+            skip = True
+        else:
+            kept.append(word)
+    return kept
+
+
+def _default_log(campaign: Path) -> Path:
+    """The detached run's log: a sibling of the campaign directory, which
+    must stay empty for seeding and holds only the campaign itself."""
+    return campaign.with_name(campaign.name + ".log")
+
+
+def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) -> None:
+    """Run this very command again in a session of its own, its output in
+    a log file, and return at once with what the person needs to follow
+    it. A session of its own (`start_new_session`) is what outlives the
+    shell call that launched it: a coding agent's tool call ends a plain
+    background child when it returns, and the campaign with it (Codex,
+    verified 2026-09-07); every host and the skill used to reinvent the
+    nohup/setsid dance for this one flag."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as log:
+        child = subprocess.Popen(
+            [sys.executable, "-m", "kapso.cli", *argv],
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            cwd=os.getcwd(),
+            start_new_session=True,
+        )
+    print(f"{label} started in a session of its own (pid {child.pid})")
+    print(f"  log:     {log_path}")
+    print(f"  status:  {campaign / '.kapso' / 'status.json'}")
+    print(f"  follow:  kapso watch {campaign} --follow")
+    print(f"  inbox:   kapso inbox {campaign}")
+
+
 def cmd_evolve(args) -> None:
     """Handle the evolve command - build software from goals."""
     # Get goal text
@@ -98,6 +149,25 @@ def cmd_evolve(args) -> None:
     else:
         print("Error: --goal or --goal-file required for evolve command")
         sys.exit(1)
+
+    if args.detach:
+        if not args.output:
+            print(
+                "Error: --detach needs --output: the campaign directory is "
+                "where its status file lives and its log goes beside"
+            )
+            sys.exit(1)
+        campaign = Path(args.output).expanduser().resolve()
+        _detach(
+            "kapso evolve",
+            _without_detach_flags(sys.argv[1:]),
+            log_path=(
+                Path(args.log).expanduser().resolve() if args.log
+                else _default_log(campaign)
+            ),
+            campaign=campaign,
+        )
+        return
     
     # Create Kapso instance with optional KG index
     kapso = Kapso(config_path=args.config, kg_index=args.kg_index)
@@ -213,7 +283,7 @@ def cmd_inbox(args) -> None:
     reply [CAMPAIGN] [ID] [NOTE]` — answer it, and the campaign resumes."""
     words = list(args.words)
     if words and words[0] == "reply":
-        cmd_inbox_reply(words[1:], yes=args.yes)
+        cmd_inbox_reply(words[1:], yes=args.yes, detach=args.detach, log=args.log)
         return
     if len(words) > 1:
         print("Error: kapso inbox takes at most a campaign directory")
@@ -234,9 +304,13 @@ def cmd_inbox(args) -> None:
     print("\n\n".join(_render_campaign_inbox(campaign) for campaign in waiting))
 
 
-def cmd_inbox_reply(words, *, yes: bool) -> None:
-    """Answer one request; the campaign resumes here when it can. The id
-    may be left out when one request is open; an empty note means done."""
+def cmd_inbox_reply(
+    words, *, yes: bool, detach: bool = False, log: Optional[str] = None
+) -> None:
+    """Answer one request; the campaign resumes here when it can, or in a
+    session of its own with --detach (the note is checked here first, so
+    a refusal is immediate; the child records it and resumes). The id may
+    be left out when one request is open; an empty note means done."""
     words = list(words)
     explicit = None
     if words and not words[0].isdigit() and Path(words[0]).expanduser().is_dir():
@@ -262,6 +336,26 @@ def cmd_inbox_reply(words, *, yes: bool) -> None:
             "instead. To store it anyway, add --yes at the end."
         )
         sys.exit(1)
+    if detach:
+        located = OperationStatusView.locate(campaign)
+        if located is not None and OperationStatusView(located).alive:
+            pid = OperationStatusView(located).data.get("pid")
+            print(f"{campaign} is running (pid {pid}); wait for it to pause before replying")
+            sys.exit(1)
+        argv = ["inbox", "reply", str(campaign), str(request_id)]
+        if note:
+            argv.append(note)
+        if yes:
+            argv.append("--yes")
+        _detach(
+            "kapso inbox reply",
+            argv,
+            log_path=(
+                Path(log).expanduser().resolve() if log else _default_log(campaign)
+            ),
+            campaign=campaign,
+        )
+        return
     solution = Kapso.reply(str(campaign), request_id, note, allow_secret=yes)
     if solution is not None:
         _print_evolve_summary(solution)
@@ -796,6 +890,7 @@ Examples:
   kapso evolve --goal "Build a web scraper for news articles"
   kapso evolve --goal-file problem.txt --iterations 20
   kapso evolve --goal "Build a classifier" --eval-dir ./eval/ --data-dir ./data/
+  kapso evolve --goal "Build a classifier" --output ./campaign --detach   # returns at once; follow with kapso watch
   kapso evolve --output ./campaign --resume      # goal and flags from the launch record
 """
     )
@@ -833,6 +928,16 @@ Examples:
         "--resume",
         action="store_true",
         help="Continue the compatible checkpoint in --output",
+    )
+    evolve_parser.add_argument(
+        "--detach",
+        action="store_true",
+        help="Start the campaign in a session of its own and return at once "
+             "with its pid, log, status path and the watch command (needs --output)",
+    )
+    evolve_parser.add_argument(
+        "--log", type=str, default=None,
+        help="Where a detached run's output goes (default: <output>.log beside the campaign)",
     )
     # Configuration options
     evolve_parser.add_argument("-m", "--mode", type=str, help="Config mode (GENERIC, MINIMAL)")
@@ -1086,6 +1191,7 @@ Examples:
   kapso inbox reply 1 "added the key"      # answer request 1 here; the campaign resumes
   kapso inbox reply "added the key"        # the id may be left out when one request is open
   kapso inbox reply ./campaign 1           # answer from elsewhere; an empty note means done
+  kapso inbox reply 1 "added the key" --detach   # resume in a session of its own; follow with kapso watch
 """,
     )
     inbox_parser.add_argument(
@@ -1095,6 +1201,14 @@ Examples:
     inbox_parser.add_argument(
         "--yes", action="store_true",
         help="Store a reply that looks like a credential anyway",
+    )
+    inbox_parser.add_argument(
+        "--detach", action="store_true",
+        help="Resume the campaign in a session of its own and return at once",
+    )
+    inbox_parser.add_argument(
+        "--log", type=str, default=None,
+        help="Where a detached resume's output goes (default: <campaign>.log beside it)",
     )
     inbox_parser.add_argument(
         "--config", type=str, default=None,

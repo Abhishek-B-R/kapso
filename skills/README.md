@@ -12,10 +12,11 @@ ingest knowledge, deploy.
 | `opencode/kapso/` | OpenCode | `.opencode/skills/kapso` (project) or `~/.config/opencode/skills/kapso` (global); OpenCode also reads the Claude and Codex locations |
 
 The copies are deliberately separate files, not symlinks, so each can diverge
-as its agent's conventions do. Today they differ in one place: Codex's shell
-ends a plain `nohup … &` child when the call returns, so the Codex copy
-launches and resumes campaigns with `setsid -f`; the other two use `nohup`.
-Their test record is `docs/plans/coding-agent-skill-findings.md`.
+as its agent's conventions do. Today they are identical: campaigns launch,
+resume and reply with `kapso evolve --detach` / `kapso inbox reply --detach`,
+which starts the run in a session of its own on every host (the Codex copy
+used to need `setsid -f` where the others used `nohup`). Their test record is
+`docs/plans/coding-agent-skill-findings.md`.
 
 ## Install
 

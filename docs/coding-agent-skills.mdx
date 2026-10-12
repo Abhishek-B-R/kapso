@@ -14,7 +14,7 @@ The file is about 270 lines of facts and rules, written for the mistakes agents 
 - The package is `leeroo-kapso`. The PyPI package named `kapso` is an unrelated tool that shadows the `kapso` command, and an agent that installs it by name breaks the install it was asked to verify.
 - Every model call runs through the `claude` and `codex` CLIs, which must be logged in, and `OPENAI_API_KEY` is read from `.env` in the working directory for embeddings only. `kapso doctor <verb>` comes before any run, and `--models` probes each configured model live.
 - A goal names a success metric and a number, and the judge when there is one: "accuracy above 0.85 as measured by `eval/evaluate.py`". When the repository has no evaluation and the request names none, the agent asks once, in one line, and ends its turn; if you have none, it launches without `--eval-dir` and Kapso builds its own evaluation in `kapso_evaluation/`. It never writes an evaluator on your behalf.
-- A campaign runs for tens of minutes to hours, so the agent launches it in the background with `--output` in a sibling directory, checks once that the process is alive, and hands you `kapso watch <campaign> --follow` in the same reply, with the goal it passed and the note that your own metric can replace the one it assumed.
+- A campaign runs for tens of minutes to hours, so the agent launches it with `--detach` and `--output` in a sibling directory, and hands you `kapso watch <campaign> --follow` in the same reply, with the goal it passed and the note that your own metric can replace the one it assumed.
 - `WAITING ON YOU` is a pause, not a failure. The agent reads the request with `kapso inbox <campaign>` and answers with `kapso inbox reply`, and it never restarts the campaign or puts a secret in the reply. See [the inbox](/docs/evolve/inbox).
 - A dead campaign resumes with `kapso evolve --output <campaign> --resume` and nothing else, since the checkpoint and the launch record carry the goal and the flags. See [Resuming runs](/docs/evolve/resuming-runs).
 - `learn("./campaign")` banks what a campaign taught; served lessons stay off until `learning.serving.enabled: true` in a config passed with `--config`. `learn_knowledge()` is for outside sources. See [Trajectory learning](/docs/learning/overview).
@@ -46,7 +46,7 @@ mkdir -p .opencode/skills && cp -r kapso/skills/opencode/kapso .opencode/skills/
 | Codex CLI | `skills/codex/kapso/` | `.agents/skills/kapso` in the project or any parent up to the git root, or `~/.agents/skills/kapso` |
 | OpenCode | `skills/opencode/kapso/` | `.opencode/skills/kapso` in the project, or `~/.config/opencode/skills/kapso`; OpenCode also reads the Claude Code and Codex locations |
 
-The three copies are separate files on purpose, so each can follow its agent's conventions. They differ in one place today: Codex ends a background child when the shell call that started it returns, so the Codex copy launches and resumes campaigns with `setsid -f`, where the other two use `nohup`. Copy the folder written for your agent.
+The three copies are separate files on purpose, so each can follow its agent's conventions. Today they are identical: campaigns launch, resume and reply with `--detach`, which starts the run in a session of its own on every host (the Codex copy used to need `setsid -f` where the others used `nohup`). Copy the folder written for your agent.
 
 The skill states facts for Kapso 0.7.x. Copy it from the release you have installed, and copy it again when you upgrade.
 

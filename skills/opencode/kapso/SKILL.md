@@ -33,14 +33,16 @@ the source is large and a session that greps it runs out of turns before answeri
   Add `--models` to live-probe every configured model with one token each; a model
   the login cannot serve fails here in seconds instead of hours in. A usage cap on
   a model it can serve is not visible to the probe.
-- A campaign takes tens of minutes to hours. Launch it in the background with its
-  output in a log file, check once that the process is alive, and hand off in
+- A campaign takes tens of minutes to hours. Launch it with `--detach`: the
+  command returns at once with the pid, the log, the status path and the
+  `watch` line, and the run outlives your tool call on every host. Hand off in
   your reply right away: the goal you passed, the metric and target you assumed
   and that the user's own can replace them, the `kapso watch <campaign> --follow`
   command, and that `WAITING ON YOU` is a pause answered through `kapso inbox`.
-  The status file appears only after the seed copy and repo-memory bootstrap,
-  usually a few minutes in, so do not wait for it, poll the log, or arm
-  monitors unless asked. Never run `kapso evolve` in a foreground tool call.
+  The status file appears within seconds (phase `setup` while the workspace is
+  seeded and repo memory bootstrapped, which takes minutes), so do not poll the
+  log or arm monitors unless asked. Never run `kapso evolve` without `--detach`
+  from a tool call.
 - A run that ends with `WAITING ON YOU` has paused, not failed (exit code 0).
   Do not restart it; reply through the inbox (below).
 
@@ -80,20 +82,21 @@ suite, a benchmark command. Then:
 
 ```bash
 kapso doctor evolve
-nohup kapso evolve \
+kapso evolve \
   --goal "Get the test accuracy of the churn model in train.py above 0.85 as measured by eval/evaluate.py. The evaluator must not be modified." \
   --initial-repo . \
   --eval-dir eval \
   --data-dir data \
   --output ../churn-campaign \
   --time-budget-minutes 60 --iterations 10 \
-  > ../churn-campaign.log 2>&1 &
+  --detach
 kapso watch ../churn-campaign --follow
 ```
 
-- The `nohup … &` line is a tool call of its own: nothing chained in front of
-  it. `test … && nohup … &` backgrounds the whole chain instead of Kapso, the
-  call then hangs on it until the harness kills it, campaign included.
+- `--detach` starts the campaign in a session of its own and prints its pid,
+  the log (`../churn-campaign.log`) and the `watch` line; no `nohup`, `setsid`
+  or `&` is needed, on any host. The launch is a tool call of its own: nothing
+  chained in front of it.
 - `--initial-repo <path|github url>` seeds the campaign; a non-git directory is
   copied and committed as the baseline. The original is never modified. Every
   experiment lands on branch `generic_exp_N` inside `--output`, an empty
@@ -120,7 +123,8 @@ solution = Kapso().evolve(
 print(solution.explain())   # .final_score .succeeded .code_path .requests
 ```
 
-`evolve()` blocks for the whole campaign, so run scripts with nohup as well.
+`evolve()` blocks for the whole campaign: from a tool call prefer the CLI with
+`--detach`, or start the script in a session of its own.
 
 ## Inbox: the campaign is waiting on you
 
@@ -129,11 +133,14 @@ file) records a request and the campaign pauses.
 
 ```bash
 kapso inbox ./campaign                 # the open requests: key, hit, tried, fix, next
-kapso inbox reply ./campaign 1 "added the key to .env"
+kapso inbox reply ./campaign 1 "added the key to .env" --detach
 ```
 
 - The id may be omitted when one request is open; an empty note means done.
-- The reply resumes the very session that asked, in the foreground of that command.
+- The reply resumes the very session that asked. With `--detach` the note is
+  checked here and the campaign resumes in a session of its own, so hand off
+  with the `watch` line it prints; without it, the resume runs in the
+  foreground of that command. Either form works from any directory.
 - A credential-shaped reply is refused: put the value where `fix` says (usually
   `.env`) and reply with a note.
 
@@ -141,13 +148,12 @@ kapso inbox reply ./campaign 1 "added the key to .env"
 
 ```bash
 kapso watch ../churn-campaign                  # DEAD (pid gone) or STALLED means it died
-nohup kapso evolve --output ../churn-campaign --resume > ../churn-campaign.log 2>&1 &
+kapso evolve --output ../churn-campaign --resume --detach
 ```
 
-A resume is a launch: run it in the background the same way, check once that
-the process is alive, and hand off with `kapso watch … --follow`. Do it in the
-same turn you diagnose the death in; a reply that only announces a resume
-leaves the campaign dead. Other `kapso evolve` processes on the machine belong
+A resume is a launch: `--detach` it the same way and hand off with the
+`kapso watch … --follow` line it prints. Do it in the same turn you diagnose
+the death in; a reply that only announces a resume leaves the campaign dead. Other `kapso evolve` processes on the machine belong
 to other campaigns; never kill one. The checkpoint in `.kapso/run_state.json` carries
 the goal and the search state; the launch record `.kapso/launch.json` carries
 every flag of the launch, and a resume reads both, so pass only what you mean
