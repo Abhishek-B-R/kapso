@@ -192,7 +192,52 @@ next improvement. The campaign starts ahead: served the bank, with the repo
 memory the last campaign built, on an install that `kapso doctor` already
 verified. The handoff is the same four lines as in step 3.
 
-## 4. What the flow asks of the core
+## 4. The entrance to the evolve loop
+
+The critical moment, settled 2026-10-12: the agent proposes, never gates.
+Most engineers arrive without an evaluator, some with a success criterion,
+many with nothing but a wish. The skill used to make the whole reply one
+question when the repository had no evaluator; that reads as "give me a
+judge or I do not move". The replacement is a short proposal the engineer
+reacts to with a word.
+
+Before launching, the agent reads the repository and writes a **campaign
+brief**, a file `kapso-brief.md` in the project passed with `--goal-file`:
+
+```text
+Objective    one line
+Measured by  the evaluator (protected), or the protocol a campaign-built
+             evaluator must follow (data, hold-out, seed, metric definition)
+Baseline     measured before launch when an evaluator exists, else unknown
+Target       given, or proposed with headroom and the reasoning
+Rules        invariants the judge enforces: evaluator untouched, no fitting
+             on the hold-out, no rows dropped, read-only data
+Budget       time and experiments, defaults stated
+```
+
+Three cases, by what the engineer has:
+
+1. **An evaluator.** The agent finds it, runs it once for the baseline,
+   takes the engineer's metric and target as given (or proposes a target
+   with headroom and says so in one line), launches with `--eval-dir`, and
+   puts the brief in the reply. No question.
+2. **A success criterion, no evaluator.** The agent proposes the protocol
+   the campaign-built evaluator will follow and a target, offers to write
+   the evaluator for review instead (then it is protected), and asks once:
+   launch as proposed, or change anything. One round of edits, then launch.
+3. **Nothing.** The agent proposes two or three candidate criteria from what
+   the repository holds (a notebook's metric, a test suite, a benchmark
+   command, the task's natural measure), recommends one with a target or an
+   open "maximise within budget", states the default, and launches on "go",
+   "you decide" or a single edit.
+
+Rules that hold in every case: the agent never says it cannot proceed; it
+never asks twice; rules go into the brief as invariants and methods do not;
+it never writes an evaluator unasked. The core needs nothing new for this:
+`--goal-file` exists, a campaign without `--eval-dir` builds its evaluator
+and the judge checks fairness, and the seed copy carries the brief.
+
+## 5. What the flow asks of the core
 
 Found while writing the flow; the first three are small.
 
