@@ -351,6 +351,10 @@ class ExperimentWorkspace:
             "!changes.log",
             ".kapso/run_state.json",
             ".kapso/.run_state.*.tmp",
+            # The status file (observability) exists from workspace setup
+            # on; campaign state like the checkpoint, never branch content.
+            ".kapso/status.json",
+            ".kapso/.status.*.tmp",
             # The inbox record and the launch record (design v4) are
             # campaign state like the checkpoint, never branch content.
             ".kapso/inbox.jsonl",

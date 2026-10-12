@@ -114,6 +114,7 @@ class SearchStrategyFactory:
         evaluation_manifest: Optional[Dict[str, str]] = None,
         feedback_generator: Optional["FeedbackGenerator"] = None,
         goal: str = "",
+        status_heartbeat_seconds: Optional[float] = None,
     ) -> SearchStrategy:
         """
         Create a search strategy instance.
@@ -133,6 +134,7 @@ class SearchStrategyFactory:
             evaluation_manifest: Prevalidated provided-suite file hashes
             feedback_generator: FeedbackGenerator for generating feedback after experiments
             goal: Goal string for feedback generation
+            status_heartbeat_seconds: The campaign status file's heartbeat cadence
         
         Returns:
             Configured SearchStrategy instance
@@ -162,6 +164,7 @@ class SearchStrategyFactory:
             data_dir=data_dir,
             feedback_generator=feedback_generator,
             goal=goal,
+            status_heartbeat_seconds=status_heartbeat_seconds,
         )
         
         return cls._registry[strategy_type_lower](

@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from kapso.execution.types import ContextData
 from kapso.execution.cost_estimator import validate_cost_refusal, validate_cost_value
 from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
+from kapso.execution.observability import EvolveStatus
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.environment.handlers.base import ProblemHandler
 from kapso.execution.memories.repo_memory import RepoMemoryManager
@@ -446,6 +447,11 @@ class SearchStrategyConfig:
     feedback_generator: Optional["FeedbackGenerator"] = None
     # Goal string for feedback generation
     goal: str = ""
+    # The campaign status file's heartbeat cadence (the orchestrator's
+    # budget.checkpoint_heartbeat_seconds). None, as a strategy built
+    # outside the orchestrator gets, records no cadence: a watcher then
+    # judges liveness by the pid alone.
+    status_heartbeat_seconds: Optional[float] = None
 
 
 class SearchStrategy(ABC):
@@ -547,6 +553,19 @@ class SearchStrategy(ABC):
             repo_memory_failure_policy=self.repo_memory_failure_policy,
             repo_memory_max_retries=self.repo_memory_max_retries,
             llm_backend=self.llm,
+        )
+
+        # Observability (design §1): the status file is born the moment the
+        # workspace exists — phase `setup`, state `starting` — so a watcher
+        # sees the campaign from its first seconds instead of after the
+        # repo-memory bootstrap below (one inference session, minutes). It
+        # beats on its own daemon through setup; solve() attaches the
+        # budget view and the caller's hook when the loop starts.
+        self.operation_status = EvolveStatus(
+            os.path.join(self.workspace_dir, ".kapso", "status.json"),
+            heartbeat_seconds=config.status_heartbeat_seconds,
+            daemon=config.status_heartbeat_seconds is not None,
+            phase="setup",
         )
 
         # Setup kapso directories (eval_dir -> kapso_evaluation/, data_dir -> kapso_datasets/)

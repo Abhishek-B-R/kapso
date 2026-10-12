@@ -124,7 +124,8 @@ class OperationStatus(ABC):
       legal values come from the subclass's PHASES;
     - ``heartbeat_at`` refreshed on every write, plus an OPTIONAL daemon
       thread for operations with no natural per-minute update site
-      (evolve reuses its checkpoint-heartbeat daemon instead);
+      (evolve runs it through setup and, once the loop starts, its
+      checkpoint-heartbeat daemon beats the file as well);
     - ``recent``: a 10-line human ring inside the file;
     - an optional ``on_status`` hook, invoked synchronously with the SAME
       dict the file carries after every write and heartbeat. Hook
@@ -141,11 +142,17 @@ class OperationStatus(ABC):
         heartbeat_seconds: Optional[float] = None,
         daemon: bool = False,
         on_status: Optional[Callable[[Dict[str, Any]], None]] = None,
+        phase: Optional[str] = None,
         **payload: Any,
     ):
         if not self.OPERATION or not self.PHASES:
             raise ValueError(
                 "OperationStatus subclasses must define OPERATION and PHASES"
+            )
+        if phase is not None and phase not in self.PHASES:
+            raise ValueError(
+                f"unknown {self.OPERATION} phase {phase!r}: "
+                f"expected one of {list(self.PHASES)}"
             )
         self.path = Path(path).expanduser()
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,8 +168,10 @@ class OperationStatus(ABC):
             "pid": os.getpid(),
             "started_at": now,
             "heartbeat_at": now,
-            "phase": None,
-            "phase_started_at": None,
+            # A phase at birth keeps the state `starting`: the operation
+            # is preparing (evolve seeds its workspace), not yet running.
+            "phase": phase,
+            "phase_started_at": now if phase is not None else None,
             "recent": [],
             **payload,
         }
@@ -182,6 +191,15 @@ class OperationStatus(ABC):
                 daemon=True,
             )
             self._thread.start()
+
+    def observe(
+        self, on_status: Optional[Callable[[Dict[str, Any]], None]]
+    ) -> None:
+        """Attach (or replace) the hook after construction. Evolve's status
+        is born at workspace setup, before solve() knows its caller's
+        hook; the hook then sees every write from the first iteration on."""
+        with self._lock:
+            self._on_status = on_status
 
     # ------------------------------------------------------------ writes
 
@@ -286,14 +304,19 @@ class OperationStatus(ABC):
 
 class EvolveStatus(OperationStatus):
     OPERATION = "evolve"
+    # `setup` is the strategy constructor's phase: the workspace is seeded
+    # and repo memory bootstrapped (one inference session, minutes) before
+    # the first iteration. The file exists from that moment, so a watcher
+    # sees the campaign from its first seconds.
     PHASES = (
-        "lens_planning", "ideation", "implementation", "evaluation",
+        "setup", "lens_planning", "ideation", "implementation", "evaluation",
         "feedback",
     )
     # payload: budget{elapsed_min,total_min}, best{score,node},
-    #          last{score,node}, iteration, active_stream,
-    #          platform_budget{used,budget,unit,refused} (only when cost
-    #          is enabled)
+    #          last{score,node}, iteration, stopped_reason, stop_detail,
+    #          requests (waiting_for_user), platform_budget{used,budget,
+    #          unit,refused} (only when cost is enabled). Documented in
+    #          docs/reference/cli.mdx under `kapso watch` — keep in step.
 
 
 class LessonStatus(OperationStatus):
@@ -328,14 +351,15 @@ class OperationStatusView:
         )
 
     @staticmethod
-    def resolve(path: str | Path) -> Path:
-        """A workspace (-> .kapso/status.json), a status file, or a
-        directory of status files (-> newest by mtime).
+    def locate(path: str | Path) -> Optional[Path]:
+        """Where `path`'s status file is, or None when there is none yet:
+        a workspace (-> .kapso/status.json), a status file, or a directory
+        of status files (-> newest by mtime).
 
-        A workspace whose status file is not there yet raises instead of
-        falling through to some other JSON beside it: a seeded project
-        carries files like result.json, and the status file appears only
-        after the seed copy and the repo-memory bootstrap."""
+        A workspace whose status file is not there yet is None rather than
+        some other JSON beside it: a seeded project carries files like
+        result.json, and the status file appears only once the strategy
+        has seeded the workspace."""
         p = Path(path).expanduser()
         if p.is_file():
             return p
@@ -343,20 +367,31 @@ class OperationStatusView:
         if workspace_status.is_file():
             return workspace_status
         if (p / ".kapso").is_dir():
-            raise FileNotFoundError(
-                f"{p} is a campaign workspace with no status file yet: it is "
-                "still seeding and bootstrapping repo memory, or it died "
-                "before its first heartbeat"
-            )
+            return None
         if p.is_dir():
             candidates = sorted(
                 p.glob("*.json"), key=lambda f: f.stat().st_mtime
             )
             if candidates:
                 return candidates[-1]
+        return None
+
+    @staticmethod
+    def resolve(path: str | Path) -> Path:
+        """locate(), raising when there is no status file yet."""
+        located = OperationStatusView.locate(path)
+        if located is not None:
+            return located
+        p = Path(path).expanduser()
+        if (p / ".kapso").is_dir():
+            raise FileNotFoundError(
+                f"{p} is a campaign workspace with no status file yet: it is "
+                "still seeding its workspace, or it died before its first "
+                "heartbeat"
+            )
         raise FileNotFoundError(
             f"no status file at {p} (looked for the file itself, "
-            f"{workspace_status}, and *.json inside it)"
+            f"{p / '.kapso' / 'status.json'}, and *.json inside it)"
         )
 
     # ------------------------------------------------------------ fields

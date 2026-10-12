@@ -262,8 +262,9 @@ class OrchestratorAgent:
         self.checkpoint_store: Optional[RunCheckpointStore] = None
         self._checkpoint_lock = threading.Lock()
         self._heartbeat_stop = threading.Event()
-        # Observability (design §2): created by solve() once the budget is
-        # resolved; lives at <workspace>/.kapso/status.json.
+        # Observability (design §2): the strategy constructor opens the
+        # status file at workspace setup; solve() adopts it below once the
+        # budget is resolved. Lives at <workspace>/.kapso/status.json.
         self.operation_status: Optional[EvolveStatus] = None
         self._status_budget_total_min: Optional[float] = None
         self._resume_checkpoint: Optional[RunCheckpoint] = None
@@ -523,7 +524,14 @@ class OrchestratorAgent:
             data_dir=self.data_dir,
             feedback_generator=self.feedback_generator,
             goal=self.goal,
+            status_heartbeat_seconds=self._status_heartbeat_seconds(),
         )
+
+    def _status_heartbeat_seconds(self) -> Optional[float]:
+        """The status file's cadence: the same budget key that paces the
+        checkpoint heartbeat (Rule 1 — one knob for both beats)."""
+        interval = self._config_budget.get("checkpoint_heartbeat_seconds")
+        return float(interval) if interval else None
 
     def _resolve_search_strategy_config(self) -> Tuple[str, Dict[str, Any]]:
         """Resolve strategy identity before a resume mutates the workspace."""
@@ -1349,26 +1357,31 @@ class OrchestratorAgent:
         # durable work — a crash at any later point must resume instead of
         # restarting the campaign (and re-buying the maintainer setup).
         self._save_run_checkpoint(status="running")
-        heartbeat_seconds = self._config_budget.get("checkpoint_heartbeat_seconds")
+        heartbeat_seconds = self._status_heartbeat_seconds()
 
         # Observability (design §1/§2): the status file lives with the
-        # campaign's artifacts; the checkpoint-heartbeat daemon below is
-        # its liveness signal, so no separate daemon thread is started.
+        # campaign's artifacts. The strategy constructor opened it at
+        # workspace setup (phase `setup`, state `starting`); the loop adopts
+        # it here — the caller's hook, the budget view, and from now on the
+        # checkpoint-heartbeat daemon below beats it too. A strategy built
+        # outside the base constructor (a test double) gets one now.
         self._status_budget_total_min = (
             round(budget_spec.time_budget_seconds / 60, 1)
             if budget_spec.time_budget_seconds is not None else None
         )
-        self.operation_status = EvolveStatus(
+        status = getattr(self.search_strategy, "operation_status", None) or EvolveStatus(
             Path(self.search_strategy.workspace.workspace_dir)
             / ".kapso" / "status.json",
-            heartbeat_seconds=(
-                float(heartbeat_seconds) if heartbeat_seconds else None
-            ),
-            on_status=on_status,
+            heartbeat_seconds=heartbeat_seconds,
+        )
+        status.observe(on_status)
+        status.update(
+            heartbeat_seconds=heartbeat_seconds,
             budget=self._status_budget_view(),
             **self._status_platform_budget_payload(),
         )
-        self.search_strategy.operation_status = self.operation_status
+        self.operation_status = status
+        self.search_strategy.operation_status = status
         print(f"status: {self.operation_status.path}")
 
         if heartbeat_seconds and self.checkpoint_store is not None:

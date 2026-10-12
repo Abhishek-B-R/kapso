@@ -274,6 +274,31 @@ kapso watch ./campaign --tree
 kapso watch ./campaign --json | jq -r '[.state] | @tsv'
 ```
 
+A campaign writes its status file the moment its workspace is seeded, in phase `setup`, so a watch started right after the launch sees it within seconds. In the seconds before that, `kapso watch` prints one line, `no status yet at <path>`, and exits 1; with `--follow` it prints the line and waits for the file.
+
+### The status file
+
+`--json` prints the file as it is. Every operation (`evolve`, `learn`, `learn_knowledge`) carries the same core; `evolve` adds its campaign payload. Fields appear as they are first written, so a reader treats each as optional.
+
+| Field | What it holds |
+|-------|---------------|
+| `operation` | `evolve`, `learn` or `learn_knowledge` |
+| `phases` | The operation's phases in order. Evolve: `setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Knowledge: `ingest`, `merge` |
+| `state` | `starting` (preparing, for evolve the `setup` phase), `running`, `done` or `failed` |
+| `phase`, `phase_started_at` | The current phase and when it began |
+| `pid` | The writing process. `kapso watch` reports `DEAD` when it is gone |
+| `started_at`, `heartbeat_at`, `finished_at` | Timestamps, UTC |
+| `heartbeat_seconds` | The writer's beat; `STALLED` after three missed beats |
+| `recent` | The last ten human-readable lines |
+| `error` | The failure, when `state` is `failed` |
+| `budget` | Evolve: `{elapsed_min, total_min}`, the time dial |
+| `iteration` | Evolve: the iteration in progress |
+| `best`, `last` | Evolve: `{score, node}` of the best and the latest candidate |
+| `stopped_reason`, `stop_detail` | Evolve, at the end: why the campaign stopped |
+| `requests` | Evolve, when `stopped_reason` is `waiting_for_user`: the open inbox requests |
+| `platform_budget` | Evolve, with cost-aware selection on: `{used, budget, unit, refused}` |
+| `trajectory_id`, `bank_head_before`, `cards` | Learn: what is being learned and what the lesson changed |
+
 ## kapso inbox
 
 What a paused campaign is waiting on you for, and the reply that resumes it. Inside a campaign directory both forms act on that campaign; elsewhere, name it first. See [the inbox](/docs/evolve/inbox).
