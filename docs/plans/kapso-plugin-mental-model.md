@@ -299,6 +299,20 @@ Host transcripts: ~/.claude/projects/… and ~/.codex/sessions, keyed by the ses
 
 Each seam names what exists, what is missing, and the size of the gap.
 
+*Landed on this branch, 2026-10-12:* S1 and S2 (the status file is born at
+workspace setup in phase `setup`, `kapso watch` waits for it, the file's
+schema is documented, and `kapso evolve --detach` returns at once with the
+pid, log, status path and watch line); S3 (`kapso inbox reply --detach`,
+a launch record with absolute paths and the campaign's `.env` loaded on
+resume and reply from any directory, the credential guard enforced in
+`Kapso.reply` and `record_reply`); S4 (`kapso-mcp`, a console script that
+derives the gates from where the session runs and stages bank serving
+for the session under `learning.serving.session_root`). The three skill
+copies are identical again, built on `--detach`. Still open: a
+machine-readable `kapso doctor` (S0), the registry's liveness filter (S2),
+the session-start brief (S5), delegation tools (S6), host-session learning
+(S7), the manifests (S8).
+
 - **S0 Install and configuration.** The plugin must find `kapso` (and its
   interpreter for the MCP server), the user's config file (`--config`), and
   `.env` in the project. Exists: `kapso doctor`, `DEFAULT_CONFIG_PATH`.
