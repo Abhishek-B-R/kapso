@@ -116,6 +116,13 @@ class KGIndexError(Exception):
 
 # Path to default configuration
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
+
+
+def _absolute(path: Optional[str]) -> Optional[str]:
+    """A launch argument as the launch record keeps it: resolved against
+    the launch directory, so a resume or an inbox reply run from any other
+    directory (a host session's, say) finds the same files."""
+    return None if path is None else str(Path(path).expanduser().resolve())
 # Experiments per campaign when the caller names no cap. One source for the
 # facade default and the CLI's help text.
 DEFAULT_MAX_ITERATIONS = 10
@@ -1223,6 +1230,10 @@ class Kapso:
             # mismatch from the checkpoint.
             record = read_launch_record(output_path)
             if record is not None:
+                # The campaign's own .env, from wherever the resume runs;
+                # the process environment keeps precedence.
+                if record.get("dotenv_path"):
+                    load_dotenv(record["dotenv_path"])
                 arguments = resume_arguments(record, {
                     "mode": mode,
                     "coding_agent": coding_agent,
@@ -1434,8 +1445,8 @@ class Kapso:
         if not resume and inbox_block.get("enabled"):
             workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
             write_launch_record(workspace_dir, {
-                "config_path": self._launch_config_path(),
-                "kg_index": self._kg_index_path,
+                "config_path": _absolute(self._launch_config_path()),
+                "kg_index": _absolute(self._kg_index_path),
                 "mode": mode,
                 "coding_agent": coding_agent,
                 "output_path": str(Path(workspace_dir).resolve()),
@@ -1443,8 +1454,8 @@ class Kapso:
                 "time_budget_minutes": time_budget_minutes,
                 "cost_budget": cost_budget,
                 "finalization_reserve_minutes": finalization_reserve_minutes,
-                "eval_dir": eval_dir,
-                "data_dir": data_dir,
+                "eval_dir": _absolute(eval_dir),
+                "data_dir": _absolute(data_dir),
                 "additional_context": additional_context,
                 "context": (
                     list(context)
@@ -1646,7 +1657,10 @@ class Kapso:
             "Ctrl-C stops it; resume later with kapso evolve --output "
             f"{campaign_dir} --resume"
         )
-        # Everything else a resume needs comes from the launch record.
+        # Everything else a resume needs comes from the launch record,
+        # its .env included: a reply may run far from the launch directory.
+        if record.get("dotenv_path"):
+            load_dotenv(record["dotenv_path"])
         kapso = cls(config_path=record["config_path"], kg_index=record["kg_index"])
         return kapso.evolve(
             output_path=campaign_dir,

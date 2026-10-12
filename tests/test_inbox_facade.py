@@ -119,6 +119,52 @@ def test_a_fresh_campaign_writes_the_launch_record_and_registers(tmp_path, monke
     assert listed[0]["path"] == str(workspace.resolve()) and listed[0]["goal"] == "Improve support"
 
 
+def test_the_launch_record_keeps_every_path_absolute(tmp_path, monkeypatch):
+    """A reply or a resume may run from any directory — a host session's,
+    not the launch's — so the record resolves what the launch typed."""
+    workspace = tmp_path / "campaign"
+    _init_git_workspace(workspace)
+    (tmp_path / "eval").mkdir()
+    (tmp_path / "eval" / "evaluate.py").write_text("print(1)\n")
+    (tmp_path / "data").mkdir()
+    _fake_orchestrator(workspace, monkeypatch)
+    _inbox_on(monkeypatch, tmp_path / "registry.jsonl")
+    monkeypatch.chdir(tmp_path)
+
+    _facade().evolve(goal="g", output_path="campaign", eval_dir="eval", data_dir="data")
+
+    record = read_launch_record(workspace)
+    assert record["eval_dir"] == str((tmp_path / "eval").resolve())
+    assert record["data_dir"] == str((tmp_path / "data").resolve())
+    assert record["output_path"] == str(workspace.resolve())
+    assert record["config_path"] is None and record["kg_index"] is None
+
+
+def test_resume_and_reply_load_the_campaigns_dotenv(tmp_path, monkeypatch):
+    workspace = _paused_campaign(tmp_path)
+    dotenv = tmp_path / "launch-dir" / ".env"
+    record = read_launch_record(workspace)
+    write_launch_record(workspace, {**{k: v for k, v in record.items() if k != "schema_version"},
+                                    "eval_dir": None, "dotenv_path": str(dotenv)})
+    loaded: List[str] = []
+    monkeypatch.setattr(kapso_module, "load_dotenv", lambda path: loaded.append(path))
+
+    # A reply, before the agent is even constructed (its knowledge index
+    # may need a key), and a resume, before preflight.
+    _status(workspace, "done")
+    monkeypatch.setattr(Kapso, "__init__", lambda self, config_path=None, kg_index=None, bank=None: None)
+    monkeypatch.setattr(Kapso, "evolve", lambda self, **kwargs: None)
+    Kapso.reply(str(workspace), 1, "added the key")
+    assert loaded == [str(dotenv)]
+
+    monkeypatch.undo()
+    loaded.clear()
+    monkeypatch.setattr(kapso_module, "load_dotenv", lambda path: loaded.append(path))
+    _fake_orchestrator(workspace, monkeypatch)
+    _facade().evolve(output_path=str(workspace), resume=True)
+    assert loaded == [str(dotenv)]
+
+
 def test_a_callback_makes_the_campaign_not_resumable_from_the_inbox(tmp_path, monkeypatch):
     workspace = tmp_path / "campaign"
     _init_git_workspace(workspace)
