@@ -103,6 +103,11 @@ dev = [
 
 [project.scripts]
 kapso = "kapso.cli:main"
+# The MCP server for a host session (the engineer's own coding-agent
+# session): `claude mcp add kapso -- kapso-mcp`. A console script so the
+# host runs it on the interpreter Kapso is installed in, never a bare
+# `python` from PATH.
+kapso-mcp = "kapso.gated_mcp.host_session:main"
 expert-mle = "benchmarks.mle.runner:main"
 expert-ale = "benchmarks.ale.runner:main"
 expert-relbench = "benchmarks.relbench.runner:main"

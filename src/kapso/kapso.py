@@ -80,7 +80,7 @@ from kapso.learning.lesson_result import LessonResult, MemoryStatus
 from kapso.learning.mining import MiningFrame
 from kapso.learning.serving_launch import (
     plan_campaign_serving,
-    stage_campaign_serving,
+    stage_serving,
 )
 from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
 from kapso.learning.bank_remote import bank_origin
@@ -1414,7 +1414,7 @@ class Kapso:
         # note above), and inject the intro into the problem context —
         # the handler reads additional_context lazily at solve time.
         if serving_plan is not None:
-            serving = stage_campaign_serving(
+            serving = stage_serving(
                 self._serving_config, serving_coords, serving_plan
             )
             # Fail loud rather than lie: the intro instructs sessions to

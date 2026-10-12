@@ -140,6 +140,34 @@ Use `error` for a reproducible campaign where every configured knowledge source
 is mandatory. Use `skip` when optional capabilities are expected to vary across
 machines and warnings would be noisy.
 
+## Use the gates from your own coding agent
+
+The same gates are available to the session you work in, through the `kapso-mcp` console script that `pip install leeroo-kapso` puts beside `kapso`. It is a stdio MCP server; add it to your host once:
+
+```bash
+claude mcp add kapso -- kapso-mcp        # Claude Code
+codex mcp add kapso -- kapso-mcp         # Codex CLI
+```
+
+A campaign session has its gate configuration built per session, with the campaign's paths and the interpreter Kapso runs in. A host's MCP file is static, so `kapso-mcp` derives the same configuration from where the session runs and from the config when it starts:
+
+| Gate | Served when | Derived from |
+|------|-------------|--------------|
+| `research` | The `codex` CLI is on PATH | — |
+| `repo_memory` | The repository holds `.kapso/repo_memory.json`, which a campaign builds | The git top level of the working directory |
+| `experiment_history` | The working directory is inside a campaign directory | The nearest ancestor with `.kapso/experiment_history.json`; `models.embedding` from the config adds semantic search |
+| `bank` | `learning.serving.enabled` is true and the bank home exists | A pinned clone, the serving record and the pull log staged under `learning.serving.session_root`, one directory per server process |
+| `idea`, `code` | `--kg-index <file>` names an index | The index file |
+
+Every gate left out is named on stderr with its reason, so `claude mcp list` or the host's log says what the session can and cannot reach. The `kg` gate (which carries the write tools) and the `inbox` gate (a session asking a person) are never served to a host. Leeroopedia is a hosted server, not a bundled gate: add it to the host as an HTTP MCP server at the address in the config's `gates:` block, with your key on the URL.
+
+```bash
+kapso-mcp --help
+kapso-mcp --gates research,bank --config kapso-config.yaml --family generic
+```
+
+`--root` names the session's directory when it is not the current one, and `--family` the task family the bank serves for (default: the config's `default_mode`, lowercased, which is what a campaign without `serving_scope` uses).
+
 ## Adding a gate
 
 Dependencies belong beside the tool definition, not in a search strategy:

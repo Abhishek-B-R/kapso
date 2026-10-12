@@ -389,8 +389,13 @@ learning:
     # launches pin the bank, the knowledge intro rides after the static
     # context notes, and ideation/implementation sessions get the three
     # bank tools — bank_index / bank_get_card / bank_get_card_with_evidence
-    # (the feedback judge never does). Per-benchmark off-switch.
+    # (the feedback judge never does). Per-benchmark off-switch. The same
+    # switch serves the bank to a host session through kapso-mcp.
     enabled: false
+    # Where a host session's serving is staged (its pinned bank checkout,
+    # serving record and pull log), one directory per kapso-mcp process.
+    # A campaign stages into its own work dir instead.
+    session_root: ~/.kapso/serving
   update_crew:
     # The update crew (design §4.3; update-crew doc): Claude lead (structural
     # — self-organization + native critic subagent), codex GPT-5.6 xhigh

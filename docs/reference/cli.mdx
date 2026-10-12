@@ -5,7 +5,7 @@ description: "The nine kapso commands and their thirteen subcommands, with every
 keywords: ["kapso CLI", "kapso evolve", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
 ---
 
-Kapso installs a single `kapso` executable with nine commands.
+Kapso installs the `kapso` executable with nine commands, and `kapso-mcp`, the MCP server that serves Kapso's knowledge and experience tools to the coding-agent session you work in (see [below](#kapso-mcp)).
 
 | Command | What it does |
 |---------|--------------|
@@ -370,6 +370,26 @@ kapso doctor evolve --models
 ```
 
 See [How do I check my setup?](/docs/installation#how-do-i-check-my-setup) for the output format and what each marker means.
+
+## kapso-mcp
+
+A stdio MCP server for the coding-agent session you work in: the gates Kapso's own sessions get, configured from where the session runs. Not a `kapso` subcommand but a second executable, so a host can name it in a static MCP file.
+
+| Flag | What it does | Default |
+|------|--------------|---------|
+| `--gates` | Comma-separated gates to serve | `research,repo_memory,experiment_history,bank` |
+| `--kg-index` | A `.index` file; adds the `idea` and `code` search gates | — |
+| `--config` | Config whose serving, bank and embedding settings apply | packaged `config.yaml` |
+| `--root` | The directory the session works in | the current directory |
+| `--family` | The task family the bank serves for | the config's `default_mode`, lowercased |
+
+```bash
+claude mcp add kapso -- kapso-mcp
+codex mcp add kapso -- kapso-mcp
+kapso-mcp --gates research,bank --config kapso-config.yaml
+```
+
+A gate that cannot be served is named on stderr with its reason; see [Use the gates from your own coding agent](/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).
 
 ## Related
 

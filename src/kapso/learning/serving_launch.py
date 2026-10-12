@@ -1,12 +1,15 @@
-# Campaign-launch serving (serving-agentic-redesign.md, v2): pin the bank,
-# compile the intro, stage the tool parameters — all frame-side, before any
-# session exists. The network is never on the campaign path: serving reads
-# the durable local home (`learning.bank.local_path`).
+# Serving at launch (serving-agentic-redesign.md, v2): pin the bank, compile
+# the intro, stage the tool parameters — all frame-side, before any session
+# exists. The network is never on the serving path: it reads the durable
+# local home (`learning.bank.local_path`).
 #
-# Everything staged here lands inside the campaign work dir (.kapso/serving/)
-# so the harvested trajectory carries the exact served state: the pinned
-# checkout, the launch record, and the sessions' pull log (the exposure
-# ladder's source).
+# A campaign stages into its work dir (.kapso/serving/) so the harvested
+# trajectory carries the exact served state: the pinned checkout, the
+# launch record, and the sessions' pull log (the exposure ladder's source).
+# A host session — the engineer's own coding-agent session, served through
+# kapso-mcp — stages the same three things into a directory of its own
+# under `learning.serving.session_root`, so what it was served and what it
+# pulled is on record for the day host sessions are learned from.
 
 import shutil
 import subprocess
@@ -19,19 +22,20 @@ from kapso.learning.bank import Bank
 from kapso.learning.retriever import compile_intro
 
 
-def plan_campaign_serving(
+def plan_serving(
     config: Dict[str, Any],
     task_coords: Dict[str, str],
-    work_dir,
+    serve_dir,
 ) -> Optional[Dict[str, Any]]:
-    """The serving PLAN: everything deterministic about this campaign's
-    serving, computed WITHOUT touching the workspace (which may not exist
-    yet — a seeded workspace must be empty at orchestrator construction).
+    """The serving PLAN: everything deterministic about one launch's
+    serving, computed WITHOUT touching `serve_dir` (a campaign's may not
+    exist yet — a seeded workspace must be empty at orchestrator
+    construction).
 
     Returns {bank_head, bank_serving, serve_dir} or None when serving is
     off. `bank_serving` is exactly the env mapping stage will make true;
-    the caller may thread it into strategy params before the workspace
-    exists, then call stage_campaign_serving() once it does.
+    the caller may thread it into strategy params before the directory
+    exists, then call stage_serving() once it does.
     """
     serving_config = config["learning"]["serving"]
     if not serving_config["enabled"]:
@@ -45,7 +49,7 @@ def plan_campaign_serving(
         ["git", "--git-dir", str(home), "rev-parse", "HEAD"],
         check=True, capture_output=True, text=True,
     ).stdout.strip()
-    serve_dir = Path(work_dir).expanduser() / ".kapso" / "serving"
+    serve_dir = Path(serve_dir).expanduser()
     return {
         "bank_head": bank_head,
         "serve_dir": str(serve_dir),
@@ -63,16 +67,27 @@ def plan_campaign_serving(
     }
 
 
-def stage_campaign_serving(
+def plan_campaign_serving(
+    config: Dict[str, Any],
+    task_coords: Dict[str, str],
+    work_dir,
+) -> Optional[Dict[str, Any]]:
+    """A campaign's plan: it serves from `<work_dir>/.kapso/serving`."""
+    return plan_serving(
+        config, task_coords, Path(work_dir).expanduser() / ".kapso" / "serving"
+    )
+
+
+def stage_serving(
     config: Dict[str, Any],
     task_coords: Dict[str, str],
     plan: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Materialize a serving plan: pin the bank clone at the planned head,
-    compile the intro, write the launch record. The workspace exists by
-    now. Fails loud if the home moved past the planned head between plan
-    and stage (the campaign would run a brief its params did not
-    fingerprint)."""
+    compile the intro, write the serving record. The directory may be
+    created now. Fails loud if the home moved past the planned head
+    between plan and stage (a campaign would run a brief its params did
+    not fingerprint)."""
     home = Path(config["learning"]["bank"]["local_path"]).expanduser()
     serve_dir = Path(plan["serve_dir"])
     checkout = serve_dir / "bank"
@@ -121,4 +136,4 @@ def prepare_campaign_serving(
     plan = plan_campaign_serving(config, task_coords, work_dir)
     if plan is None:
         return None
-    return stage_campaign_serving(config, task_coords, plan)
+    return stage_serving(config, task_coords, plan)
