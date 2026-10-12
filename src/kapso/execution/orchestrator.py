@@ -1369,11 +1369,15 @@ class OrchestratorAgent:
             round(budget_spec.time_budget_seconds / 60, 1)
             if budget_spec.time_budget_seconds is not None else None
         )
-        status = getattr(self.search_strategy, "operation_status", None) or EvolveStatus(
-            Path(self.search_strategy.workspace.workspace_dir)
-            / ".kapso" / "status.json",
-            heartbeat_seconds=heartbeat_seconds,
-        )
+        # A new slice on a finished status (solve() called again on the
+        # same orchestrator) opens a fresh file, as every slice always did.
+        status = getattr(self.search_strategy, "operation_status", None)
+        if status is None or status.terminal:
+            status = EvolveStatus(
+                Path(self.search_strategy.workspace.workspace_dir)
+                / ".kapso" / "status.json",
+                heartbeat_seconds=heartbeat_seconds,
+            )
         status.observe(on_status)
         status.update(
             heartbeat_seconds=heartbeat_seconds,

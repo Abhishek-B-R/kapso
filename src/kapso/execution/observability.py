@@ -192,6 +192,12 @@ class OperationStatus(ABC):
             )
             self._thread.start()
 
+    @property
+    def terminal(self) -> bool:
+        """Done or failed: this status accepts no further update. A new
+        slice of the same operation opens a fresh one."""
+        return self._data["state"] in _TERMINAL_STATES
+
     def observe(
         self, on_status: Optional[Callable[[Dict[str, Any]], None]]
     ) -> None:
