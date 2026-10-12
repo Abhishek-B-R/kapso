@@ -220,6 +220,8 @@ Edit `.env` and set `WIKI_PORT=9000` (or any free port), then restart:
 
 `config/LocalSettings.php` (gitignored, persisted into the container) injects two head tags on every page through `BeforePageDisplay` hooks: the Google Analytics tag (`G-2DPQXX7Z3T`) and the Google AdSense site tag (publisher `ca-pub-1957360810988894`, added 2026-10-09; ad units and Auto ads are configured in the AdSense console, not here). The host nginx (`/etc/nginx/sites-enabled/leeroopedia.com`) serves `/ads.txt` with the AdSense seller line `google.com, pub-1957360810988894, DIRECT, f08c47fec0942fa0` in front of the wiki catch-all. The container's PHP runs with `opcache.validate_timestamps` off, so an edited `LocalSettings.php` is NOT re-read until PHP restarts: run `docker exec wiki_service-wiki-1 apache2ctl -k graceful` (no downtime) after every change; nginx needs `sudo nginx -t && sudo systemctl reload nginx`. Anonymous pages are cached by nginx for 60 s, so a head change shows within a minute.
 
+Both hooks skip the project namespace (`Leeroopedia:` pages), because the AdSense consent message links to the privacy policy and Google requires that page to carry no script that needs consent.
+
 The footer's three policy links (`Leeroopedia:Privacy_policy`, `Leeroopedia:About`, `Leeroopedia:General_disclaimer`) are wiki pages in the project namespace, created 2026-10-12 for the AdSense review. The sync does not mirror that namespace, so they live only in the wiki and its page history. Edit one with the maintenance script, no login needed:
 
 ```bash
