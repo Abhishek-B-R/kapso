@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kapso.learning.codify_run import CodifyRunDriver
+from kapso.learning.codify_run import CodifyRunDriver, LocalExecutor
 from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
 from tests.test_trajectory_store import TRAJECTORY_ID, build_work_dir
 
@@ -252,3 +252,21 @@ def test_staging_preserves_run_relative_paths(tmp_path):
     assert (workspace / "inputs/runs/run_0002/metrics.json").is_file()
     inventory = (tmp_path / "run" / "staged-inventory.txt").read_text()
     assert "inputs/runs/run_0002/metrics.json" in inventory
+
+
+def test_local_executor_needs_no_python_on_path(tmp_path, monkeypatch):
+    # Regression: the evaluation ran as a bare `python`, which macOS and
+    # many Linux images do not install, so every local codify run (and this
+    # module) died with FileNotFoundError before eval.py started. It runs
+    # under the interpreter running Kapso, whatever PATH holds.
+    workspace = tmp_path / "ws"
+    (workspace / "replay").mkdir(parents=True)
+    (workspace / "replay" / "eval.py").write_text(
+        "open('outcome.yaml', 'w').write('ran: true\\n')\n"
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+
+    executor = LocalExecutor({"iteration_timeout_minutes": 1})
+    outcome = executor.run_evaluation(workspace)
+
+    assert yaml.safe_load(outcome.read_text()) == {"ran": True}
