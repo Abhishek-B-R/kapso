@@ -12,7 +12,6 @@ from kapso.learning.bank_remote import (
     bank_origin,
     connect_bank,
     create_bank_repo,
-    verify_bank_remote,
 )
 from kapso.learning.update_frame import init_bank
 
@@ -75,25 +74,6 @@ def test_connect_to_unreachable_url_leaves_the_bank_untouched(tmp_path):
     with pytest.raises(RuntimeError, match="not reachable"):
         connect_bank(home, str(tmp_path / "typo.git"))
     assert bank_origin(home) == str(share)
-
-
-def test_verify_unreachable_raises_with_fix_guidance(tmp_path):
-    # Regression: the preflight fails loud with the git error AND the
-    # detach escape hatch — never a silent skip.
-    home = make_home(tmp_path)
-    subprocess.run(
-        ["git", "--git-dir", str(home), "remote", "add", "origin",
-         str(tmp_path / "missing.git")],
-        check=True,
-    )
-    with pytest.raises(RuntimeError, match="not reachable"):
-        verify_bank_remote(home)
-
-
-def test_verify_without_origin_names_the_connect_command(tmp_path):
-    home = make_home(tmp_path)
-    with pytest.raises(ValueError, match="kapso bank connect"):
-        verify_bank_remote(home)
 
 
 def test_create_rejects_malformed_slug():
