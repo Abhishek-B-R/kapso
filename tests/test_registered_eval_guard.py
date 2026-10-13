@@ -12,6 +12,7 @@ import time
 import kapso.execution.search_strategies.generic.strategy as strategy_module
 from kapso.execution.evaluation_archive_sandbox import write_selection_label
 from kapso.execution.evaluation_maintainer.maintainer import MANIFEST_MARKER
+from kapso.execution.search_strategies.generic import registered_evaluation
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
 
@@ -103,3 +104,18 @@ def test_a_lane_recovers_only_its_own_sessions_archive(tmp_path, monkeypatch):
 
     assert recovered_for("generic_exp_0") is None
     assert recovered_for("generic_exp_1") == sibling
+
+
+def test_recovers_without_proc_to_ask(tmp_path, monkeypatch):
+    # Regression: the live-grader probe listed /proc unconditionally, so on
+    # a kernel without one (macOS) the guard raised FileNotFoundError before
+    # finalize_session and the session's work was never committed. With no
+    # /proc there is no live grader to see; recovery from the archive runs.
+    monkeypatch.setattr(
+        registered_evaluation, "PROC_ROOT", str(tmp_path / "no-proc")
+    )
+    line = MANIFEST_MARKER + ' {"fidelity": "full", "score": 0.5}'
+    _write_archive(tmp_path, "run_0001", line)
+    stub = make_stub(tmp_path, str(tmp_path / "work" / "runs"))
+
+    assert stub._await_registered_evaluation("no manifest", "candidate") == line

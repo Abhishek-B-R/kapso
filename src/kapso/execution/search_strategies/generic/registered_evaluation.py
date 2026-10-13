@@ -38,6 +38,10 @@ from kapso.execution.search_strategies.base import SearchNode
 # time granted between SIGTERM and SIGKILL when a frame run overruns.
 _FRAME_RUN_KILL_GRACE_SECONDS = 2.0
 
+# Where the kernel lists live processes. macOS and the BSDs have none, and
+# there the teardown guard has no grader to wait on.
+PROC_ROOT = "/proc"
+
 
 # Byte-identical to the pre-maintainer template text: rendered whenever no
 # maintainer-registered evaluation exists, keeping default prompts unchanged.
@@ -554,10 +558,12 @@ def await_registered_evaluation(
     needle = tokens[0] if tokens else registered_evaluation_command
 
     def _live_eval_pid():
-        for pid in os.listdir("/proc"):
+        if not os.path.isdir(PROC_ROOT):
+            return None
+        for pid in os.listdir(PROC_ROOT):
             if not pid.isdigit():
                 continue
-            cmdline_path = os.path.join("/proc", pid, "cmdline")
+            cmdline_path = os.path.join(PROC_ROOT, pid, "cmdline")
             if not os.path.exists(cmdline_path):
                 continue
             with open(cmdline_path, "rb") as fh:
