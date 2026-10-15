@@ -21,8 +21,8 @@ def pytest_configure(config):
         "markers",
         "live: spawns real coding-agent sessions (skipped without --run-live)",
     )
-    # Already used by test_kg_index_integration and test_relbench_integration,
-    # which warned on every run because nothing registered it.
+    # Used by test_relbench_integration, which warned on every run while
+    # nothing registered it.
     config.addinivalue_line(
         "markers",
         "integration: needs external infrastructure such as Weaviate or Neo4j",

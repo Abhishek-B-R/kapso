@@ -10,11 +10,9 @@ import pytest
 import yaml
 
 from kapso.core.preflight import PreflightError
-from kapso.execution.solution import SolutionResult
 from kapso.kapso import Kapso
 from kapso.learning.bank_remote import connect_bank
 from kapso.learning.lesson_result import LessonResult, MemoryStatus
-from kapso.learning.update_frame import init_bank
 from tests.test_bank_retriever import card_text
 from tests.test_update_frame import seed_bank_home
 
@@ -468,9 +466,33 @@ def test_learn_knowledge_records_the_index_it_wrote(tmp_path, monkeypatch):
         SimpleNamespace(create=lambda **kw: SimpleNamespace(
             is_enabled=lambda: True), create_null=lambda: None),
     )
+    # The preflight probes a real embeddings key and the knowledge stores'
+    # ports; it has its own suite (test_preflight), this test is about the
+    # index the merge records.
+    monkeypatch.setattr("kapso.kapso.run_preflight", lambda *a, **k: None)
     kapso.learn_knowledge(object(), wiki_dir=str(wiki_dir))
     # The merge builds a missing index through the facade, which owns the
     # config that names the search backends.
     assert wiring["index_builder"] == kapso.index_kg
     assert kapso._kg_index_path == str(wiki_dir / ".index")
     assert kapso.memory.knowledge_index == str(wiki_dir / ".index")
+
+
+def test_index_kg_rejects_a_call_without_a_save_path(tmp_path):
+    kapso = Kapso(config_path=facade_config(tmp_path))
+    with pytest.raises(ValueError, match="save_to is required"):
+        kapso.index_kg(wiki_dir=str(tmp_path))
+
+
+def test_index_kg_rejects_a_call_without_any_data(tmp_path):
+    kapso = Kapso(config_path=facade_config(tmp_path))
+    with pytest.raises(ValueError, match="Must provide either"):
+        kapso.index_kg(save_to=str(tmp_path / "test.index"))
+
+
+def test_missing_kg_index_file_raises_at_construction(tmp_path):
+    with pytest.raises(FileNotFoundError, match="Index file not found"):
+        Kapso(
+            config_path=facade_config(tmp_path),
+            kg_index=str(tmp_path / "missing.index"),
+        )

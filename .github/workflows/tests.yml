@@ -55,10 +55,6 @@ jobs:
       - name: Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code
 
-      # Deselected: these ten need a live Codex login or the repo's data
-      # trees, and fail on a bare checkout (read on main, 2026-09-25). They
-      # belong under tests/live; until they move, naming them here keeps the
-      # gate honest about everything else.
       - name: Unit tests
         env:
           ANTHROPIC_API_KEY: ci-placeholder-not-a-key
@@ -66,9 +62,5 @@ jobs:
         run: >
           python -m pytest tests -q
           --ignore=tests/live --ignore=tests/manual --ignore=tests/deployment_examples
-          --deselect tests/test_kg_index_integration.py::TestKGLLMNavigationIntegration
-          --deselect tests/test_kg_index_integration.py::TestKGIndexErrorHandling::test_index_without_data_raises_error
-          --deselect tests/test_kg_index_integration.py::TestEvolveWithKGLLMNavigation
-          --deselect tests/test_kapso_facade_learn.py::test_learn_knowledge_records_the_index_it_wrote
           --deselect tests/test_repo_memory.py::test_render_summary_and_toc_produces_usable_prompt
           --deselect tests/test_repo_memory_latest_commit_semantics.py::test_repo_memory_update_runs_after_final_commit
