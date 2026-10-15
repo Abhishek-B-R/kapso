@@ -381,13 +381,7 @@ class ExperimentSession:
 
                 # Commit the memory update so child experiments inherit it.
                 self.repo.git.add([RepoMemoryManager.MEMORY_REL_PATH])
-                try:
-                    self.repo.git.commit(
-                        "-m", "chore(kapso): update repo memory"
-                    )
-                except git.GitCommandError as exc:
-                    if "nothing to commit" not in str(exc).lower():
-                        raise
+                self._commit_staged("chore(kapso): update repo memory")
             except Exception as exc:
                 repo_memory_error = exc
                 if self._repo_memory_failure_policy == "warn":
@@ -415,9 +409,14 @@ class ExperimentSession:
                 f"session clone at {folder} is kept: it holds the only copy "
                 "of the candidate's commits.\n"
                 f"git said:\n{push_stderr.strip()}\n"
-                "Once the push problem is fixed, recover the branch with:\n"
+                "Once the push problem is fixed, and before resuming the run, "
+                "recover the branch with:\n"
                 f"  git -C {shlex.quote(folder)} push --force origin "
-                f"{shlex.quote(self.branch_name)}"
+                f"{shlex.quote(self.branch_name)}\n"
+                "A resumed run rebuilds this node under the same branch name "
+                "and replaces both the folder and the branch, so the recovered "
+                "branch is for inspection or cherry-picking, not the node the "
+                "campaign keeps."
             )
 
         # Cleanup must run even when optional enrichment failed. Preserve a

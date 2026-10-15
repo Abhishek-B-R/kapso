@@ -52,8 +52,7 @@ def _install_hook(git_dir: Path, name: str, body: str) -> Path:
     return hook
 
 
-@pytest.fixture
-def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ExperimentWorkspace:
+def _workspace(root: Path, monkeypatch: pytest.MonkeyPatch) -> ExperimentWorkspace:
     monkeypatch.setattr(
         CodingAgentFactory,
         "create",
@@ -61,12 +60,17 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ExperimentWork
     )
     workspace = ExperimentWorkspace(
         coding_agent_config=_agent_config(),
-        workspace_dir=str(tmp_path / "workspace"),
+        workspace_dir=str(root),
     )
     Path(workspace.workspace_dir, "README.md").write_text("# Example\n")
     workspace.repo.git.add(["README.md"])
     workspace.repo.git.commit("-m", "baseline")
     return workspace
+
+
+@pytest.fixture
+def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ExperimentWorkspace:
+    return _workspace(tmp_path / "workspace", monkeypatch)
 
 
 def _candidate_session(workspace: ExperimentWorkspace):
@@ -108,7 +112,9 @@ def test_rejected_push_raises_and_keeps_the_candidate(workspace):
     assert "candidate" not in _branch_names(workspace)
 
 
-def test_printed_recovery_command_restores_the_branch(workspace):
+@pytest.mark.parametrize("dirname", ["workspace", "work space"])
+def test_printed_recovery_command_restores_the_branch(tmp_path, monkeypatch, dirname):
+    workspace = _workspace(tmp_path / dirname, monkeypatch)
     session = _candidate_session(workspace)
     hook = _reject_pushes(workspace)
 
