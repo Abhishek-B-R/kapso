@@ -125,6 +125,8 @@ def finalize_session(self, session):
     session.close_session()  # commit, push, cleanup
 ```
 
+The session folder is the only copy of the experiment's commits until the push succeeds. If origin rejects the push, `close_session()` raises `SessionPushError`, keeps the folder, and its message names the exact `git push` command that recovers the branch. A commit that fails for any reason other than an empty index (for example a pre-commit hook) also raises instead of being skipped.
+
 ## Related
 
 <CardGroup cols={2}>

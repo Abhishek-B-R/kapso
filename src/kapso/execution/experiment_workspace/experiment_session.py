@@ -9,6 +9,7 @@
 # Coding agents only generate code - they don't handle git.
 
 import os
+import shlex
 import shutil
 import copy
 import logging
@@ -24,6 +25,10 @@ from kapso.gated_mcp import get_mcp_config
 
 
 logger = logging.getLogger(__name__)
+
+
+class SessionPushError(RuntimeError):
+    """The candidate branch did not reach origin."""
 
 
 class ExperimentSession:
@@ -317,6 +322,14 @@ class ExperimentSession:
             else:
                 print(f"[ExperimentSession] Commit failed: {e}")
     
+    def _commit_staged(self, message: str) -> None:
+        """
+        Commit what is staged. An empty index is a confirmed no-op; a commit
+        that fails (hook, identity, permissions) propagates.
+        """
+        if self.repo.is_dirty(index=True, working_tree=False, untracked_files=False):
+            self.repo.git.commit('-m', message)
+
     def commit_folder(self, folder_name: str) -> None:
         """
         Commit a specific folder (for output data).
@@ -327,17 +340,17 @@ class ExperimentSession:
         if os.path.exists(folder_name) and os.listdir(folder_name):
             print('*'*100)
             print(f"Committing folder: {folder_name}")
-            try:
-                self.repo.git.add(folder_name)
-                self.repo.git.commit('-m', 'chore: commit run data')
-            except git.GitCommandError:
-                pass  # Nothing to commit or folder empty
-    
+            self.repo.git.add(folder_name)
+            self._commit_staged('chore: commit run data')
+
     def close_session(self) -> None:
         """
         Close session: final commit, push, cleanup.
-        
-        Ensures all changes are committed and pushed before cleanup.
+
+        Ensures all changes are committed and pushed before cleanup. A push
+        that the origin rejects raises SessionPushError and keeps the session
+        clone, which holds the only copy of the candidate's commits; cleanup
+        runs only once the branch is on origin.
         """
         # Commit run directory
         self.commit_folder(self.run_dir)
@@ -345,10 +358,7 @@ class ExperimentSession:
         # Final commit of any remaining changes
         if self.repo.is_dirty(untracked_files=True):
             self.repo.git.add('.')
-            try:
-                self.repo.git.commit('-m', 'chore: final session commit')
-            except git.GitCommandError:
-                pass
+            self._commit_staged('chore: final session commit')
 
         # Update RepoMemory AFTER all other commits, but BEFORE push/cleanup.
         #
@@ -394,11 +404,22 @@ class ExperimentSession:
         # this session is the branch name's only owner, and a redo after a
         # crash-between-push-and-checkpoint must replace the corpse ref
         # instead of dying on a non-fast-forward.
-        try:
-            self.repo.git.push('--force', 'origin', self.branch_name)
-        except git.GitCommandError as e:
-            print(f"[ExperimentSession] Push failed: {e}")
-        
+        status, _, push_stderr = self.repo.git.push(
+            '--force', 'origin', self.branch_name,
+            with_extended_output=True, with_exceptions=False,
+        )
+        if status != 0:
+            folder = os.path.abspath(self.session_folder)
+            raise SessionPushError(
+                f"Pushing branch {self.branch_name!r} to origin failed. The "
+                f"session clone at {folder} is kept: it holds the only copy "
+                "of the candidate's commits.\n"
+                f"git said:\n{push_stderr.strip()}\n"
+                "Once the push problem is fixed, recover the branch with:\n"
+                f"  git -C {shlex.quote(folder)} push --force origin "
+                f"{shlex.quote(self.branch_name)}"
+            )
+
         # Cleanup must run even when optional enrichment failed. Preserve a
         # cleanup error unless strict RepoMemory mode needs to surface its
         # original failure.
