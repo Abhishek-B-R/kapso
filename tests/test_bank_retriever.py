@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from kapso.learning.bank import Bank, Card
+from kapso.learning.bank import Bank, Card, split_card_text
 from kapso.learning.retriever import (
     compile_intro,
     probe_offers,
@@ -147,6 +147,32 @@ def test_card_parse_and_eligibility(tmp_path):
     assert bank.cards["hm-card"].eligible_for(TASK)
     assert bank.cards["family-card"].eligible_for(TASK)
     assert not bank.cards["other-card"].eligible_for(TASK)
+
+
+def test_horizontal_rule_in_body_is_not_the_ledger_delimiter(tmp_path):
+    # Regression (#133): a standalone `---` Markdown rule in the body used to
+    # be taken as the ledger delimiter, so the whole bank failed to load.
+    body = TEMPLATE_BODY.replace(
+        "## What to do", "---\n\n## What to do", 1)
+    root = build_bank(tmp_path, {
+        "ruled": card_text("ruled", body=body),
+        "plain": card_text("plain"),
+    })
+    bank = Bank(str(root))
+    assert set(bank.cards) == {"ruled", "plain"}
+    assert "\n---\n" in bank.cards["ruled"].body
+    assert bank.cards["ruled"].frontmatter["type"] == "insight"
+    body_text, ledger_text = split_card_text(card_text("ruled", body=body))
+    assert body_text == body
+    assert ledger_text.startswith("type: insight")
+
+
+def test_ledger_delimiter_still_required():
+    # Without a fenced yaml ledger after any `---`, parsing still raises.
+    with pytest.raises(ValueError):
+        split_card_text("# Title\n\nbody\n\n---\n\nmore prose\n")
+    with pytest.raises(ValueError):
+        split_card_text("# Title\n\nbody only\n")
 
 
 def test_quarantine_is_law(tmp_path):
