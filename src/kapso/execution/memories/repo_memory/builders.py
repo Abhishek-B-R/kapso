@@ -19,7 +19,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
 
 from kapso.core.prompt_loader import load_prompt, render_prompt
 
@@ -322,11 +322,56 @@ def _validate_repo_model(model: Dict[str, Any]) -> Dict[str, Any]:
     return model
 
 
+def _merge_repo_model_update(
+    previous_model: Dict[str, Any],
+    update: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Apply an incremental update patch onto the previous RepoMemory model.
+
+    The update carries only changed/added sections plus an explicit
+    `removed_sections` list; every other previous section is carried over
+    verbatim, so a section can never be lost by being omitted.
+    """
+    _validate_repo_model(update)
+    removed = update.get("removed_sections")
+    if not isinstance(removed, list) or not all(
+        isinstance(sid, str) for sid in removed
+    ):
+        raise RepoMemoryResponseError(
+            "RepoMemory update JSON requires a 'removed_sections' list of "
+            "section ids"
+        )
+    previous_sections = previous_model["sections"]
+    unknown = [sid for sid in removed if sid not in previous_sections]
+    if unknown:
+        raise RepoMemoryResponseError(
+            "removed_sections names sections not in the previous model: "
+            f"{unknown}"
+        )
+    core = [sid for sid in removed if sid.startswith("core.")]
+    if core:
+        raise RepoMemoryResponseError(
+            "core sections cannot be removed (return them with empty claims "
+            f"instead): {core}"
+        )
+    conflicting = [sid for sid in removed if sid in update["sections"]]
+    if conflicting:
+        raise RepoMemoryResponseError(
+            f"sections both removed and returned: {conflicting}"
+        )
+    sections = {
+        sid: sec for sid, sec in previous_sections.items() if sid not in removed
+    }
+    sections.update(update["sections"])
+    return {"summary": update["summary"], "sections": sections}
+
+
 def _complete_repo_model(
     *,
     llm: LLMLike,
     prompt: str,
     max_retries: int,
+    validate: Callable[[Dict[str, Any]], Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Complete and parse a RepoMemory model, repairing only bad responses."""
     if isinstance(max_retries, bool) or not isinstance(max_retries, int):
@@ -345,7 +390,7 @@ def _complete_repo_model(
             role="repo_memory",
         )
         try:
-            return _validate_repo_model(_extract_json(response))
+            return validate(_extract_json(response))
         except RepoMemoryResponseError as exc:
             if attempt >= max_retries:
                 raise
@@ -459,6 +504,7 @@ def infer_repo_model_initial(
         llm=llm,
         prompt=prompt,
         max_retries=max_retries,
+        validate=_validate_repo_model,
     )
 
 
@@ -499,6 +545,9 @@ def infer_repo_model_update(
     """
     Incrementally update RepoModel using the previous model + diffs + changed files.
     
+    The LLM sees the complete previous model and returns a patch (changed
+    sections + `removed_sections`); this returns that patch merged onto the
+    previous model, so untouched sections are never lost.
     The updated model uses line-number-based evidence references.
     """
     changed_blobs: List[Tuple[str, str]] = []
@@ -513,7 +562,7 @@ def infer_repo_model_update(
         template,
         {
             "diff_summary": diff_summary,
-            "previous_model_json": json.dumps(previous_model, indent=2)[:20000],
+            "previous_model_json": json.dumps(previous_model, indent=2),
             "changed_payload": changed_payload,
         },
     )
@@ -521,4 +570,5 @@ def infer_repo_model_update(
         llm=llm,
         prompt=prompt,
         max_retries=max_retries,
+        validate=lambda update: _merge_repo_model_update(previous_model, update),
     )
