@@ -38,21 +38,27 @@ def split_card_text(text: str) -> tuple:
     ```yaml block (so GitHub renders it as code, not markdown soup).
     Returns (body, ledger_yaml_text); raises on any other shape."""
     lines = text.split("\n")
-    for index, line in enumerate(lines):
-        if line.strip() == "---":
+    seen_rule = False
+    for index in range(len(lines) - 1, -1, -1):
+        if lines[index].strip() != "---":
+            continue
+        seen_rule = True
+        tail = lines[index + 1:]
+        while tail and not tail[0].strip():
+            tail.pop(0)
+        while tail and not tail[-1].strip():
+            tail.pop()
+        # A `---` in the body is a Markdown horizontal rule; scanning from
+        # the end finds the last one, which opens the closing ledger fence.
+        if tail and tail[0].strip() == "```yaml" \
+                and tail[-1].strip() == "```":
             body = "\n".join(lines[:index]).strip()
-            tail = [l for l in lines[index + 1:]]
-            while tail and not tail[0].strip():
-                tail.pop(0)
-            while tail and not tail[-1].strip():
-                tail.pop()
-            if not tail or tail[0].strip() != "```yaml" \
-                    or tail[-1].strip() != "```":
-                raise ValueError(
-                    "card ledger must be a fenced ```yaml block below the "
-                    "`---` delimiter (format v2)"
-                )
             return body, "\n".join(tail[1:-1])
+    if seen_rule:
+        raise ValueError(
+            "card ledger must be a fenced ```yaml block below the "
+            "`---` delimiter (format v2)"
+        )
     raise ValueError("card has no `---` ledger delimiter (format v2: body "
                      "first, machine ledger below)")
 
