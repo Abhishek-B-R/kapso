@@ -39,8 +39,8 @@ def split_card_text(text: str) -> tuple:
     Returns (body, ledger_yaml_text); raises on any other shape."""
     lines = text.split("\n")
     seen_rule = False
-    for index, line in enumerate(lines):
-        if line.strip() != "---":
+    for index in range(len(lines) - 1, -1, -1):
+        if lines[index].strip() != "---":
             continue
         seen_rule = True
         tail = lines[index + 1:]
@@ -48,8 +48,8 @@ def split_card_text(text: str) -> tuple:
             tail.pop(0)
         while tail and not tail[-1].strip():
             tail.pop()
-        # A `---` in the body is a Markdown horizontal rule; only the one
-        # that opens the fenced ledger is the delimiter.
+        # A `---` in the body is a Markdown horizontal rule; scanning from
+        # the end finds the last one, which opens the closing ledger fence.
         if tail and tail[0].strip() == "```yaml" \
                 and tail[-1].strip() == "```":
             body = "\n".join(lines[:index]).strip()

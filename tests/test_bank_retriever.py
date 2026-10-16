@@ -167,11 +167,24 @@ def test_horizontal_rule_in_body_is_not_the_ledger_delimiter(tmp_path):
     assert ledger_text.startswith("type: insight")
 
 
+def test_body_rule_followed_by_yaml_example_is_not_the_delimiter(tmp_path):
+    # A body rule followed by a yaml example block must not be mistaken for
+    # the ledger delimiter either.
+    body = TEMPLATE_BODY.replace(
+        "## What to do", "---\n\n```yaml\nlr: 0.001\n```\n\n## What to do", 1)
+    root = build_bank(tmp_path, {"ruled": card_text("ruled", body=body)})
+    bank = Bank(str(root))
+    assert "lr: 0.001" in bank.cards["ruled"].body
+    body_text, ledger_text = split_card_text(card_text("ruled", body=body))
+    assert body_text == body
+    assert ledger_text.startswith("type: insight")
+
+
 def test_ledger_delimiter_still_required():
     # Without a fenced yaml ledger after any `---`, parsing still raises.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="must be a fenced ```yaml block"):
         split_card_text("# Title\n\nbody\n\n---\n\nmore prose\n")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="no `---` ledger delimiter"):
         split_card_text("# Title\n\nbody only\n")
 
 
