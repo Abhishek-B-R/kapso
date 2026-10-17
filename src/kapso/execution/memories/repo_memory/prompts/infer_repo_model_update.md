@@ -12,7 +12,7 @@ Every NEW or MODIFIED claim MUST include evidence with line numbers from the pro
 CRITICAL - Handling changed files:
 - If a file appears in CHANGED FILE CONTENTS, you MUST update ALL evidence line numbers for that file.
 - The old line numbers in PREVIOUS MODEL are STALE for changed files - do NOT copy them.
-- Every section that cites a changed file MUST be returned with corrected line numbers, even if its claims are otherwise unchanged.
+- Every section that cites a changed file MUST be returned with corrected line numbers, even if its claims are otherwise unchanged (a patch that omits one is rejected).
 - Look up the correct line number from CHANGED FILE CONTENTS (format: "N| content").
 - If the code referenced by a claim was deleted or no longer exists, REMOVE the claim entirely.
 - If the code moved to a different line, update the line number to the new location.

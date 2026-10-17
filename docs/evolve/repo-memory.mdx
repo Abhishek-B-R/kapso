@@ -157,8 +157,11 @@ configuration errors are not retried.
 Each update sends the complete previous memory to the model. The model
 returns only the sections it changed or added, plus an explicit
 `removed_sections` list; every other section is carried over unchanged.
-A malformed patch, such as removing a `core.*` section, is an invalid
-response and goes through the same repair loop.
+A section whose evidence cites a file the experiment changed must be
+returned with refreshed line numbers (or removed), so a stale section
+is never carried over. A malformed patch, such as removing a `core.*`
+section or omitting such a section, is an invalid response and goes
+through the same repair loop.
 
 ## What happens when it fails?
 

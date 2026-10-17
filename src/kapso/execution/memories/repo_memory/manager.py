@@ -594,7 +594,7 @@ GeneratedAt: {doc.get('generated_at')}
                 repo_root=repo_root,
                 repo_map=doc["repo_map"],
                 previous_model=previous_model_v2,
-                diff_summary=diff_summary[:8000],
+                diff_summary=diff_summary,
                 changed_files=changed_files,
                 max_retries=max_retries,
             )

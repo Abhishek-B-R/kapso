@@ -19,7 +19,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Tuple
 
 from kapso.core.prompt_loader import load_prompt, render_prompt
 
@@ -322,15 +322,31 @@ def _validate_repo_model(model: Dict[str, Any]) -> Dict[str, Any]:
     return model
 
 
+def _evidence_paths(section: Any) -> Set[str]:
+    """Return the file paths cited as evidence by a section's claims."""
+    claims = section.get("claims") if isinstance(section, dict) else None
+    return {
+        item["path"]
+        for claim in (claims if isinstance(claims, list) else [])
+        if isinstance(claim, dict) and isinstance(claim.get("evidence"), list)
+        for item in claim["evidence"]
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
+    }
+
+
 def _merge_repo_model_update(
     previous_model: Dict[str, Any],
     update: Dict[str, Any],
+    changed_files: List[str],
 ) -> Dict[str, Any]:
     """Apply an incremental update patch onto the previous RepoMemory model.
 
     The update carries only changed/added sections plus an explicit
     `removed_sections` list; every other previous section is carried over
     verbatim, so a section can never be lost by being omitted.
+
+    A carried-over section would keep stale evidence line numbers if it cites
+    a changed file, so such a section must be returned (refreshed) or removed.
     """
     _validate_repo_model(update)
     removed = update.get("removed_sections")
@@ -358,6 +374,19 @@ def _merge_repo_model_update(
     if conflicting:
         raise RepoMemoryResponseError(
             f"sections both removed and returned: {conflicting}"
+        )
+    changed = set(changed_files)
+    stale = [
+        sid
+        for sid, sec in previous_sections.items()
+        if sid not in removed
+        and sid not in update["sections"]
+        and _evidence_paths(sec) & changed
+    ]
+    if stale:
+        raise RepoMemoryResponseError(
+            "sections citing changed files must be returned with refreshed "
+            f"evidence: {stale}"
         )
     sections = {
         sid: sec for sid, sec in previous_sections.items() if sid not in removed
@@ -570,5 +599,7 @@ def infer_repo_model_update(
         llm=llm,
         prompt=prompt,
         max_retries=max_retries,
-        validate=lambda update: _merge_repo_model_update(previous_model, update),
+        validate=lambda update: _merge_repo_model_update(
+            previous_model, update, changed_files
+        ),
     )
