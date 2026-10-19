@@ -154,6 +154,8 @@ and reads repository files once, then asks the model to repair only malformed
 JSON or an invalid outer schema. Provider, authentication, transport, and
 configuration errors are not retried.
 
+The model sees every file whole, with its real line numbers.
+
 Each update sends the complete previous memory to the model. The model
 returns only the sections it changed or added, plus an explicit
 `removed_sections` list; every other section is carried over unchanged.
