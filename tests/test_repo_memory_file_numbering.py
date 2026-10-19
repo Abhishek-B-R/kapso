@@ -12,7 +12,7 @@ from kapso.execution.memories.repo_memory.builders import (
 from tests.test_repo_memory_resilience import VALID_MODEL, VALID_UPDATE, SequenceLLM
 
 BIG_FILE = "big_module.py"
-BIG_FILE_LINES = 3000  # ~45k characters, well past both read caps
+BIG_FILE_LINES = 3000  # ~45k characters, longer than the old read caps
 NUMBERED_ROW = re.compile(r"^\s*(\d+)\| line_(\d{4}) = \d+$", re.M)
 
 
@@ -52,7 +52,7 @@ def _infer_update(llm: SequenceLLM, repo_root: Path) -> None:
     ],
     ids=["initial", "update"],
 )
-def test_clipped_file_keeps_real_line_numbers_in_the_prompt(
+def test_large_file_reaches_the_prompt_whole_with_real_line_numbers(
     tmp_path: Path,
     infer: Callable[[SequenceLLM, Path], None],
     responses: List[Any],
@@ -64,34 +64,17 @@ def test_clipped_file_keeps_real_line_numbers_in_the_prompt(
     prompt = llm.calls[-1]["messages"][0]["content"]
     rows = [(int(shown), int(real)) for shown, real in NUMBERED_ROW.findall(prompt)]
     assert [(shown, real) for shown, real in rows if shown != real] == []
-    # The head and the tail of the file both survive, the tail under its real numbers.
-    assert rows[0] == (1, 1)
-    assert rows[-1] == (BIG_FILE_LINES, BIG_FILE_LINES)
-    # The marker names exactly the range of lines that is missing.
-    kept = [real for _, real in rows]
-    gap_start, gap_end = next(
-        (before + 1, after - 1)
-        for before, after in zip(kept, kept[1:])
-        if after - before > 1
-    )
-    assert f"... (lines {gap_start}-{gap_end} omitted) ..." in prompt
+    assert [real for _, real in rows] == list(range(1, BIG_FILE_LINES + 1))
+    assert "omitted" not in prompt
 
 
-def test_file_under_the_cap_is_numbered_in_full_without_a_marker(
-    tmp_path: Path,
-) -> None:
+def test_numbers_only_the_files_real_lines(tmp_path: Path) -> None:
     path = tmp_path / "small.txt"
     path.write_text("alpha\nbeta\n")
 
-    assert _read_numbered_text(str(path), max_chars=1000) == "1| alpha\n2| beta\n3| "
+    assert _read_numbered_text(str(path)) == "1| alpha\n2| beta"
 
 
-def test_single_line_longer_than_the_budget_is_reported_as_omitted(
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "minified.js"
-    path.write_text("x" * 5000)
-
-    assert _read_numbered_text(str(path), max_chars=100) == (
-        "... (lines 1-1 omitted) ..."
-    )
+def test_unreadable_file_raises(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        _read_numbered_text(str(tmp_path / "missing.txt"))

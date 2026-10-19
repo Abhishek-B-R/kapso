@@ -52,44 +52,23 @@ _IGNORE_DIRS = {
 }
 
 
-def _count_lines_within(lines: List[str], budget: int) -> int:
-    """How many leading whole lines (newline included) fit in `budget` characters."""
-    used = 0
-    for count, line in enumerate(lines):
-        used += len(line) + 1
-        if used > budget:
-            return count
-    return len(lines)
-
-
-def _read_numbered_text(path: str, max_chars: int) -> str:
+def _read_numbered_text(path: str) -> str:
     """
-    Read a file as line-numbered text and cap size to keep prompts bounded.
+    Read a file whole as line-numbered text.
 
     Format: "  N| content" where N is the line's real position in the file.
-    The model cites these numbers as evidence, so they are assigned to the
-    whole file before any clipping: a clipped file keeps whole head and tail
-    lines under their real numbers, with a marker naming the omitted range.
+    The model cites these numbers as evidence, so every line keeps its own.
     """
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            text = f.read()
-    except Exception:
-        return ""
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
 
     if not text:
         return ""
     lines = text.split("\n")
+    if text.endswith("\n"):
+        lines.pop()
     width = len(str(len(lines)))
-    numbered = [f"{n:>{width}}| {line}" for n, line in enumerate(lines, 1)]
-    if len(text) <= max_chars:
-        return "\n".join(numbered)
-
-    # Keep head+tail so evidence quotes are likely to remain present.
-    head = _count_lines_within(lines, max_chars // 2)
-    tail = _count_lines_within(lines[::-1], max_chars // 2)
-    marker = f"... (lines {head + 1}-{len(lines) - tail} omitted) ..."
-    return "\n".join(numbered[:head] + [marker] + numbered[len(lines) - tail :])
+    return "\n".join(f"{n:>{width}}| {line}" for n, line in enumerate(lines, 1))
 
 
 def build_repo_map(
@@ -503,7 +482,6 @@ def infer_repo_model_initial(
     llm: LLMLike,
     repo_root: str,
     repo_map: Dict[str, Any],
-    max_file_chars: int = 20000,
     max_files_to_read: int = 20,
     max_retries: int = 0,
 ) -> Dict[str, Any]:
@@ -520,7 +498,7 @@ def infer_repo_model_initial(
     file_blobs: List[Tuple[str, str]] = []
     for rel in files_to_read:
         abs_path = os.path.join(repo_root, rel)
-        file_blobs.append((rel, _read_numbered_text(abs_path, max_chars=max_file_chars)))
+        file_blobs.append((rel, _read_numbered_text(abs_path)))
 
     files_payload = _format_file_payload(file_blobs)
 
@@ -545,7 +523,6 @@ def infer_repo_model_with_retry(
     llm: LLMLike,
     repo_root: str,
     repo_map: Dict[str, Any],
-    max_file_chars: int = 20000,
     max_files_to_read: int = 20,
     max_retries: int = 4,
 ) -> Dict[str, Any]:
@@ -559,7 +536,6 @@ def infer_repo_model_with_retry(
         llm=llm,
         repo_root=repo_root,
         repo_map=repo_map,
-        max_file_chars=max_file_chars,
         max_files_to_read=max_files_to_read,
         max_retries=max_retries,
     )
@@ -572,7 +548,6 @@ def infer_repo_model_update(
     previous_model: Dict[str, Any],
     diff_summary: str,
     changed_files: List[str],
-    max_file_chars: int = 15000,
     max_retries: int = 0,
 ) -> Dict[str, Any]:
     """
@@ -587,7 +562,7 @@ def infer_repo_model_update(
     for rel in changed_files[:20]:
         abs_path = os.path.join(repo_root, rel)
         if os.path.exists(abs_path):
-            changed_blobs.append((rel, _read_numbered_text(abs_path, max_chars=max_file_chars)))
+            changed_blobs.append((rel, _read_numbered_text(abs_path)))
     changed_payload = _format_file_payload(changed_blobs)
 
     template = load_prompt("execution/memories/repo_memory/prompts/infer_repo_model_update.md")
