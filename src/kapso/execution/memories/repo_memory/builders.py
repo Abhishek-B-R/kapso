@@ -52,21 +52,44 @@ _IGNORE_DIRS = {
 }
 
 
-def _safe_read_text(path: str, max_chars: int) -> str:
-    """Read a file as text and cap size to keep prompts bounded."""
+def _count_lines_within(lines: List[str], budget: int) -> int:
+    """How many leading whole lines (newline included) fit in `budget` characters."""
+    used = 0
+    for count, line in enumerate(lines):
+        used += len(line) + 1
+        if used > budget:
+            return count
+    return len(lines)
+
+
+def _read_numbered_text(path: str, max_chars: int) -> str:
+    """
+    Read a file as line-numbered text and cap size to keep prompts bounded.
+
+    Format: "  N| content" where N is the line's real position in the file.
+    The model cites these numbers as evidence, so they are assigned to the
+    whole file before any clipping: a clipped file keeps whole head and tail
+    lines under their real numbers, with a marker naming the omitted range.
+    """
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             text = f.read()
     except Exception:
         return ""
 
+    if not text:
+        return ""
+    lines = text.split("\n")
+    width = len(str(len(lines)))
+    numbered = [f"{n:>{width}}| {line}" for n, line in enumerate(lines, 1)]
     if len(text) <= max_chars:
-        return text
+        return "\n".join(numbered)
 
     # Keep head+tail so evidence quotes are likely to remain present.
-    head = text[: max_chars // 2]
-    tail = text[-(max_chars // 2) :]
-    return head + "\n\n... (truncated) ...\n\n" + tail
+    head = _count_lines_within(lines, max_chars // 2)
+    tail = _count_lines_within(lines[::-1], max_chars // 2)
+    marker = f"... (lines {head + 1}-{len(lines) - tail} omitted) ..."
+    return "\n".join(numbered[:head] + [marker] + numbered[len(lines) - tail :])
 
 
 def build_repo_map(
@@ -239,28 +262,10 @@ def _build_toc_from_sections(sections: Dict[str, Any]) -> List[Dict[str, str]]:
     return toc
 
 
-def _add_line_numbers(text: str) -> str:
-    """
-    Add line numbers to file content for evidence referencing.
-    
-    Format: "  N| content" where N is right-aligned line number.
-    This allows the LLM to reference specific lines by number instead of
-    requiring exact verbatim quotes.
-    """
-    if not text:
-        return ""
-    lines = text.split('\n')
-    width = len(str(len(lines)))
-    numbered = []
-    for i, line in enumerate(lines, 1):
-        numbered.append(f"{i:>{width}}| {line}")
-    return '\n'.join(numbered)
-
-
 def _format_file_payload(file_blobs: List[Tuple[str, str]]) -> str:
     """
-    Format file blobs into a payload with line numbers.
-    
+    Format line-numbered file blobs (see `_read_numbered_text`) into a payload.
+
     Each file is formatted as:
         === FILE: path/to/file.py ===
           1| first line
@@ -270,8 +275,7 @@ def _format_file_payload(file_blobs: List[Tuple[str, str]]) -> str:
     parts = []
     for path, content in file_blobs:
         if content:
-            numbered_content = _add_line_numbers(content)
-            parts.append(f"=== FILE: {path} ===\n{numbered_content}")
+            parts.append(f"=== FILE: {path} ===\n{content}")
     return "\n\n".join(parts)
 
 
@@ -516,7 +520,7 @@ def infer_repo_model_initial(
     file_blobs: List[Tuple[str, str]] = []
     for rel in files_to_read:
         abs_path = os.path.join(repo_root, rel)
-        file_blobs.append((rel, _safe_read_text(abs_path, max_chars=max_file_chars)))
+        file_blobs.append((rel, _read_numbered_text(abs_path, max_chars=max_file_chars)))
 
     files_payload = _format_file_payload(file_blobs)
 
@@ -583,7 +587,7 @@ def infer_repo_model_update(
     for rel in changed_files[:20]:
         abs_path = os.path.join(repo_root, rel)
         if os.path.exists(abs_path):
-            changed_blobs.append((rel, _safe_read_text(abs_path, max_chars=max_file_chars)))
+            changed_blobs.append((rel, _read_numbered_text(abs_path, max_chars=max_file_chars)))
     changed_payload = _format_file_payload(changed_blobs)
 
     template = load_prompt("execution/memories/repo_memory/prompts/infer_repo_model_update.md")
