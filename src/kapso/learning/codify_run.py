@@ -317,7 +317,8 @@ class LocalExecutor:
             return workspace / "outcome.yaml"
         result = subprocess.run(
             [sys.executable, str(eval_path)], cwd=str(workspace),
-            capture_output=True, text=True, timeout=self.timeout,
+            capture_output=True, text=True, errors="replace",
+            timeout=self.timeout,
         )
         (workspace / "replay-stdout.txt").write_text(
             result.stdout + result.stderr

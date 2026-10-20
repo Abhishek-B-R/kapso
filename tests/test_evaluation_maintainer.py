@@ -76,7 +76,7 @@ def manifest_stdout(items=10, total_items=200):
 
 
 def fake_runner(stdout=None, returncode=0):
-    def run(command, cwd, capture_output, text, timeout):
+    def run(command, cwd, capture_output, text, errors, timeout):
         return SimpleNamespace(
             returncode=returncode,
             stdout=stdout if stdout is not None else manifest_stdout(),

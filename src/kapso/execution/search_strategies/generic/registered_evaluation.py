@@ -227,8 +227,10 @@ def run_frame_subprocess(
     # deadlocks the child mid-write while this loop sleeps
     # (observed live: rel-event/user-ignore froze 6h inside
     # _emit_process_line, 2026-08-12).
-    stdout_file = tempfile.TemporaryFile(mode="w+")
-    stderr_file = tempfile.TemporaryFile(mode="w+")
+    # errors="replace": the child's bytes are not ours to vet, and one stray
+    # non-UTF-8 byte must not discard a finished run at the read-back.
+    stdout_file = tempfile.TemporaryFile(mode="w+", errors="replace")
+    stderr_file = tempfile.TemporaryFile(mode="w+", errors="replace")
     run_started = time.monotonic()
     overran = False
     process = subprocess.Popen(
