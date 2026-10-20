@@ -96,7 +96,7 @@ def patch_maintainer_environment(monkeypatch, agent):
         maintainer_module,
         "subprocess",
         SimpleNamespace(
-            run=lambda command, cwd, capture_output, text, timeout: (
+            run=lambda command, cwd, capture_output, text, errors, timeout: (
                 SimpleNamespace(
                     returncode=0, stdout=manifest_stdout(), stderr=""
                 )
