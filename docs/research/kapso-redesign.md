@@ -16,7 +16,7 @@ domain, and every step is on record. It does not name a category, which is
 deliberate: "applied research", "auto-research", "iteration engine",
 "software factory" and "long-running agents" were all tried and rejected.
 
-## 2. TL;DR (draft 1, to iterate; replaces the README's "What is Kapso?")
+## 2. TL;DR (draft 2, to iterate; replaces the README's "What is Kapso?")
 
 Coding agents burn tokens and hand back diffs you have to review. Kapso runs
 them differently. You plug in a harness for your domain and set a goal; it
@@ -30,8 +30,9 @@ judge and deploy there, and the tools it needs. Harnesses ship for ML
 models, data pipelines, GPU kernels, algorithm contests and agents; write
 your own for anything with an evaluation.
 
-Every run leaves lessons with their evidence, so the next run on the same
-harness starts ahead.
+It learns from experience, and the lessons carry their receipts: one rule
+per card, the condition it applies under, the measured effect from each run
+that tested it, a reliability score with its rationale.
 
 ## 3. Tags (draft, to iterate)
 
