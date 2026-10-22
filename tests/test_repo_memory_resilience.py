@@ -572,3 +572,35 @@ def test_update_after_experiment_sends_the_whole_diff_summary_to_the_model(
     )
 
     assert diff_summary in llm.calls[0]["messages"][0]["content"]
+
+
+def test_update_shows_the_model_every_changed_file_it_must_refresh(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    changed = [f"file_{index:02d}.py" for index in range(25)]
+    for name in changed:
+        (root / name).write_text("a\nb\nc\n")
+    previous_model = {
+        "summary": "Old",
+        "sections": {"core.x": _opt_section("core.x", path="file_24.py")},
+    }
+    refreshed = {
+        "summary": "New",
+        "sections": {"core.x": _opt_section("core.x", path="file_24.py")},
+        "removed_sections": [],
+    }
+    llm = SequenceLLM([json.dumps(refreshed)])
+
+    update = infer_repo_model_update(
+        llm=llm,
+        repo_root=str(root),
+        repo_map=_repo_map(),
+        previous_model=previous_model,
+        diff_summary="25 files changed",
+        changed_files=changed,
+        max_retries=0,
+    )
+
+    prompt = llm.calls[0]["messages"][0]["content"]
+    assert all(f"=== FILE: {name} ===" in prompt for name in changed)
+    assert update["sections"]["core.x"] == refreshed["sections"]["core.x"]
