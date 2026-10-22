@@ -203,6 +203,8 @@ bash scripts/stop_infra.sh              # stop, keep the data
 bash scripts/stop_infra.sh --volumes    # stop and wipe the data
 ```
 
+The stack runs Weaviate 1.39. If your volumes were created by an older stack (Weaviate 1.27), note that Weaviate supports upgrading one minor version at a time. The index is rebuilt from your wiki pages, so the simplest path is to wipe it and re-index: `bash scripts/stop_infra.sh --volumes`, `bash scripts/start_infra.sh`, then run `kapso index_kg` again.
+
 `kapso doctor` reports both as `Weaviate (localhost:8080)` and `Neo4j (localhost:7687)` when your config enables knowledge search.
 
 ## Optional: Benchmarks
