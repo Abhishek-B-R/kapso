@@ -560,7 +560,7 @@ def infer_repo_model_update(
     The updated model uses line-number-based evidence references.
     """
     changed_blobs: List[Tuple[str, str]] = []
-    for rel in changed_files[:20]:
+    for rel in changed_files:
         abs_path = os.path.join(repo_root, rel)
         if os.path.exists(abs_path):
             changed_blobs.append((rel, _read_numbered_text(abs_path)))
