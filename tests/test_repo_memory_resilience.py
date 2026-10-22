@@ -16,6 +16,7 @@ from kapso.execution.memories.repo_memory import (
     RepoMemoryResponseError,
 )
 from kapso.execution.memories.repo_memory.builders import (
+    build_repo_map,
     infer_repo_model_update,
     infer_repo_model_with_retry,
 )
@@ -572,3 +573,48 @@ def test_update_after_experiment_sends_the_whole_diff_summary_to_the_model(
     )
 
     assert diff_summary in llm.calls[0]["messages"][0]["content"]
+
+
+def test_repo_memory_reads_unusual_file_names_exactly_as_on_disk(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    repo = git.Repo.init(root)
+    with repo.config_writer() as config:
+        config.set_value("user", "name", "tester")
+        config.set_value("user", "email", "tester@example.com")
+    (root / "README.md").write_text("# Example\n")
+    (root / "old_name.py").write_text("print('moved')\n" * 20)
+    repo.git.add("-A")
+    repo.git.commit("-m", "base")
+    base_commit = repo.head.commit.hexsha
+    RepoMemoryManager.write_to_worktree(
+        str(root),
+        {
+            "schema_version": 2,
+            "book": {"summary": "Old", "sections": {"opt.a": _opt_section("a")}},
+        },
+    )
+    unusual_names = ["café.py", "日本語.py", "has space.py", 'quo"te.py']
+    for name in unusual_names:
+        (root / name).write_text("x = 1\n")
+    repo.git.mv("old_name.py", "renamed_café.py")
+    repo.git.add("-A")
+    repo.git.commit("-m", "unusual names")
+
+    assert set(unusual_names) <= set(build_repo_map(str(root))["files"])
+
+    RepoMemoryManager.update_after_experiment(
+        repo_root=str(root),
+        llm=SequenceLLM([VALID_UPDATE]),
+        branch_name="exp",
+        parent_branch_name="main",
+        base_commit_sha=base_commit,
+        solution_spec="spec",
+        run_result={},
+        max_retries=0,
+    )
+
+    experiment = RepoMemoryManager.load_from_worktree(str(root))["experiments"][-1]
+    expected = {*unusual_names, "renamed_café.py"}
+    assert expected <= set(experiment["changed_files"])
+    assert expected <= {entry["path"] for entry in experiment["diff_numstat"]}
+    assert not any(entry["path"].startswith('"') for entry in experiment["diff_numstat"])
