@@ -108,10 +108,11 @@ def build_repo_map(
     git_files: Optional[List[str]] = None
     try:
         out = subprocess.check_output(
-            ["git", "-C", repo_root, "ls-files", "--cached", "--others", "--exclude-standard"],
+            ["git", "-C", repo_root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
             stderr=subprocess.DEVNULL,
         ).decode("utf-8", "replace")
-        git_files = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        # -z: NUL-separated, unquoted names (without it git C-quotes non-ASCII/special paths).
+        git_files = [name for name in out.split("\0") if name]
     except Exception:
         git_files = None
 
