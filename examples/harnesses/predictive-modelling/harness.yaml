@@ -1,0 +1,23 @@
+schema_version: 1
+name: predictive-modelling
+version: 0.1.0
+description: Tabular and structured prediction with cross-validation discipline and a test set that never trains.
+
+environment:
+  python: requirements.txt
+
+modules:
+  setup:
+    skills: [data-profile]                 # profile the task's data, write the statement, return a sanitized split as a prepared resource
+  ideation:
+    skills: [model-families]               # the ideation page lists the axes: features, model family, training distribution, ensembling and post-processing
+  implementation:
+    skills: [cv-protocol, tabular-modeling, ensembling, leakage-scan]
+    agents: [leakage-auditor]              # ask before submitting when the change touches the split or the features
+  verification:
+    skills: [leakage-scan]                 # the verification page: run the scan on the final diff, then the auditor; a leak voids
+    agents: [leakage-auditor]
+  feedback:
+    skills: [cv-protocol]                  # read CV-versus-holdout gaps the same way every time
+  deployment:
+    skills: [predict-endpoint]             # the workflow for the predict-endpoint target; deploy() names the target

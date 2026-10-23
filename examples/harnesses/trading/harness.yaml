@@ -1,0 +1,33 @@
+schema_version: 1
+name: trading
+version: 0.1.0
+description: Research, implement, verify and deploy systematic trading strategies.
+
+environment:
+  python: requirements.txt
+
+modules:
+  setup:
+    skills: [market-data]
+    mcp_servers: [market-data]
+    hooks: [session-brief, deny-web-fetch, protect-prepared]
+  ideation:
+    skills: [strategy-families, market-structure]
+    hooks: [session-brief, deny-web-fetch, protect-prepared]
+  implementation:
+    skills: [backtesting, market-data, risk-limits, lookahead-scan]
+    mcp_servers: [market-data]
+    agents: [lookahead-auditor]
+    hooks: [session-brief, deny-web-fetch, protect-prepared, deny-snapshot, scan-writes, require-results]
+  verification:
+    skills: [backtesting, lookahead-scan]
+    agents: [lookahead-auditor]
+    hooks: [session-brief, deny-web-fetch, protect-prepared]
+  feedback:
+    skills: [risk-limits]
+    agents: [risk-reviewer]
+    hooks: [session-brief, deny-web-fetch, protect-prepared]
+  deployment:
+    skills: [market-data, paper-trading]
+    mcp_servers: [market-data, broker]
+    hooks: [session-brief, deny-web-fetch, protect-prepared, deny-snapshot]

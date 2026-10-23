@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "market-data": {
+      "command": "python",
+      "args": ["${PLUGIN_ROOT}/servers/market_data.py"]
+    },
+    "broker": {
+      "command": "python",
+      "args": ["${PLUGIN_ROOT}/servers/broker.py"]
+    }
+  }
+}
