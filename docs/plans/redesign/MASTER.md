@@ -132,7 +132,7 @@ hosts), and before the release.
 | WP | Sub-plan | State |
 |---|---|---|
 | 0 | `wp0-foundations.md` | built and reviewed; gate green; proof run on the fresh machine recorded in the sub-plan |
-| 1 | `wp1-build.md` | built on `wp1-build`; gate green; docs and examples slice landed; proof run on the fresh machine in progress (its first attempt found the relative-output crash, fixed) |
+| 1 | `wp1-build.md` | built on `wp1-build` (commits through `1f022925`); gate 1,314 green; docs and examples slice landed; naming review and pull-request review folded (fourteen renames, twenty fixes, see the sub-plan); proof runs: the first found the relative-output crash (fixed), the second showed ideation takes twelve to fourteen minutes so a fifteen-minute campaign delivers nothing (budgets and pages corrected), the third, at forty-five minutes on the final wheel, in progress; PR into `redesign` after it |
 | 2 to 11 | to write when next | |
 
 WP0 landed directly on `redesign` because it is the package that creates
