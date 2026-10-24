@@ -19,7 +19,7 @@
 # Usage:
 #     from kapso.deployment import DeploymentFactory, DeployStrategy, DeployConfig
 #     
-#     config = DeployConfig(code_path="./solution", goal="My Goal")
+#     config = DeployConfig(solution=Solution.open("./solution"))
 #     software = DeploymentFactory.create(DeployStrategy.AUTO, config)
 #     
 #     # Unified interface - works the same for LOCAL, DOCKER, MODAL, etc.

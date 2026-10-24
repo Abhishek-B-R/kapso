@@ -7,7 +7,7 @@
 #   parent (default): stages a fresh campaign (initial_repo copy + synthetic
 #     data), spawns the child under a hard wall of 2x the mode's time budget,
 #     then verifies the milestone invariants against the run artifacts.
-#   --child: actually calls Kapso.evolve() and writes result.json.
+#   --child: actually calls Kapso.build() and writes result.json.
 #
 # Every knob lives in config.e2e.yaml; this runner only selects a mode.
 #
@@ -141,37 +141,36 @@ def stage_campaign(run_dir: Path, *, seed_eval_defect: bool) -> None:
 
 
 # =========================================================================
-# Child: the actual evolve call
+# Child: the actual build call
 # =========================================================================
 
 def run_child(args: argparse.Namespace, run_dir: Path) -> None:
-    from kapso import Kapso
+    from kapso import Budget, Kapso
 
-    kapso = Kapso(config_path=str(CONFIG_PATH))
-    solution = kapso.evolve(
-        goal=goal_text(args.seed_eval_defect),
-        initial_repo=str(run_dir / "initial_repo"),
-        output_path=str(run_dir / "workspace"),
-        max_iterations=args.max_iterations,
+    kapso = Kapso(config=str(CONFIG_PATH))
+    solution = kapso.build(
+        goal_text(args.seed_eval_defect),
+        repo=str(run_dir / "initial_repo"),
+        output=str(run_dir / "workspace"),
+        budget=Budget(iterations=args.max_iterations, minutes=args.top_up_minutes),
         mode=args.mode,
         resume=args.resume,
-        time_budget_minutes=args.top_up_minutes,
-        eval_dir=(
+        evaluation=(
             str(run_dir / "provided_eval")
             if args.seed_eval_defect
             else None
         ),
     )
     result = {
-        "final_score": solution.final_score,
+        "final_score": solution.score,
         "succeeded": solution.succeeded,
-        "code_path": solution.code_path,
-        "metadata": solution.metadata,
+        "trace": str(solution.trace),
+        "stopped_reason": solution.stopped_reason,
     }
     (run_dir / "result.json").write_text(
         json.dumps(result, indent=2, default=str)
     )
-    print(f"[e2e] child finished: score={solution.final_score}")
+    print(f"[e2e] child finished: score={solution.score}")
 
 
 # =========================================================================

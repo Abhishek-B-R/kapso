@@ -19,7 +19,7 @@ from kapso.execution.observability import (
     credits_summary,
     knowledge_summary,
     platform_cost_summary,
-    EvolveStatus,
+    BuildStatus,
     KnowledgeStatus,
     LessonStatus,
     OperationStatusView,
@@ -72,7 +72,7 @@ def test_lifecycle_states_phases_and_ring(tmp_path):
 
 
 def test_failed_records_the_error(tmp_path):
-    status = EvolveStatus(tmp_path / "s.json")
+    status = BuildStatus(tmp_path / "s.json")
     status.failed(RuntimeError("codex died"))
     data = read(tmp_path / "s.json")
     assert data["state"] == "failed"
@@ -82,8 +82,8 @@ def test_failed_records_the_error(tmp_path):
 def test_file_is_always_parseable_under_concurrent_writers(tmp_path):
     # The atomic tmp+fsync+replace write is the whole point: a reader
     # polling mid-write must never see a torn file.
-    path = tmp_path / "evolve.json"
-    status = EvolveStatus(path)
+    path = tmp_path / "build.json"
+    status = BuildStatus(path)
     stop = threading.Event()
     torn = []
 
@@ -136,7 +136,7 @@ def test_view_resolves_workspace_file_and_directory(tmp_path):
     workspace = tmp_path / "campaign"
     (workspace / ".kapso").mkdir(parents=True)
     status_file = workspace / ".kapso" / "status.json"
-    EvolveStatus(status_file).update(iteration=3)
+    BuildStatus(status_file).update(iteration=3)
     assert OperationStatusView(workspace).path == status_file
     assert OperationStatusView(status_file).data["iteration"] == 3
 
@@ -152,7 +152,7 @@ def test_view_resolves_workspace_file_and_directory(tmp_path):
 
 def test_alive_flips_on_heartbeat_staleness(tmp_path):
     path = tmp_path / "s.json"
-    EvolveStatus(path, heartbeat_seconds=60).update(iteration=1)
+    BuildStatus(path, heartbeat_seconds=60).update(iteration=1)
     assert OperationStatusView(path).alive is True
 
     data = read(path)
@@ -176,16 +176,16 @@ def test_alive_flips_on_heartbeat_staleness(tmp_path):
 
 
 def test_renderer_blocks_show_each_operation_shape(tmp_path):
-    evolve = tmp_path / "evolve.json"
-    EvolveStatus(
-        evolve, heartbeat_seconds=60,
+    build = tmp_path / "build.json"
+    BuildStatus(
+        build, heartbeat_seconds=60,
         budget={"elapsed_min": 30.0, "total_min": 60.0},
     ).note(
         "node 3 completed score=0.81",
         iteration=4, best={"score": 0.81, "node": 3},
         last={"score": 0.7, "node": 4},
     )
-    screen = OperationStatusView(evolve).explain()
+    screen = OperationStatusView(build).explain()
     assert "30/60 min" in screen and "▓" in screen
     assert "best: 0.81" in screen and "node 3 completed" in screen
 
@@ -210,7 +210,7 @@ def test_watch_json_is_a_pure_passthrough(tmp_path, capsys):
     from kapso.cli.watch import cmd_watch
 
     path = tmp_path / "s.json"
-    EvolveStatus(path).update(iteration=7)
+    BuildStatus(path).update(iteration=7)
 
     class Args:
         pass
@@ -224,10 +224,10 @@ def test_watch_json_is_a_pure_passthrough(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["iteration"] == 7
 
 
-def test_evolve_watch_renders_checkpoint_tree(tmp_path):
+def test_build_watch_renders_checkpoint_tree(tmp_path):
     state_dir = tmp_path / "campaign" / ".kapso"
     state_dir.mkdir(parents=True)
-    EvolveStatus(state_dir / "status.json").update(iteration=2)
+    BuildStatus(state_dir / "status.json").update(iteration=2)
     (state_dir / "run_state.json").write_text(json.dumps({
         "strategy_state": {"node_history": [
             {"node_id": 0, "parent_node_id": None, "branch_name": "baseline", "score": 0.4},
@@ -260,10 +260,10 @@ def test_evolve_watch_renders_checkpoint_tree(tmp_path):
     assert "cost:" not in screen
 
 
-def test_evolve_watch_renders_platform_budget_and_refused_node(tmp_path):
+def test_build_watch_renders_platform_budget_and_refused_node(tmp_path):
     state_dir = tmp_path / "campaign" / ".kapso"
     state_dir.mkdir(parents=True)
-    EvolveStatus(state_dir / "status.json").update(
+    BuildStatus(state_dir / "status.json").update(
         iteration=2,
         platform_budget={"used": 2.0, "budget": 3.0, "unit": "credits", "refused": 1},
     )
@@ -281,17 +281,17 @@ def test_evolve_watch_renders_platform_budget_and_refused_node(tmp_path):
     }))
     screen = OperationStatusView(state_dir / "status.json").explain(tree=True)
     # The second bar: 13 of 20 cells at 2.0 of 3.0, then the same summary
-    # the evolve completion prints.
+    # the build completion prints.
     assert "cost:   ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░ 2.0/3.0 credits, 1 candidate refused" in screen
     # Measured supersedes the 2.5 estimate; the refused node shows its estimate.
     assert "baseline (score=0.4, ok) cost: 2.0" in screen
     assert "candidate-b (score=unscored, refused) cost: 2.0" in screen
 
 
-def test_evolve_watch_rejects_missing_checkpoint_parent(tmp_path):
+def test_build_watch_rejects_missing_checkpoint_parent(tmp_path):
     state_dir = tmp_path / "campaign" / ".kapso"
     state_dir.mkdir(parents=True)
-    EvolveStatus(state_dir / "status.json").update(iteration=2)
+    BuildStatus(state_dir / "status.json").update(iteration=2)
     (state_dir / "run_state.json").write_text(json.dumps({
         "strategy_state": {"node_history": [
             {"node_id": 1, "parent_node_id": 9, "branch_name": "orphan"},
@@ -304,12 +304,12 @@ def test_evolve_watch_rejects_missing_checkpoint_parent(tmp_path):
 def test_watch_tree_reports_missing_checkpoint(tmp_path):
     state_dir = tmp_path / "campaign" / ".kapso"
     state_dir.mkdir(parents=True)
-    EvolveStatus(state_dir / "status.json").update(iteration=2)
+    BuildStatus(state_dir / "status.json").update(iteration=2)
     screen = OperationStatusView(state_dir / "status.json").explain(tree=True)
     assert "no checkpoint yet" in screen
 
 
-def test_watch_tree_reports_non_evolve_status(tmp_path):
+def test_watch_tree_reports_non_build_status(tmp_path):
     status_path = tmp_path / "learn.json"
     status_path.write_text(json.dumps({
         "operation": "learn",
@@ -317,7 +317,7 @@ def test_watch_tree_reports_non_evolve_status(tmp_path):
         "heartbeat_at": "2026-01-01T00:00:00+00:00",
     }))
     screen = OperationStatusView(status_path).explain(tree=True)
-    assert "campaign tree is only available for evolve" in screen
+    assert "campaign tree is only available for a build" in screen
 
 
 def test_config_carries_the_observability_keys():
@@ -350,7 +350,7 @@ def test_dead_writer_is_reported_before_the_heartbeat_goes_stale(tmp_path):
     if not Path("/proc").is_dir():
         pytest.skip("pid liveness needs /proc")
     path = tmp_path / "s.json"
-    EvolveStatus(path, heartbeat_seconds=60).update(iteration=1)
+    BuildStatus(path, heartbeat_seconds=60).update(iteration=1)
     data = read(path)
     gone = 2**22 - 1
     while Path("/proc", str(gone)).exists():

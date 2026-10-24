@@ -268,7 +268,7 @@ def test_software_reports_a_runner_error_dict_as_an_error():
     from kapso.deployment.base import DeployConfig
     from kapso.deployment.software import DeployedSoftware
     from kapso.deployment.base import DeploymentInfo
-    from kapso.execution.solution import SolutionResult
+    from tests.handles_support import make_solution
 
     class ErrRunner:
         def run(self, inputs):
@@ -278,7 +278,7 @@ def test_software_reports_a_runner_error_dict_as_an_error():
         def is_healthy(self): return False
 
     software = DeployedSoftware(
-        config=DeployConfig(solution=SolutionResult(goal="g", code_path="/nowhere")),
+        config=DeployConfig(solution=make_solution("/nowhere", "g")),
         runner=ErrRunner(), info=DeploymentInfo(strategy="bentoml"),
     )
     result = software.run({})

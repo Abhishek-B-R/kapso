@@ -27,6 +27,7 @@ from kapso.execution.search_strategies.base import SearchNode
 from kapso.gated_mcp.gates.experiment_history_gate import (
     ExperimentHistoryGate,
 )
+from kapso.handles import Budget
 from kapso.kapso import Kapso
 
 
@@ -465,7 +466,7 @@ def test_raise_policy_stops_before_history_and_checkpoint_write(
     }
 
 
-def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
+def test_public_build_forwards_evaluator_and_reports_selected_metrics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -533,15 +534,15 @@ def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
     kapso = Kapso.__new__(Kapso)
     kapso.config_path = None
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    # Mirror __init__-set attributes the evolve path reads (stub gotcha:
+    # Mirror __init__-set attributes the build path reads (stub gotcha:
     # new Kapso instance attributes must be added here too).
     kapso._config = {}
     kapso._bank_home = None
     kapso._kg_index_path = None
-    solution = kapso.evolve(
-        goal="Improve support",
-        output_path=str(workspace),
-        max_iterations=1,
+    solution = kapso.build(
+        "Improve support",
+        output=str(workspace),
+        budget=Budget(iterations=1),
         resume=True,
         iteration_evaluator=evaluator,
         iteration_evaluator_failure_policy="raise",
@@ -549,10 +550,10 @@ def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
 
     assert captured["iteration_evaluator"] is evaluator
     assert captured["iteration_evaluator_failure_policy"] == "raise"
-    assert solution.metadata["external_metrics"] == {
+    assert solution.external_metrics == {
         "holdout_accuracy": 0.8
     }
-    assert solution.metadata["external_primary_metric"] == (
+    assert solution.external_primary_metric == (
         "holdout_accuracy"
     )
 

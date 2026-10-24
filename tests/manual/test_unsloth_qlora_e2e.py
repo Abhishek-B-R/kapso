@@ -1,7 +1,7 @@
 """
 E2E Test - Unsloth QLoRA Fine-Tuning
 
-Tests that Kapso.evolve() can fine-tune LLMs using QLoRA with Unsloth,
+Tests that Kapso.build() can fine-tune LLMs using QLoRA with Unsloth,
 retrieving Workflow:Unslothai_Unsloth_QLoRA_Finetuning from the KG.
 
 Uses Claude Code via AWS Bedrock for code generation.
@@ -115,12 +115,13 @@ def patch_claude_code_for_bedrock():
 # =============================================================================
 
 def run_test():
-    """Run Unsloth QLoRA test using Kapso.evolve()."""
+    """Run Unsloth QLoRA test using Kapso.build()."""
+    from kapso.handles import Budget
     from kapso.kapso import Kapso
     from kapso.knowledge_base.search import KnowledgeSearchFactory
     
     logger.info("=" * 60)
-    logger.info("UNSLOTH QLORA TEST (Kapso.evolve + Bedrock)")
+    logger.info("UNSLOTH QLORA TEST (Kapso.build + Bedrock)")
     logger.info("=" * 60)
     
     # Patch claude_code to use Bedrock
@@ -135,12 +136,12 @@ def run_test():
         kapso.knowledge_search = KnowledgeSearchFactory.create("kg_graph_search")
         logger.info(f"KG enabled: {kapso.knowledge_search.is_enabled()}")
         
-        # Run Kapso.evolve()
-        logger.info("Running Kapso.evolve()...")
-        solution = kapso.evolve(
-            goal=TEST_CONFIG["goal"],
-            output_path=output_dir,
-            max_iterations=TEST_CONFIG["max_iterations"],
+        # Run Kapso.build()
+        logger.info("Running Kapso.build()...")
+        solution = kapso.build(
+            TEST_CONFIG["goal"],
+            output=output_dir,
+            budget=Budget(iterations=TEST_CONFIG["max_iterations"]),
             mode=TEST_CONFIG["mode"],
             coding_agent=TEST_CONFIG["coding_agent"],
             language=TEST_CONFIG["language"],
@@ -155,11 +156,11 @@ def run_test():
         # Results
         logger.info("")
         logger.info("RESULTS:")
-        logger.info(f"  Experiments: {len(solution.experiment_logs)}")
-        logger.info(f"  Code: {solution.code_path}")
+        logger.info(f"  Experiments: {solution.iterations}")
+        logger.info(f"  Code: {solution.trace}")
         
         # Check generated code for Unsloth patterns
-        main_file = Path(solution.code_path) / "main.py"
+        main_file = Path(solution.trace) / "main.py"
         if main_file.exists():
             code = main_file.read_text()
             patterns = ["FastLanguageModel", "get_peft_model", "SFTTrainer", "save_pretrained"]

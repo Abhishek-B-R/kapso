@@ -1,7 +1,7 @@
 """
 Agentic Scaffold Example using Kapso
 
-This example demonstrates using Kapso's evolve() function to optimize
+This example demonstrates using Kapso's build() function to optimize
 an AI workflow that extracts tabular data from chart images using a
 Vision Language Model (VLM).
 
@@ -59,22 +59,22 @@ The evaluation:
         print(f"Cleaning up previous workspace: {output_path}")
         shutil.rmtree(output_path)
     
-    # Run evolve to optimize the VLM extractor
-    solution = kapso.evolve(
-        goal=goal,
+    # Run a build to optimize the VLM extractor
+    solution = kapso.build(
+        goal,
         # Start from the initial repo
-        initial_repo=initial_repo_dir,
+        repo=initial_repo_dir,
         # Output the optimized solution
-        output_path=output_path,
+        output=output_path,
     )
     
     print("\n" + "=" * 60)
     print("Agentic Scaffold Optimization Complete!")
     print("=" * 60)
-    print(f"\nFinal score (accuracy): {solution.final_score}")
+    print(f"\nFinal score (accuracy): {solution.score}")
     print(f"Goal achieved: {solution.succeeded}")
     print(f"\nTo evaluate the result:")
-    print(f"  cd {solution.code_path}")
+    print(f"  cd {solution.trace}")
     print(f"  python evaluate.py --max-samples 100 --num-workers 50")
 
 

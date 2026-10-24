@@ -281,7 +281,7 @@ Examples:
 
     learn_codify = learn_sub.add_parser(
         "codify",
-        help="Run one codify request (evolve minus ideation) against the production bank",
+        help="Run one codify request (build minus ideation) against the production bank",
     )
     learn_codify.add_argument("--request", type=str, required=True, help="Request YAML (card, fixture, materials, gates)")
     learn_codify.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")

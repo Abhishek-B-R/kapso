@@ -116,7 +116,7 @@ def test_config_flag_drives_the_requirements_including_the_bank_row(
     path = tmp_path / "mine.yaml"
     path.write_text(yaml.safe_dump(config))
 
-    cmd_doctor(args(verb="evolve", config=str(path)))
+    cmd_doctor(args(verb="build", config=str(path)))
     out = capsys.readouterr().out
     assert "codex CLI" in out
     assert "claude CLI" not in out

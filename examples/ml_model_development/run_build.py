@@ -1,7 +1,7 @@
 """
 ML Model Development Example using Kapso
 
-This example demonstrates using Kapso's evolve() function to iteratively
+This example demonstrates using Kapso's build() function to iteratively
 improve a machine learning model for the Kaggle Spaceship Titanic competition.
 
 The goal is to optimize feature engineering, model selection, and hyperparameters
@@ -58,22 +58,22 @@ The evaluation:
         print(f"Cleaning up previous workspace: {output_path}")
         shutil.rmtree(output_path)
     
-    # Run evolve to optimize the ML model
-    solution = kapso.evolve(
-        goal=goal,
+    # Run a build to optimize the ML model
+    solution = kapso.build(
+        goal,
         # Start from the initial repo
-        initial_repo=initial_repo_dir,
+        repo=initial_repo_dir,
         # Output the optimized solution
-        output_path=output_path,
+        output=output_path,
     )
     
     print("\n" + "=" * 60)
     print("ML Model Development Optimization Complete!")
     print("=" * 60)
-    print(f"\nFinal score (accuracy): {solution.final_score}")
+    print(f"\nFinal score (accuracy): {solution.score}")
     print(f"Goal achieved: {solution.succeeded}")
     print(f"\nTo evaluate the result:")
-    print(f"  cd {solution.code_path}")
+    print(f"  cd {solution.trace}")
     print(f"  python evaluate.py --data-dir ./data --seed 0")
 
 

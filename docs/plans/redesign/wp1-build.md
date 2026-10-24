@@ -1,6 +1,6 @@
 # WP1: `build`
 
-2026-10-24, revised after review. Branch `redesign/wp1-build`. Size M, four
+2026-10-24, revised after review. Branch `wp1-build`. Size M, four
 to six days after WP0. Depends on WP0 (done: the CLI package, the fixture,
 the fresh machine).
 
@@ -55,10 +55,10 @@ class Brief:
     def render(self) -> str: ...              # the whole brief as the text the engine receives
 
 @dataclass
-class Evaluation:                             # the registry head at delivery; all None when the
-    version: int | None                       # campaign had no registered evaluator (the agent
-    evaluator_id: str | None                  # built its own evaluation)
-    provenance: str | None                    # provided | maintainer_built | derived_fast
+class Evaluation:                             # the registry head at delivery
+    version: int
+    evaluator_id: str
+    provenance: str                           # provided | maintainer_built | derived_fast
 
 @dataclass
 class HarnessRef:   name: str; version: str; hash: str; ref: str        # WP2 fills
@@ -81,7 +81,7 @@ class Solution:
     cost_usd: float
     requests: list[dict]        # open inbox requests when stopped_reason is waiting_for_user
     feedback: str | None        # the last feedback's text
-    evaluation: Evaluation
+    evaluation: Evaluation | None   # None when no evaluator was registered (the agent built its own)
     harness: HarnessRef | None
     experience: list[ExperienceRef]
     resumed: bool
@@ -117,6 +117,9 @@ description, so nothing the engineer wrote is lost on the way to the model.
 
 `Kapso(config=...)` replaces `Kapso(config_path=...)`; the attribute stays
 `config_path` internally. `kg_index` and `bank` stay until WP3.
+`Budget.dollars` is the model-spend budget (today's `cost_budget`); the
+platform-credit budget stays a config value. The iteration default's
+literal moves into the config in WP4, with the budget block it belongs to.
 
 **The brief file**, `kapso-brief.md`:
 
@@ -134,9 +137,10 @@ Harness      predictive-modelling
 Experience   mine, leeroopedia
 ```
 
-- A field starts a line with its name (case-insensitive, one of the eight)
-  followed by spaces and the value; an indented line continues the field
-  above, newline preserved; `Rules` and `Experience` take `- ` items on
+- A field starts a line with its name (case-insensitive, one of the eight,
+  matched as a whole word, so `Measured by` needs no special separator)
+  followed by whitespace and the value; an indented line continues the
+  field above, newline preserved; `Rules` and `Experience` take `- ` items on
   indented lines, and `Experience` also accepts one comma-separated line;
   `Budget` takes `name=value` tokens from `minutes`, `iterations`,
   `dollars`, `reserve_minutes`; blank lines are ignored; nothing else is.
@@ -146,6 +150,9 @@ Experience   mine, leeroopedia
   not a number; text that belongs to no field. Reference strings are kept
   verbatim (`acme/harnesses@v3#trading` has `@` and `#`).
 - The whole file is read and rendered; no field has a length limit.
+  `render()` is deterministic (the checkpoint fingerprints the goal, so a
+  resume must render the same bytes), and `write()` emits exactly the
+  grammar, so a brief round-trips.
 
 **The record.** `build()` writes `.kapso/solution.json` (the `Solution`
 as a dictionary, the brief inside) every time it returns, so a finished,
@@ -195,20 +202,23 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
 3. `Solution` replacing `SolutionResult` in every consumer listed under
    Ownership, `SolutionResult` deleted; `reply()` returns `Solution | None`.
    Tests: the deployment, inbox and return-result tests re-pointed.
-4. `Solution.open`, `explain`, `diff` on three recorded fixtures under
-   `tests/fixtures/solutions/`: completed, waiting for the person, no
-   successful candidate. Test `tests/test_solution_open.py`, which also
-   pins that `open()` on a directory without the record raises naming
-   `kapso watch`.
+4. `Solution.open`, `explain`, `diff` on three records that `build()`
+   itself writes in the test (the orchestrator stubbed to return a
+   completed, a waiting-for-the-person and a no-successful-candidate
+   result), never hand-authored JSON. Test `tests/test_solution_open.py`,
+   which also pins that `open()` on a directory without the record raises
+   naming `kapso watch`.
 5. `kapso build` in `cli/build.py`: `--goal/-g`, `--goal-file/-f` (plain
    text), `--brief` (the brief file), `--evaluation`, `--data`, `--repo`,
    `--output/-o`, `--budget-minutes`, `--budget-dollars`, `--reserve-minutes`,
    `--iterations/-i`, `--resume`, `--detach`, `--log`, `--config`,
    `--mode/-m`, `--coding-agent/-a`, `--kg-index`; `kapso evolve` gone.
-   Test `tests/test_cli_build.py`: every flag reaches the facade argument
-   it names, `--brief` reaches `build()` as a `Brief`, a `--resume` without
-   a goal reaches `build(goal=None, resume=True)`, `--detach` re-invokes
-   with the child argv (the WP0 test, renamed).
+   Test `tests/test_cli_build.py`: the test enumerates the parser's own
+   actions, so a flag that stops reaching the facade fails it, not only
+   the flags the test author remembered; `--brief` reaches `build()` as a
+   `Brief`; a `--resume` without a goal reaches `build(goal=None,
+   resume=True)`; `--detach` re-invokes with the child argv (the WP0 test,
+   renamed).
 6. `kapso deploy --solution-path` opens the record with `Solution.open`;
    `--goal` removed (the brief is in the record).
 7. The status file: `BuildStatus`, `OPERATION = "build"`; `watch` and the
@@ -218,13 +228,18 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
 9. Prints and texts: `BUILDING:`, `Build complete`, the inbox's "resume
    with kapso build --output ... --resume", the detach label.
 10. The skill: every `evolve` line in the three `SKILL.md` files and the
-    Codex sidecar's default prompt become the `build` lines with the brief;
-    the parity test extended. The nine example scripts call `build`.
-11. A grep test, `tests/test_no_evolve_left.py`: no `evolve`, `Evolve`,
-    `SolutionResult` or `config_path=` under `src/`, `tests/`, `skills/`,
-    `examples/`, `moltbook_bot/`; the documentation's mentions are listed
-    by `grep -rl evolve docs README.md` (71 files at `379b4e70`) and are
-    WP10's.
+    Codex sidecar's default prompt become the `build` lines with the brief
+    (no parity test exists; the grep test below is what covers `skills/`).
+    The nine example scripts call `build`; the mining prompts' "evolve
+    version" wording and the config's comments say `build`.
+11. A grep test, `tests/test_no_evolve_left.py`: the word `evolve` in any
+    case, `SolutionResult` and `config_path=` are absent under `src/`,
+    `tests/`, `skills/`, `examples/`, `moltbook_bot/` and in
+    `pyproject.toml`, except the two design-document filenames
+    (`evolve-hub-design.md`, `evolve-observability-design.md`) that code
+    comments cite, which WP10 renames with the documents. The
+    documentation itself (`README.md`, `docs/`: 34 `.mdx` files, 254
+    occurrences at `379b4e70`) is WP10's.
 
 ## Tests
 
@@ -256,10 +271,13 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
   and the twelve-line Python flow from `harness-design.md` section 8 with
   `load_harness` and `load_experience` left out, run end to end with
   `budget=Budget(minutes=5, iterations=2)`.
-- Semantic hooks: S1 against today's `main` before this package (the
-  baseline numbers go in `tests/semantic/reports/`); the naming review by
-  the judge model over the handle signatures and docstrings; S1 proper
-  after WP10's Start and Build pages.
+- Semantic hooks: the naming review, run with `scripts/redesign/review.sh`
+  (Codex astra at xhigh and Claude Code opus-5) over `handles.py` and the
+  `build()` signature, each reviewer asked, per public name and
+  parameter, whether a cold engineer guesses its meaning from the name
+  alone, yes or no with a proposed rename; every "no" is renamed or
+  answered in this file. S1's baseline on today's `main` and S1 proper
+  need WP9's driver and WP10's pages and run there.
 
 ## Acceptance
 
@@ -270,10 +288,38 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
   `Solution`, and `open()` read it back in another process; the archive
   path is recorded here.
 - `docs/research/kapso-interfaces.md` section 5 rewritten against the code
-  for `build` and the handles (decision 8, first part).
+  for `build` and the handles (`redesign-status.md`, decided choice 8:
+  the interfaces document is rewritten against the code, verb by verb).
 - Both reviewers' findings answered below; the decisions log carries
   `--brief`, `trace`, the record file, `config=`, and deploy taking a
   `Solution`.
+
+## Built
+
+2026-10-24, branch `wp1-build`. What differs from the plan above, and why:
+
+- `Solution` has no `resumed`, `status_path` or `experiment_logs`
+  (decisions log); `explain()` is built from the fields alone.
+- `learn()` writes flat keys into `final_report.json` in place of the old
+  `metadata` dictionary (decisions log).
+- A plain string goal is rendered as a brief too, so the checkpoint always
+  holds the brief grammar and `kapso inbox` shows the objective's first
+  line by parsing it (decisions log).
+- The brief grammar keeps paragraph breaks and relative indentation inside
+  a field (decisions log); the sample in the Interface parses and renders
+  byte for byte.
+- `tests/handles_support.py` holds the fake orchestrator, the git
+  workspace and the facade stub the new tests share; the three `open()`
+  cases are records `build()` writes with that fake, as planned.
+- The grep test's word rule: `evolve` not preceded by a letter and not
+  followed by a letter or a hyphen (so `evolved`, `evolves` and the two
+  design-document filenames pass), with `docs/evolve/` as the one listed
+  exemption; it also forbids `SolutionResult` and `Kapso(config_path`.
+- The branch is `wp1-build`: git cannot hold `redesign/wp1-build` beside
+  the `redesign` ref.
+- `tests/semantic/fixtures/churn-with-evaluator/kapso-brief.md` is the
+  fixture's brief (five minutes, two iterations); the fixture README shows
+  the build line.
 
 ## Risks
 
@@ -302,5 +348,21 @@ Codex (astra, xhigh) read the first draft; its findings and what changed:
 | round-trip and mocked tests can pass while broken | the prompt-level test, the resume test, the three `open()` fixtures and the record golden modulo new keys |
 | acceptance not reproducible | the commands, the fixture, the archive path and the baseline commit are named |
 
-Claude Code (opus-5): pending at the time of this revision; its findings
-are appended when it returns.
+Claude Code (opus-5) read the same draft; where a finding repeats one of
+Codex's the answer above stands, and the rest:
+
+| Finding | Answer |
+|---|---|
+| `succeeded: bool` collapses achieved, budget-stopped and waiting-for-the-person; the summary printer and the inbox branch on the stop reason and the requests | `stopped_reason` and `requests` are fields; `succeeded` keeps today's meaning (the feedback's stop vote) |
+| `branch` and `evaluation` typed as always present; the registry is legitimately empty | both `None`-able, with the meaning written beside them |
+| the launch record is written only with the inbox on, so a brief kept there is not durable; `best_branch` and the delivered score exist only in memory; `status.json`'s best score is a projection, not the deliverable | the record file carries the brief and the delivered candidate; `open()` never re-derives selection |
+| the goal is fingerprinted by the checkpoint, so the renderer must be byte-stable; `write()` must not destroy text outside the grammar | `render()` is deterministic; the grammar admits no text outside fields, so there is nothing to lose, and a parse-render-parse round trip is a test |
+| `Measured by` holds a space, so one space cannot delimit | field names are matched as whole words from the known eight |
+| the `final_report.json` shape is an on-disk consumer (the trajectory store, the RelBench handler) | kept, fed from the `Solution`'s fields; its keys do not change in WP1 |
+| the grep test cannot see the status operation, the doctor verb, the banners, the mining prompts, the config comments, the layout test's verb list, nor `skills/`, `examples/`, the README | changes 7 to 11 name each; the grep test covers `skills/`, `examples/` and `moltbook_bot/`; the README and `docs/` are WP10's |
+| a strict "no `evolve` under `src/`" is unreachable while comments cite `evolve-hub-design.md` | the two design-document filenames are the grep test's only exceptions |
+| the CLI test cannot catch dropped flags; the parity test does not exist; a hand-authored `open()` fixture proves little | the CLI test enumerates the parser's actions; the parity claim is withdrawn; the three `open()` cases are records `build()` writes |
+| "twelve-line flow", "decision 8", the judge review and the 71 documentation files are not checkable | the flow and the commands are written in Tests; the decision is named by its document; the naming review names its reviewers and criterion; the count is corrected (254 occurrences in 34 files) |
+| `Software` exists already; `Experience` collides with the experience-source handle; `Evaluation`, `HarnessRef`, `ExperienceRef` undefined; the package's lazy exports not owned | `Software` is that class; the collision is logged for WP3; the three types are defined; `src/kapso/__init__.py` is in Ownership |
+| four homes for the budget without precedence; the iteration default is a literal; `dollars` could mean platform credits; brief-versus-`load_harness` precedence unstated | precedence written; the literal moves with WP4's budget block; `dollars` is model spend; harness precedence is WP2's, logged |
+| WP1 answers the interfaces document's open question (is `Brief` the API object or a CLI-only file?) without logging it | logged in the decisions file: it is both, one grammar |

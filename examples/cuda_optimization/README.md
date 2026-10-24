@@ -1,6 +1,6 @@
 # CUDA Attention Optimization Example
 
-This example demonstrates using Kapso's `evolve()` function to optimize a vanilla multi-head self-attention implementation for CUDA performance.
+This example demonstrates using Kapso's `build()` function to optimize a vanilla multi-head self-attention implementation for CUDA performance.
 
 ## Environment Setup
 
@@ -59,7 +59,7 @@ The baseline implementation (`module.py`) is a standard PyTorch multi-head maske
 
 ## Files
 
-- `run_evolve.py` - Main script that uses Kapso to optimize the attention kernel
+- `run_build.py` - Main script that uses Kapso to optimize the attention kernel
 - `module.py` - Baseline implementation to be optimized
 - `evaluate.py` - Evaluation script that checks correctness and measures speedup
 - `requirements.txt` - Python dependencies
@@ -70,7 +70,7 @@ The baseline implementation (`module.py`) is a standard PyTorch multi-head maske
 
 ```bash
 cd examples/cuda_optimization
-python run_evolve.py
+python run_build.py
 ```
 
 This will:

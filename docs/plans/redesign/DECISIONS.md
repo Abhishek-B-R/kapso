@@ -40,6 +40,49 @@ form if a user needs it.
 **`Kapso(config=...)`.** The constructor keyword follows the design; the
 internal attribute keeps its name.
 
+**A sentence goal is rendered as a brief too, so the engine always sees one
+grammar.** `build("Raise AUC above 0.85")` renders `Objective    Raise AUC
+above 0.85` into the goal text, the checkpoint fingerprints that, and a
+resume parses it back; `kapso inbox` reads the objective's first line the
+same way. Alternative rejected: passing a plain string through untouched,
+which would have left the checkpoint holding two shapes and the resume
+guessing which one it had.
+
+**The brief keeps paragraphs and pasted indentation.** Blank lines between
+two lines of the same field stay as paragraph breaks (elsewhere they are
+nothing), and a field's continuation lines are dedented together, so a
+pasted traceback or code block reaches the model with its relative
+indentation. Rule 6 asked for the content whole; this is what "whole"
+means for a multi-line objective. Alternative rejected: stripping every
+continuation line, which flattens code.
+
+**The `Solution` dropped three things the old result carried.**
+`experiment_logs` (one line per node, re-derivable from the experiment
+history and WP6's `kapso trace`), `resumed` (the checkpoint knows) and
+`status_path` (always `trace/.kapso/status.json`). Each was a field nobody
+acted on; rule 10.
+
+**`final_report.json` carries flat keys instead of an opaque `metadata`
+dictionary.** `learn()` writes `goal`, `succeeded`, `final_score`,
+`stopped_reason`, `iterations`, `cumulative_iterations`, `cost_usd`. The
+report's readers (the trajectory store, the mining crew) never read
+`metadata` by key; they read the file as prose, so named keys serve them
+better than a dump of the old dictionary.
+
+**`Brief` is both the Python object and the file, one grammar.** The
+interfaces document left open whether the brief is an API object or a
+CLI-only file. `Brief.read` parses the file into the object and
+`Brief.write` emits it, so the plugin, the CLI and a script hand the engine
+the same thing, and `build()` renders the whole brief into the engine's
+goal text. Alternative rejected: a file-only brief that the CLI flattens
+to a goal string, which would leave Python users without the structure.
+
+**Two names are left for later packages, on purpose.** `Experience` as
+`learn()`'s return collides with `load_experience`'s source handle; WP3
+settles it with the experience work. Whether a brief's `Harness` line or
+a `load_harness()` call wins when both are given is WP2's, with the
+loader. Neither is decided here.
+
 ## 2026-10-24, WP0
 
 **Codex on the fresh machine logs in with an API key, Claude with the shared

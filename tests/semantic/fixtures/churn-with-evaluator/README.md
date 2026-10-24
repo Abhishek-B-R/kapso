@@ -15,8 +15,17 @@ repo/                the starting repository: predict.py (logistic regression) a
 evaluation/          evaluate.py, the evaluator Kapso protects; private_dir.txt is written by generate.py
 baseline.py          records baseline.json: the shipped model's score, repeats, bootstrap standard error
 baseline.json        the recorded baseline, committed
+kapso-brief.md       the brief a build takes: objective, the evaluator, the baseline, the target, the rules, a five-minute budget
 MANIFEST.json        row counts, positive rates and sha256 of every generated file
 data/, private/      generated, never committed
+```
+
+## Build on it
+
+```
+python generate.py
+kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output ../churn-build
+python -c "from kapso import Solution; print(Solution.open('../churn-build').explain())"
 ```
 
 ## Regenerate

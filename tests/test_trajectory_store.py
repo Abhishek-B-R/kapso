@@ -278,7 +278,7 @@ def test_store_from_config_requires_block(tmp_path):
 
 
 def build_workspace(root):
-    """A workspace with the evolve .kapso artifacts the harvest gathers."""
+    """A workspace with the build .kapso artifacts the harvest gathers."""
     kapso_dir = root / "workspace" / ".kapso"
     kapso_dir.mkdir(parents=True)
     (kapso_dir / "lens_plan_history.jsonl").write_text('{"iteration": 1}\n')

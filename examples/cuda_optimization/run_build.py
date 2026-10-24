@@ -1,7 +1,7 @@
 """
 CUDA Optimization Example using Kapso
 
-This example demonstrates using Kapso's evolve() function to optimize
+This example demonstrates using Kapso's build() function to optimize
 a vanilla multi-head self-attention implementation for CUDA performance.
 
 The goal is to achieve speedup over the baseline PyTorch implementation
@@ -61,13 +61,13 @@ Use the `kapso` conda environment which has PyTorch, CUDA, and Triton pre-instal
         print(f"Cleaning up previous workspace: {output_path}")
         shutil.rmtree(output_path)
     
-    # Run evolve to optimize the CUDA kernel
-    solution = kapso.evolve(
-        goal=goal,
+    # Run a build to optimize the CUDA kernel
+    solution = kapso.build(
+        goal,
         # Start from the initial repo
-        initial_repo=initial_repo_dir,
+        repo=initial_repo_dir,
         # Output the optimized solution
-        output_path=output_path,
+        output=output_path,
         # Optional context from research
         # context=context,
     )
@@ -75,10 +75,10 @@ Use the `kapso` conda environment which has PyTorch, CUDA, and Triton pre-instal
     print("\n" + "=" * 60)
     print("CUDA Optimization Complete!")
     print("=" * 60)
-    print(f"\nFinal score (speedup): {solution.final_score}")
+    print(f"\nFinal score (speedup): {solution.score}")
     print(f"Goal achieved: {solution.succeeded}")
     print(f"\nTo evaluate the result:")
-    print(f"  cd {solution.code_path}")
+    print(f"  cd {solution.trace}")
     print(f"  python evaluate.py --path module.py")
 
 

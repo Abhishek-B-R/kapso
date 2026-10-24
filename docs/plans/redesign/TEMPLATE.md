@@ -1,6 +1,6 @@
 # WP<n>: <name>
 
-Date. Owner. Branch `redesign/wp<n>-<slug>`. Size estimate.
+Date. Owner. Branch `wp<n>-<slug>` (a `redesign/` prefix cannot coexist with the `redesign` ref). Size estimate.
 
 ## Scope
 

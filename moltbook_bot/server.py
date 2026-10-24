@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 load_dotenv()
 
-from kapso import Kapso, SolutionResult
+from kapso import Budget, Kapso, Solution
 
 
 # =============================================================================
@@ -168,7 +168,7 @@ async def startup_event():
     config_path = os.environ.get("KAPSO_CONFIG_PATH")
     
     kapso_instance = Kapso(
-        config_path=config_path,
+        config=config_path,
         kg_index=kg_index,
     )
     
@@ -204,7 +204,7 @@ async def optimize_code(req: OptimizeRequest, background_tasks: BackgroundTasks)
     
     This endpoint:
     1. Creates a temporary workspace with the provided code
-    2. Runs Kapso.evolve() with 10 iterations to iteratively improve the solution
+    2. Runs Kapso.build() with 10 iterations to iteratively improve the solution
     3. Returns the optimized code and metrics
     """
     if kapso_instance is None:
@@ -311,7 +311,7 @@ You have access to your documentation in the current directory. Use this knowled
 
 When introducing yourself:
 - Explain that you are an AI-powered optimization framework
-- Mention your key capabilities: evolve (iterative code optimization), research (web research), and knowledge graphs
+- Mention your key capabilities: build (iterative code optimization), research (web research), and knowledge graphs
 - Be helpful and informative
 
 Question: {req.question}
@@ -417,32 +417,32 @@ if __name__ == "__main__":
         # Create output directory
         output_dir = tempfile.mkdtemp(prefix="kapso_output_")
         
-        # Run Kapso evolve (10 iterations, default coding agent)
-        solution: SolutionResult = kapso_instance.evolve(
-            goal=full_goal,
-            initial_repo=initial_repo,
-            output_path=output_dir,
-            max_iterations=10,
+        # Run a Kapso build (10 iterations, default coding agent)
+        solution: Solution = kapso_instance.build(
+            full_goal,
+            repo=initial_repo,
+            output=output_dir,
+            budget=Budget(iterations=10),
         )
         
         # Read optimized code
         optimized_code = None
-        if solution.code_path:
-            solution_file = os.path.join(solution.code_path, "solution.py")
+        if solution.trace:
+            solution_file = os.path.join(solution.trace, "solution.py")
             if os.path.exists(solution_file):
                 with open(solution_file, "r") as f:
                     optimized_code = f.read()
         
         # Build thought process summary
         thought_process = f"KAPSO Optimization Complete.\n"
-        thought_process += f"Ran {solution.metadata.get('iterations', 0)} experiments.\n"
-        thought_process += f"Stopped reason: {solution.metadata.get('stopped_reason', 'unknown')}"
+        thought_process += f"Ran {solution.iterations} experiments.\n"
+        thought_process += f"Stopped reason: {solution.stopped_reason}"
         
         # Update job status
         jobs[job_id].update({
             "status": "completed",
             "code": optimized_code,
-            "cost": solution.metadata.get("cost"),
+            "cost": f"${solution.cost_usd:.3f}",
             "thought_process": thought_process,
         })
         
@@ -450,7 +450,7 @@ if __name__ == "__main__":
             job_id=job_id,
             status="completed",
             code=optimized_code,
-            cost=solution.metadata.get("cost"),
+            cost=f"${solution.cost_usd:.3f}",
             thought_process=thought_process,
         )
         

@@ -19,7 +19,7 @@ from kapso.deployment.strategies import StrategyRegistry
 from kapso.deployment.strategies.base import deployment_context
 from kapso.deployment.adapter.validator import AdaptationValidator
 from kapso.execution.coding_agents.factory import CodingAgentFactory
-from kapso.execution.solution import SolutionResult
+from kapso.handles import Solution
 
 # Left behind when the solution is copied into the adapted workspace: version
 # control and caches are never part of a deployment, and .git alone can be
@@ -128,7 +128,7 @@ class AdapterAgent:
     
     def adapt(
         self,
-        solution: SolutionResult,
+        solution: Solution,
         setting: DeploymentSetting,
         allowed_strategies: Optional[List[str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
@@ -136,11 +136,11 @@ class AdapterAgent:
         """
         Adapt a solution for the specified deployment setting.
         
-        Creates a copy of the solution at {code_path}_adapted_{strategy} and
+        Creates a copy of the solution at {trace}_adapted_{strategy} and
         performs adaptation there. The original solution is never modified.
         
         Args:
-            solution: The SolutionResult from Kapso.evolve()
+            solution: The Solution from Kapso.build()
             setting: Selected deployment configuration
             allowed_strategies: Optional list of allowed strategies
             env_vars: Variables the deployed software needs at runtime;
@@ -152,8 +152,8 @@ class AdapterAgent:
         print(f"[Adapter] Adapting for {setting.strategy} deployment")
         
         # Extract from solution
-        original_path = solution.code_path
-        goal = solution.goal
+        original_path = str(solution.trace)
+        goal = solution.brief.objective
         
         # Validate strategy is available
         available = self.registry.list_strategies(allowed=allowed_strategies)

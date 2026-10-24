@@ -1,4 +1,4 @@
-# The codify run — evolve minus ideation (CD§2/§3).
+# The codify run — a build minus ideation (CD§2/§3).
 #
 # The card IS the idea: one spec, one lane, implement -> evaluate -> judge ->
 # feedback -> iterate, bounded by config. The frame stages the workspace

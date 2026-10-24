@@ -56,7 +56,7 @@ from kapso.execution.evaluation_integrity import (
     manifest_fingerprint,
     verify_data_manifest,
 )
-from kapso.execution.observability import EvolveStatus, knowledge_summary
+from kapso.execution.observability import BuildStatus, knowledge_summary
 from kapso.execution.run_checkpoint import (
     RunCheckpoint,
     RunCheckpointError,
@@ -144,7 +144,7 @@ class OrchestratorAgent:
         mode: Configuration mode to use (if None, uses default_mode from config)
         coding_agent: Coding agent to use (overrides config if specified)
         is_kg_active: Whether to use the knowledge graph
-        goal: The goal/objective for the evolve process
+        goal: The goal text of the build (the rendered brief)
         iteration_evaluator: Optional observational callback for each finalized
             candidate Git ref
         iteration_evaluator_failure_policy: ``record`` or ``raise``
@@ -265,7 +265,7 @@ class OrchestratorAgent:
         # Observability (design §2): the strategy constructor opens the
         # status file at workspace setup; solve() adopts it below once the
         # budget is resolved. Lives at <workspace>/.kapso/status.json.
-        self.operation_status: Optional[EvolveStatus] = None
+        self.operation_status: Optional[BuildStatus] = None
         self._status_budget_total_min: Optional[float] = None
         self._resume_checkpoint: Optional[RunCheckpoint] = None
         self.completed_iterations = 0
@@ -405,7 +405,7 @@ class OrchestratorAgent:
         )
         
         # Create knowledge search backend (or use provided instance).
-        # This allows Kapso.evolve() to inject a concrete backend (e.g., kg_graph_search)
+        # This allows Kapso.build() to inject a concrete backend (e.g., kg_graph_search)
         # without relying on config defaults (which may point to a different backend).
         if knowledge_search is not None:
             self.knowledge_search = knowledge_search
@@ -1035,7 +1035,7 @@ class OrchestratorAgent:
     def _run_checkpoint_heartbeat(self, interval_seconds: float) -> None:
         """Daemon loop: keep the durable clock fresh between boundary
         checkpoints so a preemption cannot rewind the budget on resume.
-        The same beat refreshes the observability status file — evolve's
+        The same beat refreshes the observability status file — a build's
         liveness signal rides this existing daemon (observability §2)."""
         while not self._heartbeat_stop.wait(interval_seconds):
             if self.operation_status is not None:
@@ -1373,7 +1373,7 @@ class OrchestratorAgent:
         # same orchestrator) opens a fresh file, as every slice always did.
         status = getattr(self.search_strategy, "operation_status", None)
         if status is None or status.terminal:
-            status = EvolveStatus(
+            status = BuildStatus(
                 Path(self.search_strategy.workspace.workspace_dir)
                 / ".kapso" / "status.json",
                 heartbeat_seconds=heartbeat_seconds,

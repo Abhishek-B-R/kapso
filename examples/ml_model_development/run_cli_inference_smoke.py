@@ -1,11 +1,11 @@
 """Live smoke of the CLI-only inference conversion (design §7.7).
 
 Scaled-down production loop — research (CLI web-search session) ->
-learn_knowledge (small ingest; S1 refresh) -> one short evolve (repo
+learn_knowledge (small ingest; S1 refresh) -> one short build (repo
 memory, commit messages, judge, embeddings on the converted stack) —
 with per-stage wall-clock recorded so the timings can be compared
 against the API-path baseline in learning/e2e-facade/20260825T223634
-(research 76s; evolve1 15m26s for the full 45-min-budget run).
+(research 76s; build1 15m26s for the full 45-min-budget run).
 
 Run:  PYTHONPATH=src:. python examples/ml_model_development/run_cli_inference_smoke.py
 """
@@ -25,6 +25,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 import yaml
 
 from kapso.kapso import DEFAULT_CONFIG_PATH, Kapso
+from kapso.handles import Budget
 from kapso.learning.update_frame import init_bank
 from examples.ml_model_development.e2e.generate_data import generate
 from examples.ml_model_development.run_full_loop import GOAL
@@ -34,8 +35,8 @@ from examples.ml_model_development.run_full_loop import GOAL
 # commit), not reaching the example's target score. The example's
 # reference E2E showed 20 minutes starves the FIRST implementation, so
 # 25 gives one full iteration headroom without paying for a real run.
-EVOLVE_BUDGET_MINUTES = 25
-EVOLVE_MAX_ITERATIONS = 2
+BUILD_BUDGET_MINUTES = 25
+BUILD_MAX_ITERATIONS = 2
 
 RESEARCH_QUESTION = (
     "For small tabular binary classification (~2000 rows, mixed "
@@ -78,7 +79,7 @@ def main() -> None:
     train_df.to_csv(workdir / "data" / "train.csv", index=False)
     test_df.to_csv(workdir / "data" / "test.csv", index=False)
 
-    kapso = Kapso(config_path=str(config_path))
+    kapso = Kapso(config=str(config_path))
 
     def timed(name, fn):
         print(f"=== SMOKE STAGE {name}: running", flush=True)
@@ -113,17 +114,16 @@ def main() -> None:
     timings["learn_knowledge_pages"] = kg_result.total_pages_extracted
     timings_path.write_text(json.dumps(timings, indent=1))
 
-    # --- 3. short evolve: repo memory + commit messages + judge + embeddings ---
-    sol = timed("evolve", lambda: kapso.evolve(
-        goal=GOAL,
-        initial_repo=str(workdir),
-        output_path=str(sandbox / "campaign"),
-        max_iterations=EVOLVE_MAX_ITERATIONS,
-        time_budget_minutes=EVOLVE_BUDGET_MINUTES,
+    # --- 3. short build: repo memory + commit messages + judge + embeddings ---
+    sol = timed("build", lambda: kapso.build(
+        GOAL,
+        repo=str(workdir),
+        output=str(sandbox / "campaign"),
+        budget=Budget(iterations=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
     ))
     (sandbox / "solution.txt").write_text(sol.explain())
-    timings["evolve_score"] = sol.final_score
-    timings["evolve_succeeded"] = sol.succeeded
+    timings["build_score"] = sol.score
+    timings["build_succeeded"] = sol.succeeded
     timings_path.write_text(json.dumps(timings, indent=1))
     print(f"\nCLI_SMOKE_COMPLETE sandbox={sandbox} timings={timings}",
           flush=True)

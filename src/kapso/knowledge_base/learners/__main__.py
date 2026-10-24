@@ -29,7 +29,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    result = Kapso(config_path=args.config).learn_knowledge(
+    result = Kapso(config=args.config).learn_knowledge(
         Source.Repo(args.url, branch=args.branch),
         wiki_dir=args.wiki_dir,
         skip_merge=args.extract_only,

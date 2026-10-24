@@ -1,7 +1,7 @@
 """
 PyTorch Operation Optimization Example using Kapso
 
-This example demonstrates using Kapso's evolve() function to optimize
+This example demonstrates using Kapso's build() function to optimize
 a simple PyTorch model that performs matrix multiplication, division,
 summation, and scaling operations.
 
@@ -54,22 +54,22 @@ Use the `kapso` conda environment which has PyTorch and CUDA pre-installed:
     # Get the directory containing the starter code
     initial_repo_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "initial_repo")
     
-    # Run evolve to optimize the PyTorch operations
-    solution = kapso.evolve(
-        goal=goal,
+    # Run a build to optimize the PyTorch operations
+    solution = kapso.build(
+        goal,
         # Start from the initial repo
-        initial_repo=initial_repo_dir,
+        repo=initial_repo_dir,
         # Output the optimized solution
-        output_path="./examples/pytorch_optimization/pytorch_optimized",
+        output="./examples/pytorch_optimization/pytorch_optimized",
     )
     
     print("\n" + "=" * 60)
     print("PyTorch Optimization Complete!")
     print("=" * 60)
-    print(f"\nFinal score (speedup): {solution.final_score}")
+    print(f"\nFinal score (speedup): {solution.score}")
     print(f"Goal achieved: {solution.succeeded}")
     print(f"\nTo evaluate the result:")
-    print(f"  cd {solution.code_path}")
+    print(f"  cd {solution.trace}")
     print(f"  python evaluate.py --path module.py --device cuda")
 
 

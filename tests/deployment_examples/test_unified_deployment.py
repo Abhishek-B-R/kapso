@@ -7,7 +7,7 @@ Tests the Kapso deployment flow as shown in the README:
     from kapso.kapso import Kapso, DeployStrategy
     
     kapso = Kapso()
-    solution = kapso.evolve(goal="...", output_path="./repo")  # We create SolutionResult manually
+    solution = kapso.build(goal="...", output_path="./repo")  # We create a Solution manually
     software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
     result = software.run({"input": "data"})
     software.stop()
@@ -167,7 +167,7 @@ def run_repo(repo: RepoConfig, strategy: str = "local") -> TestResult:
         software.stop()
     """
     from kapso.kapso import Kapso, DeployStrategy
-    from kapso.execution.solution import SolutionResult
+    from tests.handles_support import make_solution
     
     subheader(f"Testing: {repo.name}")
     
@@ -198,15 +198,12 @@ def run_repo(repo: RepoConfig, strategy: str = "local") -> TestResult:
         info("Created Kapso()")
         
         # =====================================================================
-        # Step 2: Create SolutionResult (simulating kapso.evolve() output)
-        # In real usage, this comes from kapso.evolve()
+        # Step 2: Create a Solution (simulating kapso.build() output)
+        # In real usage, this comes from kapso.build()
         # Here we create it manually from our test repos
         # =====================================================================
-        solution = SolutionResult(
-            goal=repo.goal,
-            code_path=str(input_path),
-        )
-        info(f"Created SolutionResult(goal='{repo.goal[:40]}...', code_path='{input_path}')")
+        solution = make_solution(input_path, repo.goal)
+        info(f"Created Solution(objective='{repo.goal[:40]}...', trace='{input_path}')")
         
         # =====================================================================
         # Step 3: Deploy the solution
@@ -311,7 +308,7 @@ def main():
     header("UNIFIED DEPLOYMENT TEST")
     print("Testing the Kapso deployment flow from README:\n")
     print("    kapso = Kapso()")
-    print("    solution = SolutionResult(goal='...', code_path='./repo')")
+    print("    solution = Solution.open('./campaign')")
     print("    software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)")
     print("    result = software.run(sample_input)")
     print("    software.stop()")

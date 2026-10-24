@@ -4,14 +4,13 @@
 # One module per verb under kapso/cli/. Each exposes NAME and
 # add_parser(subparsers), which registers the verb's parser and returns
 # its handler; main() wires them in the order below. Shared pieces (the
-# agent and strategy lists, detached runs, the campaign summary) live in
-# common.py.
+# agent list, detached runs, the campaign summary) live in common.py.
 #
 # Usage:
-#     kapso evolve --goal "Build a web scraper..."
+#     kapso build --brief kapso-brief.md --output ../campaign --detach
 #     kapso research --objective "How to optimize transformers?"
 #     kapso learn import --subset docs/plans/learning/d1-subset.yaml
-#     kapso deploy --solution-path ./solution
+#     kapso deploy --solution-path ../campaign
 #     kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
 
 import argparse
@@ -23,12 +22,12 @@ from dotenv import find_dotenv, load_dotenv
 # README tells users to create next to their project was never read.
 load_dotenv(find_dotenv(usecwd=True))
 
-from kapso.cli import bank, deploy, doctor, evolve, inbox, index_kg, learn, research, watch
+from kapso.cli import bank, build, deploy, doctor, inbox, index_kg, learn, research, watch
 from kapso.cli.common import list_agents
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 # The verbs, in the order `kapso --help` lists them.
-VERB_MODULES = (evolve, research, learn, deploy, index_kg, watch, inbox, bank, doctor)
+VERB_MODULES = (build, research, learn, deploy, index_kg, watch, inbox, bank, doctor)
 
 
 def main():
@@ -39,18 +38,18 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Commands:
-  evolve     Build software from goals using experimentation
+  build      Build software that meets a brief, by experiment
   research   Web research for objectives
   learn      Trajectory learning (store, mining, updating, grading)
   deploy     Deploy solutions as running software
   index_kg   Index knowledge graph from wiki or JSON data
-  watch      Watch a running evolve / learn / learn_knowledge operation
-  inbox      What evolve is waiting on you for, and how to answer it
+  watch      Watch a running build / learn / learn_knowledge operation
+  inbox      What a build is waiting on you for, and how to answer it
   doctor     Check this machine is ready to run Kapso
 
 Examples:
-  # Evolve a solution
-  kapso evolve --goal "Build a web scraper"
+  # Build a solution
+  kapso build --brief kapso-brief.md --output ../campaign --detach
 
   # Research a topic
   kapso research --objective "How to optimize transformers?"
@@ -59,7 +58,7 @@ Examples:
   kapso learn import --subset docs/plans/learning/d1-subset.yaml
 
   # Deploy a solution
-  kapso deploy --solution-path ./solution --strategy local
+  kapso deploy --solution-path ../campaign --strategy local
 
   # Index knowledge graph
   kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
@@ -92,5 +91,5 @@ Examples:
         handlers[args.command](args)
     else:
         parser.print_help()
-        print("\nError: Please specify a command (evolve, research, learn, deploy, index_kg, watch, inbox, bank, doctor)")
+        print("\nError: Please specify a command (build, research, learn, deploy, index_kg, watch, inbox, bank, doctor)")
         sys.exit(1)

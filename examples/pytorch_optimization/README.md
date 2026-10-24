@@ -63,7 +63,7 @@ The baseline model performs these operations sequentially:
 conda activate kapso
 
 # Run the optimization
-python run_evolve.py
+python run_build.py
 ```
 
 ## Evaluation

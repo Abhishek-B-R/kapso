@@ -805,7 +805,7 @@ class NullKnowledgeSearch(KnowledgeSearch):
 
         The base default (`enabled: True`) made the null object report
         itself enabled, so every "is knowledge connected?" check —
-        evolve's is_kg_active, the facade's memory status, and the
+        a build's is_kg_active, the facade's memory status, and the
         learn_knowledge post-merge refresh — read a disconnected agent
         as connected (found 2026-08-24 by the facade tests)."""
         return False

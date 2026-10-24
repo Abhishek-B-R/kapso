@@ -1,6 +1,6 @@
 # Facade result types for learning (design: learn-api-design.md §3, §8.2).
 #
-# LessonResult mirrors SolutionResult deliberately — evolve() and learn()
+# LessonResult mirrors Solution deliberately — build() and learn()
 # are peers, and their artifacts answer "what just happened" the same way:
 # direct fields plus a human-readable explain(). MemoryStatus is the one
 # place to ask "what does this agent know" across both stores.
@@ -30,12 +30,12 @@ class LessonResult:
     @property
     def admitted(self) -> bool:
         """True when the lesson moved the bank (the peer of
-        SolutionResult.succeeded)."""
+        Solution.succeeded)."""
         return self.bank_head_after != self.bank_head_before
 
     def explain(self) -> str:
         """Return a summary of the lesson, same idiom as
-        SolutionResult.explain()."""
+        Solution.explain()."""
         lines = [
             f"Lesson from: {self.trajectory_id}",
             f"Bank: {self.bank_head_before[:9]} -> "

@@ -1,6 +1,6 @@
 """The complete Kapso production loop, end to end, on the ML example.
 
-research -> learn_knowledge -> evolve -> learn -> evolve
+research -> learn_knowledge -> build -> learn -> build
 (learn-facade-integration.md Phase 2; the reviewer gate judges the logs.)
 
 Every stage's artifacts land in an isolated sandbox under learning/
@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 import yaml
 
 from kapso.kapso import DEFAULT_CONFIG_PATH, Kapso
+from kapso.handles import Budget
 from kapso.learning.update_frame import init_bank
 from examples.ml_model_development.e2e.generate_data import generate
 
@@ -34,8 +35,8 @@ from examples.ml_model_development.e2e.generate_data import generate
 # implementation: no evaluation, score 0.0, "no iteration content to
 # analyze" (measured 2026-08-24) — the campaign needs room to finish at
 # least one full experiment.
-EVOLVE_BUDGET_MINUTES = 45
-EVOLVE_MAX_ITERATIONS = 4
+BUILD_BUDGET_MINUTES = 45
+BUILD_MAX_ITERATIONS = 4
 
 GOAL = """
 Optimize the ML model in `train.py` to improve accuracy on the Spaceship
@@ -138,7 +139,7 @@ def main() -> None:
     train_df.to_csv(workdir / "data" / "train.csv", index=False)
     test_df.to_csv(workdir / "data" / "test.csv", index=False)
 
-    kapso = Kapso(config_path=str(config_path))
+    kapso = Kapso(config=str(config_path))
     (sandbox / "memory-0-start.txt").write_text(kapso.memory.explain())
 
     # --- 1. research ---
@@ -174,20 +175,19 @@ def main() -> None:
           created=kg_result.created, edited=kg_result.edited,
           errors=len(kg_result.errors))
 
-    # --- 3. evolve #1 (KG + founding bank) ---
-    stage(status_path, "evolve1", "running")
-    sol1 = kapso.evolve(
-        goal=GOAL,
-        initial_repo=str(workdir),
-        output_path=str(sandbox / "campaign1"),
-        max_iterations=EVOLVE_MAX_ITERATIONS,
-        time_budget_minutes=EVOLVE_BUDGET_MINUTES,
+    # --- 3. build #1 (KG + founding bank) ---
+    stage(status_path, "build1", "running")
+    sol1 = kapso.build(
+        GOAL,
+        repo=str(workdir),
+        output=str(sandbox / "campaign1"),
+        budget=Budget(iterations=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
     )
     (sandbox / "solution1.txt").write_text(sol1.explain())
-    stage(status_path, "evolve1", "done",
-          score=sol1.final_score, succeeded=sol1.succeeded,
-          bank_head_served=sol1.metadata.get("bank_head_served"),
-          kg_index=sol1.metadata.get("kg_index"))
+    stage(status_path, "build1", "done",
+          score=sol1.score, succeeded=sol1.succeeded,
+          bank_head_served=sol1.bank_head_served,
+          kg_index=sol1.kg_index)
 
     # --- 4. learn (the experience loop closes) ---
     stage(status_path, "learn", "running")
@@ -201,30 +201,29 @@ def main() -> None:
           cards_created=lesson.cards_created,
           cards_updated=lesson.cards_updated)
 
-    # --- 5. evolve #2 (KG + updated bank) ---
-    stage(status_path, "evolve2", "running")
-    sol2 = kapso.evolve(
-        goal=GOAL,
-        initial_repo=str(workdir),
-        output_path=str(sandbox / "campaign2"),
-        max_iterations=EVOLVE_MAX_ITERATIONS,
-        time_budget_minutes=EVOLVE_BUDGET_MINUTES,
+    # --- 5. build #2 (KG + updated bank) ---
+    stage(status_path, "build2", "running")
+    sol2 = kapso.build(
+        GOAL,
+        repo=str(workdir),
+        output=str(sandbox / "campaign2"),
+        budget=Budget(iterations=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
     )
     (sandbox / "solution2.txt").write_text(sol2.explain())
     (sandbox / "memory-3-final.txt").write_text(kapso.memory.explain())
-    stage(status_path, "evolve2", "done",
-          score=sol2.final_score, succeeded=sol2.succeeded,
-          bank_head_served=sol2.metadata.get("bank_head_served"))
+    stage(status_path, "build2", "done",
+          score=sol2.score, succeeded=sol2.succeeded,
+          bank_head_served=sol2.bank_head_served)
 
     # --- loop-closure check: sol2 was served the POST-lesson head ---
-    served2 = sol2.metadata.get("bank_head_served")
+    served2 = sol2.bank_head_served
     if lesson.admitted and served2 != lesson.bank_head_after:
         raise RuntimeError(
-            f"LOOP NOT CLOSED: evolve2 served {served2}, lesson produced "
+            f"LOOP NOT CLOSED: build2 served {served2}, lesson produced "
             f"{lesson.bank_head_after}"
         )
     stage(status_path, "loop", "closed",
-          served_head_evolve2=served2, admitted=lesson.admitted)
+          served_head_build2=served2, admitted=lesson.admitted)
     print(f"\nFULL_LOOP_COMPLETE sandbox={sandbox}", flush=True)
 
 

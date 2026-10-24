@@ -2,7 +2,7 @@
 """
 Task 1: Initialize Repo - Tests
 
-Tests for the initial_repo resolution logic in Kapso.evolve():
+Tests for the initial_repo resolution logic in Kapso.build():
 1. Local path handling
 2. GitHub URL cloning
 3. Workflow search integration (real KG indexing)

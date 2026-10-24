@@ -1,6 +1,6 @@
 # Prompt Engineering Example
 
-This example demonstrates using Kapso's `evolve()` function to iteratively improve a prompt for solving American Invitational Mathematics Examination (AIME) problems.
+This example demonstrates using Kapso's `build()` function to iteratively improve a prompt for solving American Invitational Mathematics Examination (AIME) problems.
 
 ## Environment Setup
 
@@ -49,7 +49,7 @@ The baseline implementation (`optimize.py`) contains a prompt template for solvi
 
 ## Files
 
-- `run_evolve.py` - Main script that uses Kapso to optimize the prompt
+- `run_build.py` - Main script that uses Kapso to optimize the prompt
 - `initial_repo/optimize.py` - Baseline prompt template to be optimized
 - `initial_repo/evaluate.py` - Evaluation script that measures accuracy
 - `initial_repo/requirements.txt` - Python dependencies
@@ -60,7 +60,7 @@ The baseline implementation (`optimize.py`) contains a prompt template for solvi
 
 ```bash
 cd examples/prompt_engineering
-python run_evolve.py
+python run_build.py
 ```
 
 This will:

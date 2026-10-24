@@ -1,6 +1,6 @@
 # Agentic Scaffold Example
 
-This example demonstrates using Kapso's `evolve()` function to optimize an AI workflow that extracts tabular data from chart images using a Vision Language Model (VLM).
+This example demonstrates using Kapso's `build()` function to optimize an AI workflow that extracts tabular data from chart images using a Vision Language Model (VLM).
 
 ## Environment Setup
 
@@ -57,7 +57,7 @@ The baseline implementation (`optimize.py`) contains a VLM-based extractor that 
 
 ## Files
 
-- `run_evolve.py` - Main script that uses Kapso to optimize the extractor
+- `run_build.py` - Main script that uses Kapso to optimize the extractor
 - `initial_repo/optimize.py` - Baseline VLM extractor to be optimized
 - `initial_repo/evaluate.py` - Evaluation script that measures accuracy
 - `initial_repo/prepare_data.py` - Script to download and prepare test data
@@ -83,7 +83,7 @@ This creates a `subset_line_100/` directory with:
 
 ```bash
 cd examples/agentic_scaffold
-python run_evolve.py
+python run_build.py
 ```
 
 This will:

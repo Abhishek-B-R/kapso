@@ -24,9 +24,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-# Avoid circular import for SolutionResult
+# Avoid circular import for Solution
 if TYPE_CHECKING:
-    from kapso.kapso import SolutionResult
+    from kapso.handles import Solution
 
 
 class Source:
@@ -68,7 +68,7 @@ class Source:
         Processed by: ExperimentIngestor
         Extracts: Goal-outcome pairs, successful patterns, failures to avoid
         """
-        obj: "SolutionResult"
+        obj: "Solution"
         
         def to_dict(self) -> Dict[str, Any]:
             return {"solution": self.obj}

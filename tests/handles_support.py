@@ -1,0 +1,158 @@
+"""Support for the tests around a build and its handles: a ready-made
+`Solution` for tests that only consume one, a git workspace a build can
+read commits from, the facade stub, and a fake orchestrator that returns a
+chosen `SolveResult` and records what the facade handed it."""
+
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Dict, Optional, Sequence
+
+import kapso.kapso as kapso_module
+from kapso.execution.orchestrator import SolveResult
+from kapso.handles import Brief, Solution
+from kapso.kapso import Kapso
+
+
+def make_solution(trace: Any, objective: str = "score things", **overrides: Any) -> Solution:
+    """A `Solution` with every field set to the plainest value."""
+    fields = dict(
+        brief=Brief(objective=objective),
+        trace=Path(trace),
+        branch="generic_exp_1",
+        commit="0" * 40,
+        base_commit="1" * 40,
+        score=None,
+        succeeded=False,
+        stopped_reason="max_iterations",
+        stop_detail=None,
+        iterations=1,
+        cumulative_iterations=1,
+        cost_usd=0.0,
+        requests=[],
+        feedback=None,
+        evaluation=None,
+        harness=None,
+        experience=[],
+        invalid_evaluations=0,
+        external_metrics={},
+        external_primary_metric=None,
+        kg_index=None,
+        bank_head_served=None,
+    )
+    fields.update(overrides)
+    return Solution(**fields)
+
+
+def git(path: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
+def git_workspace(path: Path) -> str:
+    """A git repository on `main` with one commit; returns that commit."""
+    path.mkdir(parents=True, exist_ok=True)
+    git(path, "init", "-q", "-b", "main")
+    (path / "README.md").write_text("# seed\n")
+    git(path, "add", "README.md")
+    git(path, "commit", "-q", "-m", "seed")
+    return git(path, "rev-parse", "HEAD")
+
+
+def candidate_branch(path: Path, name: str, filename: str, content: str) -> str:
+    """A candidate branch off `main` with one committed change; returns its
+    commit and leaves `main` checked out, as a campaign does mid-run."""
+    git(path, "checkout", "-q", "-b", name)
+    (path / filename).write_text(content)
+    git(path, "add", filename)
+    git(path, "commit", "-q", "-m", f"candidate {name}")
+    commit = git(path, "rev-parse", "HEAD")
+    git(path, "checkout", "-q", "main")
+    return commit
+
+
+def facade() -> Kapso:
+    """A Kapso without `__init__`: the attributes `build()` reads. A new
+    attribute set in `__init__` must be mirrored here (the stub gotcha)."""
+    kapso = Kapso.__new__(Kapso)
+    kapso.config_path = kapso_module.DEFAULT_CONFIG_PATH
+    kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
+    kapso._config = {}
+    kapso._bank_home = None
+    kapso._kg_index_path = None
+    return kapso
+
+
+def solve_result(**overrides: Any) -> SolveResult:
+    values: Dict[str, Any] = dict(
+        best_experiment=None,
+        final_feedback=None,
+        stopped_reason="max_iterations",
+        iterations_run=1,
+        total_cost=0.0,
+        cumulative_iterations=1,
+    )
+    values.update(overrides)
+    return SolveResult(**values)
+
+
+def fake_orchestrator(
+    monkeypatch,
+    workspace: Path,
+    result: SolveResult,
+    *,
+    best_branch: Optional[str] = None,
+    score: Optional[float] = None,
+    history: Sequence[Any] = (),
+    inbox_registry: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Replace the orchestrator with one that records the handler and every
+    keyword the facade passes, returns `result` from `solve()`, and checks
+    `best_branch` out at delivery as the real strategy does. The inbox is
+    off unless a registry path is given, so no test writes outside its
+    temporary directory."""
+    captured: Dict[str, Any] = {}
+
+    class Strategy:
+        def __init__(self) -> None:
+            self.workspace = SimpleNamespace(workspace_dir=str(workspace))
+
+        def get_experiment_history(self):
+            return list(history)
+
+        def get_deliverable_score(self):
+            return score
+
+        def checkout_to_best_experiment_branch(self):
+            if best_branch is not None:
+                git(workspace, "checkout", "-q", best_branch)
+            return best_branch
+
+    class Orchestrator:
+        def __init__(self, handler, **kwargs):
+            captured["handler"] = handler
+            captured.update(kwargs)
+            self.search_strategy = Strategy()
+            self.operation_status = SimpleNamespace(
+                path=str(Path(workspace) / ".kapso" / "status.json")
+            )
+
+        def solve(self, experiment_max_iter, time_budget_minutes=None, cost_budget=None,
+                  finalization_reserve_minutes=None, on_status=None):
+            captured["solve"] = {
+                "experiment_max_iter": experiment_max_iter,
+                "time_budget_minutes": time_budget_minutes,
+                "cost_budget": cost_budget,
+                "finalization_reserve_minutes": finalization_reserve_minutes,
+            }
+            return result
+
+    inbox = (
+        {"enabled": True, "stop_grace_seconds": 120, "registry": str(inbox_registry)}
+        if inbox_registry is not None else {"enabled": False}
+    )
+    monkeypatch.setattr(kapso_module, "load_mode_config", lambda config_path, mode=None: {"inbox": inbox})
+    monkeypatch.setattr(kapso_module, "OrchestratorAgent", Orchestrator)
+    return captured

@@ -1,4 +1,4 @@
-"""`kapso watch`: one watch command for evolve / learn / learn_knowledge
+"""`kapso watch`: one watch command for build / learn / learn_knowledge
 status files (observability design §3). Pure reader — never writes."""
 
 import argparse
@@ -18,11 +18,11 @@ _WATCH_FALLBACK_SECONDS = 5
 
 
 def cmd_watch(args) -> None:
-    """One watch command for evolve / learn / learn_knowledge status files
+    """One watch command for build / learn / learn_knowledge status files
     (observability design §3). Pure reader — never writes.
 
     A campaign that has not written its status yet (the seconds between
-    `kapso evolve` starting and the workspace being seeded) is one line,
+    `kapso build` starting and the workspace being seeded) is one line,
     not a traceback: without --follow the line and exit 1, with --follow
     the line and a wait for the file."""
     if OperationStatusView.locate(args.path) is None:
@@ -58,7 +58,7 @@ def cmd_watch(args) -> None:
 def add_parser(subparsers):
     watch_parser = subparsers.add_parser(
         "watch",
-        help="Watch a running evolve / learn / learn_knowledge operation",
+        help="Watch a running build / learn / learn_knowledge operation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -66,7 +66,7 @@ Examples:
   kapso watch learning/status            # newest status file in a directory
   kapso watch learning/status/learn-20260826T120000.json
   kapso watch ./campaign --follow        # live re-render until terminal
-  kapso watch ./campaign --tree          # show evolve search lineage
+  kapso watch ./campaign --tree          # show the campaign tree
   kapso watch ./campaign --json | jq -r '[.state] | @tsv'
 """,
     )
@@ -83,6 +83,6 @@ Examples:
         help="Re-render on each heartbeat until the operation ends",
     )
     output_group.add_argument(
-        "--tree", action="store_true", help="Show the evolve campaign tree",
+        "--tree", action="store_true", help="Show the campaign tree",
     )
     return cmd_watch

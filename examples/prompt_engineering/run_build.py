@@ -1,7 +1,7 @@
 """
 Prompt Engineering Example using Kapso
 
-This example demonstrates using Kapso's evolve() function to iteratively
+This example demonstrates using Kapso's build() function to iteratively
 improve a prompt for solving AIME (American Invitational Mathematics
 Examination) problems.
 
@@ -51,22 +51,22 @@ The file `optimize.py` contains:
         print(f"Cleaning up previous workspace: {output_path}")
         shutil.rmtree(output_path)
     
-    # Run evolve to optimize the prompt
-    solution = kapso.evolve(
-        goal=goal,
+    # Run a build to optimize the prompt
+    solution = kapso.build(
+        goal,
         # Start from the initial repo
-        initial_repo=initial_repo_dir,
+        repo=initial_repo_dir,
         # Output the optimized solution
-        output_path=output_path,
+        output=output_path,
     )
     
     print("\n" + "=" * 60)
     print("Prompt Engineering Optimization Complete!")
     print("=" * 60)
-    print(f"\nFinal score (accuracy): {solution.final_score}")
+    print(f"\nFinal score (accuracy): {solution.score}")
     print(f"Goal achieved: {solution.succeeded}")
     print(f"\nTo evaluate the result:")
-    print(f"  cd {solution.code_path}")
+    print(f"  cd {solution.trace}")
     print(f"  python evaluate.py")
 
 

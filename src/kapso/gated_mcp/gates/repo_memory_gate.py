@@ -186,7 +186,7 @@ class RepoMemoryGate(ToolGate):
                 memory_path = os.path.join(repo_root, manager.MEMORY_REL_PATH)
                 return [TextContent(
                     type="text",
-                    text=f"RepoMemory not found at {memory_path}. Run kapso.evolve() first to generate it."
+                    text=f"RepoMemory not found at {memory_path}. Run kapso build first to generate it."
                 )]
             
             manager = self._get_manager()
@@ -212,7 +212,7 @@ class RepoMemoryGate(ToolGate):
                 memory_path = os.path.join(repo_root, manager.MEMORY_REL_PATH)
                 return [TextContent(
                     type="text",
-                    text=f"RepoMemory not found at {memory_path}. Run kapso.evolve() first to generate it."
+                    text=f"RepoMemory not found at {memory_path}. Run kapso build first to generate it."
                 )]
             
             manager = self._get_manager()
@@ -248,7 +248,7 @@ class RepoMemoryGate(ToolGate):
                 memory_path = os.path.join(repo_root, manager.MEMORY_REL_PATH)
                 return [TextContent(
                     type="text",
-                    text=f"RepoMemory not found at {memory_path}. Run kapso.evolve() first to generate it."
+                    text=f"RepoMemory not found at {memory_path}. Run kapso build first to generate it."
                 )]
             
             manager = self._get_manager()

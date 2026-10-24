@@ -212,7 +212,7 @@ def test_registry_lists_a_relaunched_campaign_once(tmp_path):
 
 
 def test_resume_arguments_fill_only_what_the_caller_left_unset():
-    """`kapso evolve --output <dir> --resume` with nothing else must run
+    """`kapso build --output <dir> --resume` with nothing else must run
     with the launch's arguments; an explicit value (a bigger budget) wins."""
     record = {
         "mode": "MINIMAL", "eval_dir": "eval", "max_iterations": 3,

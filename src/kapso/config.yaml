@@ -2,7 +2,7 @@
 # Configuration for solving arbitrary problems
 #
 # Usage:
-#   kapso evolve --goal "Your problem..." --mode GENERIC
+#   kapso build --goal "Your problem..." --mode GENERIC
 #
 # Available Search Strategies:
 #   - generic: Claude Code + MCP gates for ideation and implementation
@@ -320,12 +320,12 @@ learning:
   # `learning/`, gitignored, synced to the artifacts bucket).
   import_report_dir: learning/imports
   # Status files for learn / learn_knowledge (observability design §1);
-  # evolve's lives with its workspace at W/.kapso/status.json. Watch any
+  # a build's lives with its workspace at W/.kapso/status.json. Watch any
   # of them with `kapso watch <path>`.
   status_dir: learning/status
   harvest:
     # Campaign drivers save finished campaigns into the store under the
-    # strict contract (P1.G — the evolve->learn bridge). Store stays
+    # strict contract (P1.G — the build->learn bridge). Store stays
     # local-only until `trajectory_store.remote` is set (doubt D2).
     enabled: true
   mining:
@@ -438,7 +438,7 @@ learning:
   codify:
     # The procedure code path (codify doc §7). min_recurrence gates the
     # seeder's layer-1 nomination; the run knobs govern the codify driver
-    # (evolve minus ideation) and the freshness clock.
+    # (a build minus ideation) and the freshness clock.
     min_recurrence: 2
     max_iterations: 3
     iteration_timeout_minutes: 60

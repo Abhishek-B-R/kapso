@@ -1,4 +1,4 @@
-"""`--detach`: `kapso evolve` and `kapso inbox reply` start the real run in a
+"""`--detach`: `kapso build` and `kapso inbox reply` start the real run in a
 session of its own and return at once with the pid, the log, the status
 path and the watch line — the handoff every host (and the skill) needs,
 in one flag instead of a nohup/setsid recipe per host."""
@@ -14,7 +14,7 @@ import pytest
 import kapso.cli.common as cli_common
 from kapso.cli import main
 from kapso.execution.inbox import inbox_path, load_requests
-from kapso.execution.observability import EvolveStatus
+from kapso.execution.observability import BuildStatus
 from tests.test_inbox_cli import _paused_campaign
 
 
@@ -40,14 +40,14 @@ def _run(monkeypatch, *argv: str) -> None:
     main()
 
 
-def test_evolve_detach_reruns_itself_in_a_session_of_its_own(tmp_path, monkeypatch, popen, capsys):
+def test_build_detach_reruns_itself_in_a_session_of_its_own(tmp_path, monkeypatch, popen, capsys):
     monkeypatch.chdir(tmp_path)
-    _run(monkeypatch, "evolve", "--goal", "g", "--output", "campaign", "--detach", "--iterations", "2")
+    _run(monkeypatch, "build", "--goal", "g", "--output", "campaign", "--detach", "--iterations", "2")
 
     [call] = popen
     assert call.argv == [
         sys.executable, "-m", "kapso.cli",
-        "evolve", "--goal", "g", "--output", "campaign", "--iterations", "2",
+        "build", "--goal", "g", "--output", "campaign", "--iterations", "2",
     ]
     assert call.kwargs["start_new_session"] is True
     assert call.kwargs["stdin"] is subprocess.DEVNULL
@@ -63,18 +63,18 @@ def test_evolve_detach_reruns_itself_in_a_session_of_its_own(tmp_path, monkeypat
     assert str(campaign / ".kapso" / "status.json") in out
 
 
-def test_evolve_detach_needs_an_output_directory(tmp_path, monkeypatch, popen, capsys):
+def test_build_detach_needs_an_output_directory(tmp_path, monkeypatch, popen, capsys):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit) as stop:
-        _run(monkeypatch, "evolve", "--goal", "g", "--detach")
+        _run(monkeypatch, "build", "--goal", "g", "--detach")
     assert stop.value.code == 1
     assert "--detach needs --output" in capsys.readouterr().out
     assert popen == []
 
 
-def test_evolve_detach_honours_log_and_strips_it_for_the_child(tmp_path, monkeypatch, popen):
+def test_build_detach_honours_log_and_strips_it_for_the_child(tmp_path, monkeypatch, popen):
     monkeypatch.chdir(tmp_path)
-    _run(monkeypatch, "evolve", "--goal", "g", "--output", "c", "--log", "run.log", "--detach")
+    _run(monkeypatch, "build", "--goal", "g", "--output", "c", "--log", "run.log", "--detach")
     [call] = popen
     assert Path(call.kwargs["stdout"].name) == tmp_path / "run.log"
     assert "--log" not in call.argv and "--detach" not in call.argv
@@ -118,7 +118,7 @@ def test_reply_detach_refuses_a_credential_before_spawning(tmp_path, monkeypatch
 
 def test_reply_detach_refuses_a_live_campaign(tmp_path, monkeypatch, popen, capsys):
     workspace = _paused_campaign(tmp_path)
-    EvolveStatus(workspace / ".kapso" / "status.json", heartbeat_seconds=60).update(iteration=1)
+    BuildStatus(workspace / ".kapso" / "status.json", heartbeat_seconds=60).update(iteration=1)
     monkeypatch.chdir(workspace)
     with pytest.raises(SystemExit) as stop:
         _run(monkeypatch, "inbox", "reply", "1", "added", "--detach")

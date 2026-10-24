@@ -20,6 +20,7 @@ from kapso.execution.run_checkpoint import (
 from kapso.execution.fidelity import EvaluationAttempt
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from kapso.handles import Brief, Budget
 from kapso.kapso import Kapso
 
 
@@ -534,7 +535,7 @@ def test_solve_writes_the_observability_status_file(
     status = json_module.loads(
         (workspace / ".kapso" / "status.json").read_text()
     )
-    assert status["operation"] == "evolve"
+    assert status["operation"] == "build"
     assert status["state"] == "done"
     assert status["stopped_reason"] == "goal_achieved"
     assert status["iteration"] == 1
@@ -651,7 +652,7 @@ def test_public_resume_workspace_validation_is_strict(tmp_path: Path) -> None:
     Kapso._validate_resume_workspace(str(workspace))
 
 
-def test_public_evolve_forwards_resume_and_reports_cumulative_iterations(
+def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -709,29 +710,28 @@ def test_public_evolve_forwards_resume_and_reports_cumulative_iterations(
     kapso = Kapso.__new__(Kapso)
     kapso.config_path = None
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    # Mirror __init__-set attributes the evolve path reads (stub gotcha).
+    # Mirror __init__-set attributes the build path reads (stub gotcha).
     kapso._config = {}
     kapso._bank_home = None
     kapso._kg_index_path = None
-    result = kapso.evolve(
-        goal="Improve support",
-        output_path=str(workspace),
-        max_iterations=1,
+    result = kapso.build(
+        "Improve support",
+        output=str(workspace),
+        budget=Budget(iterations=1),
         resume=True,
     )
 
     assert captured["resume"] is True
     assert captured["initial_repo"] is None
-    assert result.metadata["iterations"] == 1
-    assert result.metadata["cumulative_iterations"] == 4
-    assert result.metadata["resumed"] is True
+    assert result.iterations == 1
+    assert result.cumulative_iterations == 4
 
 
 def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_record(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`kapso evolve --output <dir> --resume` with nothing else: the goal
+    """`kapso build --output <dir> --resume` with nothing else: the goal
     comes from the checkpoint and every launch argument from the launch
     record, so nothing is retyped; and a changed fingerprinted setting is
     refused by name, not as a bare fingerprint mismatch."""
@@ -740,7 +740,7 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     workspace = tmp_path / "workspace"
     _init_git_workspace(workspace)
     RunCheckpointStore(str(workspace)).save(
-        _checkpoint(goal="Raise accuracy above 0.85")
+        _checkpoint(goal=Brief(objective="Raise accuracy above 0.85").render())
     )
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
@@ -805,8 +805,8 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     kapso._bank_home = None
     kapso._kg_index_path = None
 
-    kapso.evolve(output_path=str(workspace), resume=True)
-    assert captured["goal"] == "Raise accuracy above 0.85"
+    kapso.build(output=str(workspace), resume=True)
+    assert captured["goal"] == Brief(objective="Raise accuracy above 0.85").render()
     assert captured["mode"] == "MINIMAL"
     assert captured["eval_dir"] == str(eval_dir)
     assert captured["experiment_max_iter"] == 3
@@ -815,4 +815,4 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     with pytest.raises(
         RunCheckpointIncompatibleError, match="mode was 'MINIMAL', now 'GENERIC'"
     ):
-        kapso.evolve(output_path=str(workspace), resume=True, mode="GENERIC")
+        kapso.build(output=str(workspace), resume=True, mode="GENERIC")

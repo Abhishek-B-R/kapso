@@ -223,8 +223,8 @@ class TestSetupKapsoDirectories:
 
 
 
-class TestKapsoEvolveWithDirectories:
-    """Test Kapso.evolve() with eval_dir and data_dir parameters."""
+class TestKapsoBuildWithDirectories:
+    """Test Kapso.build() with evaluation and data parameters."""
     
     @classmethod
     def setup_class(cls):
@@ -243,16 +243,16 @@ class TestKapsoEvolveWithDirectories:
         shutil.rmtree(cls.eval_dir, ignore_errors=True)
         shutil.rmtree(cls.data_dir, ignore_errors=True)
     
-    def test_evolve_accepts_eval_dir_and_data_dir(self):
-        """Test that evolve() accepts the new parameters."""
+    def test_build_accepts_evaluation_and_data(self):
+        """Test that build() accepts the new parameters."""
         from kapso.kapso import Kapso
         import inspect
         
-        sig = inspect.signature(Kapso.evolve)
+        sig = inspect.signature(Kapso.build)
         params = list(sig.parameters.keys())
         
-        assert "eval_dir" in params, "evolve() should accept eval_dir"
-        assert "data_dir" in params, "evolve() should accept data_dir"
+        assert "evaluation" in params, "build() should accept evaluation"
+        assert "data" in params, "build() should accept data"
 
 
 if __name__ == "__main__":

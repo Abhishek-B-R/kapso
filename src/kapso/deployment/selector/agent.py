@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from kapso.deployment.base import DeploymentSetting
 from kapso.deployment.strategies import StrategyRegistry
 from kapso.execution.coding_agents.factory import CodingAgentFactory
-from kapso.execution.solution import SolutionResult
+from kapso.handles import Solution
 
 
 class SelectorAgent:
@@ -54,7 +54,7 @@ class SelectorAgent:
     
     def select(
         self,
-        solution: SolutionResult,
+        solution: Solution,
         allowed_strategies: Optional[List[str]] = None,
         resources: Optional[Dict[str, Any]] = None,
     ) -> DeploymentSetting:
@@ -62,7 +62,7 @@ class SelectorAgent:
         Select deployment configuration for a solution.
         
         Args:
-            solution: The SolutionResult from Kapso.evolve()
+            solution: The Solution from Kapso.build()
             allowed_strategies: Optional list of strategies to consider (default: all)
             resources: Optional user-specified resources
             
@@ -70,8 +70,8 @@ class SelectorAgent:
             Complete deployment setting
         """
         # Extract from solution
-        code_path = solution.code_path
-        goal = solution.goal
+        code_path = str(solution.trace)
+        goal = solution.brief.objective
         
         # Get available strategies (filtered if specified)
         available = self.registry.list_strategies(allowed=allowed_strategies)
@@ -223,7 +223,7 @@ class SelectorAgent:
         """Create setting for explicit strategy (for factory use)."""
         return self._create_setting(strategy, None, f"User specified {strategy}")
     
-    def explain(self, solution: SolutionResult) -> str:
+    def explain(self, solution: Solution) -> str:
         """Get human-readable explanation of selection."""
         setting = self.select(solution)
         

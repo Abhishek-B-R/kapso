@@ -1,6 +1,6 @@
 # ML Model Development Example (Kaggle Spaceship Titanic)
 
-This example demonstrates using Kapso's `evolve()` function to iteratively improve a machine learning model for the Kaggle Spaceship Titanic competition.
+This example demonstrates using Kapso's `build()` function to iteratively improve a machine learning model for the Kaggle Spaceship Titanic competition.
 
 ## Environment Setup
 
@@ -69,7 +69,7 @@ Place `train.csv` and `test.csv` in the `initial_repo/data/` directory.
 
 ```bash
 cd examples/ml_model_development
-python run_evolve.py
+python run_build.py
 ```
 
 This will:
@@ -86,7 +86,7 @@ kapso watch ./model_optimized
 ### Run the full production loop
 
 This example is also the reference for Kapso's complete loop — web
-research → `learn_knowledge()` → `evolve()` → `learn()` → evolve again,
+research → `learn_knowledge()` → `build()` → `learn()` → build again,
 served the lessons it just earned (requires the KG backends from
 `scripts/start_infra.sh`):
 

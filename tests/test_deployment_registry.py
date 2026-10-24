@@ -48,10 +48,10 @@ def test_deploy_config_defaults_are_the_packaged_deployment_block():
     defaults now come from config.yaml's deployment block, one source."""
     from kapso.core.config import load_deployment_defaults
     from kapso.deployment.base import DeployConfig
-    from kapso.execution.solution import SolutionResult
+    from tests.handles_support import make_solution
 
     block = load_deployment_defaults()
-    config = DeployConfig(solution=SolutionResult(goal="g", code_path="/nowhere"))
+    config = DeployConfig(solution=make_solution("/nowhere", "g"))
     assert (config.coding_agent, config.model) == (block["coding_agent"], block["model"])
     assert block["model"] == "claude-opus-5"
 
@@ -62,7 +62,7 @@ def test_factory_threads_agent_and_model_to_selector_and_adapter(monkeypatch):
     import kapso.deployment.adapter.agent as adapter_module
     import kapso.deployment.selector.agent as selector_module
     from kapso.deployment.base import DeployConfig, DeploymentSetting
-    from kapso.execution.solution import SolutionResult
+    from tests.handles_support import make_solution
 
     built = []
 
@@ -83,7 +83,7 @@ def test_factory_threads_agent_and_model_to_selector_and_adapter(monkeypatch):
     monkeypatch.setattr(selector_module, "SelectorAgent", FakeSelector)
     monkeypatch.setattr(adapter_module, "AdapterAgent", FakeAdapter)
     config = DeployConfig(
-        solution=SolutionResult(goal="g", code_path="/nowhere"),
+        solution=make_solution("/nowhere", "g"),
         coding_agent="codex", model="gpt-5.6-sol",
     )
     setting = DeploymentFactory._select_strategy(config)

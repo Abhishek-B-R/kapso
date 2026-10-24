@@ -16,7 +16,8 @@ from kapso.execution.inbox import (
 )
 from kapso.execution.observability import OperationStatusView
 from kapso.execution.run_checkpoint import RunCheckpointStore
-from kapso.cli.common import _default_log, _detach, _print_evolve_summary
+from kapso.handles import Brief
+from kapso.cli.common import _default_log, _detach, _print_build_summary
 
 NAME = "inbox"
 
@@ -41,11 +42,13 @@ def _inbox_campaign(explicit: Optional[str]) -> Optional[Path]:
 
 
 def _campaign_goal(campaign: Path) -> str:
+    """The objective's first line: the checkpoint's goal is the brief as
+    the launch rendered it."""
     store = RunCheckpointStore(str(campaign))
     if not store.exists():
         return ""
-    goal = store.load().goal.strip()
-    return goal.splitlines()[0] if goal else ""
+    brief = Brief.parse(store.load().goal, source=str(store.path))
+    return brief.objective.splitlines()[0]
 
 
 def _waiting_since(requests) -> str:
@@ -157,13 +160,13 @@ def cmd_inbox_reply(
         return
     solution = Kapso.reply(str(campaign), request_id, note, allow_secret=yes)
     if solution is not None:
-        _print_evolve_summary(solution)
+        _print_build_summary(solution)
 
 
 def add_parser(subparsers):
     inbox_parser = subparsers.add_parser(
         "inbox",
-        help="What evolve is waiting on you for, and how to answer it",
+        help="What a build is waiting on you for, and how to answer it",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "A session that needs something only a person can provide asks "
