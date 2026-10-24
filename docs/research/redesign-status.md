@@ -100,8 +100,14 @@
    and the guide) with the ports, S6 (experience pays) once experience
    serves. A release gate, run after any change to a skill, a page, CLI
    help or a public doc.
-10. **Later**: the harness editor loop as a learning-module job; the public
-    docs pages when the interface ships.
+10. **The documentation and the examples**, per
+    `docs/plans/docs-and-examples-redesign.md`: the site reorganised by
+    what the reader does (Start, Build, Harnesses, Experience, Deploy,
+    Learn, How it works, Benchmarks, API Reference), every example a task
+    on a harness with a twelve-line `run.py` and the same four README
+    sections, snippets equal to example files by a drift check, each
+    section shipping with the release that ships its verbs.
+11. **Later**: the harness editor loop as a learning-module job.
 
 Dependencies: 1 before everything, since every record is a `Solution`; 2
 before 3, since experience scope follows the loaded harness; 4 with 2 and

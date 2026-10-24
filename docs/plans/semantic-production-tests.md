@@ -21,8 +21,15 @@ for; a simulation of the whole flow added three more (section 5).
   with a persona card: role, expertise, patience (the number of questions
   before it gets terse), what it knows about its repository, what it wants,
   how it answers (short, sometimes wrong, sometimes changing its mind). It
-  drives the host CLI turn by turn, in a fresh container for setup and on
-  the dev box for the rest, and the transcript is recorded.
+  drives the host CLI turn by turn, and the transcript is recorded.
+- **A fresh machine, never the development box.** The suite provisions a
+  GCP machine in the benchmark project, installs the released package or a
+  wheel built from the branch, the CLIs and the plugin from the marketplace
+  line, and runs every test there, so nothing the development checkout
+  happens to have (logins, caches, paths, half-installed tools) can make a
+  flow look smoother than a user will find it. The machine is deleted
+  after the report is written; S3's benchmark runs use the GPU boxes the
+  benchmarks already use.
 - **A judge**: a model from a third vendor when one is available, grading
   transcripts and artifacts against the rubric; beside it, hard metrics
   computed from the transcript (messages, questions, minutes, lines) and
@@ -57,7 +64,7 @@ no judge finding of a surprising name.
 
 ## 3. S2: a full round with the plugin and a simulated user
 
-The scenario, on Claude Code and on Codex, setup in a fresh container:
+The scenario, on Claude Code and on Codex, on the fresh machine:
 
 1. install from the marketplace line; `/kapso:setup` to green;
 2. `/kapso:build` on `churn-with-evaluator`: discovery, evaluation audited,
