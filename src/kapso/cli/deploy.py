@@ -31,8 +31,7 @@ def cmd_deploy(args) -> None:
                 key, value = env_str.split('=', 1)
                 env_vars[key] = value
 
-    # Create Kapso instance
-    kapso = Kapso()
+    kapso = Kapso(config=args.config)
 
     # Deploy
     software = kapso.deploy(
@@ -71,6 +70,7 @@ def add_parser(subparsers):
         "deploy",
         help="Deploy the solution a build wrote as running software",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
         epilog="""
 Examples:
   kapso deploy ../churn-build
@@ -90,4 +90,8 @@ Examples:
     deploy_parser.add_argument("--coding-agent", type=str, choices=AVAILABLE_AGENTS, default=None, help="Coding agent for the selector and adapter sessions (default: config deployment.coding_agent)")
     deploy_parser.add_argument("--model", type=str, default=None, help="Model that agent is asked for (default: config deployment.model)")
     deploy_parser.add_argument("--interactive", action="store_true", help="Keep running after deploy")
+    deploy_parser.add_argument(
+        "--config", type=str, default=None,
+        help="Config path (default: packaged config.yaml); pass the one the build used",
+    )
     return cmd_deploy

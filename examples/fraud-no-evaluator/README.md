@@ -1,10 +1,12 @@
 # A build with no evaluator: fraud scoring
 
-A fifteen-minute build on labelled transactions and a rule-based scorer,
+A build of about three quarters of an hour on labelled transactions and a rule-based scorer,
 with no evaluator anywhere. The brief states the protocol instead; the
 campaign's first node builds the evaluator from it in `kapso_evaluation/`,
-the judge checks that it is fair, and from then on it is registered and
-protected like one you had written.
+and the judge reads every candidate's evaluation against that protocol.
+Registering and protecting it file by file is the evaluation maintainer's
+job, which the shipped config does not turn on yet; see
+[Evaluation](https://docs.leeroo.com/docs/build/evaluation).
 
 Recorded result: not recorded yet.
 
@@ -13,15 +15,15 @@ Recorded result: not recorded yet.
 - `repo/score.py`, three hand-written rules, replaced on a branch of its own
   inside `campaign/` by a model fitted on the 80 percent split.
 - An evaluator the campaign wrote: `campaign/kapso_evaluation/evaluate.py`,
-  following `Measured by` in the brief, registered in
-  `campaign/.kapso/evaluation_registry.json` with provenance `maintainer_built`.
-- `solution.evaluator`: the version and provenance the delivered score was
-  measured under; `solution.score`, the precision-recall AUC on the held-out
-  20 percent.
+  following `Measured by` in the brief.
+- `solution.score`, the precision-recall AUC on the held-out 20 percent,
+  and `solution.feedback`, the judge's last verdict on how the evaluation
+  was done.
 
 ## Run it
 
 ```bash
+pip install numpy pandas scikit-learn   # the generator and the starting scorer
 python generate.py        # 20,000 labelled transactions, seeded, about 5 percent fraud
 kapso doctor build
 kapso build --brief kapso-brief.md --data data --repo repo --output campaign --detach
@@ -36,11 +38,9 @@ directory: run one or the other.
 - `kapso-brief.md`: `Measured by` is a protocol, not a path, and `Baseline`
   is `unknown`. The campaign's first measurement replaces the unknown.
 - `campaign/kapso_evaluation/evaluate.py` after the first node: the split, the
-  seed, the metric, exactly as the protocol said. Any later candidate that
-  edits it is rejected.
-- `campaign/.kapso/evaluation_registry.json`: one version, provenance
-  `maintainer_built`.
-- `solution.explain()`: the score line names the evaluator version.
+  seed, the metric, exactly as the protocol said.
+- `solution.explain()` and `solution.feedback`: the score, and the judge's
+  reading of the evaluation behind it.
 
 ## Change it
 

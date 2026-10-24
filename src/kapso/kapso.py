@@ -20,9 +20,13 @@
 import atexit
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
+
+import git
 
 import yaml
 from datetime import datetime, timezone
@@ -53,6 +57,7 @@ from kapso.execution.evaluation_integrity import build_evaluation_manifest
 from kapso.environment.handlers.generic import GenericProblemHandler
 from kapso.knowledge_base.search import KnowledgeSearchFactory, KGIndexInput
 from kapso.knowledge_base.search.base import KGIndexMetadata
+from kapso.knowledge_base.search.workflow_search import WorkflowRepoSearch
 from kapso.knowledge_base.learners import Source, KnowledgePipeline
 from kapso.knowledge_base.learners.defaults import learner_defaults
 from kapso.core.cli_inference import resolve_inference_config
@@ -1243,11 +1248,6 @@ class Kapso:
                 "build() needs a brief: a sentence or a Brief; only a resume "
                 "may leave it out, and then it comes from the checkpoint"
             )
-        spend = (budget or Budget()).merged_over(brief.budget if brief else None)
-        max_iterations = spend.experiments
-        time_budget_minutes = spend.minutes
-        cost_budget = spend.usd
-        finalization_reserve_minutes = spend.reserve_minutes
         # Absolute from here on: the workspace, its sessions and the record
         # are addressed from directories other than the launch's (a session
         # clone commits its run data by path, a resume runs from anywhere),
@@ -1257,8 +1257,28 @@ class Kapso:
         initial_repo = (
             repo if repo is None or self._is_github_url(repo) else _absolute(repo)
         )
+        for label, directory in (("evaluation", eval_dir), ("data", data_dir)):
+            if directory is not None and not Path(directory).is_dir():
+                raise FileNotFoundError(f"{label} directory not found: {directory}")
+        if initial_repo is not None and not self._is_github_url(initial_repo) \
+                and not Path(initial_repo).is_dir():
+            raise FileNotFoundError(f"repo directory not found: {initial_repo}")
         if resume:
             self._validate_resume_workspace(output_path)
+            if brief is None:
+                # The checkpoint's goal is the brief as the launch rendered
+                # it, so the one grammar reads it back; it comes first so
+                # its budget takes part in the merge below.
+                brief = Brief.parse(
+                    RunCheckpointStore(output_path).load().goal,
+                    source=str(Path(output_path) / ".kapso" / "run_state.json"),
+                )
+        spend = (budget or Budget()).merged_over(brief.budget)
+        max_iterations = spend.experiments
+        time_budget_minutes = spend.minutes
+        cost_budget = spend.usd
+        finalization_reserve_minutes = spend.reserve_minutes
+        if resume:
             # A resume needs the launch's own arguments. The launch record
             # holds them, so a bare `kapso build --output <dir> --resume`
             # works; anything passed explicitly must agree with the record
@@ -1310,13 +1330,6 @@ class Kapso:
                 time_budget_minutes = arguments["time_budget_minutes"]
                 cost_budget = arguments["cost_budget"]
                 finalization_reserve_minutes = arguments["finalization_reserve_minutes"]
-            if brief is None:
-                # The checkpoint's goal is the brief as the launch rendered
-                # it, so the one grammar reads it back.
-                brief = Brief.parse(
-                    RunCheckpointStore(output_path).load().goal,
-                    source=str(Path(output_path) / ".kapso" / "run_state.json"),
-                )
         # The whole brief is the engine's goal text: the judge reads every
         # field, and the checkpoint fingerprints these exact bytes.
         goal_text = brief.render()
@@ -1395,9 +1408,9 @@ class Kapso:
             and self._bank_home is not None
             and self._bank_home.exists()
         ):
-            output_path = output_path or os.path.join(
+            output_path = output_path or _absolute(os.path.join(
                 "tmp", "search_strategy_workspace", uuid.uuid4().hex
-            )
+            ))
             serving_config = dict(self._config)
             serving_config["learning"] = dict(self._config["learning"])
             serving_config["learning"]["bank"] = {
@@ -1474,16 +1487,18 @@ class Kapso:
             print(f"  Knowledge bank: serving at head {serving['bank_head']}")
             print(f"  Bank tools mounted in gates: {mounted}")
 
-        # The campaign inbox (docs/research/evolve-hub-design.md v4): on a
-        # fresh campaign, record the launch so `kapso inbox reply` can
-        # resume it without the person retyping anything, and register the
-        # campaign so `kapso inbox` can list it.
+        # On a fresh campaign, record the launch so a resume (`kapso build
+        # --resume`, `kapso inbox reply`) continues with the launch's own
+        # brief and flags without the person retyping anything; with the
+        # inbox on (docs/research/evolve-hub-design.md v4), also register
+        # the campaign so `kapso inbox` can list it.
         inbox_block = (
             load_mode_config(self.config_path, mode).get("inbox") or {}
         )
-        if not resume and inbox_block.get("enabled"):
+        if not resume:
             workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
             write_launch_record(workspace_dir, {
+                "brief": brief.to_dict(),
                 "config_path": _absolute(self._launch_config_path()),
                 "kg_index": _absolute(self._kg_index_path),
                 "mode": mode,
@@ -1508,7 +1523,8 @@ class Kapso:
                 ),
                 "dotenv_path": find_dotenv(usecwd=True),
             })
-            register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
+            if inbox_block.get("enabled"):
+                register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
 
         # Run experimentation
         print("Running experiments...")
@@ -1579,13 +1595,7 @@ class Kapso:
         print(f"\n{'='*60}")
         print("Build complete")
         print(f"{'='*60}")
-        print(f"Solution at: {campaign}")
-        print(f"Experiments run: {solve_result.iterations_run}")
-        print(f"Total cost: ${solve_result.total_cost:.3f}")
-        print(f"Stopped reason: {solve_result.stopped_reason}")
-        print(f"Goal achieved: {solution.goal_achieved}")
-        if solution.score is not None:
-            print(f"Final score: {solution.score}")
+        print(solution.explain())
         # Every gate call across the campaign's nodes, per gate and tool,
         # and what the metered gates reported spending.
         campaign_phases = {
@@ -1725,15 +1735,11 @@ class Kapso:
                 f"Resume workspace does not exist or is not a directory: {path}"
             )
 
-        import git
-
-        try:
-            repo = git.Repo(str(path), search_parent_directories=False)
-        except (git.InvalidGitRepositoryError, git.NoSuchPathError) as exc:
+        if not (path / ".git").is_dir():
             raise ValueError(
                 f"Resume workspace is not a Git repository: {path}"
-            ) from exc
-        if repo.bare:
+            )
+        if git.Repo(str(path), search_parent_directories=False).bare:
             raise ValueError(
                 f"Resume workspace must be a non-bare Git repository: {path}"
             )
@@ -1785,6 +1791,18 @@ class Kapso:
             result = software.run({"ticker": "AAPL"})
             software.stop()
         """
+        if solution.commit is None:
+            raise ValueError(
+                f"nothing to deploy: the build in {solution.campaign} delivered no "
+                f"candidate (stopped: {solution.stopped_reason})"
+            )
+        checked_out = _git_rev(solution.campaign, "HEAD")
+        if checked_out != solution.commit:
+            raise ValueError(
+                f"{solution.campaign} is checked out at {checked_out[:12]}, not at "
+                f"the delivered candidate {solution.commit[:12]} ({solution.branch}); "
+                f"run `git -C {solution.campaign} checkout {solution.branch}` first"
+            )
         # The packaged deployment block, with the user config's own block
         # layered over it key by key (the same shape as the inference block).
         deployment = {
@@ -1862,23 +1880,13 @@ class Kapso:
         Returns:
             Local path to cloned repository
         """
-        import tempfile
-        import git
-        
-        # Create temp directory with meaningful prefix
         temp_dir = tempfile.mkdtemp(prefix="kapso_repo_")
-        
         print(f"  Cloning {url}...")
-        try:
-            git.Repo.clone_from(url, temp_dir)
-            print(f"  Cloned to: {temp_dir}")
-            return temp_dir
-        except Exception as e:
-            print(f"  Warning: Failed to clone {url}: {e}")
-            # Clean up temp dir on failure
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            return None
+        # A clone that fails propagates: a build must not start from an
+        # empty repository when the person named one.
+        git.Repo.clone_from(url, temp_dir)
+        print(f"  Cloned to: {temp_dir}")
+        return temp_dir
     
     def _search_workflow_repo(self, goal: str) -> Optional[str]:
         """
@@ -1895,23 +1903,15 @@ class Kapso:
             print("  No KG index - skipping workflow search")
             return None
         
-        try:
-            from kapso.knowledge_base.search.workflow_search import WorkflowRepoSearch
-            
-            print("  Searching for relevant workflow...")
-            workflow_search = WorkflowRepoSearch(kg_search=self.knowledge_search)
-            result = workflow_search.search(goal, top_k=1)
-            
-            if not result.is_empty and result.top_result.github_url:
-                starter_url = result.top_result.github_url
-                print(f"  Found workflow repo: {starter_url}")
-                return self._clone_github_repo(starter_url)
-            else:
-                print("  No matching workflow found")
-                return None
-        except Exception as e:
-            print(f"  Warning: Workflow search failed: {e}")
-            return None
+        print("  Searching for relevant workflow...")
+        workflow_search = WorkflowRepoSearch(kg_search=self.knowledge_search)
+        result = workflow_search.search(goal, top_k=1)
+        if not result.is_empty and result.top_result.github_url:
+            starter_url = result.top_result.github_url
+            print(f"  Found workflow repo: {starter_url}")
+            return self._clone_github_repo(starter_url)
+        print("  No matching workflow found")
+        return None
     
     def _build_problem_description(self, goal: str) -> str:
         """Build the full problem description for the orchestrator."""

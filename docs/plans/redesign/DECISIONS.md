@@ -69,6 +69,58 @@ report's readers (the trajectory store, the mining crew) never read
 `metadata` by key; they read the file as prose, so named keys serve them
 better than a dump of the old dictionary.
 
+**The first-build budget is forty-five minutes, because ideation alone
+takes twelve to fourteen minutes on the shipped config.** The second proof
+run's timeline (file mtimes and the status file on the fresh machine):
+the campaign started 21:49:04, setup and repo memory were done by
+21:49:08, the implementation session's folder appeared at 22:01:26, and
+that session was killed at its 60-second floor at 22:04; the Python-flow
+campaign launched at 22:07 was still in `ideation` at 22:21. So a
+fifteen-minute campaign spends it all on the ideation session
+(`claude-opus-5` with four gates) and the implementation gets the floor.
+The first-build example and page now say three quarters of an hour and
+the brief says `minutes=45 experiments=3`; the "ten minutes" the docs plan
+promised is not true of the shipped config and is not claimed. A faster
+profile for small briefs (a lighter ideation for a one-file task, fewer
+lanes, or a quick mode) is a product question for WP4, the config
+package, and is listed in the sub-plan's findings for later packages.
+
+**The launch record is written on every fresh campaign, not only with the
+inbox on, and it carries the brief.** A resume reads the launch's budget
+and flags from it; with the inbox off there was no record, so a bare
+resume dropped the brief's minutes and dollars (the pull-request review
+found it). Registering the campaign in the inbox's registry stays
+conditional on the inbox: that file is the inbox's. Alternative rejected:
+keeping budgets only in the checkpoint, which does not hold them.
+
+**`deploy()` refuses a solution with no candidate and a campaign directory
+not checked out at the delivered commit.** Deployment copies the directory
+as it is; after `git checkout main` for a look around, it would have
+shipped the seed under the winning score. The refusal names the checkout
+command. Alternative rejected: checking the commit out silently, which
+moves a directory the person is working in.
+
+**A bullet or a number at the start of an objective's line is text.** The
+parser used to refuse a `- ` line under a text field so a misplaced rule
+would not vanish into the objective; but goals carry bullet lists, and a
+brief built in Python with one could not be read back. Text fields take
+any text; `Rules` and `Experience` alone take items. Alternative rejected:
+escaping bullets in the file, which no one would type.
+
+**`solution.evaluator` is `None` with the shipped config, and the pages say
+so.** The evaluation registry is written by the evaluation maintainer,
+which runs only when a config has an `evaluation_maintainer` block;
+`GENERIC` and `MINIMAL` have none. The pages describe the shipped
+behaviour (a provided evaluator is protected by the integrity check; a
+proposed one is judged, not registered) and name the block. Turning the
+maintainer on by default is WP4's decision, with the config.
+
+**No abbreviated flags on `kapso build`, `inbox` and `deploy`.** argparse
+accepts `--det` for `--detach`; the detached child strips only the full
+flag and would detach again, forever. `allow_abbrev=False` on the three
+parsers whose flags a child re-reads. Alternative rejected: stripping
+every prefix of `--detach`, which hides the trap instead of closing it.
+
 **Fourteen public names changed after the naming review, two user-chosen
 words did not.** Both reviewers (Codex gpt-6-astra at xhigh, Claude Code
 opus-5) judged every public name of the build surface; the table in

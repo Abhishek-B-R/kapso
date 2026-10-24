@@ -97,7 +97,7 @@ class Solution:
     knowledge_index: str | None             # until WP3 folds these two into experience
     experience_head: str | None
 
-    RECORD = ".kapso/solution.json"
+    record_path: Path                         # <campaign>/.kapso/solution.json
     def save(self) -> Path: ...               # build() writes it at return, every time it returns
     @classmethod
     def open(cls, path) -> "Solution": ...    # reads the record; raises when absent ("not finished; watch it")
@@ -202,11 +202,11 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
    record with the brief, the `Solution` built from the solve result, the
    registry head, the workspace's head commit and seed commit, written to
    the record; `evolve()` deleted. Test `tests/test_build_facade.py`
-   (provider mocked): the record a build writes equals the golden record
-   `evolve` wrote for the same fixture apart from the new keys; the
-   problem description contains the whole objective of a 50-kilobyte
-   brief; a resume takes the goal from the checkpoint and the budgets from
-   the record unless given.
+   (provider mocked): the record a build writes has the pinned key list,
+   and the values the fake orchestrator supplied land in it; the problem
+   description contains the whole objective of a 50-kilobyte brief; a
+   resume takes the brief from the checkpoint and the budgets from the
+   record unless given, and keeps the brief's budget with the inbox off.
 3. `Solution` replacing `SolutionResult` in every consumer listed under
    Ownership, `SolutionResult` deleted; `reply()` returns `Solution | None`.
    Tests: the deployment, inbox and return-result tests re-pointed.
@@ -256,9 +256,13 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
   test per rule in the Interface; the 50-kilobyte objective asserted in
   the handler's problem description, not only in the parsed object; a
   `Budget` with a negative, non-finite or non-integer value raises; the
-  record golden compared modulo the new keys; three `open()` fixtures;
-  every CLI flag mapped; the detach child argv; the verb list in `--help`;
-  the status operation; the doctor verb; the grep test.
+  record's key list pinned, with the delivered commit and the seed in it;
+  a parametrized round trip from Python-built briefs (indented
+  continuations, bullets, a tiny budget); three `open()` cases written by
+  `build()`; every CLI flag mapped from the parser's own actions; the
+  detach child argv; abbreviated flags refused; a log inside the output
+  refused; a missing directory refused; the verb list in `--help`; the
+  status operation; the doctor verb; the grep test.
 - Proof run, on the fresh machine from the branch wheel, archived under
   `scripts/redesign/runs/wp1/` and cited here: the churn fixture staged
   (`generate.py`, then the fixture's `kapso-brief.md`), then
@@ -343,6 +347,36 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
   condensation of those pages waits for the packages that change them);
   `scripts/check_snippets.py` keeps a quoted file and its page identical
   and runs in the docs workflow. "Kapso in your coding agent" is WP7's.
+
+## Findings for later packages
+
+- **Ideation dominates a small build.** On the shipped `GENERIC` config
+  the ideation session runs twelve to fourteen minutes before the first
+  candidate is implemented (second proof run, 2026-10-24: setup done in
+  four seconds, the implementation folder created twelve minutes in, the
+  Python-flow campaign still in `ideation` at fourteen minutes). A
+  fifteen-minute campaign therefore delivers nothing, and "a first build
+  in ten minutes" is not true today. WP4 (the config package) should give
+  small briefs a faster path: a lighter ideation effort or fewer lanes
+  for a one-file task, or a quick profile; the semantic suite's S1 should
+  measure time-to-first-candidate.
+- **The evaluation registry is empty without the maintainer.** `GENERIC`
+  and `MINIMAL` have no `evaluation_maintainer` block, so `solution.evaluator`
+  is `None` and a proposed evaluator is judged but not registered or
+  protected file by file. WP4 decides whether the maintainer is on by
+  default; until then the pages say what the shipped config does.
+- **`done` precedes the record.** The orchestrator publishes the status
+  file's terminal state inside `solve()`; the facade then checks out the
+  deliverable and writes `.kapso/solution.json`. `kapso watch --follow`
+  can return before `Solution.open` succeeds, by the seconds the checkout
+  takes. WP6 (the record and the trace) should publish `done` after the
+  record is written, and should save a record before the delivery steps
+  that can raise.
+- **A fresh machine needs the task's libraries.** `kapso doctor build`
+  checks the engine's needs, not the task's; the churn example needs
+  numpy, pandas and scikit-learn, which its README now installs. The
+  harness package (WP2) carries an `environment` block for exactly this,
+  and the doctor could report a harness's requirements.
 
 ## Risks
 
@@ -433,3 +467,34 @@ the CLI line build into the same directory, so run one or the other; the
 the command is; `run.py` says it runs from the example directory after
 `generate.py`; the deploy-and-learn snippet binds `kapso` and imports what
 it uses.
+
+### Pull-request review
+
+Both reviewers read the branch against this plan (brief
+`scripts/redesign/review.sh`, 2026-10-24; Claude Code read it at
+`5e770f96`, Codex at `da3a6bb2`). Findings and what was done:
+
+| Finding | Answer |
+|---|---|
+| five of the six Build pages were untracked: a bare `build/` rule in `.gitignore` matched `docs/build/`, and `docs.json` listed pages that were not in the repository (Claude, highest) | the rule is `/build/`; the pages are committed; `mint validate` and `broken-links` rerun |
+| a Python-built brief whose continuation lines are indented, or holds a bullet, or a budget that renders as `1e-05`, does not survive `parse(render())`, so a bare resume dies on the goal fingerprint (both, highest) | `Brief` normalizes on construction (first line stripped, the rest dedented together); a bullet under a text field is text; numbers render in plain digits; a parametrized round-trip test from Python-built briefs pins it |
+| a resume with the inbox off lost the brief's budget: budgets merged before the checkpoint's brief was read, and the launch record existed only with the inbox on (Codex, highest) | the checkpoint's brief is read before the merge; the launch record is written on every fresh campaign and carries the brief; registration alone stays conditional on the inbox |
+| `kapso inbox` tracebacked on a campaign whose checkpoint goal is not brief grammar, a benchmark runner's (Claude) | the goal line is the first line, with an `Objective` name stripped when present; no parsing |
+| the evaluation pages and the fraud example promised a registry and protection the shipped config never produces: the maintainer runs only with an `evaluation_maintainer` block (both) | the pages say what the shipped config does and when the registry exists; `solution.evaluator` documented as `None` without the maintainer; the fraud example's claims rewritten |
+| a missing `data` directory was swallowed by the handler, launching a dataless campaign (Claude) | `build()` refuses a missing evaluation, data or local repo directory, by name |
+| the temporary workspace with serving on was still relative (Claude) | resolved |
+| deployment copied the current tree without checking the recorded commit (Codex) | `deploy()` refuses a solution with no candidate and a workspace not checked out at the delivered commit, naming the checkout command |
+| `--det` relaunched the detached child forever; a `--log` inside `--output` made the fresh directory non-empty (Codex) | `allow_abbrev=False` on build, inbox and deploy; a log inside the output is refused before the child starts |
+| three summary renderings disagreed (Codex); `COMPLETED` hid "no candidate" and the stop detail | the facade's completion block and the CLI summary print `solution.explain()`; the labels align at one column |
+| `_validate_resume_workspace`, `_clone_github_repo`, `_search_workflow_repo` kept local imports and exception handling; a failed clone started an empty campaign (both) | imports at the top; a failed clone or workflow search propagates |
+| `.kapso/solution.json` was not in the workspace's ignore list (Claude) | added |
+| `schema_version` stayed 1 across the key rename; `request.get("key", "")` substituted for a required field; the record's `campaign` key was unused and untrustworthy after a move (Claude) | schema 2; `request["key"]`; the key dropped |
+| `EvaluatorRef`, `HarnessRef`, `ExperienceRef`, `BriefError` were not exported (Claude) | exported |
+| `kapso deploy` had no `--config` (Claude) | added |
+| the examples' "Run it" blocks omitted numpy, pandas and scikit-learn; the churn README cited a recorded result that did not exist; the detached flow's summary block goes to the log, not to `watch` (both) | the install line is in the block; the recorded-result paragraph says "not recorded yet"; the README says where the block goes |
+| `tests/test_solve_result.py` proved nothing (Claude) | deleted |
+| grammar errors without a line number (Codex) | every `BriefError` carries the line of the field or token it is about |
+| the plan's Tests bullet and Change 2 still promised a golden-record comparison; the Interface's `RECORD` constant did not exist (both) | both corrected below and in the Interface |
+| "done" in the status file precedes the record by the checkout and the write (Codex); a failed final checkout leaves no record (Claude) | `open()`'s message covers a build that just ended and one that stopped before delivering; publishing `done` after the record is WP6's, with the record's lifecycle |
+| the lazy export map in `kapso/__init__.py` is a function-local import (Codex) | kept: it is the documented cold-start fix for the MCP server (8 seconds otherwise); the handles join the same map |
+| `DEFAULT_MAX_ITERATIONS` is a literal (Claude) | WP4's, as the plan says; renamed with the budget block then |

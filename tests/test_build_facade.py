@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from kapso.execution.inbox import write_launch_record
+from kapso.execution.inbox import read_launch_record, write_launch_record
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, config_fingerprint
 from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import FeedbackResult
 from kapso.handles import Brief, Budget, Solution
@@ -22,7 +22,7 @@ from tests.handles_support import (
 )
 
 RECORD_KEYS = [
-    "schema_version", "brief", "campaign", "branch", "commit", "base_commit", "score",
+    "schema_version", "brief", "branch", "commit", "base_commit", "score",
     "goal_achieved", "stopped_reason", "stop_detail", "experiments", "experiments_total",
     "cost_usd", "requests", "feedback", "evaluator", "harness", "experience",
     "rejected_candidates", "callback_metrics", "callback_primary_metric", "knowledge_index",
@@ -137,6 +137,55 @@ def test_build_needs_a_brief_unless_resuming():
         facade().build(42)
 
 
+def test_a_missing_directory_is_refused_before_anything_starts(tmp_path, monkeypatch):
+    """The handler copied data only when it existed, so a typo in --data
+    launched a campaign with no dataset and spent the budget before the
+    cause showed; now it fails at the door, with the path."""
+    workspace = tmp_path / "ws"
+    git_workspace(workspace)
+    fake_orchestrator(monkeypatch, workspace, solve_result())
+    (tmp_path / "evaluation").mkdir()
+    (tmp_path / "evaluation" / "evaluate.py").write_text("print('auc: 0.5')\n")
+    for keyword, path in (("data", tmp_path / "nowhere"), ("repo", tmp_path / "nowhere"),
+                          ("evaluation", tmp_path / "nowhere")):
+        with pytest.raises(FileNotFoundError, match=f"{keyword} directory not found"):
+            facade().build("g", output=str(workspace), **{keyword: str(path)})
+    assert not (workspace / ".kapso" / "solution.json").exists()
+
+
+def test_every_fresh_campaign_writes_a_launch_record_with_the_brief(tmp_path, monkeypatch):
+    """The record used to exist only with the inbox on; a resume needs it
+    whatever the inbox setting, and it carries the brief."""
+    workspace = tmp_path / "ws"
+    git_workspace(workspace)
+    fake_orchestrator(monkeypatch, workspace, solve_result())   # the inbox off
+    brief = Brief(objective="Raise AUC above 0.85", rules=["no peeking"], budget=Budget(minutes=30))
+
+    facade().build(brief, output=str(workspace), budget=Budget(experiments=2))
+
+    record = read_launch_record(workspace)
+    assert record["brief"] == brief.to_dict()
+    assert record["max_iterations"] == 2 and record["time_budget_minutes"] == 30
+
+
+def test_a_resume_with_the_inbox_off_keeps_the_briefs_budget(tmp_path, monkeypatch):
+    """The checkpoint's brief is read before the budget merge, so a resume
+    that passes nothing keeps the brief's minutes and dollars even when no
+    launch record exists."""
+    workspace = tmp_path / "ws"
+    git_workspace(workspace)
+    brief = Brief(objective="g", budget=Budget(minutes=10, experiments=4, usd=2))
+    RunCheckpointStore(str(workspace)).save(_checkpoint(brief.render()))
+    captured = fake_orchestrator(monkeypatch, workspace, solve_result())
+
+    facade().build(output=str(workspace), resume=True)
+
+    assert captured["solve"] == {
+        "experiment_max_iter": 4, "time_budget_minutes": 10,
+        "cost_budget": 2, "finalization_reserve_minutes": None,
+    }
+
+
 def _checkpoint(goal: str) -> RunCheckpoint:
     return RunCheckpoint.create(
         strategy_type="generic", goal=goal, config_fingerprint=config_fingerprint({"m": 1}),
@@ -147,6 +196,7 @@ def _checkpoint(goal: str) -> RunCheckpoint:
 
 def _launch_record(workspace, **values):
     record = {
+        "brief": Brief(objective="recorded").to_dict(),
         "config_path": None, "kg_index": None, "mode": None, "coding_agent": None,
         "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": 60.0,
         "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
@@ -194,7 +244,7 @@ def test_the_record_has_the_pinned_shape_and_names_the_delivered_commit(tmp_path
 
     record = json.loads((workspace / ".kapso" / "solution.json").read_text())
     assert list(record) == RECORD_KEYS
-    assert record["schema_version"] == 1
+    assert record["schema_version"] == 2
     assert record["brief"] == Brief(objective="g").to_dict()
     assert (record["branch"], record["commit"], record["base_commit"]) == ("generic_exp_1", winner, base)
     assert (record["score"], record["goal_achieved"], record["stopped_reason"]) == (0.9, True, "goal_achieved")

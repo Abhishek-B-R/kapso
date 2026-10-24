@@ -100,7 +100,10 @@ def test_blank_lines_inside_a_field_are_paragraph_breaks_and_survive_the_round_t
     assert Brief.parse("\n\nObjective    a\n\n\nTarget   1\n\n") == Brief(objective="a", target="1")
 
 
-def test_relative_indentation_of_a_pasted_block_is_kept():
+def test_continuation_lines_keep_their_relative_indentation_and_the_first_line_stands_alone():
+    """The lines after the first are dedented together: a pasted code
+    block keeps its structure, and the first line's own indentation, which
+    the file cannot hold (it follows the field name), is not pretended."""
     text = (
         "Objective    Fix the failing test below\n"
         "                 def test_contract():\n"
@@ -113,6 +116,28 @@ def test_relative_indentation_of_a_pasted_block_is_kept():
         "    assert predict(rows).shape == (len(rows),)"
     )
     assert Brief.parse(brief.render()) == brief
+
+
+@pytest.mark.parametrize("objective", [
+    "Fix this:\n    def f():\n        return 1",
+    "\n    Find the minimum of the Rosenbrock function.\n\n    Your solution should:\n    1. implement it\n    2. print the point\n\n    Target: f(x,y) < 0.001\n    ",
+    "Keep the contract:\n- preserve the API\n- no new dependencies",
+    "one line",
+])
+def test_a_python_built_brief_renders_and_parses_back_to_itself(objective):
+    """What a resume relies on: render is a fixed point over parse, for a
+    triple-quoted goal, a bullet list in the objective and an indented
+    block alike, so the checkpoint's bytes are what a bare resume
+    re-renders."""
+    brief = Brief(objective=objective, rules=["a rule"], budget=Budget(minutes=90.5, usd=0.00001))
+    rendered = brief.render()
+    assert Brief.parse(rendered) == brief
+    assert Brief.parse(rendered).render() == rendered
+
+
+def test_a_bullet_under_a_text_field_is_text():
+    brief = Brief.parse("Objective    Keep the contract:\n             - preserve the API\n             - no new dependencies\n")
+    assert brief.objective == "Keep the contract:\n- preserve the API\n- no new dependencies"
 
 
 def test_a_list_item_may_continue_on_the_next_lines():
@@ -161,7 +186,6 @@ def test_reference_strings_are_kept_verbatim():
     ("Target 1\n", "Objective is required"),
     ("Objective\nTarget 1\n", "Objective has no value"),
     ("  hello\nObjective a\n", "indented line before any field"),
-    ("Objective a\n  - b\n", "takes text, not a list"),
     ("Objective a\nRules\n  text\n", "expected a `- ` item"),
     ("Objective a\nRules b\n", "takes `- ` items on the lines below"),
     ("Objective a\nRules\n", "Rules has no items"),
@@ -181,9 +205,22 @@ def test_what_the_grammar_rejects_and_how_it_says_so(text, message):
         Brief.parse(text, source="kapso-brief.md")
 
 
-def test_errors_name_the_file_and_the_line():
-    with pytest.raises(BriefError, match=r"^kapso-brief.md:3: Target given twice"):
-        Brief.parse("Objective a\nTarget 1\nTarget 2\n", source="kapso-brief.md")
+@pytest.mark.parametrize("text,message", [
+    ("Objective a\nTarget 1\nTarget 2\n", r"^kapso-brief.md:3: Target given twice"),
+    ("Objective\nTarget 1\n", r"^kapso-brief.md:1: Objective has no value"),
+    ("Objective a\nRules\n", r"^kapso-brief.md:2: Rules has no items"),
+    ("Objective a\nBudget\n", r"^kapso-brief.md:2: Budget needs name=value tokens"),
+    ("Objective a\nBudget minutes=5\n       hours=2\n", r"^kapso-brief.md:3: Budget token 'hours=2'"),
+])
+def test_errors_name_the_file_and_the_line(text, message):
+    with pytest.raises(BriefError, match=message):
+        Brief.parse(text, source="kapso-brief.md")
+
+
+def test_a_budget_writes_numbers_the_parser_reads_back():
+    assert Budget(usd=0.00001).tokens() == "usd=0.00001"
+    assert Budget(minutes=1e20).tokens() == "minutes=100000000000000000000"
+    assert Budget(minutes=90.5, usd=2.25).tokens() == "minutes=90.5 usd=2.25"
 
 
 def test_a_budget_the_engine_cannot_spend_is_refused_at_parse_time():

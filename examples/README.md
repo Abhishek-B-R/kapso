@@ -10,8 +10,8 @@ first (`kapso doctor build` must pass), then run from the example's directory.
 
 | Example | Minutes | What it shows | The one command |
 |---|---|---|---|
-| [churn-first-build](churn-first-build/README.md) | 10 | your first build: an evaluator present, a baseline, a target, the record | `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach` |
-| [fraud-no-evaluator](fraud-no-evaluator/README.md) | 15 | no evaluator: the campaign builds one from the brief's protocol, then protects it | `kapso build --brief kapso-brief.md --data data --repo repo --output campaign --detach` |
+| [churn-first-build](churn-first-build/README.md) | 45 | your first build: an evaluator present, a baseline, a target, the record | `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach` |
+| [fraud-no-evaluator](fraud-no-evaluator/README.md) | 45 | no evaluator: the campaign builds one from the brief's protocol, then protects it | `kapso build --brief kapso-brief.md --data data --repo repo --output campaign --detach` |
 | [ml_model_development](ml_model_development/README.md) | 45 | a Kaggle tabular model, and the full loop (research, learn, build again) | `kapso build --brief kapso-brief.md --repo repo --output campaign --detach` |
 | [prompt_engineering](prompt_engineering/README.md) | 60 | the prompt as the thing under test, scored on AIME problems | `kapso build --brief kapso-brief.md --repo repo --output campaign --detach` |
 | [agentic_scaffold](agentic_scaffold/README.md) | 60 | a vision-language extractor, scored against ground-truth tables | `kapso build --brief kapso-brief.md --repo repo --output campaign --detach` |

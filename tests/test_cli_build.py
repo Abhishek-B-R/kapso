@@ -104,6 +104,30 @@ def test_a_missing_brief_exits_one(monkeypatch, capsys, tmp_path):
     assert "brief not found" in capsys.readouterr().out
 
 
+def test_abbreviated_flags_are_refused(monkeypatch, capsys):
+    """argparse would accept `--det` for `--detach`; the child of a
+    detached run strips only the full flag, so an abbreviation would
+    detach again, forever."""
+    _mock_facade(monkeypatch)
+    with pytest.raises(SystemExit) as stop:
+        _run(monkeypatch, "--goal", "g", "--output", "out", "--det")
+    assert stop.value.code == 2
+    assert "unrecognized arguments: --det" in capsys.readouterr().err
+
+
+def test_a_log_inside_the_output_directory_is_refused(monkeypatch, capsys, tmp_path):
+    """The log is created before the child starts; inside --output it
+    would make the fresh campaign directory non-empty, which seeding
+    refuses after the parent already reported a launch."""
+    _mock_facade(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as stop:
+        _run(monkeypatch, "--goal", "g", "--output", "campaign", "--detach", "--log", "campaign/run.log")
+    assert stop.value.code == 1
+    assert "--log must be outside --output" in capsys.readouterr().out
+    assert not (tmp_path / "campaign").exists()
+
+
 def test_the_brief_forms_exclude_each_other(monkeypatch, capsys, tmp_path):
     path = tmp_path / "kapso-brief.md"
     path.write_text("Objective a\n")

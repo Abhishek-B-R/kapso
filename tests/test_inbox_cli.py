@@ -16,7 +16,7 @@ import pytest
 
 from kapso.cli import main
 from kapso.cli.common import _print_build_summary
-from kapso.cli.inbox import cmd_inbox
+from kapso.cli.inbox import _campaign_goal, cmd_inbox
 from kapso.execution.inbox import file_requests, inbox_path, register_campaign
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, config_fingerprint
 from kapso.execution.search_strategies.base import SearchNode
@@ -54,6 +54,22 @@ def _paused_campaign(root: Path, name: str = "campaign", *, requests: int = 1) -
 def _run(monkeypatch, *argv: str) -> None:
     monkeypatch.setattr(sys, "argv", ["kapso", *argv])
     main()
+
+
+def test_the_goal_line_reads_a_brief_or_a_plain_goal(tmp_path):
+    """A campaign launched through build() holds the rendered brief; one a
+    benchmark runner launched holds its plain goal. Both list."""
+    built = _paused_campaign(tmp_path, "built")
+    assert _campaign_goal(built) == "Improve support"
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    RunCheckpointStore(str(plain)).save(RunCheckpoint.create(
+        strategy_type="generic", goal="Predict churn on rel-f1\nwith the official split",
+        config_fingerprint=config_fingerprint({"m": 1}), status="running", completed_iterations=0,
+        cumulative_cost=0.0, current_feedback=None, strategy_state={"node_history": []},
+    ))
+    assert _campaign_goal(plain) == "Predict churn on rel-f1"
+    assert _campaign_goal(tmp_path / "nowhere") == ""
 
 
 def _capture_reply(monkeypatch, result=None) -> List[Any]:
@@ -171,7 +187,7 @@ def test_reply_prints_the_campaign_summary(tmp_path, monkeypatch, capsys):
     _capture_reply(monkeypatch, make_solution(workspace, "Improve support", stopped_reason="max_iterations", cost_usd=2.5))
     _run(monkeypatch, "inbox", "reply", "1", "added the key")
     out = capsys.readouterr().out
-    assert "COMPLETED" in out and "Stopped reason: max_iterations" in out and "Cost: $2.500" in out
+    assert "COMPLETED" in out and "Stopped:       max_iterations" in out and "Cost:          $2.500" in out
 
 
 def test_the_summary_says_waiting_on_you_when_the_campaign_asked_again(tmp_path, capsys):

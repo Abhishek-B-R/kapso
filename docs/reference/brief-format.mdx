@@ -29,17 +29,19 @@ any case; `Measured by` needs nothing special to delimit it.
 
 - A field starts an unindented line with its name, then whitespace, then
   the value; the value may also start on the next line.
-- An indented line continues the field above. Continuation lines are
-  dedented together, so a pasted block keeps its relative indentation.
+- An indented line continues the field above. The lines after a field's
+  first are dedented together, so a pasted block keeps its relative
+  indentation; a bullet or a number at the start of such a line is text,
+  not an item. The first line stands on its own (it follows the name).
 - A blank line between two lines of the same field is a paragraph break;
   blank lines anywhere else are nothing.
 - `Rules` and `Experience` take items on indented lines starting with
   `- `; an item continues on further indented lines. `Experience` also
   takes one comma-separated line.
 - `Budget` takes `name=value` tokens, on the field line or continuation
-  lines: `minutes`, `usd` and `reserve_minutes` are positive numbers,
-  `experiments` a positive integer, `reserve_minutes` smaller than
-  `minutes`.
+  lines: `minutes`, `usd` and `reserve_minutes` are positive numbers
+  written in plain digits (`0.00001`, never `1e-05`), `experiments` a
+  positive integer, `reserve_minutes` smaller than `minutes`.
 - Reference strings are kept as written: `acme/harnesses@v3#trading` and
   `~/banks/mine.git` survive intact.
 
@@ -71,7 +73,6 @@ Each with the file and line number, never guessed at:
 | A field given twice | `<Field> given twice` |
 | No `Objective`, or an empty one | `Objective is required`, `Objective has no value` |
 | An indented line before any field | `indented line before any field` |
-| A `- ` item under a text field | `takes text, not a list` |
 | Text under `Rules` or `Experience` with no item yet | `expected a `- ` item` |
 | A value on the `Rules` line itself | `takes `- ` items on the lines below it` |
 | `Experience` as both a comma line and items | `not both` |
@@ -98,7 +99,11 @@ brief.write("kapso-brief.md")
 ```
 
 `render()` is what the engine receives as its goal and what the checkpoint
-fingerprints, so `Brief.parse(brief.render()) == brief` always holds.
+fingerprints. A `Brief` normalizes its text on construction (the first
+line of a field stripped, the rest dedented together, trailing whitespace
+and outer blank lines removed), and over that form
+`Brief.parse(brief.render()) == brief` holds for every brief, which is
+what a bare resume relies on.
 
 ## Related
 

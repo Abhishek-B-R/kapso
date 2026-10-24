@@ -5,4 +5,4 @@ solution = Kapso().build(
     Brief.read("kapso-brief.md"), data="data", repo="repo", output="campaign",
 )
 print(solution.explain())
-print(solution.evaluator)    # the evaluator the campaign built and registered
+print(solution.feedback)     # the judge's last verdict, including on the evaluation the campaign built

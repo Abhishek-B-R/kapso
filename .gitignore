@@ -19,7 +19,7 @@ services/wiki_backend/
 
 # Distribution / packaging
 .Python
-build/
+/build/
 develop-eggs/
 dist/
 downloads/

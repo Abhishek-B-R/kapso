@@ -104,7 +104,11 @@ class Budget:
 
 
 def _number(value: Union[int, float]) -> str:
-    return str(int(value)) if float(value).is_integer() else repr(float(value))
+    """A number as the brief writes it: plain digits, a decimal point when
+    needed, never an exponent, so the parser reads back what was written."""
+    if float(value).is_integer():
+        return str(int(value))
+    return format(value, "f").rstrip("0")
 
 
 # =============================================================================
@@ -159,11 +163,15 @@ def _dedent(lines: List[str]) -> List[str]:
 
 
 def _normalize_text(value: str) -> str:
-    """Trailing whitespace off every line, blank lines off both ends. The
-    first line's leading whitespace goes too (it sits after the field name
-    in the file); every other line keeps its indentation."""
-    lines = [line.rstrip() for line in value.strip().splitlines()]
-    return "\n".join(lines)
+    """The canonical form of a field's text, the one the file holds: the
+    first line stripped (it sits after the field name in the file), the
+    lines after it dedented together so their relative indentation
+    survives, trailing whitespace off every line, blank lines off both
+    ends. A brief built in Python and one read from its own rendering are
+    then equal, which is what a resume's fingerprint relies on."""
+    first, *rest = value.strip().splitlines() or [""]
+    rest = _dedent([line.rstrip() for line in rest])
+    return "\n".join([first.strip(), *rest])
 
 
 @dataclass
@@ -303,7 +311,8 @@ def _render_items(items: List[str]) -> List[str]:
 
 class _BriefParser:
     """One pass over the lines. A field starts an unindented line; an
-    indented line continues the field above; blank lines are ignored except
+    indented line continues the field above, text fields taking any text
+    (a bullet in an objective is just text); blank lines are ignored except
     between two lines of the same field, where they stay as paragraph
     breaks. `Rules` and `Experience` take `- ` items; `Experience` also
     takes one comma-separated line. `Budget` takes `name=value` tokens."""
@@ -312,11 +321,12 @@ class _BriefParser:
         self.source = source
         self.current: Optional[str] = None
         self.seen: List[str] = []
+        self.field_lines: Dict[str, int] = {}
         self.first_line: Dict[str, Optional[str]] = {}
         self.continuations: Dict[str, List[str]] = {}
         self.items: Dict[str, List[List[str]]] = {}
         self.inline_items: Dict[str, List[str]] = {}
-        self.budget_tokens: List[str] = []
+        self.budget_tokens: List[tuple] = []
         self.pending_blanks = 0
 
     def fail(self, number: int, message: str) -> BriefError:
@@ -336,14 +346,8 @@ class _BriefParser:
         if self.current in _LIST_FIELDS:
             self._list_line(number, line, stripped)
         elif self.current == "budget":
-            self.budget_tokens.extend(stripped.split())
+            self.budget_tokens.extend((number, token) for token in stripped.split())
         else:
-            if stripped == "-" or stripped.startswith("- "):
-                raise self.fail(
-                    number,
-                    f"a `- ` item under {_FIELD_TITLES[self.current]}, which takes "
-                    "text, not a list (Rules and Experience take items)",
-                )
             lines = self.continuations[self.current]
             if self.pending_blanks and (lines or self.first_line[self.current]):
                 lines.extend([""] * self.pending_blanks)
@@ -364,6 +368,7 @@ class _BriefParser:
         if attribute in self.seen:
             raise self.fail(number, f"{title} given twice")
         self.seen.append(attribute)
+        self.field_lines[attribute] = number
         self.current = attribute
         self.pending_blanks = 0
         value = (match.group(2) or "").strip()
@@ -377,8 +382,7 @@ class _BriefParser:
                     raise self.fail(number, "Experience has an empty item")
                 self.inline_items[attribute] = parts
         elif attribute == "budget":
-            if value:
-                self.budget_tokens.extend(value.split())
+            self.budget_tokens.extend((number, token) for token in value.split())
         else:
             self.first_line[attribute] = value or None
             self.continuations[attribute] = []
@@ -414,8 +418,8 @@ class _BriefParser:
             parts.extend(_dedent(self.continuations[attribute]))
             text = "\n".join(parts).strip()
             if not text:
-                raise BriefError(
-                    f"{self.source}: {_FIELD_TITLES[attribute]} has no value"
+                raise self.fail(
+                    self.field_lines[attribute], f"{_FIELD_TITLES[attribute]} has no value"
                 )
             values[attribute] = text
         for attribute in _LIST_FIELDS:
@@ -429,8 +433,8 @@ class _BriefParser:
                 first, *rest = lines
                 items.append("\n".join([first, *_dedent(rest)]).strip())
             if not items:
-                raise BriefError(
-                    f"{self.source}: {_FIELD_TITLES[attribute]} has no items"
+                raise self.fail(
+                    self.field_lines[attribute], f"{_FIELD_TITLES[attribute]} has no items"
                 )
             values[attribute] = items
         if "budget" in self.seen:
@@ -439,31 +443,30 @@ class _BriefParser:
 
     def _budget(self) -> Budget:
         if not self.budget_tokens:
-            raise BriefError(
-                f"{self.source}: Budget needs name=value tokens, from "
-                f"{', '.join(_BUDGET_FIELDS)}"
+            raise self.fail(
+                self.field_lines["budget"],
+                f"Budget needs name=value tokens, from {', '.join(_BUDGET_FIELDS)}",
             )
         values: Dict[str, Any] = {}
-        for token in self.budget_tokens:
+        for number, token in self.budget_tokens:
             name, equals, text = token.partition("=")
             if not equals or name not in _BUDGET_FIELDS or not text:
-                raise BriefError(
-                    f"{self.source}: Budget token {token!r} is not name=value with "
-                    f"a name from {', '.join(_BUDGET_FIELDS)}"
+                raise self.fail(
+                    number,
+                    f"Budget token {token!r} is not name=value with a name from "
+                    f"{', '.join(_BUDGET_FIELDS)}",
                 )
             if name in values:
-                raise BriefError(f"{self.source}: Budget {name} given twice")
+                raise self.fail(number, f"Budget {name} given twice")
             if name == "experiments":
                 if not re.fullmatch(r"[0-9]+", text):
-                    raise BriefError(
-                        f"{self.source}: Budget experiments must be an integer, got {text!r}"
+                    raise self.fail(
+                        number, f"Budget experiments must be an integer, got {text!r}"
                     )
                 values[name] = int(text)
             else:
                 if not re.fullmatch(r"[0-9]+(\.[0-9]+)?", text):
-                    raise BriefError(
-                        f"{self.source}: Budget {name} must be a number, got {text!r}"
-                    )
+                    raise self.fail(number, f"Budget {name} must be a number, got {text!r}")
                 values[name] = float(text)
         return Budget(**values)
 
@@ -502,7 +505,8 @@ class ExperienceRef:
 
 
 _RECORD = Path(".kapso") / "solution.json"
-_RECORD_SCHEMA = 1
+_RECORD_SCHEMA = 2
+_LABEL = 15   # the column explain()'s values start at: the longest label, "Goal achieved:", and a space
 
 
 @dataclass
@@ -544,7 +548,6 @@ class Solution:
         return {
             "schema_version": _RECORD_SCHEMA,
             "brief": self.brief.to_dict(),
-            "campaign": str(self.campaign),
             "branch": self.branch,
             "commit": self.commit,
             "base_commit": self.base_commit,
@@ -607,11 +610,14 @@ class Solution:
         campaign = Path(path).expanduser().resolve()
         record = campaign / _RECORD
         if not record.is_file():
-            raise FileNotFoundError(
-                f"no solution in {campaign}: the build has not returned yet "
-                f"(follow it with `kapso watch {campaign}`), or this is not a "
-                "campaign directory"
-            )
+            if (campaign / ".kapso").is_dir():
+                raise FileNotFoundError(
+                    f"no solution in {campaign} yet: the build has not returned "
+                    f"(follow it with `kapso watch {campaign}`; a build that just "
+                    "ended is writing its record), or it stopped before delivering "
+                    "(its log says where)"
+                )
+            raise FileNotFoundError(f"{campaign} is not a campaign directory")
         data = json.loads(record.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or data.get("schema_version") != _RECORD_SCHEMA:
             raise ValueError(
@@ -658,52 +664,53 @@ class Solution:
         """The summary block: what was delivered, how it measured, why the
         build stopped and what it cost."""
         objective = self.brief.objective.split("\n")[0]
-        lines = [f"Solution for: {objective}", f"Campaign:     {self.campaign}"]
+        lines = []
+
+        def row(label: str, value: Any) -> None:
+            lines.append(f"{label + ':':<{_LABEL}}{value}")
+
+        row("Solution for", objective)
+        row("Campaign", self.campaign)
         if self.branch is None:
-            lines.append("Candidate:    none succeeded")
+            row("Candidate", "none succeeded")
         else:
-            lines.append(f"Candidate:    {self.branch} @ {self.commit}")
+            row("Candidate", f"{self.branch} @ {self.commit}")
         if self.score is not None:
-            measured = f"Score:        {self.score}"
+            measured = str(self.score)
             if self.evaluator is not None:
                 measured += (
                     f" (evaluator v{self.evaluator.version}, "
                     f"{self.evaluator.provenance})"
                 )
-            lines.append(measured)
-        lines.append(f"Goal achieved: {self.goal_achieved}")
-        stopped = f"Stopped:      {self.stopped_reason}"
+            row("Score", measured)
+        row("Goal achieved", self.goal_achieved)
+        stopped = self.stopped_reason
         if self.stop_detail:
             stopped += f" ({self.stop_detail})"
-        lines.append(stopped)
-        experiments = (
-            f"Experiments:  {self.experiments} this run, "
-            f"{self.experiments_total} in all"
-        )
+        row("Stopped", stopped)
+        experiments = f"{self.experiments} this run, {self.experiments_total} in all"
         if self.rejected_candidates:
             experiments += f", {self.rejected_candidates} rejected"
-        lines.append(experiments)
-        lines.append(f"Cost:         ${self.cost_usd:.3f}")
+        row("Experiments", experiments)
+        row("Cost", f"${self.cost_usd:.3f}")
         if self.callback_primary_metric:
-            lines.append(
-                f"Your metric:  {self.callback_primary_metric} = "
-                f"{self.callback_metrics.get(self.callback_primary_metric)}"
+            row(
+                "Your metric",
+                f"{self.callback_primary_metric} = "
+                f"{self.callback_metrics.get(self.callback_primary_metric)}",
             )
         if self.harness is not None:
-            lines.append(
-                f"Harness:      {self.harness.name} {self.harness.version} "
-                f"({self.harness.hash})"
-            )
+            row("Harness", f"{self.harness.name} {self.harness.version} ({self.harness.hash})")
         for source in self.experience:
-            lines.append(f"Experience:   {source.reference} ({source.kind}, {source.resolved})")
+            row("Experience", f"{source.reference} ({source.kind}, {source.resolved})")
         if self.knowledge_index:
-            lines.append(f"Knowledge:    {self.knowledge_index}")
+            row("Knowledge", self.knowledge_index)
         if self.experience_head:
-            lines.append(f"Experience:   bank at {self.experience_head}")
+            row("Experience", f"bank at {self.experience_head}")
         if self.requests:
             lines.append("Waiting on you:")
             for request in self.requests:
-                lines.append(f"  #{request['id']}  {request.get('key', '')}")
+                lines.append(f"  #{request['id']}  {request['key']}")
         if self.feedback:
             lines.append("")
             lines.append("Last feedback:")

@@ -16,7 +16,9 @@ from tests.handles_support import (
     candidate_branch,
     facade,
     fake_orchestrator,
+    git,
     git_workspace,
+    make_solution,
     solve_result,
 )
 
@@ -37,13 +39,13 @@ def test_a_delivered_build_reads_back_with_its_candidate_score_and_diff(tmp_path
     assert reopened == solution
     explained = reopened.explain()
     for line in (
-        "Solution for: Raise AUC above 0.85",
-        f"Candidate:    generic_exp_2 @ {winner}",
-        "Score:        0.9",
+        "Solution for:  Raise AUC above 0.85",
+        f"Candidate:     generic_exp_2 @ {winner}",
+        "Score:         0.9",
         "Goal achieved: True",
-        "Stopped:      goal_achieved",
-        "Experiments:  1 this run, 1 in all",
-        "Cost:         $1.250",
+        "Stopped:       goal_achieved",
+        "Experiments:   1 this run, 1 in all",
+        "Cost:          $1.250",
         "Last feedback:\nAUC 0.9 beats the target",
     ):
         assert line in explained
@@ -71,7 +73,7 @@ def test_a_build_with_no_successful_candidate_has_no_branch_and_an_empty_diff(tm
 
     assert (solution.branch, solution.commit, solution.score) == (None, None, None)
     assert solution.diff() == ""
-    assert "Candidate:    none succeeded" in solution.explain()
+    assert "Candidate:     none succeeded" in solution.explain()
     assert Solution.open(workspace) == solution
 
 
@@ -88,7 +90,7 @@ def test_the_registered_evaluator_is_recorded(tmp_path, monkeypatch):
 
     assert solution.evaluator == EvaluatorRef(version=1, evaluator_id="eval-1", provenance="provided")
     assert Solution.open(workspace).evaluator == solution.evaluator
-    assert "Score:        0.8 (evaluator v1, provided)" in solution.explain()
+    assert "Score:         0.8 (evaluator v1, provided)" in solution.explain()
 
 
 def test_open_before_the_build_returned_names_watch(tmp_path):
@@ -96,11 +98,31 @@ def test_open_before_the_build_returned_names_watch(tmp_path):
     (campaign / ".kapso").mkdir(parents=True)
     with pytest.raises(FileNotFoundError, match="kapso watch"):
         Solution.open(campaign)
+    with pytest.raises(FileNotFoundError, match="not a campaign directory"):
+        Solution.open(tmp_path / "elsewhere")
 
 
 def test_open_rejects_a_record_of_another_schema(tmp_path):
     record = tmp_path / "campaign" / ".kapso" / "solution.json"
     record.parent.mkdir(parents=True)
-    record.write_text('{"schema_version": 2}')
+    record.write_text('{"schema_version": 1}')
     with pytest.raises(ValueError, match="schema"):
         Solution.open(tmp_path / "campaign")
+
+
+def test_deploy_refuses_nothing_to_deploy_and_a_workspace_moved_off_the_candidate(tmp_path, monkeypatch):
+    """Deployment copies the directory as it is, so the facade checks that
+    the directory is still at the delivered commit before anything runs."""
+    workspace = tmp_path / "ws"
+    base = git_workspace(workspace)
+    winner = candidate_branch(workspace, "generic_exp_1", "model.py", "improved = True\n")
+    fake_orchestrator(monkeypatch, workspace, solve_result(), best_branch="generic_exp_1", score=0.9)
+    solution = facade().build("g", output=str(workspace))
+    assert solution.commit == winner
+
+    git(workspace, "checkout", "-q", "main")
+    with pytest.raises(ValueError, match=f"checked out at {base[:12]}, not at the delivered candidate"):
+        facade().deploy(solution)
+
+    with pytest.raises(ValueError, match="nothing to deploy"):
+        facade().deploy(make_solution(workspace, commit=None, branch=None))

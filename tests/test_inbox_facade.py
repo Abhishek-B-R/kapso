@@ -116,6 +116,7 @@ def test_a_fresh_campaign_writes_the_launch_record_and_registers(tmp_path, monke
     assert record["mode"] == "GENERIC" and record["output_path"] == str(workspace)
     assert record["context"] == ["a hint"] and record["resumable_from_inbox"] is True
     assert "dotenv_path" in record
+    assert record["brief"]["objective"] == "Improve support\nmore detail"
     listed = list_registered_campaigns(registry)
     assert listed[0]["path"] == str(workspace.resolve()) and listed[0]["goal"] == "Improve support"
 

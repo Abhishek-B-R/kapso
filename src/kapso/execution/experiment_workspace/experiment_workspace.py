@@ -362,6 +362,8 @@ class ExperimentWorkspace:
             # campaign state like the checkpoint, never branch content.
             ".kapso/inbox.jsonl",
             ".kapso/launch.json",
+            # The solution record build() writes when it returns.
+            ".kapso/solution.json",
             # Campaign shared cache holds large reusable artifacts (tables,
             # embeddings); they must never enter experiment branches.
             ".kapso/shared_cache/",

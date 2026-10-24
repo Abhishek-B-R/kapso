@@ -10,6 +10,7 @@ from kapso.cli.common import (
     AVAILABLE_AGENTS,
     _default_log,
     _detach,
+    _inside,
     _print_build_summary,
     _without_detach_flags,
 )
@@ -46,6 +47,12 @@ def cmd_build(args) -> None:
             )
             sys.exit(1)
         campaign = Path(args.output).expanduser().resolve()
+        if args.log and _inside(Path(args.log).expanduser().resolve(), campaign):
+            print(
+                "Error: --log must be outside --output: the campaign directory "
+                "must be empty for seeding, and the log would be in it"
+            )
+            sys.exit(1)
         _detach(
             "kapso build",
             _without_detach_flags(sys.argv[1:]),
@@ -82,6 +89,8 @@ def add_parser(subparsers):
         "build",
         help="Build software that meets a brief, by experiment",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        # No abbreviations: a `--det` the child kept would detach again, forever.
+        allow_abbrev=False,
         epilog="""
 Examples:
   kapso build --brief kapso-brief.md --evaluation ./evaluation --data ./data --repo . --output ../churn-build --detach

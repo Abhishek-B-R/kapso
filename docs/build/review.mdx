@@ -1,0 +1,116 @@
+---
+title: "Review a Kapso build: the Solution and the record"
+sidebarTitle: "Review the result"
+description: "What a build hands back: the Solution with its branch, commit, score and evaluator version, explain() and diff(), and the record on disk that Solution.open reads from any process."
+keywords: ["kapso Solution", "Solution.open", "solution.json", "explain", "diff", "delivered candidate", "campaign record"]
+---
+
+A build returns a `Solution`, and writes the same thing to
+`<output>/.kapso/solution.json` every time it returns: finished, paused for
+you, or out of budget. From any process, later or elsewhere:
+
+```python
+from kapso import Solution
+
+solution = Solution.open("campaign")
+print(solution.explain())
+print(solution.diff())
+```
+
+Before the build has returned there is no solution yet; `open()` says so
+and names `kapso watch`.
+
+## What the Solution holds
+
+| Field | What it is |
+|---|---|
+| `brief` | The brief the build ran, as a `Brief` |
+| `campaign` | The campaign directory, checked out at the delivered branch |
+| `branch`, `commit` | The delivered candidate; both `None` when no candidate succeeded |
+| `base_commit` | The seed commit, `diff()`'s base |
+| `score` | The delivered candidate's measurement under the registered evaluator |
+| `goal_achieved` | The judge's verdict that the objective was met |
+| `stopped_reason`, `stop_detail` | `goal_achieved`, `max_iterations`, `budget_exhausted` (with the dial) or `waiting_for_user` |
+| `experiments`, `experiments_total` | Experiments this run, and across every resume |
+| `cost_usd` | Model spend |
+| `requests` | What you must answer, when `stopped_reason` is `waiting_for_user` |
+| `feedback` | The last judgment, in full |
+| `evaluator` | The evaluator version the score was measured under; `None` unless the evaluation maintainer is configured (see [Evaluation](/docs/build/evaluation#versioned-the-registry)) |
+| `rejected_candidates` | Candidates rejected for touching the evaluator |
+| `callback_metrics`, `callback_primary_metric` | Your own evaluator's numbers, when you passed an `iteration_evaluator` |
+| `knowledge_index`, `experience_head` | The knowledge index and the lesson-bank commit this build drew on |
+
+`explain()` renders these as a block; `diff()` is `git diff` from the seed
+to the delivered commit, empty when nothing succeeded.
+
+```text
+Solution for:  Raise the churn model's out-of-sample ROC AUC above 0.85
+Campaign:      /home/me/churn/campaign
+Candidate:     generic_exp_3 @ 4f1c0e2a…
+Score:         0.8614
+Goal achieved: True
+Stopped:       goal_achieved
+Experiments:   3 this run, 3 in all
+Cost:          $1.934
+
+Last feedback:
+The AUC of 0.861 on the held-out rows clears the 0.85 target …
+```
+
+## Three ways a build ends
+
+- **The objective was met.** `goal_achieved` is true, `stopped_reason` is
+  `goal_achieved`. Deploy it, or learn from it.
+- **The budget ran out.** `stopped_reason` is `max_iterations` or
+  `budget_exhausted`; `branch` is the best candidate so far and `score` its
+  measurement. Resume with a bigger budget, or change the target. See
+  [Resume and budgets](/docs/build/resume-and-budgets).
+- **The campaign is waiting on you.** `stopped_reason` is
+  `waiting_for_user` and `requests` says what for. Answer through the
+  [inbox](/docs/build/inbox); the campaign continues the session that asked.
+
+When `branch` is `None`, no candidate produced a valid measurement; the
+experiment branches are still in the directory, and `kapso watch campaign
+--tree` shows what each one did.
+
+## The search, branch by branch
+
+```bash
+git -C campaign branch         # generic_exp_0, generic_exp_1, …, main
+git -C campaign log --oneline generic_exp_2
+kapso watch campaign --tree    # each node: score, verdict, what it consulted
+```
+
+Every experiment stays checked in; the delivered one is checked out.
+
+## What next
+
+```python
+software = kapso.deploy(solution)      # running software; see Deploy
+lesson = kapso.learn(solution)         # bank what the campaign taught; see Learn
+```
+
+```bash
+kapso deploy campaign --strategy local
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Resume and budgets" icon="rotate" href="/docs/build/resume-and-budgets">
+    Give a stopped build more
+  </Card>
+  <Card title="Deploy" icon="rocket" href="/docs/deployment/overview">
+    From a Solution to running software
+  </Card>
+  <Card title="Learn" icon="brain" href="/docs/learning/overview">
+    What a finished campaign teaches
+  </Card>
+  <Card title="Python API" icon="code" href="/docs/reference/kapso-api#solution">
+    Every field, typed
+  </Card>
+</CardGroup>
+
+Related pages: [Resume and budgets](/docs/build/resume-and-budgets) · [Deploy](/docs/deployment/overview) · [Learn](/docs/learning/overview) · [Python API](/docs/reference/kapso-api#solution)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

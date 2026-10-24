@@ -14,4 +14,4 @@ Rules
   - the held-out 20 percent is never fitted on and never inspected by hand
   - every transaction gets a score; none is dropped
   - the evaluator, once built, is not modified
-Budget       minutes=15 experiments=4
+Budget       minutes=45 experiments=3
