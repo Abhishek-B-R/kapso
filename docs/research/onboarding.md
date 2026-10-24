@@ -11,17 +11,17 @@ to onboard the other.
 
 | | Harness | Experience |
 |---|---|---|
-| the unit | one directory per domain | one source: a bank, a hosted gate, an ingested corpus |
+| the unit | one directory per domain | one source: a bank, a hosted gate, an ingested index |
 | bundled with the package | `predictive-modelling`, `relational-prediction`, `trading`, ... by name | nothing; experience is always yours or someone's |
-| comes from | a bundled name, a local path, a git URL | `mine`, a team bank's git URL, `leeroopedia`, a repository, a paper, a research question |
-| local home | `~/.kapso/harnesses/<slug>@<rev>/` for fetched ones; a path is used in place | `~/.kapso/bank.git` (the bank), `~/.kapso/experience/` (ingested indexes), `~/.kapso/trajectories/` (the raw material) |
-| once per machine | `kapso harness add <ref>` | `kapso experience add <source>` |
+| the reference | a bundled name, a local path, a git reference | a reserved name (`mine`, `leeroopedia`), a path or git reference to a bank, the name of an ingested index |
+| local home | `~/.kapso/harnesses/<slug>@<rev>/` for fetched ones; a path is used in place | `~/.kapso/bank.git` (your bank), `~/.kapso/experience/banks/` (others' banks), `~/.kapso/experience/indexes/` (ingested indexes), `~/.kapso/trajectories/` (the raw material) |
+| once per machine | `kapso harness add <ref>` | `kapso experience add ...` for what must be created: a bank early, a remote, an index |
 | see what is there | `kapso harness list` | `kapso experience list` |
-| per run | `load_harness(ref)` / `--harness` | `load_experience(source)` / `--experience` |
-| what load checks | schema, references, front matter, prerequisites | reachable, readable, provenance known |
-| what the run records | name, version, content hash | source, provenance, bank head or index id |
-| sharing | commit the directory, or push its repository | `kapso experience share <git-url>` for the bank; hosted and imported sources are shared by their nature |
-| scope | serves every task in its domain | a lesson serves the harness it was learned under, unless shared on purpose |
+| per run | `load_harness(ref)` / `--harness` | `load_experience(ref)` / `--experience` |
+| what load checks | schema, references, front matter, prerequisites | exists, reachable, readable; provenance known |
+| what the run records | name, version, content hash | the reference, what it resolved to, its provenance, the pinned head or index id |
+| sharing | commit the directory, or push its repository | `kapso experience share <git-url>` attaches a remote to your bank |
+| scope | serves every task in its domain | a lesson serves the harness it was learned under, unless `scope="all"` |
 
 Neither is named in the Kapso config file. The config holds engine knobs;
 what a run loads is said at the call, on the command line, or in the brief.
@@ -81,12 +81,14 @@ kapso build --harness acme/harnesses@v3#trading ...
 ```
 
 Loading resolves the reference, runs `check` (a failing harness never starts
-a run), verifies prerequisites and refuses to start with the missing names,
-computes the content hash, and records `{name, version, hash, ref}` in the
-launch record, the status file and the checkpoint. A resume compares the
-hash and refuses a changed harness by name: the record of a run is the
-record of one harness. Every lesson learned from the run carries the same
-triple.
+a run), reads the prerequisites against this machine into the handle's
+`missing` list, computes the content hash, and sets the object's harness.
+`build` refuses to start while `missing` is not empty and names what is
+missing and where each is read from. The run records `{name, version,
+hash, ref}` in the launch record, the status file and the checkpoint. A
+resume compares the hash and refuses a changed harness by name: the record
+of a run is the record of one harness. Every lesson learned from the run
+carries the same triple.
 
 The brief carries the harness too, so a campaign launched from a brief
 needs no flag:
@@ -110,66 +112,99 @@ writes the line from `kapso harness list` and the engineer's answer.
 
 ## 2. Experience
 
-### Sources
+### The reference
 
-| Source | `load_experience(...)` | What it is | Provenance shown to sessions |
+`load_experience` takes one string, resolved by its form, exactly as a
+harness reference is:
+
+| Form | Example | What it is | Resolves to |
 |---|---|---|---|
-| my own runs | `"mine"` | the local bank, `~/.kapso/bank.git`, fed by `learn()` | measured by you |
-| a team's runs | `"team"` once attached, or a git URL | the same bank with a remote; `learn()` pushes, a load pulls | measured by your team |
-| Leeroopedia | `"leeroopedia"` | the hosted gate; needs its key in `.env` | reported by others, curated |
-| a repository or a paper | `repo="..."`, `paper="..."` | ingested into the knowledge graph under `~/.kapso/experience/` | reported by others, imported |
-| a research question | `research="..."` | fresh findings, ingestible | reported by others, fresh |
+| reserved name | `mine` | your own bank, the one `learn()` writes | the path in the config's `learning.bank.local_path`, default `~/.kapso/bank.git` |
+| reserved name | `leeroopedia` | the hosted gate | its URL, with the key read from `.env` |
+| path | `./bank.git`, `~/team/bank.git` | a bank directory in the bank's git format | used in place |
+| git reference | `acme/kapso-bank`, `git+https://…@main` | a bank repository you read but do not write | cloned under `~/.kapso/experience/banks/<slug>@<rev>` |
+| index name | `org-x` | a corpus ingested earlier under that name | `~/.kapso/experience/indexes/org-x` |
+
+Resolution order: the two reserved names, then a path that exists, then
+anything with a slash or a scheme as a git reference, then an index name. A
+string that matches none of these is an error that lists the forms.
+
+There is no `team` source. A team bank is your bank with a remote attached
+by `share`; `mine` pulls before it pins, and the intro says "measured by you
+and your team". A bank you only read, someone else's, is the git-reference
+form.
+
+Loading never ingests. A repository, a paper or a research question becomes
+an index first, by an action with a name, and the loader uses it by that
+name afterwards. The loader only loads things that exist, so it never
+surprises anyone with an hour of ingestion.
 
 ### Once per machine
 
 ```
-kapso experience add mine                     # creates ~/.kapso/bank.git if absent (today: learn init-bank)
-kapso experience add https://github.com/acme/kapso-bank.git     # attaches the team remote (today: kapso bank connect)
-kapso experience add leeroopedia              # checks the key in .env, probes the gate once
-kapso experience add --repo https://github.com/org/x            # ingests; needs the graph containers (today: learn_knowledge)
-kapso experience add --paper ./paper.pdf
+kapso experience add mine                                        # creates the empty bank early (today: learn init-bank); not needed after a first learn()
+kapso experience share https://github.com/acme/kapso-bank.git    # attaches the remote to your bank (today: kapso bank create | connect)
+kapso experience add leeroopedia                                 # checks the key in .env, probes the gate once
+kapso experience add --repo https://github.com/org/x --name org-x      # ingests into an index (today: learn_knowledge); needs the graph containers
+kapso experience add --paper ./paper.pdf --name paper-x
+kapso experience add --research "QLoRA memory optimizations" --name qlora-notes
 kapso experience list
-  mine         ~/.kapso/bank.git   head lr_2026-10-22_7   142 cards   remote acme/kapso-bank (in sync)
-  leeroopedia  hosted              key present, reachable
-  repo         org/x               ingested 2026-10-20, index 3f9a…
-kapso experience share acme/kapso-bank        # creates the remote and attaches it (today: kapso bank create)
+  mine         ~/.kapso/bank.git     head lr_2026-10-22_7   142 cards   remote acme/kapso-bank (in sync)
+  leeroopedia  hosted                key present, reachable
+  org-x        index                 ingested 2026-10-20, id 3f9a…
 ```
 
-`add` makes a source usable and says what it needed: a key, running
-containers, a remote. It never serves anything by itself. `mine` exists
-after the first `learn()` whether or not it was added; `add mine` only
-creates the empty bank early so a first run can declare it.
+`add` makes a source exist and says what it needed: a key, running
+containers, a name. It never serves anything by itself. In Python the
+ingesting forms are `kapso.add_experience(repo=..., name=...)`,
+`add_experience(paper=..., name=...)`, `add_experience(research=..., name=...)`,
+each returning the index name.
 
 ### Per run
 
 ```python
-kapso.load_experience("mine")
-kapso.load_experience("leeroopedia")
+kapso.load_experience("mine")                     # ~/.kapso/bank.git, pinned at its head, scoped to the loaded harness
+kapso.load_experience("leeroopedia")              # the hosted gate
+kapso.load_experience("acme/kapso-bank")          # a colleague's bank, read-only clone
+kapso.load_experience("org-x")                    # the index ingested last week
+kapso.load_experience("mine", scope="all")        # every card, not only this harness's
 ```
 
 ```
 kapso build --experience mine,leeroopedia ...
 ```
 
-Loading is the switch; there is no `serving.enabled`. A load pins the source
-for the whole run (the bank at its head, an index at its id), writes the
-provenance intro the sessions read ("you are served 142 cards measured by
-you under the trading harness, and Leeroopedia's pages reported by others"),
-and mounts the source's tools in the modules the engine serves (ideation and
-implementation; never the feedback judge). The run records the source, its
-provenance and its pinned head or id beside the harness triple.
+Loading is the switch; there is no `serving.enabled`. A load resolves the
+reference, confirms the source is reachable, pins it for the whole run (a
+bank at its head, an index at its id), and appends it to the object's
+sources in order. The handle says what happened:
+
+```python
+source = kapso.load_experience("mine")
+source.kind        # "bank" | "hosted" | "index"
+source.resolved    # "/home/me/.kapso/bank.git"
+source.head        # "lr_2026-10-22_7"
+source.provenance  # "measured by you"
+```
+
+Inside a run the sources are served through their tools in the modules the
+engine serves (ideation and implementation; never the feedback judge), with
+one intro the sessions read: "you are served 142 cards measured by you
+under the trading harness, and Leeroopedia's pages reported by others". The
+run records each source with its reference, what it resolved to, its
+provenance and its pinned head or id, beside the harness triple.
 
 Scope follows the harness: with `trading` loaded, `mine` serves the cards
-learned under `trading`. `load_experience("mine", scope="all")` serves
-everything, and the intro says so. A harness that must not be served, a
-benchmark under protocol, is run without a load.
+learned under `trading`. `scope="all"` serves everything, and the intro says
+so. A harness that must not be served, a benchmark under protocol, is run
+without a load.
 
 ### What the engineer sees when something is wrong
 
-- a source not added: the `add` line for it
+- a reference that matches no form: the five forms above and `kapso experience list`
 - a key missing: the variable name and that it belongs in `.env`
 - containers down for an ingestion: which, and the line that starts them
-- a team bank behind its remote: the pull happens at load; a conflict is reported with the bank's own words
+- a bank behind its remote: the pull happens at load; a conflict is reported with the bank's own words
 
 ## 3. The plugin
 
@@ -181,9 +216,8 @@ benchmark under protocol, is run without a load.
 | `/kapso:build` | asks which harness once when the project has no brief, lists what `experience list` shows, writes both lines into the brief, launches |
 
 The host session itself, through `kapso-mcp`, serves the bank and the
-knowledge graph the same way a campaign does: a load in `kapso-config.yaml`
-is not the mechanism; the session names its sources on connect, with the
-same provenance intro.
+indexes the same way a campaign does: the session names its sources on
+connect, with the same provenance intro.
 
 ## 4. First runs, by what the engineer has
 
@@ -205,11 +239,12 @@ same provenance intro.
 2. `kapso harness add | list | update | remove` beside `new | check | export`;
    `kapso experience add | list | share` replacing `kapso bank create | connect`
    and `kapso learn init-bank`; `learn_knowledge` and `research` folded into
-   `experience add` as the interfaces draft says.
-3. `load_harness` and `load_experience` on the facade; `--harness` and
+   `experience add` with a `--name`.
+3. `load_harness` and `load_experience` on the facade with the reference
+   grammars; `add_experience` for the ingesting forms; `--harness` and
    `--experience` on `build`, `deploy` and `learn`; the two brief lines.
-4. The managed index home `~/.kapso/experience/` in place of `.index` files
-   passed by path.
+4. The managed homes `~/.kapso/experience/banks/` and
+   `~/.kapso/experience/indexes/` in place of `.index` files passed by path.
 5. The provenance intro and the scope rule in the serving layer; the
    `serving.enabled` key removed.
 6. The run record extended with the harness triple and the experience

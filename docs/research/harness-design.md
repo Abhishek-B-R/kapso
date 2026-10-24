@@ -264,6 +264,59 @@ kapso build --config ./kapso-config.yaml --harness ./trading --goal "..." --eval
 kapso deploy --harness ./trading --target paper-trading
 ```
 
+The Python surface is three steps on one object: construct with engine
+knobs, load what the run should use, call the verbs.
+
+```python
+from kapso import Kapso, Budget, Solution
+
+kapso = Kapso(config="kapso-config.yaml")     # engine knobs only; optional, the packaged config otherwise
+
+harness = kapso.load_harness("trading")       # a bundled name, a path, or a git reference
+harness.name, harness.version, harness.hash   # "trading", "0.3.0", "9c1e…"
+harness.modules["implementation"]             # {"skills": [...], "mcp_servers": [...], "agents": [...], "hooks": [...]}
+harness.missing                               # prerequisites this machine lacks, [] when none
+
+kapso.load_experience("mine")                 # a reserved name, a path or git reference to a bank, or an ingested index's name
+kapso.load_experience("leeroopedia")          # order is the order the intro lists them
+
+solution = kapso.build(
+    "Sharpe above 1.5 out of sample on the 2022-2024 window, max drawdown under 20%",
+    evaluation="./backtest", data="./prices", repo="./strategy",
+    output="../btc-momentum", budget=Budget(minutes=480),
+)
+solution.branch, solution.score, solution.evaluation.version, solution.trace
+solution.harness                              # the triple the run was made with
+
+software = kapso.deploy(solution, target="paper-trading")
+experience = kapso.learn(solution)
+```
+
+- `Kapso(config=...)` reads engine knobs and nothing else; nothing starts.
+- `load_harness(ref)` resolves, runs `check` and raises on failure, computes
+  the hash, reads prerequisites into `missing` without raising, sets the
+  object's harness and returns the handle. A second call replaces it: one
+  object, one harness.
+- `load_experience(ref, scope=None)` resolves by the reference grammar in
+  `onboarding.md`, confirms the source is reachable, pins it, appends it to
+  the object's sources and returns the handle (`kind`, `resolved`, `head`,
+  `provenance`). Nothing is served until a verb runs. Scope defaults to the
+  loaded harness.
+- `build(...)` refuses while `missing` is not empty, naming each item and
+  where it is read from; then prepares the harness's requirements in the
+  run's environment, writes the launch record with the harness triple and
+  the sources with their pinned heads, runs the modules with each session
+  staged from the manifest, and returns a `Solution` carrying the triple.
+- `deploy(solution, target=...)` and `learn(solution)` take the harness
+  from the object when one is loaded and from the solution's record
+  otherwise, so `Kapso().deploy(Solution.open("../btc-momentum"))` works.
+  A loaded harness whose name differs from the record is refused; another
+  version of the same name is allowed and recorded. The deploy target is
+  the argument, with the config's `deployment` section as the default.
+- No load at all is valid and is today's generic behaviour: the engine's
+  own prompts, nothing attached, nothing served. No harness argument on the
+  verbs, no harness or experience in the config, no `serving.enabled`.
+
 `check` fails on: an unsupported `schema_version`; an unknown module or
 field; a reference that does not resolve (skill, agent, server or hook); a
 skill or agent without `name` and `description` front matter; a malformed
