@@ -11,11 +11,11 @@ Recorded result: not recorded yet.
 ## What you get
 
 - `repo/score.py`, three hand-written rules, replaced on a branch of its own
-  inside `build/` by a model fitted on the 80 percent split.
-- An evaluator the campaign wrote: `build/kapso_evaluation/evaluate.py`,
+  inside `campaign/` by a model fitted on the 80 percent split.
+- An evaluator the campaign wrote: `campaign/kapso_evaluation/evaluate.py`,
   following `Measured by` in the brief, registered in
-  `build/.kapso/evaluation_registry.json` with provenance `maintainer_built`.
-- `solution.evaluation`: the version and provenance the delivered score was
+  `campaign/.kapso/evaluation_registry.json` with provenance `maintainer_built`.
+- `solution.evaluator`: the version and provenance the delivered score was
   measured under; `solution.score`, the precision-recall AUC on the held-out
   20 percent.
 
@@ -24,20 +24,21 @@ Recorded result: not recorded yet.
 ```bash
 python generate.py        # 20,000 labelled transactions, seeded, about 5 percent fraud
 kapso doctor build
-kapso build --brief kapso-brief.md --data data --repo repo --output build --detach
-kapso watch build --follow
+kapso build --brief kapso-brief.md --data data --repo repo --output campaign --detach
+kapso watch campaign --follow
 ```
 
-`python run.py` is the same build from Python.
+`python run.py` is the same build from Python, into the same `campaign/`
+directory: run one or the other.
 
 ## What to look at
 
 - `kapso-brief.md`: `Measured by` is a protocol, not a path, and `Baseline`
   is `unknown`. The campaign's first measurement replaces the unknown.
-- `build/kapso_evaluation/evaluate.py` after the first node: the split, the
+- `campaign/kapso_evaluation/evaluate.py` after the first node: the split, the
   seed, the metric, exactly as the protocol said. Any later candidate that
   edits it is rejected.
-- `build/.kapso/evaluation_registry.json`: one version, provenance
+- `campaign/.kapso/evaluation_registry.json`: one version, provenance
   `maintainer_built`.
 - `solution.explain()`: the score line names the evaluator version.
 

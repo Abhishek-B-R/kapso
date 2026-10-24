@@ -717,14 +717,14 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     result = kapso.build(
         "Improve support",
         output=str(workspace),
-        budget=Budget(iterations=1),
+        budget=Budget(experiments=1),
         resume=True,
     )
 
     assert captured["resume"] is True
     assert captured["initial_repo"] is None
-    assert result.iterations == 1
-    assert result.cumulative_iterations == 4
+    assert result.experiments == 1
+    assert result.experiments_total == 4
 
 
 def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_record(

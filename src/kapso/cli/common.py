@@ -80,7 +80,7 @@ def _print_build_summary(solution) -> None:
     paused for a reply in the inbox (design v4 §4.6). A pause is not a
     failure: the exit code stays 0."""
     print("\n" + "=" * 60)
-    campaign = str(solution.trace)
+    campaign = str(solution.campaign)
     if solution.stopped_reason == "waiting_for_user":
         requests = solution.requests
         target = f" {requests[0]['id']}" if len(requests) > 1 else ""
@@ -95,7 +95,7 @@ def _print_build_summary(solution) -> None:
     print("COMPLETED")
     print("=" * 60)
     print(f"Solution: {campaign}")
-    print(f"Goal achieved: {solution.succeeded}")
+    print(f"Goal achieved: {solution.goal_achieved}")
     if solution.score is not None:
         print(f"Final score: {solution.score}")
     print(f"Cost: ${solution.cost_usd:.3f}")

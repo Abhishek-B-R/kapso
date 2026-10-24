@@ -10,7 +10,7 @@
 #     kapso build --brief kapso-brief.md --output ../campaign --detach
 #     kapso research --objective "How to optimize transformers?"
 #     kapso learn import --subset docs/plans/learning/d1-subset.yaml
-#     kapso deploy --solution-path ../campaign
+#     kapso deploy ../campaign
 #     kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
 
 import argparse
@@ -58,7 +58,7 @@ Examples:
   kapso learn import --subset docs/plans/learning/d1-subset.yaml
 
   # Deploy a solution
-  kapso deploy --solution-path ../campaign --strategy local
+  kapso deploy ../campaign --strategy local
 
   # Index knowledge graph
   kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index

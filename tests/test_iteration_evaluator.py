@@ -542,7 +542,7 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
     solution = kapso.build(
         "Improve support",
         output=str(workspace),
-        budget=Budget(iterations=1),
+        budget=Budget(experiments=1),
         resume=True,
         iteration_evaluator=evaluator,
         iteration_evaluator_failure_policy="raise",
@@ -550,10 +550,10 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
 
     assert captured["iteration_evaluator"] is evaluator
     assert captured["iteration_evaluator_failure_policy"] == "raise"
-    assert solution.external_metrics == {
+    assert solution.callback_metrics == {
         "holdout_accuracy": 0.8
     }
-    assert solution.external_primary_metric == (
+    assert solution.callback_primary_metric == (
         "holdout_accuracy"
     )
 

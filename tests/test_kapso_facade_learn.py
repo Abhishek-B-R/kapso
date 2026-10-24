@@ -384,7 +384,7 @@ def test_build_serving_staging_and_disabled_byte_identity(
     assert "bank_index()" in on_context
     override = captured["kwargs"]["strategy_params_overrides"]
     assert "KAPSO_BANK_DIR" in override["bank_serving"]
-    assert solution.bank_head_served is not None
+    assert solution.experience_head is not None
     # the serving record landed inside the campaign workspace
     record = tmp_path / "out2" / ".kapso" / "serving" / "serving-record.yaml"
     assert record.is_file()

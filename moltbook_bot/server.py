@@ -422,20 +422,20 @@ if __name__ == "__main__":
             full_goal,
             repo=initial_repo,
             output=output_dir,
-            budget=Budget(iterations=10),
+            budget=Budget(experiments=10),
         )
         
         # Read optimized code
         optimized_code = None
-        if solution.trace:
-            solution_file = os.path.join(solution.trace, "solution.py")
+        if solution.campaign:
+            solution_file = os.path.join(solution.campaign, "solution.py")
             if os.path.exists(solution_file):
                 with open(solution_file, "r") as f:
                     optimized_code = f.read()
         
         # Build thought process summary
         thought_process = f"KAPSO Optimization Complete.\n"
-        thought_process += f"Ran {solution.iterations} experiments.\n"
+        thought_process += f"Ran {solution.experiments} experiments.\n"
         thought_process += f"Stopped reason: {solution.stopped_reason}"
         
         # Update job status

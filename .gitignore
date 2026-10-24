@@ -294,4 +294,4 @@ skills-lock.json
 /scripts/redesign/runs/
 
 # Example builds land beside each example's repo and are never committed.
-examples/*/build/
+examples/*/campaign/

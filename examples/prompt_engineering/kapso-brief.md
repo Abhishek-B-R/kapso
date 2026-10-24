@@ -9,4 +9,4 @@ Rules
   - answers come in \boxed{XXX} form, a three-digit integer 000 to 999
   - only the prompt template and the logic around it in optimize.py change
   - evaluate.py is never modified
-Budget       minutes=60 iterations=8
+Budget       minutes=60 experiments=8

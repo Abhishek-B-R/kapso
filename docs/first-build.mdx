@@ -40,7 +40,7 @@ Target       0.85
 Rules
   - the evaluator is never modified
   - no fitting on the holdout rows; the labels are not in the workspace
-Budget       minutes=10 iterations=4
+Budget       minutes=10 experiments=4
 ```
 
 The objective, how it is measured, where it starts, where it should end,
@@ -52,8 +52,8 @@ what must never happen, how much to spend. The judge reads all of it. See
 <Tabs>
   <Tab title="CLI">
     ```bash
-    kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output build --detach
-    kapso watch build --follow
+    kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+    kapso watch campaign --follow
     ```
 
     The first line returns at once with the pid, the log and the watch
@@ -61,23 +61,27 @@ what must never happen, how much to spend. The judge reads all of it. See
   </Tab>
   <Tab title="Python">
     ```python examples/churn-first-build/run.py
-    """Your first build: the churn model, scored by the evaluator Kapso protects."""
+    """Your first build: the churn model, scored by the evaluator Kapso protects.
+
+    Run from this directory, after `python generate.py`; the campaign lands in campaign/."""
     from kapso import Kapso, Brief
 
     solution = Kapso().build(
         Brief.read("kapso-brief.md"),
-        evaluation="evaluation", data="data", repo="repo", output="build",
+        evaluation="evaluation", data="data", repo="repo", output="campaign",
     )
     print(solution.explain())
     ```
 
-    `python run.py` blocks until the build returns.
+    `python run.py` is the CLI line's twin and blocks until the build
+    returns; run one or the other, since both build into `campaign/`.
   </Tab>
 </Tabs>
 
-`--evaluation` is copied into the workspace and protected: a candidate that
-edits it is rejected. `--repo` is copied, never modified; every experiment
-lands on a branch inside `build/`.
+`--evaluation evaluation` is copied into the campaign as `kapso_evaluation/`,
+which is the name the brief uses, and protected: a candidate that edits it
+is rejected. `--repo` is copied, never modified; every experiment
+lands on a branch inside `campaign/`.
 
 ## What you get back
 
@@ -87,28 +91,32 @@ reason. The same solution, from any process:
 ```python
 from kapso import Solution
 
-solution = Solution.open("build")
+solution = Solution.open("campaign")
 solution.score            # the delivered candidate's ROC AUC
 solution.branch           # generic_exp_2
-solution.succeeded        # the judge's verdict on the objective
+solution.goal_achieved    # the judge's verdict on the objective
 solution.stopped_reason   # goal_achieved, max_iterations, …
 print(solution.diff())    # the delivered code against the seed
 ```
 
 If the block says `WAITING ON YOU` instead, a session needs something only
-you can provide; `kapso inbox build` shows the request and
+you can provide; `kapso inbox campaign` shows the request and
 `kapso inbox reply` resumes the campaign. See [The inbox](/docs/build/inbox).
 
 ## Deploy it, learn from it
 
 ```python
+from kapso import Kapso, DeployStrategy, Solution
+
+kapso = Kapso()
+solution = Solution.open("campaign")
 software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
 software.run({"tenure_months": 3, "monthly_spend": 92.0, "support_tickets": 4})
 lesson = kapso.learn(solution)
 ```
 
 ```bash
-kapso deploy --solution-path build --strategy local
+kapso deploy campaign --strategy local
 ```
 
 ## Related

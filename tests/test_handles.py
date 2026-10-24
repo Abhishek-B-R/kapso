@@ -17,7 +17,7 @@ Target       0.85
 Rules
   - the evaluator is never modified
   - no fitting on the held-out rows
-Budget       minutes=480 iterations=10
+Budget       minutes=480 experiments=10
 Harness      predictive-modelling
 Experience   mine, leeroopedia
 """
@@ -30,7 +30,7 @@ PARSED = Brief(
     baseline="0.797 (logistic regression, 2026-10-24)",
     target="0.85",
     rules=["the evaluator is never modified", "no fitting on the held-out rows"],
-    budget=Budget(minutes=480, iterations=10),
+    budget=Budget(minutes=480, experiments=10),
     harness="predictive-modelling",
     experience=["mine", "leeroopedia"],
 )
@@ -41,8 +41,8 @@ PARSED = Brief(
 @pytest.mark.parametrize("field,value", [
     ("minutes", 0), ("minutes", -5), ("minutes", math.inf), ("minutes", math.nan),
     ("minutes", True), ("minutes", "10"),
-    ("dollars", 0), ("reserve_minutes", -1),
-    ("iterations", 0), ("iterations", 2.5), ("iterations", True), ("iterations", "3"),
+    ("usd", 0), ("reserve_minutes", -1),
+    ("experiments", 0), ("experiments", 2.5), ("experiments", True), ("experiments", "3"),
 ])
 def test_budget_rejects_what_cannot_be_spent(field, value):
     with pytest.raises(ValueError, match=f"Budget.{field}"):
@@ -57,11 +57,11 @@ def test_budget_reserve_must_fit_inside_the_minutes():
 
 
 def test_budget_merges_field_by_field_with_the_call_winning():
-    call, brief = Budget(iterations=2), Budget(minutes=30, iterations=4)
-    assert call.merged_over(brief) == Budget(minutes=30, iterations=2)
+    call, brief = Budget(experiments=2), Budget(minutes=30, experiments=4)
+    assert call.merged_over(brief) == Budget(minutes=30, experiments=2)
     assert Budget().merged_over(None) == Budget() and Budget().empty
-    assert Budget(minutes=5, iterations=3, dollars=2.5, reserve_minutes=1).tokens() == (
-        "minutes=5 iterations=3 dollars=2.5 reserve_minutes=1"
+    assert Budget(minutes=5, experiments=3, usd=2.5, reserve_minutes=1).tokens() == (
+        "minutes=5 experiments=3 usd=2.5 reserve_minutes=1"
     )
 
 
@@ -144,9 +144,9 @@ def test_field_names_match_as_whole_words_in_any_case():
 
 
 def test_a_budget_may_span_lines_and_keeps_its_numbers():
-    brief = Brief.parse("Objective a\nBudget minutes=90.5\n       iterations=3 dollars=12\n")
-    assert brief.budget == Budget(minutes=90.5, iterations=3, dollars=12)
-    assert brief.render() == "Objective    a\nBudget       minutes=90.5 iterations=3 dollars=12\n"
+    brief = Brief.parse("Objective a\nBudget minutes=90.5\n       experiments=3 usd=12\n")
+    assert brief.budget == Budget(minutes=90.5, experiments=3, usd=12)
+    assert brief.render() == "Objective    a\nBudget       minutes=90.5 experiments=3 usd=12\n"
 
 
 def test_reference_strings_are_kept_verbatim():
@@ -171,7 +171,7 @@ def test_reference_strings_are_kept_verbatim():
     ("Objective a\nBudget\n", "needs name=value tokens"),
     ("Objective a\nBudget hours=2\n", "not name=value with a name from"),
     ("Objective a\nBudget minutes=abc\n", "must be a number"),
-    ("Objective a\nBudget iterations=10.0\n", "must be an integer"),
+    ("Objective a\nBudget experiments=10.0\n", "must be an integer"),
     ("Objective a\nBudget minutes=1 minutes=2\n", "Budget minutes given twice"),
     ("Objective a\nsome text at column zero\n", "not a field"),
     ("Objective a\nTargeted 0.9\n", "not a field"),
@@ -215,4 +215,4 @@ def test_read_and_write_are_the_file_forms(tmp_path):
 
 def test_the_record_form_round_trips():
     assert Brief.from_dict(PARSED.to_dict()) == PARSED
-    assert PARSED.to_dict()["budget"] == {"minutes": 480, "iterations": 10, "dollars": None, "reserve_minutes": None}
+    assert PARSED.to_dict()["budget"] == {"minutes": 480, "experiments": 10, "usd": None, "reserve_minutes": None}

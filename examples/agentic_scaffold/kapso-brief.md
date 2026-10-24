@@ -13,4 +13,4 @@ Rules
   - the extractor works with OpenAI vision-capable models
   - the average cost per query stays reasonable
   - evaluate.py and subset_line_100/ are never modified
-Budget       minutes=60 iterations=6
+Budget       minutes=60 experiments=6

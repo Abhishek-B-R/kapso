@@ -69,6 +69,22 @@ report's readers (the trajectory store, the mining crew) never read
 `metadata` by key; they read the file as prose, so named keys serve them
 better than a dump of the old dictionary.
 
+**Fourteen public names changed after the naming review, two user-chosen
+words did not.** Both reviewers (Codex gpt-6-astra at xhigh, Claude Code
+opus-5) judged every public name of the build surface; the table in
+`wp1-build.md` ("Naming review") lists each change and its reason. The
+pattern: where the code's word and the word every person-facing string
+used disagreed, the person-facing word won (`experiments` over
+`iterations`); where one word was spent three ways, each thing got its own
+(`evaluation` the directory, `evaluator` the stamp); where one directory had
+five names, it got one (`campaign`). `Harness` and `Experience` stayed:
+they are the owner's names for the two layers (2026-10-21, 2026-10-24),
+and the reviewers' alternatives (`Domain`, `Lessons`) were judged on
+cold-reader clarity alone. These renames touch the design document's
+section 8 (`solution.trace` → `solution.campaign`,
+`solution.evaluation.version` → `solution.evaluator.version`), which is why
+they are here for the owner to check.
+
 **The facade resolves every path it is given, and the workspace keeps its
 directory absolute.** The first proof run on the fresh machine crashed at
 the first session close: `--output ../churn-build` reached the experiment

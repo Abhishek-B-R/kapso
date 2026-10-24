@@ -152,7 +152,7 @@ def run_child(args: argparse.Namespace, run_dir: Path) -> None:
         goal_text(args.seed_eval_defect),
         repo=str(run_dir / "initial_repo"),
         output=str(run_dir / "workspace"),
-        budget=Budget(iterations=args.max_iterations, minutes=args.top_up_minutes),
+        budget=Budget(experiments=args.max_iterations, minutes=args.top_up_minutes),
         mode=args.mode,
         resume=args.resume,
         evaluation=(
@@ -163,8 +163,8 @@ def run_child(args: argparse.Namespace, run_dir: Path) -> None:
     )
     result = {
         "final_score": solution.score,
-        "succeeded": solution.succeeded,
-        "trace": str(solution.trace),
+        "goal_achieved": solution.goal_achieved,
+        "campaign": str(solution.campaign),
         "stopped_reason": solution.stopped_reason,
     }
     (run_dir / "result.json").write_text(
@@ -294,7 +294,7 @@ def check_stop_semantics(checkpoint: dict, result: dict, evidence: list) -> bool
     status = checkpoint.get("status")
     evidence.append(f"last_stop={last_stop}")
     if status == "completed":
-        return result is None or bool(result.get("succeeded"))
+        return result is None or bool(result.get("goal_achieved"))
     if (
         last_stop is not None
         and last_stop not in RunCheckpoint.VALID_LAST_STOPS

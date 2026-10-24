@@ -45,10 +45,10 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `--data` | Directory holding your data; copied to `kapso_datasets/` | — |
 | `--repo` | The starting repository, a local path (copied) or a GitHub URL (cloned) | — |
 | `-o`, `--output` | The campaign directory, the solution's trace. Empty for a fresh build | a temporary directory |
-| `-i`, `--iterations` | Maximum experiments this call may run. A resume keeps the launch's cap | `10` |
 | `--budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
-| `--budget-dollars` | Best-effort model-spend budget in USD | — |
-| `--reserve-minutes` | Wall clock escrowed for the final checkout and evaluation | — |
+| `--budget-experiments` | Maximum experiments this call may run. A resume keeps the launch's cap | `10` |
+| `--budget-usd` | Best-effort model-spend budget in USD | — |
+| `--budget-reserve-minutes` | Wall clock escrowed for the final checkout and evaluation | — |
 | `--resume` | Continue the campaign in `--output` from its checkpoint. The brief and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
 | `--detach` | Start the campaign in a session of its own and return at once with its pid, the log, the status path and the `watch` command. Needs `--output`. The run outlives the shell that started it, a coding agent's tool call included | off |
 | `--log` | Where a detached run's output goes | `<output>.log`, beside the campaign directory |
@@ -60,9 +60,9 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 A budget flag wins over the brief's `Budget` line; on a resume the launch record fills what is still unset.
 
 ```bash
-kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output build --detach
+kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
 kapso build --goal "Build a web scraper for news articles" --output ./scraper
-kapso build --goal-file problem.txt --iterations 20 --output ./campaign
+kapso build --goal-file problem.txt --budget-experiments 20 --output ./campaign
 kapso build --output ./campaign --resume --detach
 ```
 
@@ -225,7 +225,7 @@ Turns the solution a build wrote into running software.
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--solution-path` | The campaign directory a build wrote; its `.kapso/solution.json` is the solution. **Required** | — |
+| `campaign` | The campaign directory a build wrote; its `.kapso/solution.json` is the solution. **Required**, positional | — |
 | `--strategy` | `auto`, `local`, `docker`, `modal`, `bentoml` or `langgraph` | `auto` |
 | `--env` | Environment variable as `KEY=VALUE`. Repeat for more than one | — |
 | `--coding-agent` | Agent behind the selector and adapter sessions | from config (`deployment.coding_agent`) |
@@ -233,9 +233,9 @@ Turns the solution a build wrote into running software.
 | `--interactive` | Keep running after deploy instead of returning | off |
 
 ```bash
-kapso deploy --solution-path ../churn-build
-kapso deploy --solution-path ../churn-build --strategy docker
-kapso deploy --solution-path ../churn-build --env API_KEY=xxx --interactive
+kapso deploy ../churn-build
+kapso deploy ../churn-build --strategy docker
+kapso deploy ../churn-build --env API_KEY=xxx --interactive
 ```
 
 ## kapso index_kg

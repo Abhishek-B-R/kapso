@@ -45,9 +45,9 @@ solution = kapso.build(
     data="data",
     repo=".",
     output="../orders-dq-campaign",
-    budget=Budget(minutes=60, iterations=10),
+    budget=Budget(minutes=60, experiments=10),
 )
-solution.branch, solution.score, solution.evaluation.version, solution.trace
+solution.branch, solution.score, solution.evaluator.version, solution.campaign
 software = kapso.deploy(solution, target="docker")
 experience = kapso.learn(solution)                     # cards with receipts, banked
 ```
@@ -198,13 +198,13 @@ Built in WP1 (`src/kapso/handles.py`, `Kapso.build()` in `src/kapso/kapso.py`,
 Kapso(config: str | None = None, kg_index=None, bank=None)   # engine knobs; nothing starts
 
 build(
-    goal: str | Brief | None = None,   # a sentence, or a Brief; None only on a resume
+    brief: str | Brief | None = None,  # a sentence, or a Brief; None only on a resume
     *,
     evaluation: str | None = None,     # a directory you own, copied to kapso_evaluation/ and protected
     data: str | None = None,           # copied to kapso_datasets/
     repo: str | None = None,           # a path (copied) or a GitHub URL (cloned); None starts empty
     output: str | None = None,         # the campaign directory, the solution's trace
-    budget: Budget | None = None,      # minutes, iterations, dollars, reserve_minutes
+    budget: Budget | None = None,      # minutes, experiments, usd, reserve_minutes
     resume: bool = False,
     on_status=None,
     iteration_evaluator=None, iteration_evaluator_failure_policy="record",
@@ -215,7 +215,7 @@ build(
 ```
 kapso build --brief kapso-brief.md | --goal "..." | --goal-file problem.txt
             --evaluation DIR --data DIR --repo PATH|URL --output DIR
-            --budget-minutes N --budget-dollars N --reserve-minutes N --iterations N
+            --budget-minutes N --budget-experiments N --budget-usd N --budget-reserve-minutes N
             --resume --detach --log FILE --config FILE --mode M --coding-agent A --kg-index FILE
 ```
 
@@ -235,30 +235,29 @@ back. The `harness` and `experience` lines are kept verbatim for WP2 and
 WP3. The entrance design in `docs/plans/kapso-plugin-user-flow.md` §4
 stands for the plugin: it writes the brief, the engine runs it.
 
-**The budget.** `Budget(minutes, iterations, dollars, reserve_minutes)`,
+**The budget.** `Budget(minutes, experiments, usd, reserve_minutes)`,
 every field optional and validated (positive, finite, an integer count, a
-reserve inside the minutes); `dollars` is model spend. Precedence, field by
+reserve inside the minutes); `usd` is model spend. Precedence, field by
 field: the call's `budget`, then the brief's, then on a resume the launch
 record, then the config.
 
-**The outcome.** `Solution`: `brief`, `trace` (the campaign directory,
+**The outcome.** `Solution`: `brief`, `campaign` (the campaign directory,
 checked out at the delivered branch), `branch` and `commit` (`None` when no
 candidate succeeded), `base_commit` (the seed, `diff()`'s base), `score`,
-`succeeded` (the judge's stop vote), `stopped_reason`, `stop_detail`,
-`iterations`, `cumulative_iterations`, `cost_usd`, `requests` (the inbox,
-when `waiting_for_user`), `feedback`, `evaluation` (`version`,
+`goal_achieved` (the judge's verdict), `stopped_reason`, `stop_detail`,
+`experiments`, `experiments_total`, `cost_usd`, `requests` (the inbox,
+when `waiting_for_user`), `feedback`, `evaluator` (`version`,
 `evaluator_id`, `provenance`; `None` when the agent built its own),
-`harness` and `experience` (filled by WP2 and WP3), `invalid_evaluations`,
-the external evaluator's metrics, and the memory provenance (`kg_index`,
-`bank_head_served`, folded into `experience` by WP3). `explain()` is the
+`harness` and `experience` (filled by WP2 and WP3), `rejected_candidates`,
+the caller's `callback_metrics`, and the memory provenance
+(`knowledge_index`, `experience_head`, folded into `experience` by WP3). `explain()` is the
 summary block; `diff()` is `git diff base_commit..commit`.
 
 **The record.** `build()` writes `<output>/.kapso/solution.json` on every
 return (delivered, paused for the person, or out of budget), and
 `Solution.open(output)` reads that file and nothing else: before the build
 has returned there is no solution, and `open()` says so and names
-`kapso watch`. `kapso deploy --solution-path <output>` opens it the same
-way. The rest of the record stays under `.kapso/`: the status file (from
+`kapso watch`. `kapso deploy <output>` opens it the same way. The rest of the record stays under `.kapso/`: the status file (from
 setup on), the checkpoint (`run_state.json`, operation `build`), the
 experiment history, the evaluation registry and archive, the inbox and
 launch records, the serving record. `kapso watch` reads it live; WP6's
@@ -279,8 +278,8 @@ delivery is the solution's `evaluation`.
 means in that domain. `learn(solution, *, exam=True, push=None) ->
 Experience` is unchanged in behaviour and banks under the harness family.
 Since WP1 both take a `Solution` (from `build()` or `Solution.open(path)`):
-`deploy` reads the code from `solution.trace` and the objective from
-`solution.brief`; `learn` harvests `solution.trace` and writes the
+`deploy` reads the code from `solution.campaign` and the objective from
+`solution.brief`; `learn` harvests `solution.campaign` and writes the
 objective, the score and the stop reason into the campaign's
 `final_report.json`. `learn()` still returns `LessonResult`; the
 `Experience` name is WP3's.

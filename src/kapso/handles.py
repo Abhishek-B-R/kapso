@@ -26,22 +26,22 @@ class BriefError(ValueError):
 # BUDGET
 # =============================================================================
 
-_BUDGET_FIELDS = ("minutes", "iterations", "dollars", "reserve_minutes")
+_BUDGET_FIELDS = ("minutes", "experiments", "usd", "reserve_minutes")
 
 
 @dataclass
 class Budget:
     """What a build may spend. A field left `None` keeps the config's value
-    (or, on a resume, the launch's). `dollars` is model spend in USD; the
+    (or, on a resume, the launch's). `usd` is model spend; the
     platform-credit budget is a config value, not a handle field."""
 
     minutes: Optional[float] = None
-    iterations: Optional[int] = None
-    dollars: Optional[float] = None
-    reserve_minutes: Optional[float] = None   # wall clock escrowed for final checkout and evaluation
+    experiments: Optional[int] = None
+    usd: Optional[float] = None
+    reserve_minutes: Optional[float] = None   # wall clock escrowed for the final checkout and evaluation
 
     def __post_init__(self) -> None:
-        for name in ("minutes", "dollars", "reserve_minutes"):
+        for name in ("minutes", "usd", "reserve_minutes"):
             value = getattr(self, name)
             if value is None:
                 continue
@@ -54,13 +54,13 @@ class Budget:
                 raise ValueError(
                     f"Budget.{name} must be a positive finite number, got {value!r}"
                 )
-        if self.iterations is not None and (
-            isinstance(self.iterations, bool)
-            or not isinstance(self.iterations, int)
-            or self.iterations < 1
+        if self.experiments is not None and (
+            isinstance(self.experiments, bool)
+            or not isinstance(self.experiments, int)
+            or self.experiments < 1
         ):
             raise ValueError(
-                f"Budget.iterations must be a positive integer, got {self.iterations!r}"
+                f"Budget.experiments must be a positive integer, got {self.experiments!r}"
             )
         if (
             self.minutes is not None
@@ -453,10 +453,10 @@ class _BriefParser:
                 )
             if name in values:
                 raise BriefError(f"{self.source}: Budget {name} given twice")
-            if name == "iterations":
+            if name == "experiments":
                 if not re.fullmatch(r"[0-9]+", text):
                     raise BriefError(
-                        f"{self.source}: Budget iterations must be an integer, got {text!r}"
+                        f"{self.source}: Budget experiments must be an integer, got {text!r}"
                     )
                 values[name] = int(text)
             else:
@@ -473,7 +473,7 @@ class _BriefParser:
 # =============================================================================
 
 @dataclass
-class Evaluation:
+class EvaluatorRef:
     """The registered evaluator at delivery: the version the delivered
     candidate's score was measured under."""
     version: int
@@ -487,7 +487,7 @@ class HarnessRef:
     name: str
     version: str
     hash: str
-    ref: str
+    source: str       # the reference it was loaded from
 
 
 @dataclass
@@ -507,70 +507,70 @@ _RECORD_SCHEMA = 1
 
 @dataclass
 class Solution:
-    """What a build delivered, and the account of how. `trace` is the
+    """What a build delivered, and the account of how. `campaign` is the
     campaign directory: the workspace, checked out at the delivered branch,
     with the record under `.kapso/`. `branch` and `commit` are `None` when
-    no candidate succeeded; `evaluation` is `None` when no evaluator was
+    no candidate succeeded; `evaluator` is `None` when no evaluator was
     registered (the agent built its own evaluation)."""
 
     brief: Brief
-    trace: Path
+    campaign: Path
     branch: Optional[str]
     commit: Optional[str]
     base_commit: str              # the workspace's seed commit, diff()'s base
     score: Optional[float]        # the delivered candidate's authoritative measurement
-    succeeded: bool               # the feedback's stop vote: the goal was met
+    goal_achieved: bool           # the judge's verdict that the objective was met
     stopped_reason: str           # goal_achieved | max_iterations | budget_exhausted | waiting_for_user | ...
     stop_detail: Optional[str]    # which budget dial stopped it, when one did
-    iterations: int               # experiments this run
-    cumulative_iterations: int    # experiments across every resume
+    experiments: int              # experiments this run
+    experiments_total: int        # experiments across every resume
     cost_usd: float
     requests: List[Dict[str, Any]]   # what the person must answer when waiting_for_user
-    feedback: Optional[str]       # the last feedback's text
-    evaluation: Optional[Evaluation]
+    feedback: Optional[str]       # the judge's last verdict, in full
+    evaluator: Optional[EvaluatorRef]
     harness: Optional[HarnessRef]
     experience: List[ExperienceRef]
-    invalid_evaluations: int      # candidates rejected for tampering with the evaluation
-    external_metrics: Dict[str, float]
-    external_primary_metric: Optional[str]
-    kg_index: Optional[str]
-    bank_head_served: Optional[str]
+    rejected_candidates: int      # candidates rejected for touching the evaluator
+    callback_metrics: Dict[str, float]      # the caller's own iteration_evaluator, delivered candidate
+    callback_primary_metric: Optional[str]
+    knowledge_index: Optional[str]
+    experience_head: Optional[str]
 
     @property
     def record_path(self) -> Path:
-        return self.trace / _RECORD
+        return self.campaign / _RECORD
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "schema_version": _RECORD_SCHEMA,
             "brief": self.brief.to_dict(),
-            "trace": str(self.trace),
+            "campaign": str(self.campaign),
             "branch": self.branch,
             "commit": self.commit,
             "base_commit": self.base_commit,
             "score": self.score,
-            "succeeded": self.succeeded,
+            "goal_achieved": self.goal_achieved,
             "stopped_reason": self.stopped_reason,
             "stop_detail": self.stop_detail,
-            "iterations": self.iterations,
-            "cumulative_iterations": self.cumulative_iterations,
+            "experiments": self.experiments,
+            "experiments_total": self.experiments_total,
             "cost_usd": self.cost_usd,
             "requests": list(self.requests),
             "feedback": self.feedback,
-            "evaluation": (
+            "evaluator": (
                 {
-                    "version": self.evaluation.version,
-                    "evaluator_id": self.evaluation.evaluator_id,
-                    "provenance": self.evaluation.provenance,
+                    "version": self.evaluator.version,
+                    "evaluator_id": self.evaluator.evaluator_id,
+                    "provenance": self.evaluator.provenance,
                 }
-                if self.evaluation else None
+                if self.evaluator else None
             ),
             "harness": (
                 {
                     "name": self.harness.name,
                     "version": self.harness.version,
                     "hash": self.harness.hash,
-                    "ref": self.harness.ref,
+                    "source": self.harness.source,
                 }
                 if self.harness else None
             ),
@@ -584,14 +584,14 @@ class Solution:
                 }
                 for source in self.experience
             ],
-            "invalid_evaluations": self.invalid_evaluations,
-            "external_metrics": dict(self.external_metrics),
-            "external_primary_metric": self.external_primary_metric,
-            "kg_index": self.kg_index,
-            "bank_head_served": self.bank_head_served,
+            "rejected_candidates": self.rejected_candidates,
+            "callback_metrics": dict(self.callback_metrics),
+            "callback_primary_metric": self.callback_primary_metric,
+            "knowledge_index": self.knowledge_index,
+            "experience_head": self.experience_head,
         }
 
-    def write(self) -> Path:
+    def save(self) -> Path:
         """Write the record; `build()` does this every time it returns."""
         path = self.record_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -604,12 +604,12 @@ class Solution:
     def open(cls, path: Union[str, Path]) -> "Solution":
         """The solution a build wrote in `path`. A campaign that has not
         returned yet has no solution: follow it with `kapso watch`."""
-        trace = Path(path).expanduser().resolve()
-        record = trace / _RECORD
+        campaign = Path(path).expanduser().resolve()
+        record = campaign / _RECORD
         if not record.is_file():
             raise FileNotFoundError(
-                f"no solution in {trace}: the build has not returned yet "
-                f"(follow it with `kapso watch {trace}`), or this is not a "
+                f"no solution in {campaign}: the build has not returned yet "
+                f"(follow it with `kapso watch {campaign}`), or this is not a "
                 "campaign directory"
             )
         data = json.loads(record.read_text(encoding="utf-8"))
@@ -617,31 +617,31 @@ class Solution:
             raise ValueError(
                 f"{record}: not a solution record of schema {_RECORD_SCHEMA}"
             )
-        evaluation = data["evaluation"]
+        evaluator = data["evaluator"]
         harness = data["harness"]
         return cls(
             brief=Brief.from_dict(data["brief"]),
-            trace=trace,
+            campaign=campaign,
             branch=data["branch"],
             commit=data["commit"],
             base_commit=data["base_commit"],
             score=data["score"],
-            succeeded=data["succeeded"],
+            goal_achieved=data["goal_achieved"],
             stopped_reason=data["stopped_reason"],
             stop_detail=data["stop_detail"],
-            iterations=data["iterations"],
-            cumulative_iterations=data["cumulative_iterations"],
+            experiments=data["experiments"],
+            experiments_total=data["experiments_total"],
             cost_usd=data["cost_usd"],
             requests=list(data["requests"]),
             feedback=data["feedback"],
-            evaluation=Evaluation(**evaluation) if evaluation else None,
+            evaluator=EvaluatorRef(**evaluator) if evaluator else None,
             harness=HarnessRef(**harness) if harness else None,
             experience=[ExperienceRef(**source) for source in data["experience"]],
-            invalid_evaluations=data["invalid_evaluations"],
-            external_metrics=dict(data["external_metrics"]),
-            external_primary_metric=data["external_primary_metric"],
-            kg_index=data["kg_index"],
-            bank_head_served=data["bank_head_served"],
+            rejected_candidates=data["rejected_candidates"],
+            callback_metrics=dict(data["callback_metrics"]),
+            callback_primary_metric=data["callback_primary_metric"],
+            knowledge_index=data["knowledge_index"],
+            experience_head=data["experience_head"],
         )
 
     def diff(self) -> str:
@@ -650,7 +650,7 @@ class Solution:
         if self.commit is None:
             return ""
         return subprocess.run(
-            ["git", "-C", str(self.trace), "diff", f"{self.base_commit}..{self.commit}"],
+            ["git", "-C", str(self.campaign), "diff", f"{self.base_commit}..{self.commit}"],
             check=True, capture_output=True, text=True,
         ).stdout
 
@@ -658,36 +658,36 @@ class Solution:
         """The summary block: what was delivered, how it measured, why the
         build stopped and what it cost."""
         objective = self.brief.objective.split("\n")[0]
-        lines = [f"Solution for: {objective}", f"Trace:        {self.trace}"]
+        lines = [f"Solution for: {objective}", f"Campaign:     {self.campaign}"]
         if self.branch is None:
             lines.append("Candidate:    none succeeded")
         else:
             lines.append(f"Candidate:    {self.branch} @ {self.commit}")
         if self.score is not None:
             measured = f"Score:        {self.score}"
-            if self.evaluation is not None:
+            if self.evaluator is not None:
                 measured += (
-                    f" (evaluator v{self.evaluation.version}, "
-                    f"{self.evaluation.provenance})"
+                    f" (evaluator v{self.evaluator.version}, "
+                    f"{self.evaluator.provenance})"
                 )
             lines.append(measured)
-        lines.append(f"Goal achieved: {self.succeeded}")
+        lines.append(f"Goal achieved: {self.goal_achieved}")
         stopped = f"Stopped:      {self.stopped_reason}"
         if self.stop_detail:
             stopped += f" ({self.stop_detail})"
         lines.append(stopped)
         experiments = (
-            f"Experiments:  {self.iterations} this run, "
-            f"{self.cumulative_iterations} in all"
+            f"Experiments:  {self.experiments} this run, "
+            f"{self.experiments_total} in all"
         )
-        if self.invalid_evaluations:
-            experiments += f", {self.invalid_evaluations} rejected"
+        if self.rejected_candidates:
+            experiments += f", {self.rejected_candidates} rejected"
         lines.append(experiments)
         lines.append(f"Cost:         ${self.cost_usd:.3f}")
-        if self.external_primary_metric:
+        if self.callback_primary_metric:
             lines.append(
-                f"External:     {self.external_primary_metric} = "
-                f"{self.external_metrics.get(self.external_primary_metric)}"
+                f"Your metric:  {self.callback_primary_metric} = "
+                f"{self.callback_metrics.get(self.callback_primary_metric)}"
             )
         if self.harness is not None:
             lines.append(
@@ -696,10 +696,10 @@ class Solution:
             )
         for source in self.experience:
             lines.append(f"Experience:   {source.reference} ({source.kind}, {source.resolved})")
-        if self.kg_index:
-            lines.append(f"Knowledge:    {self.kg_index}")
-        if self.bank_head_served:
-            lines.append(f"Bank served:  {self.bank_head_served}")
+        if self.knowledge_index:
+            lines.append(f"Knowledge:    {self.knowledge_index}")
+        if self.experience_head:
+            lines.append(f"Experience:   bank at {self.experience_head}")
         if self.requests:
             lines.append("Waiting on you:")
             for request in self.requests:

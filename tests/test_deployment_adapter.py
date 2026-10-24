@@ -138,7 +138,7 @@ def test_docker_defaults_are_templated_per_solution_and_reach_the_prompt(solutio
                 f.write("# generated\n")
         return ""  # no run_interface from the agent → config defaults apply
     agent = scripted(writes_docker_files)
-    expected = deployment_context(str(solution.trace))
+    expected = deployment_context(str(solution.campaign))
     result = AdapterAgent("fake", "m", max_retries=0).adapt(solution, setting_for("docker"))
     assert result.success
     iface = result.run_interface

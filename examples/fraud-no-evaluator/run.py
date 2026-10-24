@@ -2,7 +2,7 @@
 from kapso import Kapso, Brief
 
 solution = Kapso().build(
-    Brief.read("kapso-brief.md"), data="data", repo="repo", output="build",
+    Brief.read("kapso-brief.md"), data="data", repo="repo", output="campaign",
 )
 print(solution.explain())
-print(solution.evaluation)   # the evaluator the campaign built and registered
+print(solution.evaluator)    # the evaluator the campaign built and registered

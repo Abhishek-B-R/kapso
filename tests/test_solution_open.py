@@ -11,7 +11,7 @@ from kapso.execution.evaluation_maintainer.registry import (
     TimingModel,
 )
 from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import FeedbackResult
-from kapso.handles import Evaluation, Solution
+from kapso.handles import EvaluatorRef, Solution
 from tests.handles_support import (
     candidate_branch,
     facade,
@@ -59,7 +59,7 @@ def test_a_build_waiting_on_the_person_keeps_its_requests(tmp_path, monkeypatch)
 
     reopened = Solution.open(workspace)
     assert reopened.stopped_reason == "waiting_for_user" and reopened.requests == requests
-    assert reopened.branch is None and reopened.succeeded is False
+    assert reopened.branch is None and reopened.goal_achieved is False
     assert "Waiting on you:\n  #1  env:OPENAI_API_KEY" in reopened.explain()
 
 
@@ -86,8 +86,8 @@ def test_the_registered_evaluator_is_recorded(tmp_path, monkeypatch):
     fake_orchestrator(monkeypatch, workspace, solve_result(), score=0.8, best_branch="main")
     solution = facade().build("g", output=str(workspace))
 
-    assert solution.evaluation == Evaluation(version=1, evaluator_id="eval-1", provenance="provided")
-    assert Solution.open(workspace).evaluation == solution.evaluation
+    assert solution.evaluator == EvaluatorRef(version=1, evaluator_id="eval-1", provenance="provided")
+    assert Solution.open(workspace).evaluator == solution.evaluator
     assert "Score:        0.8 (evaluator v1, provided)" in solution.explain()
 
 

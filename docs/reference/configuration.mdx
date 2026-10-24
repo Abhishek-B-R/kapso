@@ -212,7 +212,7 @@ The packaged cost defaults live in `defaults.search_strategy.params.cost` and
 are inherited by every mode. Override individual keys under
 `modes.<mode>.search_strategy.params.cost`. Cost-enabled runs require the generic
 strategy and `budget.fidelity.mode: off`. Platform cost settings are separate
-from model spend in USD controlled by `build(budget=Budget(dollars=...))`.
+from model spend in USD controlled by `build(budget=Budget(usd=...))`.
 
 See [Capability-aware MCP gates](/docs/evolve/mcp-gates).
 See [Cost-aware selection](/docs/evolve/cost-aware-selection) for the estimator

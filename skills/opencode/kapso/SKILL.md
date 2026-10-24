@@ -65,7 +65,7 @@ Target       0.85
 Rules
   - the evaluator is never modified
   - no fitting on the held-out rows
-Budget       minutes=60 iterations=10
+Budget       minutes=60 experiments=10
 ```
 
 Only `Objective` is required; whatever the user gives goes in verbatim, and the
@@ -104,7 +104,7 @@ kapso build \
   --evaluation evaluation \
   --data data \
   --output ../churn-campaign \
-  --budget-minutes 60 --iterations 10 \
+  --budget-minutes 60 --budget-experiments 10 \
   --detach
 kapso watch ../churn-campaign --follow
 ```
@@ -122,8 +122,8 @@ kapso watch ../churn-campaign --follow
   candidate that edits it is rejected and unscored. Use it whenever the user has a
   judge. `--data` is copied to `kapso_datasets/`. The seed copy includes
   everything in the directory, `.env` included.
-- Bound the run: `--iterations` (default 10), `--budget-minutes` (durable
-  across resumes), `--budget-dollars` (best effort; codex sessions report no cost).
+- Bound the run: `--budget-experiments` (default 10), `--budget-minutes` (durable
+  across resumes), `--budget-usd` (best effort; codex sessions report no cost).
   A flag wins over the brief's `Budget` line.
 - `-m GENERIC` (default, knowledge search on) or `-m MINIMAL`; `-a` picks the coding
   agent (`claude_code` default, `codex`, `gemini`, `openhands`, `oss_claude_code`).
@@ -137,7 +137,7 @@ solution = Kapso().build(
     Brief.read("kapso-brief.md"), repo=".", evaluation="evaluation", data="data",
     output="./campaign", budget=Budget(minutes=60),
 )
-print(solution.explain())   # .score .succeeded .branch .trace .requests .diff()
+print(solution.explain())   # .score .goal_achieved .branch .campaign .requests .diff()
 Solution.open("./campaign") # the same solution from any process, once the build returned
 ```
 
@@ -242,7 +242,7 @@ timeout and use the result, rather than backgrounding it and polling.
 
 ```bash
 kapso doctor deploy
-kapso deploy --solution-path ../churn-campaign --strategy local   # auto|local|docker|modal|bentoml|langgraph
+kapso deploy ../churn-campaign --strategy local   # auto|local|docker|modal|bentoml|langgraph
 ```
 
 To call what was deployed, use the Python API, which hands back the running

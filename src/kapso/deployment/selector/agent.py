@@ -70,7 +70,7 @@ class SelectorAgent:
             Complete deployment setting
         """
         # Extract from solution
-        code_path = str(solution.trace)
+        code_path = str(solution.campaign)
         goal = solution.brief.objective
         
         # Get available strategies (filtered if specified)

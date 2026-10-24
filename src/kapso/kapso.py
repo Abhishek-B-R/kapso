@@ -48,7 +48,7 @@ from kapso.execution.observability import (
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.evaluation_maintainer.registry import EvaluationRegistry
 from kapso.execution.iteration_evaluator import IterationEvaluator
-from kapso.handles import Brief, Budget, Evaluation, Solution
+from kapso.handles import Brief, Budget, EvaluatorRef, Solution
 from kapso.execution.evaluation_integrity import build_evaluation_manifest
 from kapso.environment.handlers.generic import GenericProblemHandler
 from kapso.knowledge_base.search import KnowledgeSearchFactory, KGIndexInput
@@ -893,7 +893,7 @@ class Kapso:
 
         # --- dispatch (design §2) ---
         if isinstance(source, Solution):
-            campaign_dir = source.trace
+            campaign_dir = source.campaign
             slug_seed = source.brief.objective
         else:
             known_ids = {m["id"] for m in store.list_manifests()}
@@ -953,11 +953,11 @@ class Kapso:
                 if isinstance(source, Solution):
                     report.update({
                         "goal": source.brief.objective,
-                        "succeeded": source.succeeded,
+                        "goal_achieved": source.goal_achieved,
                         "final_score": source.score,
                         "stopped_reason": source.stopped_reason,
-                        "iterations": source.iterations,
-                        "cumulative_iterations": source.cumulative_iterations,
+                        "experiments": source.experiments,
+                        "experiments_total": source.experiments_total,
                         "cost_usd": source.cost_usd,
                     })
                 report_path.write_text(json.dumps(report, indent=1, default=str))
@@ -1171,7 +1171,7 @@ class Kapso:
 
     def build(
         self,
-        goal: Union[str, Brief, None] = None,
+        brief: Union[str, Brief, None] = None,
         *,
         evaluation: Optional[str] = None,
         data: Optional[str] = None,
@@ -1196,7 +1196,7 @@ class Kapso:
         best, repeat until the goal is met or the budget is spent.
 
         Args:
-            goal: What to build: a sentence, or a `Brief` with the metric,
+            brief: What to build: a sentence, or a `Brief` with the metric,
                 the baseline, the target and the rules. A string becomes a
                 brief with only an objective. The whole brief reaches the
                 engine, never clipped. Left out only on a resume, which
@@ -1232,23 +1232,21 @@ class Kapso:
             `<output>/.kapso/solution.json`, so `Solution.open(output)`
             reads it from any process.
         """
-        if isinstance(goal, str):
-            brief: Optional[Brief] = Brief(objective=goal)
-        elif goal is None or isinstance(goal, Brief):
-            brief = goal
-        else:
+        if isinstance(brief, str):
+            brief = Brief(objective=brief)
+        elif brief is not None and not isinstance(brief, Brief):
             raise TypeError(
-                f"goal must be a string or a Brief, got {type(goal).__name__}"
+                f"brief must be a string or a Brief, got {type(brief).__name__}"
             )
         if brief is None and not resume:
             raise ValueError(
-                "build() needs a goal: a sentence or a Brief; only a resume "
+                "build() needs a brief: a sentence or a Brief; only a resume "
                 "may leave it out, and then it comes from the checkpoint"
             )
         spend = (budget or Budget()).merged_over(brief.budget if brief else None)
-        max_iterations = spend.iterations
+        max_iterations = spend.experiments
         time_budget_minutes = spend.minutes
-        cost_budget = spend.dollars
+        cost_budget = spend.usd
         finalization_reserve_minutes = spend.reserve_minutes
         # Absolute from here on: the workspace, its sessions and the record
         # are addressed from directories other than the launch's (a session
@@ -1526,23 +1524,23 @@ class Kapso:
         # delivered candidate's branch (None when nothing succeeded), and
         # the registry head says which evaluator measured it.
         strategy = orchestrator.search_strategy
-        trace = Path(strategy.workspace.workspace_dir).resolve()
+        campaign = Path(strategy.workspace.workspace_dir).resolve()
         best_branch = strategy.checkout_to_best_experiment_branch()
-        head = EvaluationRegistry(str(trace)).head()
+        head = EvaluationRegistry(str(campaign)).head()
         solution = Solution(
             brief=brief,
-            trace=trace,
+            campaign=campaign,
             branch=best_branch,
-            commit=_git_rev(trace, "HEAD") if best_branch else None,
-            base_commit=_git_rev(trace, "main"),
+            commit=_git_rev(campaign, "HEAD") if best_branch else None,
+            base_commit=_git_rev(campaign, "main"),
             score=strategy.get_deliverable_score(),
-            succeeded=bool(
+            goal_achieved=bool(
                 solve_result.final_feedback and solve_result.final_feedback.stop
             ),
             stopped_reason=solve_result.stopped_reason,
             stop_detail=solve_result.stop_detail,
-            iterations=solve_result.iterations_run,
-            cumulative_iterations=solve_result.cumulative_iterations,
+            experiments=solve_result.iterations_run,
+            experiments_total=solve_result.cumulative_iterations,
             cost_usd=float(solve_result.total_cost),
             # The inbox: what the person must answer when the campaign
             # paused for them (empty otherwise).
@@ -1551,8 +1549,8 @@ class Kapso:
                 solve_result.final_feedback.feedback
                 if solve_result.final_feedback else None
             ),
-            evaluation=(
-                Evaluation(
+            evaluator=(
+                EvaluatorRef(
                     version=head.version,
                     evaluator_id=head.evaluator_id,
                     provenance=head.provenance,
@@ -1561,31 +1559,31 @@ class Kapso:
             ),
             harness=None,
             experience=[],
-            invalid_evaluations=sum(
+            rejected_candidates=sum(
                 not node.evaluation_valid
                 for node in strategy.get_experiment_history()
             ),
-            external_metrics=dict(
+            callback_metrics=dict(
                 getattr(solve_result.best_experiment, "metrics", {}) or {}
             ),
-            external_primary_metric=getattr(
+            callback_primary_metric=getattr(
                 solve_result.best_experiment, "primary_metric", None
             ),
             # Memory provenance (design §8.2): the exact stores this
             # solution drew on.
-            kg_index=self._kg_index_path,
-            bank_head_served=serving["bank_head"] if serving else None,
+            knowledge_index=self._kg_index_path,
+            experience_head=serving["bank_head"] if serving else None,
         )
-        solution.write()
+        solution.save()
 
         print(f"\n{'='*60}")
         print("Build complete")
         print(f"{'='*60}")
-        print(f"Solution at: {trace}")
+        print(f"Solution at: {campaign}")
         print(f"Experiments run: {solve_result.iterations_run}")
         print(f"Total cost: ${solve_result.total_cost:.3f}")
         print(f"Stopped reason: {solve_result.stopped_reason}")
-        print(f"Goal achieved: {solution.succeeded}")
+        print(f"Goal achieved: {solution.goal_achieved}")
         if solution.score is not None:
             print(f"Final score: {solution.score}")
         # Every gate call across the campaign's nodes, per gate and tool,
@@ -1702,7 +1700,7 @@ class Kapso:
         kapso = cls(config=record["config_path"], kg_index=record["kg_index"])
         return kapso.build(
             output=campaign_dir,
-            budget=Budget(iterations=remaining),
+            budget=Budget(experiments=remaining),
             resume=True,
         )
 
@@ -1804,7 +1802,7 @@ class Kapso:
         print(f"DEPLOYING: {solution.brief.objective.splitlines()[0]}")
         print(f"{'='*60}")
         print(f"  Strategy: {strategy}")
-        print(f"  Code: {solution.trace}")
+        print(f"  Campaign: {solution.campaign}")
         print()
         
         config = DeployConfig(

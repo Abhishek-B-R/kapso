@@ -51,7 +51,7 @@ budget is spent.
 
 ```python
 build(
-    goal: str | Brief | None = None,
+    brief: str | Brief | None = None,
     *,
     evaluation: str | None = None,
     data: str | None = None,
@@ -72,7 +72,7 @@ build(
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `goal` | A sentence, or a `Brief`. A sentence becomes a brief with only an objective. The whole brief reaches the engine, never clipped. Left out only on a resume, which takes it from the checkpoint | `None` |
+| `brief` | A sentence, or a `Brief`. A sentence becomes a brief with only an objective. The whole brief reaches the engine, never clipped. Left out only on a resume, which takes it from the checkpoint | `None` |
 | `evaluation` | Directory holding your evaluator; copied to `kapso_evaluation/` and protected | `None` |
 | `data` | Directory holding your data; copied to `kapso_datasets/` | `None` |
 | `repo` | The starting repository: a local path (copied, never modified) or a GitHub URL (cloned). `None` starts empty, or from a workflow the knowledge graph knows | `None` |
@@ -132,8 +132,8 @@ brief.write(path) -> Path
 @dataclass
 class Budget:
     minutes: float | None = None           # wall clock, durable across resumes
-    iterations: int | None = None          # experiments this call may run
-    dollars: float | None = None           # model spend, USD
+    experiments: int | None = None         # experiments this call may run
+    usd: float | None = None               # model spend, USD
     reserve_minutes: float | None = None   # escrowed for the final checkout and evaluation
 ```
 
@@ -149,23 +149,23 @@ read back by `Solution.open(path)`.
 | Attribute | Type | What it holds |
 |-----------|------|---------------|
 | `brief` | `Brief` | The brief the build ran |
-| `trace` | `Path` | The campaign directory, checked out at the delivered branch, with the record under `.kapso/` |
+| `campaign` | `Path` | The campaign directory, checked out at the delivered branch, with the record under `.kapso/` |
 | `branch` | `str \| None` | The delivered candidate's branch; `None` when no candidate succeeded |
 | `commit` | `str \| None` | Its commit at delivery |
 | `base_commit` | `str` | The seed commit, `diff()`'s base |
 | `score` | `float \| None` | The delivered candidate's measurement under the registered evaluator |
-| `succeeded` | `bool` | The judge's verdict that the objective was met |
+| `goal_achieved` | `bool` | The judge's verdict that the objective was met |
 | `stopped_reason` | `str` | `goal_achieved`, `max_iterations`, `budget_exhausted`, `waiting_for_user` |
 | `stop_detail` | `str \| None` | Which budget dial stopped it, when one did |
-| `iterations`, `cumulative_iterations` | `int` | Experiments this call, and across every resume |
+| `experiments`, `experiments_total` | `int` | Experiments this call, and across every resume |
 | `cost_usd` | `float` | Model spend |
 | `requests` | `list[dict]` | What you must answer when `stopped_reason` is `waiting_for_user`; empty otherwise |
 | `feedback` | `str \| None` | The last judgment, in full |
-| `evaluation` | `Evaluation \| None` | `version`, `evaluator_id`, `provenance` of the evaluator the score was measured under; `None` when none was registered |
+| `evaluator` | `EvaluatorRef \| None` | `version`, `evaluator_id`, `provenance` of the evaluator the score was measured under; `None` when none was registered |
 | `harness`, `experience` | | The harness and the experience sources the build ran with, as those features ship |
-| `invalid_evaluations` | `int` | Candidates rejected for touching the evaluator |
-| `external_metrics`, `external_primary_metric` | `dict`, `str \| None` | Your own evaluator's numbers for the delivered candidate |
-| `kg_index`, `bank_head_served` | `str \| None` | The knowledge index and the lesson-bank commit the build drew on |
+| `rejected_candidates` | `int` | Candidates rejected for touching the evaluator |
+| `callback_metrics`, `callback_primary_metric` | `dict`, `str \| None` | Your own `iteration_evaluator`'s numbers for the delivered candidate |
+| `knowledge_index`, `experience_head` | `str \| None` | The knowledge index and the lesson-bank commit the build drew on |
 
 ```python
 Solution.open(path) -> Solution   # the record a build wrote in that directory;

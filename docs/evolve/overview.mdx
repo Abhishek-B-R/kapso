@@ -68,7 +68,7 @@ kapso = Kapso()
 # A build with no evaluator: the campaign builds one from the brief
 solution = kapso.build(
     "Build a random forest classifier for Iris with accuracy > 0.9",
-    budget=Budget(iterations=10),
+    budget=Budget(experiments=10),
 )
 
 # With your evaluation and data, protected
@@ -152,7 +152,7 @@ cost = orchestrator.get_cumulative_cost()
 print(f"Total cost: ${cost:.2f}")
 ```
 
-Budget limits are set with `Budget(minutes, iterations, dollars, reserve_minutes)` on the call or in the brief, or in configuration.
+Budget limits are set with `Budget(minutes, experiments, usd, reserve_minutes)` on the call or in the brief, or in configuration.
 
 ## Related
 

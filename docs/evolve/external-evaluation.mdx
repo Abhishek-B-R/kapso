@@ -46,13 +46,13 @@ def evaluate_candidate(context):
 solution = kapso.build(
     "Improve the support agent",
     output="./campaign",
-    budget=Budget(iterations=3),
+    budget=Budget(experiments=3),
     iteration_evaluator=evaluate_candidate,
 )
 ```
 
-`solution.external_metrics` holds the metrics attached to the delivered
-candidate, and `solution.external_primary_metric` names the primary one. All candidate metrics are retained in
+`solution.callback_metrics` holds the metrics attached to the delivered
+candidate, and `solution.callback_primary_metric` names the primary one. All candidate metrics are retained in
 `.kapso/experiment_history.json` and, for resumable runs, in
 `.kapso/run_state.json`.
 

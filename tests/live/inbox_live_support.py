@@ -204,7 +204,7 @@ def run_build(root: Path, *, iterations: int = 1, log: Optional[Path] = None,
         command = [
             sys.executable, "-m", "kapso.cli", "build",
             "--goal-file", "goal.txt", "--output", "campaign", "--repo", "seed",
-            "--iterations", str(iterations), "-m", "MINIMAL", *(extra or []),
+            "--budget-experiments", str(iterations), "-m", "MINIMAL", *(extra or []),
         ]
     else:
         command = [sys.executable, str(Path(__file__).resolve()), "api-build", str(root),
@@ -222,7 +222,7 @@ def api_build(root: Path, iterations: int, *, resume: bool = False) -> None:
 
     solution = Kapso(config=str(root / "config.yaml")).build(
         (root / "goal.txt").read_text(), output=str(root / "campaign"),
-        repo=None if resume else str(root / "seed"), budget=Budget(iterations=iterations),
+        repo=None if resume else str(root / "seed"), budget=Budget(experiments=iterations),
         mode="MINIMAL", resume=resume,
     )
     print(f"stopped_reason={solution.stopped_reason} requests={solution.requests}")
@@ -238,7 +238,7 @@ def run_resume(root: Path, *, log: Optional[Path] = None) -> subprocess.Complete
     else:
         command = [
             sys.executable, "-m", "kapso.cli", "build", "--goal-file", "goal.txt",
-            "--output", "campaign", "--iterations", "1", "-m", "MINIMAL", "--resume",
+            "--output", "campaign", "--budget-experiments", "1", "-m", "MINIMAL", "--resume",
         ]
     return _run(command, root, log)
 

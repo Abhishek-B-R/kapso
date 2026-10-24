@@ -181,13 +181,13 @@ def main() -> None:
         GOAL,
         repo=str(workdir),
         output=str(sandbox / "campaign1"),
-        budget=Budget(iterations=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
+        budget=Budget(experiments=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
     )
     (sandbox / "solution1.txt").write_text(sol1.explain())
     stage(status_path, "build1", "done",
-          score=sol1.score, succeeded=sol1.succeeded,
-          bank_head_served=sol1.bank_head_served,
-          kg_index=sol1.kg_index)
+          score=sol1.score, goal_achieved=sol1.goal_achieved,
+          experience_head=sol1.experience_head,
+          knowledge_index=sol1.knowledge_index)
 
     # --- 4. learn (the experience loop closes) ---
     stage(status_path, "learn", "running")
@@ -207,16 +207,16 @@ def main() -> None:
         GOAL,
         repo=str(workdir),
         output=str(sandbox / "campaign2"),
-        budget=Budget(iterations=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
+        budget=Budget(experiments=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
     )
     (sandbox / "solution2.txt").write_text(sol2.explain())
     (sandbox / "memory-3-final.txt").write_text(kapso.memory.explain())
     stage(status_path, "build2", "done",
-          score=sol2.score, succeeded=sol2.succeeded,
-          bank_head_served=sol2.bank_head_served)
+          score=sol2.score, goal_achieved=sol2.goal_achieved,
+          experience_head=sol2.experience_head)
 
     # --- loop-closure check: sol2 was served the POST-lesson head ---
-    served2 = sol2.bank_head_served
+    served2 = sol2.experience_head
     if lesson.admitted and served2 != lesson.bank_head_after:
         raise RuntimeError(
             f"LOOP NOT CLOSED: build2 served {served2}, lesson produced "

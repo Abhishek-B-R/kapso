@@ -12,4 +12,4 @@ Rules
   - train_model and predict_with_model keep their names and signatures
   - evaluate.py and the split it makes are never modified
   - data/test.csv is for final predictions only, never for fitting or tuning
-Budget       minutes=45 iterations=4
+Budget       minutes=45 experiments=4

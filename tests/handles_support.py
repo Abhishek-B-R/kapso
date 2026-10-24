@@ -14,31 +14,31 @@ from kapso.handles import Brief, Solution
 from kapso.kapso import Kapso
 
 
-def make_solution(trace: Any, objective: str = "score things", **overrides: Any) -> Solution:
+def make_solution(campaign: Any, objective: str = "score things", **overrides: Any) -> Solution:
     """A `Solution` with every field set to the plainest value."""
     fields = dict(
         brief=Brief(objective=objective),
-        trace=Path(trace),
+        campaign=Path(campaign),
         branch="generic_exp_1",
         commit="0" * 40,
         base_commit="1" * 40,
         score=None,
-        succeeded=False,
+        goal_achieved=False,
         stopped_reason="max_iterations",
         stop_detail=None,
-        iterations=1,
-        cumulative_iterations=1,
+        experiments=1,
+        experiments_total=1,
         cost_usd=0.0,
         requests=[],
         feedback=None,
-        evaluation=None,
+        evaluator=None,
         harness=None,
         experience=[],
-        invalid_evaluations=0,
-        external_metrics={},
-        external_primary_metric=None,
-        kg_index=None,
-        bank_head_served=None,
+        rejected_candidates=0,
+        callback_metrics={},
+        callback_primary_metric=None,
+        knowledge_index=None,
+        experience_head=None,
     )
     fields.update(overrides)
     return Solution(**fields)

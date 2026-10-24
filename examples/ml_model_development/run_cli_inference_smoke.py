@@ -119,11 +119,11 @@ def main() -> None:
         GOAL,
         repo=str(workdir),
         output=str(sandbox / "campaign"),
-        budget=Budget(iterations=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
+        budget=Budget(experiments=BUILD_MAX_ITERATIONS, minutes=BUILD_BUDGET_MINUTES),
     ))
     (sandbox / "solution.txt").write_text(sol.explain())
     timings["build_score"] = sol.score
-    timings["build_succeeded"] = sol.succeeded
+    timings["build_goal_achieved"] = sol.goal_achieved
     timings_path.write_text(json.dumps(timings, indent=1))
     print(f"\nCLI_SMOKE_COMPLETE sandbox={sandbox} timings={timings}",
           flush=True)

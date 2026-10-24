@@ -24,17 +24,17 @@ def cmd_build(args) -> None:
         if not brief_path.is_file():
             print(f"Error: brief not found: {brief_path}")
             sys.exit(1)
-        goal = Brief.read(brief_path)
+        brief = Brief.read(brief_path)
     elif args.goal_file:
-        goal = Path(args.goal_file).expanduser().read_text(encoding="utf-8")
+        brief = Path(args.goal_file).expanduser().read_text(encoding="utf-8")
     elif args.goal:
-        goal = args.goal
+        brief = args.goal
     elif args.resume:
-        goal = None   # a resume takes the goal from the checkpoint
+        brief = None   # a resume takes the brief from the checkpoint
     else:
         print(
             "Error: --goal, --goal-file or --brief is required "
-            "(a resume takes the goal from the checkpoint)"
+            "(a resume takes the brief from the checkpoint)"
         )
         sys.exit(1)
 
@@ -59,16 +59,16 @@ def cmd_build(args) -> None:
 
     kapso = Kapso(config=args.config, kg_index=args.kg_index)
     solution = kapso.build(
-        goal,
+        brief,
         evaluation=args.evaluation,
         data=args.data,
         repo=args.repo,
         output=args.output,
         budget=Budget(
             minutes=args.budget_minutes,
-            iterations=args.iterations,
-            dollars=args.budget_dollars,
-            reserve_minutes=args.reserve_minutes,
+            experiments=args.budget_experiments,
+            usd=args.budget_usd,
+            reserve_minutes=args.budget_reserve_minutes,
         ),
         resume=args.resume,
         mode=args.mode,
@@ -86,8 +86,8 @@ def add_parser(subparsers):
 Examples:
   kapso build --brief kapso-brief.md --evaluation ./evaluation --data ./data --repo . --output ../churn-build --detach
   kapso build --goal "Build a web scraper for news articles" --output ./scraper
-  kapso build --goal-file problem.txt --iterations 20 --output ./campaign
-  kapso build --output ./campaign --resume       # goal and flags from the checkpoint and the launch record
+  kapso build --goal-file problem.txt --budget-experiments 20 --output ./campaign
+  kapso build --output ./campaign --resume       # brief and flags from the checkpoint and the launch record
   kapso watch ./campaign --follow                # follow a detached build
 """
     )
@@ -95,7 +95,7 @@ Examples:
     goal_group = build_parser.add_mutually_exclusive_group()
     goal_group.add_argument(
         "-g", "--goal", type=str,
-        help="The objective in a sentence (a resume takes it from the checkpoint)",
+        help="The objective in a sentence (a resume takes the brief from the checkpoint)",
     )
     goal_group.add_argument(
         "-f", "--goal-file", type=str,
@@ -109,7 +109,7 @@ Examples:
 
     build_parser.add_argument(
         "--evaluation", type=str,
-        help="Directory holding the evaluation (copied to kapso_evaluation/, integrity-protected)",
+        help="Directory holding the evaluator (copied to kapso_evaluation/, integrity-protected)",
     )
     build_parser.add_argument(
         "--data", type=str,
@@ -121,23 +121,23 @@ Examples:
     )
     build_parser.add_argument(
         "-o", "--output", type=str,
-        help="The campaign directory (empty for a fresh build; the solution's trace)",
+        help="The campaign directory (empty for a fresh build): the branches, the record, the solution",
     )
 
-    build_parser.add_argument(
-        "-i", "--iterations", type=int, default=None,
-        help=f"Max experiments (default: {DEFAULT_MAX_ITERATIONS}; a resume keeps the launch's)",
-    )
     build_parser.add_argument(
         "--budget-minutes", type=float, default=None,
         help="Wall-clock budget for the campaign (durable across resumes)",
     )
     build_parser.add_argument(
-        "--budget-dollars", type=float, default=None,
+        "--budget-experiments", type=int, default=None,
+        help=f"Max experiments this run (default: {DEFAULT_MAX_ITERATIONS}; a resume keeps the launch's)",
+    )
+    build_parser.add_argument(
+        "--budget-usd", type=float, default=None,
         help="Best-effort model-spend budget in USD",
     )
     build_parser.add_argument(
-        "--reserve-minutes", type=float, default=None,
+        "--budget-reserve-minutes", type=float, default=None,
         help="Wall clock escrowed for the final checkout and evaluation",
     )
     build_parser.add_argument(

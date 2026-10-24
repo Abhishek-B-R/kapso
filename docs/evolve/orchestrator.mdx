@@ -25,11 +25,11 @@ from kapso import Kapso, Budget
 kapso = Kapso()
 solution = kapso.build(
     "Build a classifier with accuracy > 0.9",
-    budget=Budget(iterations=10),
+    budget=Budget(experiments=10),
 )
 
 # Check if goal was achieved
-if solution.succeeded:
+if solution.goal_achieved:
     print(f"Goal achieved with score: {solution.score}")
 ```
 

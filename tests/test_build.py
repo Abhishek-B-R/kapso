@@ -24,11 +24,11 @@ def test_build_iris_classifier(tmp_path):
         "Train an Iris flower classifier using scikit-learn. "
         "Target accuracy > 0.90 on test set.",
         output=str(tmp_path / "iris_classifier"),
-        budget=Budget(iterations=5),
+        budget=Budget(experiments=5),
     )
 
-    assert solution.trace.is_dir()
-    assert solution.iterations >= 1
+    assert solution.campaign.is_dir()
+    assert solution.experiments >= 1
 
 
 def test_build_simple_math(tmp_path):
@@ -46,8 +46,8 @@ def test_build_simple_math(tmp_path):
         Target: Find a point where f(x,y) < 0.001
         """,
         output=str(tmp_path / "rosenbrock_min"),
-        budget=Budget(iterations=3),
+        budget=Budget(experiments=3),
     )
 
-    assert solution.trace.is_dir()
-    assert solution.iterations >= 1
+    assert solution.campaign.is_dir()
+    assert solution.experiments >= 1

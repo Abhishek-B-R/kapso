@@ -30,7 +30,7 @@ solution = kapso.build(
     "Improve the support agent",
     output="./campaign",
     evaluation="./evaluation",
-    budget=Budget(iterations=3),
+    budget=Budget(experiments=3),
 )
 ```
 
@@ -93,8 +93,8 @@ nodes are excluded from:
 - final best-branch checkout.
 
 Recent-history tools can still report the attempt as `INVALID EVALUATION`, so a
-later iteration knows not to repeat the same mistake. `solution.invalid_evaluations`
-counts the rejected candidates, and `kapso watch --tree` labels each node as
+later iteration knows not to repeat the same mistake. `solution.rejected_candidates`
+counts them, and `kapso watch --tree` labels each node as
 rejected.
 
 ## Resume behavior
@@ -108,7 +108,7 @@ solution = kapso.build(
     output="./campaign",
     evaluation="./evaluation",
     resume=True,
-    budget=Budget(iterations=1),
+    budget=Budget(experiments=1),
 )
 ```
 

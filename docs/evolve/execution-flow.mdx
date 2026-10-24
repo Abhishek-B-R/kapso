@@ -31,7 +31,7 @@ solution = kapso.build(
     "Build a classifier with 95% accuracy",
     evaluation="./evaluation/",   # optional: your evaluator, protected
     data="./data/",               # optional: your data
-    budget=Budget(iterations=10),
+    budget=Budget(experiments=10),
 )
 ```
 
@@ -181,11 +181,11 @@ best_branch = orchestrator.search_strategy.checkout_to_best_experiment_branch()
 # The result: the brief, the delivered branch and commit, the score under the
 # registered evaluator, the stop reason and the cost — written to
 # .kapso/solution.json so Solution.open() reads it from any process
-solution = Solution(brief=brief, trace=workspace_path, branch=best_branch, ...)
-solution.write()
+solution = Solution(brief=brief, campaign=workspace_path, branch=best_branch, ...)
+solution.save()
 
 # Check if goal was achieved
-if solution.succeeded:
+if solution.goal_achieved:
     print(f"Goal achieved with score: {solution.score}")
 ```
 

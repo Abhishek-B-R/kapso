@@ -13,23 +13,26 @@ released package is not recorded yet.
 ## What you get
 
 - `repo/predict.py`, the starting model, improved on a branch of its own
-  inside `build/`, one branch per experiment.
+  inside `campaign/`, one branch per experiment.
 - A score measured by `evaluation/evaluate.py`: ROC AUC on 3,000 held-out
   rows whose labels never enter the workspace.
-- `build/.kapso/solution.json`, the record; `Solution.open("build")` reads
-  it from any process, and `kapso deploy --solution-path build` ships it.
+- `campaign/.kapso/solution.json`, the record; `Solution.open("campaign")` reads
+  it from any process, and `kapso deploy campaign` ships it.
 
 ## Run it
 
 ```bash
 python generate.py        # the data: 10,000 training rows, 3,000 held out, seeded
 kapso doctor build
-kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output build --detach
-kapso watch build --follow
+kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+kapso watch campaign --follow
 ```
 
-`python run.py` is the same build from Python; it blocks until the build
-returns and prints `solution.explain()`.
+`python run.py` is the same build from Python, into the same `campaign/`
+directory: run one or the other. It blocks until the build returns and
+prints `solution.explain()`. `--evaluation evaluation` copies the directory
+to `kapso_evaluation/` inside the campaign, which is why the brief names
+it there.
 
 ## What to look at
 
@@ -37,17 +40,18 @@ returns and prints `solution.explain()`.
   target, the rules the judge enforces, the budget. Everything the campaign
   knows about the task is in it, and all of it reaches the judge.
 - The summary block: `COMPLETED` with the score and the stop reason, or
-  `WAITING ON YOU` with what to answer (`kapso inbox build`).
+  `WAITING ON YOU` with what to answer (`kapso inbox campaign`).
 - `solution.explain()` and `solution.diff()`: the delivered candidate, its
   measurement, and its code against the seed.
-- `git -C build branch`: every experiment, kept.
+- `git -C campaign branch`: every experiment, kept.
 
 ## Change it
 
 - The target: edit `Target` and the objective. A target the data cannot
   reach ends in `max_iterations`, not in a result.
-- The budget: the brief's `Budget minutes=10 iterations=4`, or
-  `--budget-minutes` and `--iterations` on the command, which win over it.
+- The budget: the brief's `Budget minutes=10 experiments=4`, or
+  `--budget-minutes` and `--budget-experiments` on the command, which win
+  over it.
 - The evaluator: `evaluation/evaluate.py` runs `python predict.py --data
   kapso_datasets --out predictions.csv`, scores the predictions against the
   private labels, prints `auc: 0.8412` as its last line, writes

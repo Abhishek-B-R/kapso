@@ -28,14 +28,21 @@ keyword arguments of `build()` unchanged; WP2, WP3 and WP4 retire them.
 
 ## Interface
 
+The names below are the ones that shipped, after the naming review (see
+Review, "Naming review"): `experiments` and `usd` in the budget,
+`campaign` for the directory, `goal_achieved`, `evaluator`,
+`rejected_candidates`, `callback_metrics`, `knowledge_index`,
+`experience_head`, `save()`, `build(brief=...)`, the `--budget-*` flag
+family, and `kapso deploy <campaign>`.
+
 ```python
 @dataclass
 class Budget:
     minutes: float | None = None
-    iterations: int | None = None
-    dollars: float | None = None
+    experiments: int | None = None
+    usd: float | None = None                  # model spend
     reserve_minutes: float | None = None      # finalization reserve
-    # __post_init__: every set value finite and positive, iterations an int,
+    # __post_init__: every set value finite and positive, experiments an int,
     # reserve_minutes < minutes when both are set; None means "the config's".
 
 @dataclass
@@ -55,52 +62,51 @@ class Brief:
     def render(self) -> str: ...              # the whole brief as the text the engine receives
 
 @dataclass
-class Evaluation:                             # the registry head at delivery
+class EvaluatorRef:                           # the registry head at delivery
     version: int
     evaluator_id: str
     provenance: str                           # provided | maintainer_built | derived_fast
 
 @dataclass
-class HarnessRef:   name: str; version: str; hash: str; ref: str        # WP2 fills
+class HarnessRef:   name: str; version: str; hash: str; source: str     # WP2 fills
 @dataclass
 class ExperienceRef: reference: str; kind: str; resolved: str; head: str | None; provenance: str   # WP3 fills
 
 @dataclass
 class Solution:
     brief: Brief
-    trace: Path                 # the campaign directory: the workspace, checked out at the delivered branch, and the record under .kapso/
+    campaign: Path              # the campaign directory: the workspace, checked out at the delivered branch, and the record under .kapso/
     branch: str | None          # the delivered candidate's branch; None when no candidate succeeded
     commit: str | None          # its commit at delivery; None with branch
     base_commit: str            # the workspace's seed commit, diff()'s base
     score: float | None         # the delivered candidate's authoritative measurement
-    succeeded: bool             # the feedback's stop vote: the goal was met
+    goal_achieved: bool         # the judge's verdict that the objective was met
     stopped_reason: str         # goal_achieved | max_iterations | budget_exhausted | waiting_for_user | ...
     stop_detail: str | None
-    iterations: int
-    cumulative_iterations: int
+    experiments: int            # this run
+    experiments_total: int      # across every resume
     cost_usd: float
     requests: list[dict]        # open inbox requests when stopped_reason is waiting_for_user
-    feedback: str | None        # the last feedback's text
-    evaluation: Evaluation | None   # None when no evaluator was registered (the agent built its own)
+    feedback: str | None        # the judge's last verdict, in full
+    evaluator: EvaluatorRef | None   # None when no evaluator was registered (the agent built its own)
     harness: HarnessRef | None
     experience: list[ExperienceRef]
-    resumed: bool
-    invalid_evaluations: int
-    external_metrics: dict[str, float]
-    external_primary_metric: str | None
-    kg_index: str | None        # until WP3 folds these two into experience
-    bank_head_served: str | None
+    rejected_candidates: int    # candidates rejected for touching the evaluator
+    callback_metrics: dict[str, float]      # the caller's iteration_evaluator, delivered candidate
+    callback_primary_metric: str | None
+    knowledge_index: str | None             # until WP3 folds these two into experience
+    experience_head: str | None
 
     RECORD = ".kapso/solution.json"
-    def write(self) -> Path: ...              # build() writes it at return, every time it returns
+    def save(self) -> Path: ...               # build() writes it at return, every time it returns
     @classmethod
     def open(cls, path) -> "Solution": ...    # reads the record; raises when absent ("not finished; watch it")
-    def explain(self) -> str: ...             # the summary block, from the fields and the experiment history
-    def diff(self) -> str: ...                # git diff base_commit..commit in trace; "" when no candidate
+    def explain(self) -> str: ...             # the summary block, from the fields
+    def diff(self) -> str: ...                # git diff base_commit..commit in the campaign; "" when no candidate
 
 class Software: today's `kapso.deployment.software.Software`, unchanged in WP1.
 
-def build(self, goal: str | Brief | None = None, *, evaluation=None, data=None, repo=None,
+def build(self, brief: str | Brief | None = None, *, evaluation=None, data=None, repo=None,
           output=None, budget: Budget | None = None, resume=False, on_status=None,
           mode=None, coding_agent=None, context=None, additional_context="",
           serving_scope=None, iteration_evaluator=None,
@@ -108,17 +114,19 @@ def build(self, goal: str | Brief | None = None, *, evaluation=None, data=None, 
 ```
 
 Precedence, highest first: a `budget=` argument's set fields; the brief's
-`Budget`; on a resume, the launch record; the config's defaults. `goal` may
-be left out only on a resume, which takes it from the checkpoint, as today;
-`reply()` resumes the same way. A `str` goal becomes a `Brief` with only
+`Budget`; on a resume, the launch record; the config's defaults. `brief`
+may be left out only on a resume, which takes it from the checkpoint, as
+today; `reply()` resumes the same way. A `str` becomes a `Brief` with only
 `objective`; a `Brief` is rendered whole into the engine's problem
 description, so nothing the engineer wrote is lost on the way to the model.
 `evaluation`, `data` and `repo` are call arguments, never brief fields.
+Every path `build()` takes reaches the engine absolute (a URL for `repo`
+goes to the cloner as it is).
 
 `Kapso(config=...)` replaces `Kapso(config_path=...)`; the attribute stays
 `config_path` internally. `kg_index` and `bank` stay until WP3.
-`Budget.dollars` is the model-spend budget (today's `cost_budget`); the
-platform-credit budget stays a config value. The iteration default's
+`Budget.usd` is the model-spend budget (today's `cost_budget`); the
+platform-credit budget stays a config value. The experiment default's
 literal moves into the config in WP4, with the budget block it belongs to.
 
 **The brief file**, `kapso-brief.md`:
@@ -132,7 +140,7 @@ Target       0.85
 Rules
   - the evaluator is never modified
   - no fitting on the held-out rows
-Budget       minutes=480 iterations=10
+Budget       minutes=480 experiments=10
 Harness      predictive-modelling
 Experience   mine, leeroopedia
 ```
@@ -142,8 +150,8 @@ Experience   mine, leeroopedia
   followed by whitespace and the value; an indented line continues the
   field above, newline preserved; `Rules` and `Experience` take `- ` items on
   indented lines, and `Experience` also accepts one comma-separated line;
-  `Budget` takes `name=value` tokens from `minutes`, `iterations`,
-  `dollars`, `reserve_minutes`; blank lines are ignored; nothing else is.
+  `Budget` takes `name=value` tokens from `minutes`, `experiments`,
+  `usd`, `reserve_minutes`; blank lines are ignored; nothing else is.
 - Raises, with the line number: an unknown field name; a repeated field; a
   missing or blank `Objective`; an indented line before any field; a `- `
   item under a scalar field; a `Budget` token outside the four names or
@@ -210,8 +218,8 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
    naming `kapso watch`.
 5. `kapso build` in `cli/build.py`: `--goal/-g`, `--goal-file/-f` (plain
    text), `--brief` (the brief file), `--evaluation`, `--data`, `--repo`,
-   `--output/-o`, `--budget-minutes`, `--budget-dollars`, `--reserve-minutes`,
-   `--iterations/-i`, `--resume`, `--detach`, `--log`, `--config`,
+   `--output/-o`, `--budget-minutes`, `--budget-experiments`, `--budget-usd`,
+   `--budget-reserve-minutes`, `--resume`, `--detach`, `--log`, `--config`,
    `--mode/-m`, `--coding-agent/-a`, `--kg-index`; `kapso evolve` gone.
    Test `tests/test_cli_build.py`: the test enumerates the parser's own
    actions, so a flag that stops reaching the facade fails it, not only
@@ -219,7 +227,8 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
    `Brief`; a `--resume` without a goal reaches `build(goal=None,
    resume=True)`; `--detach` re-invokes with the child argv (the WP0 test,
    renamed).
-6. `kapso deploy --solution-path` opens the record with `Solution.open`;
+6. `kapso deploy <campaign>` opens the record with `Solution.open` (the
+   directory is positional, as `kapso watch` and `kapso inbox` take it);
    `--goal` removed (the brief is in the record).
 7. The status file: `BuildStatus`, `OPERATION = "build"`; `watch` and the
    harvest read the new name. Test: the observability tests' fixtures.
@@ -256,7 +265,7 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
 
   ```
   kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo \
-              --output ../churn-build --budget-minutes 5 --iterations 2
+              --output ../churn-build --budget-minutes 15 --budget-experiments 2
   ```
 
   producing `../churn-build/.kapso/solution.json`, then in a second process
@@ -270,7 +279,7 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
 
   and the twelve-line Python flow from `harness-design.md` section 8 with
   `load_harness` and `load_experience` left out, run end to end with
-  `budget=Budget(minutes=5, iterations=2)`.
+  `budget=Budget(minutes=15, experiments=2)`.
 - Semantic hooks: the naming review, run with `scripts/redesign/review.sh`
   (Codex astra at xhigh and Claude Code opus-5) over `handles.py` and the
   `build()` signature, each reviewer asked, per public name and
@@ -343,7 +352,7 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
   large file through to the problem description.
 - The status operation rename reaches the harvest and the trajectory
   store, which key on it; their tests run in the gate.
-- A `Solution` is only as durable as its record; `write()` runs on every
+- A `Solution` is only as durable as its record; `save()` runs on every
   return path of `build()`, including the paused one.
 
 ## Review
@@ -380,3 +389,47 @@ Codex's the answer above stands, and the rest:
 | `Software` exists already; `Experience` collides with the experience-source handle; `Evaluation`, `HarnessRef`, `ExperienceRef` undefined; the package's lazy exports not owned | `Software` is that class; the collision is logged for WP3; the three types are defined; `src/kapso/__init__.py` is in Ownership |
 | four homes for the budget without precedence; the iteration default is a literal; `dollars` could mean platform credits; brief-versus-`load_harness` precedence unstated | precedence written; the literal moves with WP4's budget block; `dollars` is model spend; harness precedence is WP2's, logged |
 | WP1 answers the interfaces document's open question (is `Brief` the API object or a CLI-only file?) without logging it | logged in the decisions file: it is both, one grammar |
+
+### Naming review
+
+After the build, both reviewers read `handles.py`, the facade, the CLI,
+the churn example and the Build pages and judged every public name (brief
+`scripts/redesign/review.sh`, 2026-10-24). Taken, because both said so or
+one said so and the argument held:
+
+| Was | Is | Why |
+|---|---|---|
+| `Budget.iterations`, `Solution.iterations`, `cumulative_iterations`, `--iterations`, brief token `iterations=` | `experiments`, `experiments_total`, `--budget-experiments`, `experiments=` | every string a person reads said experiments; the code alone said iterations |
+| `Budget.dollars`, `--budget-dollars`, token `dollars=` | `usd`, `--budget-usd`, `usd=` | matches `cost_usd`; one word for money |
+| `--reserve-minutes` | `--budget-reserve-minutes` | the four budget flags are one family a person can tab through |
+| `Solution.trace` | `Solution.campaign` | "trace" promised a log; it is the directory you `cd` into, the one `watch`, `inbox` and `deploy` take |
+| `succeeded` | `goal_achieved` | read as "ran without error"; it is the judge's verdict, and matches the stop reason's value and `explain()`'s label |
+| `Evaluation`, `Solution.evaluation` | `EvaluatorRef`, `Solution.evaluator` | "evaluation" was spent on the directory, the stamp and the score; the stamp is the evaluator's identity |
+| `invalid_evaluations` | `rejected_candidates` | it counts candidates |
+| `external_metrics`, `external_primary_metric` | `callback_metrics`, `callback_primary_metric` | "external" was the engine's point of view; they come from the caller's `iteration_evaluator` |
+| `kg_index`, `bank_head_served` | `knowledge_index`, `experience_head` | an unexpanded abbreviation and three internal words, on the public record |
+| `Solution.write()` | `save()` | `Brief.write(path)` takes a destination and this one refused one |
+| `build(goal=...)` | `build(brief=...)` | the first thing every page passes is a `Brief`; a string stays accepted |
+| `HarnessRef.ref` | `HarnessRef.source` | the class suffix repeated with another meaning |
+| `kapso deploy --solution-path DIR` | `kapso deploy DIR` | the same directory `watch` and `inbox` take positionally |
+| `--output build` in the examples | `--output campaign` | the word `build` was the verb, a doctor argument, a directory and a watch target in four consecutive lines |
+
+Kept, with the reason: `Harness` and `Experience` (the owner's words for
+the two layers; `Domain` and `Lessons` were proposed); `Solution` (the
+design's noun; `BuildResult` was proposed); `stopped_reason` (the status
+file and the checkpoint say it, and `kapso watch --json` is public too;
+WP6 may rename both together); `requests` (the inbox's vocabulary
+throughout); `feedback` (the engine's word for the judge's text);
+`explain()` and `open()` (consistent with `memory.explain()` and
+`LessonResult.explain()`); `Kapso(config=)` (its siblings `kg_index=` and
+`bank=` are paths without a suffix); `--goal-file` beside `--brief` (a
+plain prose file would need every line indented to pass as a brief);
+`reserve_minutes` as the field name; `ExperienceRef`'s fields (WP3's).
+
+The first-build stumbles both reviewers found were fixed: the example's
+output directory is `campaign/`; the README and the page say `run.py` and
+the CLI line build into the same directory, so run one or the other; the
+`--evaluation evaluation` to `kapso_evaluation/` naming is explained where
+the command is; `run.py` says it runs from the example directory after
+`generate.py`; the deploy-and-learn snippet binds `kapso` and imports what
+it uses.

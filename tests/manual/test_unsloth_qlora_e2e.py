@@ -141,7 +141,7 @@ def run_test():
         solution = kapso.build(
             TEST_CONFIG["goal"],
             output=output_dir,
-            budget=Budget(iterations=TEST_CONFIG["max_iterations"]),
+            budget=Budget(experiments=TEST_CONFIG["max_iterations"]),
             mode=TEST_CONFIG["mode"],
             coding_agent=TEST_CONFIG["coding_agent"],
             language=TEST_CONFIG["language"],
@@ -156,11 +156,11 @@ def run_test():
         # Results
         logger.info("")
         logger.info("RESULTS:")
-        logger.info(f"  Experiments: {solution.iterations}")
-        logger.info(f"  Code: {solution.trace}")
+        logger.info(f"  Experiments: {solution.experiments}")
+        logger.info(f"  Code: {solution.campaign}")
         
         # Check generated code for Unsloth patterns
-        main_file = Path(solution.trace) / "main.py"
+        main_file = Path(solution.campaign) / "main.py"
         if main_file.exists():
             code = main_file.read_text()
             patterns = ["FastLanguageModel", "get_peft_model", "SFTTrainer", "save_pretrained"]

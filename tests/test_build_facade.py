@@ -1,7 +1,8 @@
 """`Kapso.build()`: the brief is the engine's goal, whole; budgets resolve
 call over brief over launch record over config; a resume reads the brief
-back from the checkpoint; the record a build writes has one pinned shape
-and `Solution.open` reads it back."""
+back from the checkpoint; every path reaches the engine absolute; the
+record a build writes has one pinned shape and `Solution.open` reads it
+back."""
 
 import json
 
@@ -21,11 +22,11 @@ from tests.handles_support import (
 )
 
 RECORD_KEYS = [
-    "schema_version", "brief", "trace", "branch", "commit", "base_commit", "score",
-    "succeeded", "stopped_reason", "stop_detail", "iterations", "cumulative_iterations",
-    "cost_usd", "requests", "feedback", "evaluation", "harness", "experience",
-    "invalid_evaluations", "external_metrics", "external_primary_metric", "kg_index",
-    "bank_head_served",
+    "schema_version", "brief", "campaign", "branch", "commit", "base_commit", "score",
+    "goal_achieved", "stopped_reason", "stop_detail", "experiments", "experiments_total",
+    "cost_usd", "requests", "feedback", "evaluator", "harness", "experience",
+    "rejected_candidates", "callback_metrics", "callback_primary_metric", "knowledge_index",
+    "experience_head",
 ]
 
 
@@ -40,7 +41,7 @@ def test_a_sentence_becomes_a_brief_and_the_whole_brief_is_the_engines_goal(tmp_
     assert captured["goal"] == rendered
     assert captured["handler"].problem_description == f"# Goal\n{rendered}"
     assert solution.brief == Brief(objective="Raise AUC above 0.85")
-    assert solution.trace == workspace.resolve()
+    assert solution.campaign == workspace.resolve()
     assert (workspace / ".kapso" / "solution.json").is_file()
     assert Solution.open(workspace) == solution
 
@@ -80,9 +81,9 @@ def test_budget_precedence_is_the_call_then_the_brief_then_the_default(tmp_path,
     workspace = tmp_path / "ws"
     git_workspace(workspace)
     captured = fake_orchestrator(monkeypatch, workspace, solve_result())
-    brief = Brief(objective="g", budget=Budget(minutes=30, iterations=4))
+    brief = Brief(objective="g", budget=Budget(minutes=30, experiments=4))
 
-    facade().build(brief, output=str(workspace), budget=Budget(iterations=2))
+    facade().build(brief, output=str(workspace), budget=Budget(experiments=2))
     assert captured["solve"] == {
         "experiment_max_iter": 2, "time_budget_minutes": 30,
         "cost_budget": None, "finalization_reserve_minutes": None,
@@ -100,8 +101,8 @@ def test_relative_paths_reach_the_engine_absolute(tmp_path, monkeypatch):
     """A session clone commits its run data by the workspace path from its
     own directory, so a relative output must not reach it (the first
     fresh-machine proof run crashed on `git add ../build/...`). The
-    evaluation, data and a local repo are resolved the same way; a URL is
-    left alone."""
+    evaluation, data and a local repo are resolved the same way; a URL goes
+    to the cloner as it is."""
     monkeypatch.chdir(tmp_path)
     workspace = tmp_path / "campaigns" / "build"
     git_workspace(workspace)
@@ -118,7 +119,7 @@ def test_relative_paths_reach_the_engine_absolute(tmp_path, monkeypatch):
     assert captured["eval_dir"] == str((tmp_path / "evaluation").resolve())
     assert captured["data_dir"] == str((tmp_path / "data").resolve())
     assert captured["initial_repo"] == str((tmp_path / "repo").resolve())
-    assert solution.trace == workspace.resolve()
+    assert solution.campaign == workspace.resolve()
 
     other = tmp_path / "campaigns" / "other"
     git_workspace(other)
@@ -129,8 +130,8 @@ def test_relative_paths_reach_the_engine_absolute(tmp_path, monkeypatch):
     assert captured["initial_repo"] == "cloned:https://github.com/org/starter"
 
 
-def test_build_needs_a_goal_unless_resuming():
-    with pytest.raises(ValueError, match="needs a goal"):
+def test_build_needs_a_brief_unless_resuming():
+    with pytest.raises(ValueError, match="needs a brief"):
         facade().build()
     with pytest.raises(TypeError, match="string or a Brief"):
         facade().build(42)
@@ -196,7 +197,7 @@ def test_the_record_has_the_pinned_shape_and_names_the_delivered_commit(tmp_path
     assert record["schema_version"] == 1
     assert record["brief"] == Brief(objective="g").to_dict()
     assert (record["branch"], record["commit"], record["base_commit"]) == ("generic_exp_1", winner, base)
-    assert (record["score"], record["succeeded"], record["stopped_reason"]) == (0.9, True, "goal_achieved")
+    assert (record["score"], record["goal_achieved"], record["stopped_reason"]) == (0.9, True, "goal_achieved")
     assert record["cost_usd"] == 1.25 and record["feedback"] == "AUC 0.9 beats the target"
-    assert record["evaluation"] is None and record["harness"] is None and record["experience"] == []
+    assert record["evaluator"] is None and record["harness"] is None and record["experience"] == []
     assert "+improved = True" in solution.diff()

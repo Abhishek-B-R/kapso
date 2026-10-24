@@ -18,7 +18,7 @@ object in Python; one grammar, read by `Brief.read(path)` and written by
 | `Baseline` | `baseline` | text | no |
 | `Target` | `target` | text | no |
 | `Rules` | `rules` | `- ` items | no |
-| `Budget` | `budget` | `name=value` tokens: `minutes`, `iterations`, `dollars`, `reserve_minutes` | no |
+| `Budget` | `budget` | `name=value` tokens: `minutes`, `experiments`, `usd`, `reserve_minutes` | no |
 | `Harness` | `harness` | a reference, kept verbatim | no |
 | `Experience` | `experience` | `- ` items, or one comma-separated line | no |
 
@@ -37,8 +37,8 @@ any case; `Measured by` needs nothing special to delimit it.
   `- `; an item continues on further indented lines. `Experience` also
   takes one comma-separated line.
 - `Budget` takes `name=value` tokens, on the field line or continuation
-  lines: `minutes`, `dollars` and `reserve_minutes` are positive numbers,
-  `iterations` a positive integer, `reserve_minutes` smaller than
+  lines: `minutes`, `usd` and `reserve_minutes` are positive numbers,
+  `experiments` a positive integer, `reserve_minutes` smaller than
   `minutes`.
 - Reference strings are kept as written: `acme/harnesses@v3#trading` and
   `~/banks/mine.git` survive intact.
@@ -56,7 +56,7 @@ Rules
   - the evaluator is never modified
   - no fitting on the holdout rows, and no reading them:
     the labels are not in the workspace
-Budget       minutes=60 iterations=10
+Budget       minutes=60 experiments=10
 Harness      predictive-modelling
 Experience   mine, leeroopedia
 ```
@@ -76,7 +76,7 @@ Each with the file and line number, never guessed at:
 | A value on the `Rules` line itself | `takes `- ` items on the lines below it` |
 | `Experience` as both a comma line and items | `not both` |
 | An empty item, or an empty comma-separated entry | `empty item` |
-| `Budget` with no tokens, an unknown name, a non-number, a non-integer `iterations`, or a repeated name | `needs name=value tokens`, `not name=value`, `must be a number`, `must be an integer`, `given twice` |
+| `Budget` with no tokens, an unknown name, a non-number, a non-integer `experiments`, or a repeated name | `needs name=value tokens`, `not name=value`, `must be a number`, `must be an integer`, `given twice` |
 | A budget the engine cannot spend: zero, negative, infinite, a reserve not smaller than the minutes | `must be a positive finite number`, `must be smaller than` |
 
 ## The Python object
@@ -87,7 +87,7 @@ from kapso import Brief, Budget
 brief = Brief.read("kapso-brief.md")
 brief.objective, brief.measured_by, brief.baseline, brief.target
 brief.rules            # list[str]
-brief.budget           # Budget(minutes=60, iterations=10, dollars=None, reserve_minutes=None) or None
+brief.budget           # Budget(minutes=60, experiments=10, usd=None, reserve_minutes=None) or None
 brief.harness          # str or None
 brief.experience       # list[str]
 

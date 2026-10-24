@@ -42,12 +42,12 @@ def _run(monkeypatch, *argv: str) -> None:
 
 def test_build_detach_reruns_itself_in_a_session_of_its_own(tmp_path, monkeypatch, popen, capsys):
     monkeypatch.chdir(tmp_path)
-    _run(monkeypatch, "build", "--goal", "g", "--output", "campaign", "--detach", "--iterations", "2")
+    _run(monkeypatch, "build", "--goal", "g", "--output", "campaign", "--detach", "--budget-experiments", "2")
 
     [call] = popen
     assert call.argv == [
         sys.executable, "-m", "kapso.cli",
-        "build", "--goal", "g", "--output", "campaign", "--iterations", "2",
+        "build", "--goal", "g", "--output", "campaign", "--budget-experiments", "2",
     ]
     assert call.kwargs["start_new_session"] is True
     assert call.kwargs["stdin"] is subprocess.DEVNULL

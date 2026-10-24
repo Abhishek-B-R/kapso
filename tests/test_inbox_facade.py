@@ -108,7 +108,7 @@ def test_a_fresh_campaign_writes_the_launch_record_and_registers(tmp_path, monke
 
     _facade().build(
         "Improve support\nmore detail", output=str(workspace),
-        budget=Budget(iterations=7, minutes=120), mode="GENERIC", context=["a hint"],
+        budget=Budget(experiments=7, minutes=120), mode="GENERIC", context=["a hint"],
     )
 
     record = read_launch_record(workspace)
@@ -264,7 +264,7 @@ def test_reply_resumes_with_the_launch_arguments(tmp_path, monkeypatch):
     # checkpoint and every other argument from the launch record itself.
     assert captured["resume"] is True
     assert captured["output"] == str(workspace.resolve())
-    assert captured["budget"] == Budget(iterations=3)
+    assert captured["budget"] == Budget(experiments=3)
     assert set(captured) == {"init", "resume", "output", "budget"}
 
 

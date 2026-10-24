@@ -11,4 +11,4 @@ Rules
   - results stay numerically correct: max float difference below 1e-5
   - the module runs on CUDA devices
   - evaluate.py is never modified
-Budget       minutes=90 iterations=8
+Budget       minutes=90 experiments=8

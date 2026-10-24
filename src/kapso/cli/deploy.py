@@ -1,4 +1,4 @@
-"""`kapso deploy`: deploy a solution as running software."""
+"""`kapso deploy`: deploy the solution a build wrote as running software."""
 
 import argparse
 import signal
@@ -18,7 +18,7 @@ DEPLOY_STRATEGIES = [member.value for member in DeployStrategy]
 def cmd_deploy(args) -> None:
     """Handle the deploy command - deploy solutions."""
     # The solution a build wrote in that directory (its .kapso/solution.json)
-    solution = Solution.open(args.solution_path)
+    solution = Solution.open(args.campaign)
 
     # Parse strategy (argparse already limited it to DEPLOY_STRATEGIES)
     strategy = DeployStrategy(args.strategy.lower())
@@ -48,7 +48,7 @@ def cmd_deploy(args) -> None:
     print("DEPLOY COMPLETE")
     print("=" * 60)
     print(f"Strategy: {strategy}")
-    print(f"Code path: {solution.trace}")
+    print(f"Campaign: {solution.campaign}")
     print(f"Software ready: {software.is_healthy()}")
 
     # If interactive mode, keep running until Ctrl+C, then stop the software.
@@ -69,19 +69,18 @@ def cmd_deploy(args) -> None:
 def add_parser(subparsers):
     deploy_parser = subparsers.add_parser(
         "deploy",
-        help="Deploy solutions as running software",
+        help="Deploy the solution a build wrote as running software",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  kapso deploy --solution-path ../churn-build
-  kapso deploy --solution-path ../churn-build --strategy docker
-  kapso deploy --solution-path ../churn-build --env API_KEY=xxx --interactive
+  kapso deploy ../churn-build
+  kapso deploy ../churn-build --strategy docker
+  kapso deploy ../churn-build --env API_KEY=xxx --interactive
 """
     )
 
-    # Required options
     deploy_parser.add_argument(
-        "--solution-path", type=str, required=True,
+        "campaign", type=str,
         help="The campaign directory a build wrote (holds .kapso/solution.json)",
     )
 

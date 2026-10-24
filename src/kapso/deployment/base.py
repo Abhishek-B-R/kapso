@@ -102,7 +102,7 @@ class DeployConfig:
     @property
     def code_path(self) -> str:
         """Path to the generated code/repository."""
-        return str(self.solution.trace)
+        return str(self.solution.campaign)
     
     @property
     def goal(self) -> str:

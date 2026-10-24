@@ -136,7 +136,7 @@ class AdapterAgent:
         """
         Adapt a solution for the specified deployment setting.
         
-        Creates a copy of the solution at {trace}_adapted_{strategy} and
+        Creates a copy of the solution at {campaign}_adapted_{strategy} and
         performs adaptation there. The original solution is never modified.
         
         Args:
@@ -152,7 +152,7 @@ class AdapterAgent:
         print(f"[Adapter] Adapting for {setting.strategy} deployment")
         
         # Extract from solution
-        original_path = str(solution.trace)
+        original_path = str(solution.campaign)
         goal = solution.brief.objective
         
         # Validate strategy is available

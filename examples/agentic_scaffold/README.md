@@ -11,10 +11,10 @@ Recorded result: not recorded yet.
 ## What you get
 
 - `repo/optimize.py`, whose `VLMExtractor.image_to_csv()` is rewritten on a
-  branch of its own inside `build/`: the prompt, the parsing, a multi-step
+  branch of its own inside `campaign/`: the prompt, the parsing, a multi-step
   extraction, validation.
 - A score from `repo/evaluate.py --max-samples 100 --num-workers 50`.
-- `build/.kapso/solution.json`, the record, read back by `Solution.open("build")`.
+- `campaign/.kapso/solution.json`, the record, read back by `Solution.open("campaign")`.
 
 ## Run it
 
@@ -23,25 +23,26 @@ pip install openai huggingface_hub
 echo 'OPENAI_API_KEY=sk-...' >> .env     # the extractor and the evaluator call the model
 python repo/prepare_data.py              # downloads subset_line_100/: index.csv, images/, tables/
 kapso doctor build
-kapso build --brief kapso-brief.md --repo repo --output build --detach
-kapso watch build --follow
+kapso build --brief kapso-brief.md --repo repo --output campaign --detach
+kapso watch campaign --follow
 ```
 
-`python run.py` is the same build from Python.
+`python run.py` is the same build from Python, into the same `campaign/`
+directory: run one or the other.
 
 ## What to look at
 
 - `kapso-brief.md`: valid CSV with a header, a vision-capable OpenAI model
   and a reasonable cost per query are rules the judge enforces.
 - `solution.diff()`: the extractor that won.
-- `cd build && python evaluate.py --max-samples 10 --num-workers 4`: a quick
+- `cd campaign && python evaluate.py --max-samples 10 --num-workers 4`: a quick
   re-measurement by hand.
 
 ## Change it
 
 - The target: `Target` in the brief.
-- The budget: the brief's `Budget minutes=60 iterations=6`, or the command's
-  `--budget-minutes` and `--iterations`, which win over it.
+- The budget: the brief's `Budget minutes=60 experiments=6`, or the command's
+  `--budget-minutes` and `--budget-experiments`, which win over it.
 - Protect the evaluator and the data from the start by moving `evaluate.py`
   into a directory of its own and passing it with `--evaluation`, and
   `subset_line_100/` with `--data`.
