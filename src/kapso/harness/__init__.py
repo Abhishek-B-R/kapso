@@ -4,6 +4,13 @@ docs/plans/redesign/wp2-harness.md."""
 
 from kapso.harness.check import CheckReport, HarnessRequirement, check_harness
 from kapso.harness.hash import harness_hash, short
+from kapso.harness.reference import (
+    BUNDLED_ROOT,
+    HarnessReference,
+    HarnessReferenceError,
+    parse_reference,
+)
+from kapso.harness.store import FetchedHarness, HarnessStore
 from kapso.harness.manifest import (
     ATTACHMENT_KINDS,
     MODULES,
@@ -19,7 +26,13 @@ from kapso.harness.manifest import (
 
 __all__ = [
     "ATTACHMENT_KINDS",
+    "BUNDLED_ROOT",
     "MODULES",
+    "FetchedHarness",
+    "HarnessReference",
+    "HarnessReferenceError",
+    "HarnessStore",
+    "parse_reference",
     "CheckReport",
     "HarnessRequirement",
     "check_harness",
