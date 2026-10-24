@@ -13,6 +13,7 @@ import httpx
 import pytest
 from openai import OpenAI
 
+import kapso
 from kapso.core.api_endpoint import openai_compatible_options
 from kapso.knowledge_base.search import embeddings
 from kapso.knowledge_base.search import kg_graph_search as graph
@@ -275,6 +276,9 @@ def test_the_stores_are_config_and_travel_with_the_index(monkeypatch):
     assert connections["weaviate"] == {
         "http_host": "localhost", "http_port": 18080, "http_secure": False,
         "grpc_host": "localhost", "grpc_port": 50052, "grpc_secure": False,
+        "headers": {
+            "X-Weaviate-Client-Integration": f"kapso/{kapso.__version__}",
+        },
     }
     assert connections["neo4j"] == ("bolt://localhost:17687", ("neo4j", "learntest"))
     refs = search.get_backend_refs()

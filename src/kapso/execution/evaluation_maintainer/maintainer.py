@@ -483,6 +483,7 @@ class EvaluationMaintainer:
             cwd=str(self.workspace_dir),
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=self.calibration_timeout_seconds,
         )
         duration = time.monotonic() - started

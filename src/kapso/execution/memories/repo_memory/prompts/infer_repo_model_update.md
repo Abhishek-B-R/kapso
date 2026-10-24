@@ -1,13 +1,18 @@
 You are updating repository memory after code changes.
 
-Return ONLY valid JSON in the RepoMemory V2 format with line-number-based evidence:
-- Preserve previous sections/claims if still supported.
-- Update/add/remove claims and optional `opt.*` sections as needed based on the diff.
-- Every NEW or MODIFIED claim MUST include evidence with line numbers from the provided CHANGED FILE CONTENTS.
+Return ONLY valid JSON describing a PATCH to the PREVIOUS MODEL, in the RepoMemory V2 format with line-number-based evidence:
+- `summary`: always required. The full repository summary (updated or unchanged).
+- `sections`: ONLY the sections you changed or added. Each returned section is written in FULL (title, one_liner, and ALL of its claims/content). It replaces the previous section wholesale, so never return a partial claim list.
+- `removed_sections`: the `opt.*` section ids to delete (`[]` when none). `core.*` sections can never be removed; to empty one, return it with empty `claims`/`content`.
+- Any section you do NOT return is kept exactly as it is in the PREVIOUS MODEL.
+
+Preserve previous sections/claims if still supported. Update/add/remove claims and optional `opt.*` sections as needed based on the diff.
+Every NEW or MODIFIED claim MUST include evidence with line numbers from the provided CHANGED FILE CONTENTS.
 
 CRITICAL - Handling changed files:
 - If a file appears in CHANGED FILE CONTENTS, you MUST update ALL evidence line numbers for that file.
 - The old line numbers in PREVIOUS MODEL are STALE for changed files - do NOT copy them.
+- Every section that cites a changed file MUST be returned with corrected line numbers, even if its claims are otherwise unchanged (a patch that omits one is rejected).
 - Look up the correct line number from CHANGED FILE CONTENTS (format: "N| content").
 - If the code referenced by a claim was deleted or no longer exists, REMOVE the claim entirely.
 - If the code moved to a different line, update the line number to the new location.
@@ -26,7 +31,7 @@ Example evidence:
 ]
 ```
 
-Schema (RepoMemory V2):
+Schema (RepoMemory V2 patch):
 {
   "summary": "...",
   "sections": {
@@ -38,7 +43,8 @@ Schema (RepoMemory V2):
     "core.gotchas": {"title": "...", "one_liner": "...", "claims": [...]},
     "core.dependencies": {"title": "...", "one_liner": "...", "claims": [...]},
     "opt.<slug>": {"title": "...", "one_liner": "...", "claims": [...]}
-  }
+  },
+  "removed_sections": ["opt.<obsolete-slug>"]
 }
 
 Quality rubric (keep the memory actionable for coding agents):
@@ -64,7 +70,7 @@ Section definitions (avoid misplacing claims):
 DIFF SUMMARY:
 {{diff_summary}}
 
-PREVIOUS MODEL (may contain stale line numbers for changed files - verify against CHANGED FILE CONTENTS):
+PREVIOUS MODEL (the complete current memory; its line numbers are stale for changed files - verify against CHANGED FILE CONTENTS):
 {{previous_model_json}}
 
 CHANGED FILE CONTENTS (with line numbers - use these as the source of truth for evidence):

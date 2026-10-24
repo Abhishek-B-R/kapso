@@ -237,6 +237,7 @@ def rescore_run(
         env=dict(env) if env is not None else os.environ.copy(),
         capture_output=True,
         text=True,
+        errors="replace",
     )
     if completed.returncode != 0:
         raise RuntimeError(

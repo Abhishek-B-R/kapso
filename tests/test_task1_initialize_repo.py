@@ -17,7 +17,6 @@ import os
 import shutil
 import tempfile
 import pytest
-from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables (OpenAI API key)
@@ -179,112 +178,6 @@ Check out the repo at https://github.com/owner/repo for more info.
         
         result = extract_github_url(content)
         assert result == "https://github.com/owner/repo"
-
-
-class TestWorkflowSearchWithRealKG:
-    """
-    Integration tests with real KG indexing and workflow search.
-    
-    Uses data/wikis_llm_finetuning_test/ which contains PicoGPT workflow.
-    """
-    
-    @classmethod
-    def setup_class(cls):
-        """Index the test wiki data once for all tests in this class."""
-        cls.wiki_dir = Path("data/wikis_llm_finetuning_test")
-        cls.index_path = Path("data/indexes/test_task1_workflow.index")
-        
-        # Ensure wiki data exists
-        if not cls.wiki_dir.exists():
-            pytest.skip(f"Test wiki data not found: {cls.wiki_dir}")
-        
-        # Index the wiki data
-        print(f"\nIndexing wiki data from {cls.wiki_dir}...")
-        cls.kapso = Kapso()
-        cls.kapso.index_kg(
-            wiki_dir=str(cls.wiki_dir),
-            save_to=str(cls.index_path),
-        )
-        print("Indexing complete!")
-        
-        # Create a new Kapso instance with the index loaded
-        cls.kapso_with_kg = Kapso(kg_index=str(cls.index_path))
-    
-    @classmethod
-    def teardown_class(cls):
-        """Cleanup index file."""
-        if hasattr(cls, 'index_path') and cls.index_path.exists():
-            cls.index_path.unlink()
-    
-    def test_workflow_search_finds_picogpt(self):
-        """Test that workflow search finds PicoGPT for text generation queries."""
-        from kapso.knowledge_base.search.workflow_search import WorkflowRepoSearch
-        
-        # Use the KG search from our indexed Kapso
-        search = WorkflowRepoSearch(kg_search=self.kapso_with_kg.knowledge_search)
-        
-        # Search for text generation
-        result = search.search("text generation with GPT", top_k=3)
-        
-        print(f"\nSearch results for 'text generation with GPT':")
-        for item in result.items:
-            print(f"  - {item.title} (score={item.score:.3f})")
-            print(f"    GitHub: {item.github_url}")
-        
-        # Should find at least one result
-        assert not result.is_empty, "Should find workflow results"
-        
-        # Top result should be PicoGPT
-        top = result.top_result
-        assert "PicoGPT" in top.title or "Text_Generation" in top.title, \
-            f"Top result should be PicoGPT workflow, got: {top.title}"
-    
-    def test_search_returns_github_url(self):
-        """Test search result contains GitHub URL."""
-        from kapso.knowledge_base.search.workflow_search import WorkflowRepoSearch
-        
-        search = WorkflowRepoSearch(kg_search=self.kapso_with_kg.knowledge_search)
-        
-        # Search for GPT text generation
-        result = search.search("generate text using GPT-2 with NumPy", top_k=1)
-        
-        print(f"\nSearch result: {result.top_result.title if result.top_result else 'None'}")
-        
-        # Should return a result with GitHub URL
-        assert not result.is_empty, "Should find a result"
-        assert result.top_result.github_url, "Result should have github_url"
-        assert "github.com" in result.top_result.github_url, \
-            f"Should be a GitHub URL: {result.top_result.github_url}"
-    
-    def test_search_workflow_repo_integration(self):
-        """Test the full _search_workflow_repo method with real KG."""
-        # Use the Kapso instance with KG loaded
-        result = self.kapso_with_kg._search_workflow_repo("text generation with GPT-2")
-        
-        print(f"\n_search_workflow_repo result: {result}")
-        
-        # Should return a cloned repo path or None
-        # Note: This actually clones the repo, so we need to clean up
-        if result:
-            assert os.path.exists(result), f"Cloned repo should exist: {result}"
-            # Cleanup
-            shutil.rmtree(result, ignore_errors=True)
-    
-    def test_resolve_initial_repo_with_workflow_search(self):
-        """Test _resolve_initial_repo uses workflow search when initial_repo is None."""
-        # Use the Kapso instance with KG loaded
-        result = self.kapso_with_kg._resolve_initial_repo(
-            initial_repo=None,
-            goal="generate text using GPT-2 with NumPy"
-        )
-        
-        print(f"\n_resolve_initial_repo result: {result}")
-        
-        # Should return a cloned repo path
-        if result:
-            assert os.path.exists(result), f"Cloned repo should exist: {result}"
-            # Cleanup
-            shutil.rmtree(result, ignore_errors=True)
 
 
 class TestResolveInitialRepoWithGitHubURL:

@@ -19,7 +19,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Tuple
 
 from kapso.core.prompt_loader import load_prompt, render_prompt
 
@@ -52,21 +52,23 @@ _IGNORE_DIRS = {
 }
 
 
-def _safe_read_text(path: str, max_chars: int) -> str:
-    """Read a file as text and cap size to keep prompts bounded."""
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            text = f.read()
-    except Exception:
+def _read_numbered_text(path: str) -> str:
+    """
+    Read a file whole as line-numbered text.
+
+    Format: "  N| content" where N is the line's real position in the file.
+    The model cites these numbers as evidence, so every line keeps its own.
+    """
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+
+    if not text:
         return ""
-
-    if len(text) <= max_chars:
-        return text
-
-    # Keep head+tail so evidence quotes are likely to remain present.
-    head = text[: max_chars // 2]
-    tail = text[-(max_chars // 2) :]
-    return head + "\n\n... (truncated) ...\n\n" + tail
+    lines = text.split("\n")
+    if text.endswith("\n"):
+        lines.pop()
+    width = len(str(len(lines)))
+    return "\n".join(f"{n:>{width}}| {line}" for n, line in enumerate(lines, 1))
 
 
 def build_repo_map(
@@ -106,10 +108,11 @@ def build_repo_map(
     git_files: Optional[List[str]] = None
     try:
         out = subprocess.check_output(
-            ["git", "-C", repo_root, "ls-files", "--cached", "--others", "--exclude-standard"],
+            ["git", "-C", repo_root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
             stderr=subprocess.DEVNULL,
         ).decode("utf-8", "replace")
-        git_files = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        # -z: NUL-separated, unquoted names (without it git C-quotes non-ASCII/special paths).
+        git_files = [name for name in out.split("\0") if name]
     except Exception:
         git_files = None
 
@@ -239,28 +242,10 @@ def _build_toc_from_sections(sections: Dict[str, Any]) -> List[Dict[str, str]]:
     return toc
 
 
-def _add_line_numbers(text: str) -> str:
-    """
-    Add line numbers to file content for evidence referencing.
-    
-    Format: "  N| content" where N is right-aligned line number.
-    This allows the LLM to reference specific lines by number instead of
-    requiring exact verbatim quotes.
-    """
-    if not text:
-        return ""
-    lines = text.split('\n')
-    width = len(str(len(lines)))
-    numbered = []
-    for i, line in enumerate(lines, 1):
-        numbered.append(f"{i:>{width}}| {line}")
-    return '\n'.join(numbered)
-
-
 def _format_file_payload(file_blobs: List[Tuple[str, str]]) -> str:
     """
-    Format file blobs into a payload with line numbers.
-    
+    Format line-numbered file blobs (see `_read_numbered_text`) into a payload.
+
     Each file is formatted as:
         === FILE: path/to/file.py ===
           1| first line
@@ -270,8 +255,7 @@ def _format_file_payload(file_blobs: List[Tuple[str, str]]) -> str:
     parts = []
     for path, content in file_blobs:
         if content:
-            numbered_content = _add_line_numbers(content)
-            parts.append(f"=== FILE: {path} ===\n{numbered_content}")
+            parts.append(f"=== FILE: {path} ===\n{content}")
     return "\n\n".join(parts)
 
 
@@ -322,11 +306,85 @@ def _validate_repo_model(model: Dict[str, Any]) -> Dict[str, Any]:
     return model
 
 
+def _evidence_paths(section: Any) -> Set[str]:
+    """Return the file paths cited as evidence by a section's claims."""
+    claims = section.get("claims") if isinstance(section, dict) else None
+    return {
+        item["path"]
+        for claim in (claims if isinstance(claims, list) else [])
+        if isinstance(claim, dict) and isinstance(claim.get("evidence"), list)
+        for item in claim["evidence"]
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
+    }
+
+
+def _merge_repo_model_update(
+    previous_model: Dict[str, Any],
+    update: Dict[str, Any],
+    changed_files: List[str],
+) -> Dict[str, Any]:
+    """Apply an incremental update patch onto the previous RepoMemory model.
+
+    The update carries only changed/added sections plus an explicit
+    `removed_sections` list; every other previous section is carried over
+    verbatim, so a section can never be lost by being omitted.
+
+    A carried-over section would keep stale evidence line numbers if it cites
+    a changed file, so such a section must be returned (refreshed) or removed.
+    """
+    _validate_repo_model(update)
+    removed = update.get("removed_sections")
+    if not isinstance(removed, list) or not all(
+        isinstance(sid, str) for sid in removed
+    ):
+        raise RepoMemoryResponseError(
+            "RepoMemory update JSON requires a 'removed_sections' list of "
+            "section ids"
+        )
+    previous_sections = previous_model["sections"]
+    unknown = [sid for sid in removed if sid not in previous_sections]
+    if unknown:
+        raise RepoMemoryResponseError(
+            "removed_sections names sections not in the previous model: "
+            f"{unknown}"
+        )
+    core = [sid for sid in removed if sid.startswith("core.")]
+    if core:
+        raise RepoMemoryResponseError(
+            "core sections cannot be removed (return them with empty claims "
+            f"instead): {core}"
+        )
+    conflicting = [sid for sid in removed if sid in update["sections"]]
+    if conflicting:
+        raise RepoMemoryResponseError(
+            f"sections both removed and returned: {conflicting}"
+        )
+    changed = set(changed_files)
+    stale = [
+        sid
+        for sid, sec in previous_sections.items()
+        if sid not in removed
+        and sid not in update["sections"]
+        and _evidence_paths(sec) & changed
+    ]
+    if stale:
+        raise RepoMemoryResponseError(
+            "sections citing changed files must be returned with refreshed "
+            f"evidence: {stale}"
+        )
+    sections = {
+        sid: sec for sid, sec in previous_sections.items() if sid not in removed
+    }
+    sections.update(update["sections"])
+    return {"summary": update["summary"], "sections": sections}
+
+
 def _complete_repo_model(
     *,
     llm: LLMLike,
     prompt: str,
     max_retries: int,
+    validate: Callable[[Dict[str, Any]], Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Complete and parse a RepoMemory model, repairing only bad responses."""
     if isinstance(max_retries, bool) or not isinstance(max_retries, int):
@@ -345,7 +403,7 @@ def _complete_repo_model(
             role="repo_memory",
         )
         try:
-            return _validate_repo_model(_extract_json(response))
+            return validate(_extract_json(response))
         except RepoMemoryResponseError as exc:
             if attempt >= max_retries:
                 raise
@@ -425,7 +483,6 @@ def infer_repo_model_initial(
     llm: LLMLike,
     repo_root: str,
     repo_map: Dict[str, Any],
-    max_file_chars: int = 20000,
     max_files_to_read: int = 20,
     max_retries: int = 0,
 ) -> Dict[str, Any]:
@@ -442,7 +499,7 @@ def infer_repo_model_initial(
     file_blobs: List[Tuple[str, str]] = []
     for rel in files_to_read:
         abs_path = os.path.join(repo_root, rel)
-        file_blobs.append((rel, _safe_read_text(abs_path, max_chars=max_file_chars)))
+        file_blobs.append((rel, _read_numbered_text(abs_path)))
 
     files_payload = _format_file_payload(file_blobs)
 
@@ -459,6 +516,7 @@ def infer_repo_model_initial(
         llm=llm,
         prompt=prompt,
         max_retries=max_retries,
+        validate=_validate_repo_model,
     )
 
 
@@ -466,7 +524,6 @@ def infer_repo_model_with_retry(
     llm: LLMLike,
     repo_root: str,
     repo_map: Dict[str, Any],
-    max_file_chars: int = 20000,
     max_files_to_read: int = 20,
     max_retries: int = 4,
 ) -> Dict[str, Any]:
@@ -480,7 +537,6 @@ def infer_repo_model_with_retry(
         llm=llm,
         repo_root=repo_root,
         repo_map=repo_map,
-        max_file_chars=max_file_chars,
         max_files_to_read=max_files_to_read,
         max_retries=max_retries,
     )
@@ -493,19 +549,21 @@ def infer_repo_model_update(
     previous_model: Dict[str, Any],
     diff_summary: str,
     changed_files: List[str],
-    max_file_chars: int = 15000,
     max_retries: int = 0,
 ) -> Dict[str, Any]:
     """
     Incrementally update RepoModel using the previous model + diffs + changed files.
     
+    The LLM sees the complete previous model and returns a patch (changed
+    sections + `removed_sections`); this returns that patch merged onto the
+    previous model, so untouched sections are never lost.
     The updated model uses line-number-based evidence references.
     """
     changed_blobs: List[Tuple[str, str]] = []
-    for rel in changed_files[:20]:
+    for rel in changed_files:
         abs_path = os.path.join(repo_root, rel)
         if os.path.exists(abs_path):
-            changed_blobs.append((rel, _safe_read_text(abs_path, max_chars=max_file_chars)))
+            changed_blobs.append((rel, _read_numbered_text(abs_path)))
     changed_payload = _format_file_payload(changed_blobs)
 
     template = load_prompt("execution/memories/repo_memory/prompts/infer_repo_model_update.md")
@@ -513,7 +571,7 @@ def infer_repo_model_update(
         template,
         {
             "diff_summary": diff_summary,
-            "previous_model_json": json.dumps(previous_model, indent=2)[:20000],
+            "previous_model_json": json.dumps(previous_model, indent=2),
             "changed_payload": changed_payload,
         },
     )
@@ -521,4 +579,7 @@ def infer_repo_model_update(
         llm=llm,
         prompt=prompt,
         max_retries=max_retries,
+        validate=lambda update: _merge_repo_model_update(
+            previous_model, update, changed_files
+        ),
     )

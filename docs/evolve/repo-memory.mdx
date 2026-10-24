@@ -154,6 +154,17 @@ and reads repository files once, then asks the model to repair only malformed
 JSON or an invalid outer schema. Provider, authentication, transport, and
 configuration errors are not retried.
 
+The model sees every file whole, with its real line numbers.
+
+Each update sends the complete previous memory to the model. The model
+returns only the sections it changed or added, plus an explicit
+`removed_sections` list; every other section is carried over unchanged.
+A section whose evidence cites a file the experiment changed must be
+returned with refreshed line numbers (or removed), so a stale section
+is never carried over. A malformed patch, such as removing a `core.*`
+section or omitting such a section, is an invalid response and goes
+through the same repair loop.
+
 ## What happens when it fails?
 
 RepoMemory is optional enrichment; experiment code and evaluation results are

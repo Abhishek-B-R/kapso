@@ -45,6 +45,7 @@ except ImportError:
     wvc = None
     HAS_WEAVIATE = False
 
+from kapso import __version__ as KAPSO_VERSION
 from kapso.knowledge_base.search.base import (
     KGEditInput,
     KGIndexInput,
@@ -677,6 +678,11 @@ class KGGraphSearch(KnowledgeSearch):
                 grpc_host=parts.hostname,
                 grpc_port=self.weaviate_grpc_port,
                 grpc_secure=secure,
+                # Weaviate (1.38+) attributes traffic by this header; the
+                # client sends it on both REST and gRPC.
+                headers={
+                    "X-Weaviate-Client-Integration": f"kapso/{KAPSO_VERSION}",
+                },
             )
             logger.info(f"Connected to Weaviate at {self.weaviate_url} (gRPC port {self.weaviate_grpc_port})")
             

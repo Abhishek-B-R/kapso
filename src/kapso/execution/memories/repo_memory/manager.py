@@ -538,13 +538,24 @@ GeneratedAt: {doc.get('generated_at')}
         doc["generated_at"] = cls._now_iso()
 
         # 2) Record experiment delta (idea/spec + diffs + result).
-        changed_files = repo.git.diff("--name-only", base_commit_sha, head_commit_sha).splitlines()
-        numstat_lines = repo.git.diff("--numstat", base_commit_sha, head_commit_sha).splitlines()
+        # -z: NUL-separated, unquoted names (without it git C-quotes non-ASCII/special paths).
+        changed_files = [
+            name for name in repo.git.diff("-z", "--name-only", base_commit_sha, head_commit_sha).split("\0") if name
+        ]
+        numstat_tokens = repo.git.diff("-z", "--numstat", base_commit_sha, head_commit_sha).split("\0")
         diff_numstat = []
-        for line in numstat_lines[:200]:
-            parts = line.split("\t")
-            if len(parts) == 3:
-                diff_numstat.append({"added": parts[0], "deleted": parts[1], "path": parts[2]})
+        index = 0
+        while index < len(numstat_tokens):
+            token = numstat_tokens[index]
+            index += 1
+            if not token:
+                continue
+            added, deleted, path = token.split("\t", 2)
+            if not path:
+                # Rename/copy record: "added\tdeleted\t" then NUL-separated old and new paths.
+                path = numstat_tokens[index + 1]
+                index += 2
+            diff_numstat.append({"added": added, "deleted": deleted, "path": path})
 
         diff_summary = repo.git.diff("--stat", base_commit_sha, head_commit_sha)
 
@@ -561,7 +572,7 @@ GeneratedAt: {doc.get('generated_at')}
                 "code_head_commit": head_commit_sha,
                 "solution_spec": (solution_spec or "")[:8000],
                 "changed_files": changed_files[:200],
-                "diff_numstat": diff_numstat,
+                "diff_numstat": diff_numstat[:200],
                 "run_result": run_result,
             }
         )
@@ -594,7 +605,7 @@ GeneratedAt: {doc.get('generated_at')}
                 repo_root=repo_root,
                 repo_map=doc["repo_map"],
                 previous_model=previous_model_v2,
-                diff_summary=diff_summary[:8000],
+                diff_summary=diff_summary,
                 changed_files=changed_files,
                 max_retries=max_retries,
             )
