@@ -63,7 +63,8 @@ from kapso.knowledge_base.learners.defaults import learner_defaults
 from kapso.core.cli_inference import resolve_inference_config
 from kapso.researcher import Researcher, ResearchDepth, ResearchMode
 from kapso.knowledge_base.types import ResearchFindings
-from kapso.core.config import load_config, load_deployment_defaults, load_mode_config
+from kapso.core.config import load_config, load_deployment_defaults, load_harness_defaults, load_mode_config
+from kapso.harness import Harness, load_harness
 from kapso.execution.inbox import (
     Request,
     idea_line,
@@ -226,6 +227,10 @@ class Kapso:
         """
         self.config_path = config or DEFAULT_CONFIG_PATH
         self._config = load_config(self.config_path)
+        # The harness block (store, thresholds, the two session timeouts)
+        # and the loaded harness: none until load_harness() is called.
+        self._harness_settings = load_harness_defaults(self.config_path)
+        self._harness: Optional[Harness] = None
         # By construction time every dependency import has settled, so
         # this atexit registration lands last (LIFO-first at exit) and
         # keeps third-party exit-time warning noise out of user output.
@@ -260,6 +265,24 @@ class Kapso:
             print(f"Initialized Kapso")
         else:
             print(f"Initialized Kapso (Knowledge Graph: disabled)")
+
+    # ------------------------------------------------------------ harness
+
+    @property
+    def harness(self) -> Optional[Harness]:
+        """The loaded harness, or None: today's generic behaviour."""
+        return self._harness
+
+    def load_harness(self, ref: str) -> Harness:
+        """Resolve a bundled name, a path or a git reference; run `check`
+        and raise on a failure; hash it; read what this machine lacks into
+        `harness.missing` without raising. A second call replaces the
+        first: one object, one harness. Nothing starts here."""
+        self._harness = load_harness(ref, settings=self._harness_settings)
+        print(f"Harness: {self._harness.label()} from {self._harness.source}")
+        for row in self._harness.missing:
+            print(f"  needs {row.label}: {row.fix}  [{', '.join(row.modules)}]")
+        return self._harness
 
         # Lazy-initialized web researcher (created on first `.research()` call).
         self._web_researcher: Optional[Researcher] = None

@@ -62,6 +62,22 @@ def load_deployment_defaults() -> Dict[str, Any]:
     return platform_config['deployment']
 
 
+def load_harness_defaults(config_path: Optional[str] = None) -> Dict[str, Any]:
+    """The platform config's `harness:` mapping (the store, the page
+    warning threshold, the two session timeouts), with a user config's
+    own `harness:` keys over it. `load_mode_config` merges only `defaults:`
+    and `modes.*`, so this block has its own loader, like `deployment:`."""
+    platform_config = load_config(str(PLATFORM_CONFIG_PATH))
+    if 'harness' not in platform_config:
+        raise ValueError(
+            f"Platform config {PLATFORM_CONFIG_PATH} has no 'harness' section"
+        )
+    settings = dict(platform_config['harness'])
+    if config_path is not None and Path(config_path).resolve() != PLATFORM_CONFIG_PATH:
+        settings.update(load_config(config_path).get('harness') or {})
+    return settings
+
+
 def load_mode_config(
     config_path: Optional[str],
     mode: Optional[str] = None,
