@@ -6,6 +6,40 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-24, WP1 (planned; taken while revising the sub-plan after review)
+
+**The brief has its own flag, `--brief`; `--goal-file` stays plain text.**
+The design documents said `--goal-file kapso-brief.md`. A file that is not
+a brief must not be guessed at (no silent fallback), and engineers do pass
+plain problem statements by file today, so the two forms get two flags.
+Alternative rejected: one flag that tries the brief grammar first.
+
+**A solution's one path is `trace`.** `SolutionResult.code_path` and the
+design's `Solution.trace` were the same directory: the workspace, checked
+out at the delivered branch, with the record under `.kapso/`. One field,
+named `trace`; deployment reads the code from it.
+
+**`build()` writes `.kapso/solution.json` on every return, and `open()`
+reads only that.** The alternative, reconstructing a solution from five
+record files, needs rules for which file wins and has no durable
+evaluation log to read. The facade already computes the delivered score,
+the branch and the registry head at return; writing them is a few lines,
+and a paused or budget-stopped campaign gets a record too.
+
+**`Experience` is WP3's.** The design returns `Experience` from `learn()`;
+today's `LessonResult` is that class. Renaming it belongs with the
+experience work, not with `build`, so WP1 leaves `learn()` returning
+`LessonResult` and only changes its parameter type.
+
+**`kapso deploy` takes a solution, not a directory of code.** Today's
+command constructs a result from any path. In the design `deploy` takes
+the outcome of a build, so the command opens the record; deploying an
+arbitrary directory is not a case of this verb. WP5 may add a `--repo`
+form if a user needs it.
+
+**`Kapso(config=...)`.** The constructor keyword follows the design; the
+internal attribute keeps its name.
+
 ## 2026-10-24, WP0
 
 **Codex on the fresh machine logs in with an API key, Claude with the shared
