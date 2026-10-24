@@ -86,11 +86,22 @@
    families it wraps) and step 6 (`doctor --json`, the liveness filter).
    The tree and the launcher depend on nothing, but are built with the
    commands after step 1 so no command is written twice.
-8. **The ports and the banks** (parked): the four benchmarks into
-   `predictive-modelling` and `competitive-programming`, RelBench first;
-   their knowledge onboarded per `harness-ports.md`.
-9. **Later**: the harness editor loop as a learning-module job; the public
-   docs pages when the interface ships.
+8. **The two initial harnesses**, per `docs/plans/initial-harnesses-plan.md`:
+   `predictive-modelling` from RelBench then MLE-bench,
+   `competitive-programming` from ALE-bench then IOAI, each step with its
+   done-when, then the abstraction scan, the task swaps and the
+   third-domain author test; their knowledge onboarded per
+   `harness-ports.md`.
+9. **The semantic production tests**, per
+   `docs/plans/semantic-production-tests.md`: the fixtures and the
+   simulated-user driver first, then S1 (the cold engineer) as soon as
+   `build` exists, S2 (the plugin round) as the skills land, S4 (trace
+   legibility) and S5 (failure paths) with `kapso trace`, S3 (the harnesses
+   and the guide) with the ports, S6 (experience pays) once experience
+   serves. A release gate, run after any change to a skill, a page, CLI
+   help or a public doc.
+10. **Later**: the harness editor loop as a learning-module job; the public
+    docs pages when the interface ships.
 
 Dependencies: 1 before everything, since every record is a `Solution`; 2
 before 3, since experience scope follows the loaded harness; 4 with 2 and
