@@ -348,6 +348,39 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
   `scripts/check_snippets.py` keeps a quoted file and its page identical
   and runs in the docs workflow. "Kapso in your coding agent" is WP7's.
 
+## Proof runs
+
+Three runs of `scripts/redesign/fresh_machine.sh` on 2026-10-24, each a
+fresh `e2-standard-4` (Ubuntu 24.04, Python 3.12, the wheel as a `uv`
+tool, Codex logged in with the API key, Claude with the shared token),
+the churn example copied over with its data generated on the machine and
+numpy, pandas and scikit-learn installed from apt. Logs under
+`scripts/redesign/runs/<id>/` (gitignored).
+
+- **wp1**, wheel `254714bb…` (commit `c6f76ae6`), five minutes and two
+  experiments: `kapso doctor build` passed (seven required rows, the
+  Leeroopedia gate advisory); the build crashed at the first session close
+  on `git add ../churn-build/sessions/...` outside the repository, the
+  relative-output bug fixed in `da3a6bb2`; no record, and `Solution.open`
+  said so. The Python flow crashed the same way.
+- **wp1b**, wheel `2e05c8b1…` (commit `da3a6bb2`), fifteen minutes and two
+  experiments: the build returned (exit 0) with a record; `Solution.open`
+  in a second process read it back: `Candidate: none succeeded`, `Stopped:
+  budget_exhausted (time_budget)`, one experiment, $1.40. The timeline
+  (file mtimes and the status file, pulled while the machine lived):
+  started 21:49:04, setup and repo memory done at 21:49:08, the
+  implementation session's folder created at 22:01:26, that session killed
+  at its 60-second floor, feedback failed on an empty transcript. The
+  Python flow, launched at 22:07, was still in `ideation` at 22:21 and
+  ended the same way (`DIFF-LINES 0`, $0.05). Both flows ran end to end;
+  the campaign had no time to implement anything, which is the ideation
+  finding below. Machine 0.69 h, about $0.09. A `rate_limit_event` line
+  appeared in the judge's session output: the shared token's window is
+  being spent by these runs, so no further proof runs beyond the third.
+- **wp1d**, wheel `ef1fce25…` (commit `1f022925`), forty-five minutes and
+  two experiments, the final names: in progress; its result is recorded
+  here when it returns.
+
 ## Findings for later packages
 
 - **Ideation dominates a small build.** On the shipped `GENERIC` config
