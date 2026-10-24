@@ -68,7 +68,7 @@ A scenario directory holds `scenario.yaml` naming the machinery under test — `
 
 ### A/B arms
 
-The causal instrument. Two otherwise identical `evolve` runs differ only in the bank ref they are served, and the frame judges the paired per-task deltas with their standard errors.
+The causal instrument. Two otherwise identical `build` runs differ only in the bank ref they are served, and the frame judges the paired per-task deltas with their standard errors.
 
 Two rules keep it honest:
 
@@ -79,7 +79,7 @@ Two rules keep it honest:
 
 ## Codify
 
-Codify is a separate mechanism worth knowing about: **evolve minus ideation**. The card is the idea, so there is nothing to ideate.
+Codify is a separate mechanism worth knowing about: **a build minus ideation**. The card is the idea, so there is nothing to ideate.
 
 ```bash
 kapso learn codify --request requests/card-117.yaml

@@ -121,7 +121,7 @@ def stage_campaign(run_dir: Path, *, seed_eval_defect: bool) -> None:
     if run_dir.exists():
         shutil.rmtree(run_dir)
     staged_repo = run_dir / "initial_repo"
-    shutil.copytree(EXAMPLE_DIR / "initial_repo", staged_repo)
+    shutil.copytree(EXAMPLE_DIR / "repo", staged_repo)
     train_df, test_df = generate(
         rows=DATA_ROWS, test_rows=DATA_TEST_ROWS, seed=DATA_SEED
     )

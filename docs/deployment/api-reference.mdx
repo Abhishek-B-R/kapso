@@ -202,7 +202,7 @@ Configuration for deploying software.
 ```python
 @dataclass
 class DeployConfig:
-    solution: SolutionResult
+    solution: Solution
     env_vars: Dict[str, str] = None
     timeout: int = 300
     coding_agent: str = "claude_code"
@@ -212,7 +212,7 @@ class DeployConfig:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `solution` | `SolutionResult` | Required | The built solution from `Kapso.evolve()` |
+| `solution` | `Solution` | Required | The solution from `Kapso.build()`, or `Solution.open(path)` |
 | `env_vars` | `Dict[str, str]` | `{}` | Environment variables |
 | `timeout` | `int` | `300` | Execution timeout in seconds |
 | `coding_agent` | `str` | `"claude_code"` | Coding agent for adaptation |
@@ -239,7 +239,7 @@ config = DeployConfig(
     coding_agent="gemini",
 )
 
-print(config.code_path)  # "/path/to/solution"
+print(config.code_path)  # str(solution.trace), the campaign directory
 print(config.goal)       # "Create a sentiment API"
 ```
 
@@ -624,7 +624,7 @@ Select deployment configuration for a solution.
 ```python
 def select(
     self,
-    solution: SolutionResult,
+    solution: Solution,
     allowed_strategies: Optional[List[str]] = None,
     resources: Optional[Dict[str, Any]] = None,
 ) -> DeploymentSetting
@@ -637,7 +637,7 @@ def select(
 Get human-readable explanation of selection.
 
 ```python
-def explain(self, solution: SolutionResult) -> str
+def explain(self, solution: Solution) -> str
 ```
 
 **Example:**
@@ -676,7 +676,7 @@ Adapt a solution for deployment.
 ```python
 def adapt(
     self,
-    solution: SolutionResult,
+    solution: Solution,
     setting: DeploymentSetting,
     allowed_strategies: Optional[List[str]] = None,
 ) -> AdaptationResult

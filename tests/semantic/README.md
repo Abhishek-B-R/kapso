@@ -11,7 +11,6 @@ GCP machine, installs the package, runs, and deletes it.
 tests/semantic/
 ├── README.md            this contract
 ├── conftest.py          keeps pytest out
-├── fixtures/            one directory per fixture repository (below)
 ├── personas/            one card per simulated user (below)
 ├── report.py            renders one run's record as the markdown report
 └── reports/             the reports, one per run (gitignored except the ones cited in a sub-plan)
@@ -19,17 +18,20 @@ tests/semantic/
 
 ## Fixtures
 
-A fixture is a small task an engineer could plausibly bring. Each directory
-has: a `README.md` with the task, the evaluator contract and the recorded
-baseline; a deterministic generator for any data (seeded, byte-identical,
-hashes in `MANIFEST.json`); `repo/`, the starting repository; `evaluation/`
-when the fixture has an evaluator; `baseline.json`, the shipped model's
-score with a noise figure. Generated data is never committed.
+The fixtures are the examples under `examples/`: one source, so a page
+that quotes an example quotes something the suite ran. A fixture is a small
+task an engineer could plausibly bring. Each directory has: a `README.md`
+with the task (What you get, Run it, What to look at, Change it) and the
+recorded result; `kapso-brief.md`; a deterministic generator for any data
+(seeded, byte-identical, hashes in `MANIFEST.json`); `repo/`, the starting
+repository; `evaluation/` when the fixture has an evaluator; `baseline.json`,
+the shipped model's score with a noise figure, when one was measured.
+Generated data is never committed.
 
 | Fixture | Shows | State |
 |---|---|---|
-| `churn-with-evaluator` | tabular, evaluator present, baseline 0.80 AUC with 0.83 reachable by boosting alone | built (WP0) |
-| `fraud-notebook-only` | a metric in a notebook, no evaluator | WP9 |
+| `examples/churn-first-build` | tabular, evaluator present, baseline 0.797 AUC (SE 0.010) with 0.832 reachable by boosting alone | built (WP0, moved under the examples in WP1) |
+| `examples/fraud-no-evaluator` | labelled data and a protocol, no evaluator | built (WP1), not yet run |
 | `empty-wish` | a README and nothing else | WP9 |
 | `trading-strategy` | the author's fixture | WP9 |
 | `pipeline-dbt` | the third domain for the guide's test | WP9 |

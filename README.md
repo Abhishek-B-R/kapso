@@ -67,7 +67,7 @@ Kapso is an open-source Python framework by [Leeroo](https://leeroo.com), publis
 
 | Pillar | Method | Description |
 |--------|--------|-------------|
-| [**Evolve**](https://docs.leeroo.com/docs/evolve/overview) | `.evolve()` | Run iterative experiments to build software for a goal. Uses tree search, coding agents, and KG context to generate and refine solutions. |
+| [**Build**](https://docs.leeroo.com/docs/build/brief) | `.build()` | Run an experiment campaign that meets a brief: candidates implemented on their own branches, measured, the best kept and refined. |
 | **Learn** | [`.learn()`](https://docs.leeroo.com/docs/learning/overview) / [`.learn_knowledge()`](https://docs.leeroo.com/docs/knowledge/overview) | Two memories: `learn()` mines your own finished campaigns into evidence-priced knowledge cards (experience); `learn_knowledge()` ingests repositories and research into the Knowledge Graph (imported knowledge). |
 | [**Research**](https://docs.leeroo.com/docs/research/overview) | `.research()` | Run deep web research to gather ideas and implementation references. Returns structured findings you can feed into the knowledge base or use as context for evolving solutions. |
 | [**Deploy**](https://docs.leeroo.com/docs/deployment/overview) | `.deploy()` | Turn a solution into running software. Supports local execution, Docker containers, or cloud platforms like Modal. |
@@ -130,11 +130,11 @@ setup is never asked for `claude`. Narrow it to one verb to see just that
 verb's requirements:
 
 ```bash
-kapso doctor evolve            # or research / learn_knowledge / learn / deploy
+kapso doctor build             # or research / learn_knowledge / learn / deploy
 ```
 
 Those are the same checks the verb itself runs before it does any work —
-`kapso.evolve(...)` fails in seconds on a missing CLI rather than deep
+`kapso.build(...)` fails in seconds on a missing CLI rather than deep
 inside a session. Items marked `[-- ]` are optional; they limit features
 you may not need (docker, Weaviate, Neo4j, the deploy targets).
 
@@ -167,21 +167,21 @@ Python <3.13); the default claude/codex agents need no extras.
 The core loop needs nothing beyond the prerequisites above:
 
 ```python
-from kapso import Kapso
+from kapso import Kapso, Budget
 
 kapso = Kapso()   # no knowledge graph needed to start
 
-# Evolve: build a solution through experimentation. The campaign prints
+# Build: a solution through experimentation. The campaign prints
 # `status: <path>` at launch — watch it live from another terminal with
 #     kapso watch ./campaign
 # If a session needs something only you can provide (an API key, a file),
 # the campaign pauses and `kapso inbox reply` resumes it:
-#     https://docs.leeroo.com/docs/evolve/inbox
-solution = kapso.evolve(
-    goal="Optimize the model in train.py; target accuracy > 0.80 on evaluate.py",
-    initial_repo="./my_project",         # or omit to start from scratch
-    output_path="./campaign",
-    time_budget_minutes=120,
+#     https://docs.leeroo.com/docs/build/inbox
+solution = kapso.build(
+    "Optimize the model in train.py; target accuracy > 0.80 on evaluate.py",
+    repo="./my_project",                 # or omit to start from scratch
+    output="./campaign",
+    budget=Budget(minutes=120),
 )
 print(solution.explain())
 
@@ -194,9 +194,9 @@ print(solution.explain())
 lesson = kapso.learn(solution)
 print(lesson.explain())
 
-# Evolve again — with `learning.serving.enabled: true` in your config,
+# Build again — with `learning.serving.enabled: true` in your config,
 # the next campaign is served the cards it just earned.
-solution2 = kapso.evolve(goal="...", output_path="./campaign2")
+solution2 = kapso.build("...", output="./campaign2")
 ```
 
 With the knowledge-graph backends running, you can also import outside
@@ -220,7 +220,7 @@ kapso.learn_knowledge(
 )
 
 # Campaigns on this Kapso now consult the knowledge graph automatically
-solution = kapso.evolve(goal="Fine-tune Llama-3.1-8B for clause risk classification")
+solution = kapso.build("Fine-tune Llama-3.1-8B for clause risk classification")
 ```
 
 A note on budgeting: `depth="light"` bounds the *research* stage only.
@@ -247,7 +247,7 @@ For platform costs, enable [cost-aware selection](https://docs.leeroo.com/docs/e
 ### Choosing models
 
 Every model Kapso uses is named in one config file. The packaged default
-runs evolve sessions on `claude-opus-5`, the learning crews on
+runs build sessions on `claude-opus-5`, the learning crews on
 `claude-fable-5`, and codex roles on `gpt-5.6-sol` — but model access is
 subscription-dependent (a plan can cap one model while serving another).
 To run on different models, copy the packaged config, edit, and point
@@ -264,12 +264,12 @@ config = yaml.safe_load(Path(DEFAULT_CONFIG_PATH).read_text())
 crews = yaml.safe_dump(config).replace("claude-fable-5", "claude-opus-5")
 Path("kapso-config.yaml").write_text(crews)
 
-kapso = Kapso(config_path="kapso-config.yaml")
+kapso = Kapso(config="kapso-config.yaml")
 ```
 
 Text-only inference roles can opt in to `openai_compatible` Chat Completions.
 Set the model and endpoint in your config; credentials stay in the environment.
-Load the config with `Kapso(config_path=...)` or `kapso evolve --config ...`.
+Load the config with `Kapso(config=...)` or `kapso build --config ...`.
 Coding and web research still require agents with the corresponding tools.
 See the [configuration example and limits](https://docs.leeroo.com/docs/evolve/coding-agents#openai-compatible-api).
 
@@ -299,7 +299,7 @@ Model swaps change *pacing* too: the crew `timeout_minutes` caps in the
 config were calibrated on the default models, and a swapped model that
 reasons longer may need them raised.
 
-For detailed integration steps, see the [Quickstart](https://docs.leeroo.com/docs/quickstart) and [Installation](https://docs.leeroo.com/docs/installation) guides.
+For detailed integration steps, see the [Quickstart](https://docs.leeroo.com/docs/first-build) and [Installation](https://docs.leeroo.com/docs/installation) guides.
 
 ## Examples
 
@@ -308,7 +308,7 @@ For detailed integration steps, see the [Quickstart](https://docs.leeroo.com/doc
 | [**CUDA Optimization**](examples/cuda_optimization/README.md) | Optimize CUDA kernels for GPU performance |
 | [**PyTorch Optimization**](examples/pytorch_optimization/README.md) | Cut wall-clock and memory — fuse ops, kill sync points and host-device chatter, saturate the GPU without changing numerics |
 | [**ML Model Development**](examples/ml_model_development/README.md) | End-to-end delivery of prediction models — data prep, features, training, and validation evolved into a deployable artifact |
-| [**Harness Optimization**](examples/prompt_engineering/README.md) | Evolve the harness around a model — prompts, decoding, parsing, and scoring tuned against a measurable target |
+| [**Harness Optimization**](examples/prompt_engineering/README.md) | Tune the harness around a model — prompts, decoding, parsing, and scoring tuned against a measurable target |
 | [**Agent Optimization**](examples/agentic_scaffold/README.md) | Agents improving agents — workflows, tools, and prompts evolved until the metric climbs |
 
 ## Supported Benchmarks
@@ -330,7 +330,7 @@ Each benchmark also has a documentation page covering how to run it, its CLI opt
 
 - **Full Documentation**: [docs.leeroo.com](https://docs.leeroo.com/docs)
   - [Installation](https://docs.leeroo.com/docs/installation) — the coding-agent CLIs, the package, and `kapso doctor`
-  - [Quickstart](https://docs.leeroo.com/docs/quickstart) — your first campaign
+  - [Quickstart](https://docs.leeroo.com/docs/first-build) — your first campaign
   - [CLI reference](https://docs.leeroo.com/docs/reference/cli) — every command, flag and default
   - [Python API](https://docs.leeroo.com/docs/reference/kapso-api) — every public method on `Kapso`
   - [Configuration](https://docs.leeroo.com/docs/reference/configuration) — every key in `config.yaml`

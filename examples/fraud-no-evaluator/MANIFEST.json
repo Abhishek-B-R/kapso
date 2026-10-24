@@ -1,0 +1,8 @@
+{
+  "seed": 20261025,
+  "rows": 20000,
+  "fraud_rate": 0.0456,
+  "files": {
+    "data/transactions.csv": "6006e0fbd014ce5b871bed22f72b7658a282982adb3ea4706d75ea90e1500ed4"
+  }
+}

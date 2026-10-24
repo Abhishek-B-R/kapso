@@ -15,7 +15,7 @@ Kapso ships a packaged `config.yaml` and uses it unless you point somewhere else
 from kapso import Kapso
 
 kapso = Kapso()                              # packaged config
-kapso = Kapso(config_path="./my-config.yaml")  # yours
+kapso = Kapso(config="./my-config.yaml")  # yours
 ```
 
 ```bash
@@ -46,7 +46,7 @@ kapso learn mine --all --config ./my-config.yaml
 default_mode: GENERIC
 ```
 
-Names the entry in [`modes`](#modes) used when nothing overrides it. Override per run with `kapso evolve --mode MINIMAL` or `evolve(mode="MINIMAL")`.
+Names the entry in [`modes`](#modes) used when nothing overrides it. Override per run with `kapso build --mode MINIMAL` or `build(mode="MINIMAL")`.
 
 ## inference
 
@@ -158,10 +158,10 @@ defaults:
 
 | Key | What it does | Shipped value |
 |-----|--------------|---------------|
-| `models.embedding` | The OpenAI embedding model for semantic search over past experiments (`search_similar_experiments`). `null` turns it off: the experiment store is recency-only and no `OPENAI_API_KEY` is needed. Set it (for example `text-embedding-3-small`) to turn it on; `kapso doctor evolve` then checks for the key | `null` |
+| `models.embedding` | The OpenAI embedding model for semantic search over past experiments (`search_similar_experiments`). `null` turns it off: the experiment store is recency-only and no `OPENAI_API_KEY` is needed. Set it (for example `text-embedding-3-small`) to turn it on; `kapso doctor build` then checks for the key | `null` |
 | `budget.checkpoint_heartbeat_seconds` | How often a run writes its checkpoint and status | `60` |
 | `retry.request_timeout_seconds` | Default request timeout | `600` |
-| `inbox.enabled` | Let a blocked session ask you through the inbox and pause the campaign. See [the inbox](/docs/evolve/inbox) | `true` |
+| `inbox.enabled` | Let a blocked session ask you through the inbox and pause the campaign. See [the inbox](/docs/build/inbox) | `true` |
 | `inbox.stop_grace_seconds` | How long a session that asked gets to end its own turn before the adapter ends it | `120` |
 | `inbox.registry` | One line per launched campaign, so `kapso inbox` outside a campaign can list every one that waits | `~/.kapso/campaigns.jsonl` |
 
@@ -212,7 +212,7 @@ The packaged cost defaults live in `defaults.search_strategy.params.cost` and
 are inherited by every mode. Override individual keys under
 `modes.<mode>.search_strategy.params.cost`. Cost-enabled runs require the generic
 strategy and `budget.fidelity.mode: off`. Platform cost settings are separate
-from model spend in USD controlled by `evolve(cost_budget=...)`.
+from model spend in USD controlled by `build(budget=Budget(dollars=...))`.
 
 See [Capability-aware MCP gates](/docs/evolve/mcp-gates).
 See [Cost-aware selection](/docs/evolve/cost-aware-selection) for the estimator
@@ -318,7 +318,7 @@ learning:
 The store and the bank are Kapso's own state and live under `~/.kapso`, outside the project you run from, so a campaign's `--data-dir` and seed copy never pick them up.
 
 <Warning>
-  `learning.serving.enabled` ships as `false`. Until you turn it on, neither campaigns nor host sessions served by `kapso-mcp` read from the lesson bank, so banked lessons have no effect on `evolve()`.
+  `learning.serving.enabled` ships as `false`. Until you turn it on, neither campaigns nor host sessions served by `kapso-mcp` read from the lesson bank, so banked lessons have no effect on `build()`.
 </Warning>
 
 `update_crew.default_version` is the version [`learn()`](/docs/reference/kapso-api#learn) uses when you do not pass `learner_version`.

@@ -96,21 +96,23 @@ Suggestions:
 
 ## How do I use it?
 
-### Automatic (via evolve)
+### Automatic (via build)
 
-The feedback generator is automatically used when you call `kapso.evolve()`:
+The feedback generator is automatically used when you call `kapso.build()`:
 
 ```python
-solution = kapso.evolve(
-    goal="Build a classifier with accuracy > 0.9",
-    max_iterations=10,
+from kapso import Budget
+
+solution = kapso.build(
+    "Build a classifier with accuracy > 0.9",
+    budget=Budget(iterations=10),
 )
 
 # Check if goal was achieved
 if solution.succeeded:
-    print(f"Goal achieved with score: {solution.final_score}")
+    print(f"Goal achieved with score: {solution.score}")
 else:
-    print(f"Final feedback: {solution.final_feedback.feedback}")
+    print(f"Final feedback: {solution.feedback}")
 ```
 
 ### Direct usage
@@ -195,13 +197,13 @@ goal = "Build a good classifier"
 
 ### 2. Let agent build evaluation
 
-Don't provide `eval_dir` unless you have specific evaluation requirements. The agent builds domain-appropriate evaluation:
+Pass an evaluation directory when you have one; otherwise the campaign builds the evaluator from the brief. The agent builds domain-appropriate evaluation:
 
 ```python
 # Agent builds evaluation dynamically
-solution = kapso.evolve(
-    goal="Optimize inference speed to < 10ms per sample",
-    max_iterations=10,
+solution = kapso.build(
+    "Optimize inference speed to < 10ms per sample",
+    budget=Budget(iterations=10),
 )
 ```
 

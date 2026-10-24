@@ -69,6 +69,11 @@ jobs:
       - name: Check the reference covers the public surface
         run: python3 scripts/check_docs_coverage.py
 
+      # A fenced block that names a file under examples/ must equal it: the
+      # pages and the examples are one source.
+      - name: Check quoted snippets match their files
+        run: python3 scripts/check_snippets.py
+
       # Gates only the objective GEO rules — a page opening with prose, an
       # internal link, no banned marketing word or terminology alias. The
       # question-heading share is printed, never gated: gating a percentage

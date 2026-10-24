@@ -114,7 +114,7 @@ class SearchNode:
 
 ## Who evaluates and who stops?
 
-In `kapso.evolve()` the coding agent builds the evaluation and the feedback generator owns the stop decision. Benchmark runs use the same strategy but their handler supplies the official evaluation, and a handler may still cast a legacy stop vote via `stop_condition()`.
+In `kapso.build()` the coding agent builds the evaluation and the feedback generator owns the stop decision. Benchmark runs use the same strategy but their handler supplies the official evaluation, and a handler may still cast a legacy stop vote via `stop_condition()`.
 
 ## How do I add my own?
 

@@ -15,10 +15,10 @@ The file is about 270 lines of facts and rules, written for the mistakes agents 
 - Every model call runs through the `claude` and `codex` CLIs, which must be logged in, and `OPENAI_API_KEY` is read from `.env` in the working directory for embeddings only. `kapso doctor <verb>` comes before any run, and `--models` probes each configured model live.
 - A goal names a success metric and a number, and the judge when there is one: "accuracy above 0.85 as measured by `eval/evaluate.py`". When the repository has no evaluation and the request names none, the agent asks once, in one line, and ends its turn; if you have none, it launches without `--eval-dir` and Kapso builds its own evaluation in `kapso_evaluation/`. It never writes an evaluator on your behalf.
 - A campaign runs for tens of minutes to hours, so the agent launches it with `--detach` and `--output` in a sibling directory, and hands you `kapso watch <campaign> --follow` in the same reply, with the goal it passed and the note that your own metric can replace the one it assumed.
-- `WAITING ON YOU` is a pause, not a failure. The agent reads the request with `kapso inbox <campaign>` and answers with `kapso inbox reply`, and it never restarts the campaign or puts a secret in the reply. See [the inbox](/docs/evolve/inbox).
-- A dead campaign resumes with `kapso evolve --output <campaign> --resume` and nothing else, since the checkpoint and the launch record carry the goal and the flags. See [Resuming runs](/docs/evolve/resuming-runs).
+- `WAITING ON YOU` is a pause, not a failure. The agent reads the request with `kapso inbox <campaign>` and answers with `kapso inbox reply`, and it never restarts the campaign or puts a secret in the reply. See [the inbox](/docs/build/inbox).
+- A dead campaign resumes with `kapso build --output <campaign> --resume` and nothing else, since the checkpoint and the launch record carry the brief and the flags. See [Resuming runs](/docs/build/resume-and-budgets).
 - `learn("./campaign")` banks what a campaign taught; served lessons stay off until `learning.serving.enabled: true` in a config passed with `--config`. `learn_knowledge()` is for outside sources. See [Trajectory learning](/docs/learning/overview).
-- `deploy()` is a minutes-long foreground operation on the real `SolutionResult(goal, code_path)`, not a campaign. See [Deployment](/docs/deployment/strategies).
+- `deploy()` is a minutes-long foreground operation on a real `Solution` (the object `build()` returned, or `Solution.open(path)`), not a campaign. See [Deployment](/docs/deployment/strategies).
 - A one-file change with an obvious fix is faster by hand. The agent says which it is doing and never launches a campaign you did not ask for.
 
 The full text is in [`skills/claude-code/kapso/SKILL.md`](https://github.com/Leeroo-AI/kapso/blob/main/skills/claude-code/kapso/SKILL.md).
@@ -81,7 +81,7 @@ The skill is instructions, not code. It does not install Kapso or log in the CLI
   <Card title="Installation" icon="download" href="/docs/installation">
     The package, the coding-agent CLIs, and `kapso doctor`
   </Card>
-  <Card title="The inbox" icon="inbox" href="/docs/evolve/inbox">
+  <Card title="The inbox" icon="inbox" href="/docs/build/inbox">
     What WAITING ON YOU means and how to answer it
   </Card>
   <Card title="CLI reference" icon="terminal" href="/docs/reference/cli">
@@ -89,6 +89,6 @@ The skill is instructions, not code. It does not install Kapso or log in the CLI
   </Card>
 </CardGroup>
 
-Related pages: [Docs in your coding agent](/docs/agent-access) · [Installation](/docs/installation) · [The inbox](/docs/evolve/inbox) · [CLI reference](/docs/reference/cli)
+Related pages: [Docs in your coding agent](/docs/agent-access) · [Installation](/docs/installation) · [The inbox](/docs/build/inbox) · [CLI reference](/docs/reference/cli)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

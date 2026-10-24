@@ -317,9 +317,23 @@ re-run updates it. Reads only: the orchestrator and the strategies, whose
   exemption; it also forbids `SolutionResult` and `Kapso(config_path`.
 - The branch is `wp1-build`: git cannot hold `redesign/wp1-build` beside
   the `redesign` ref.
-- `tests/semantic/fixtures/churn-with-evaluator/kapso-brief.md` is the
-  fixture's brief (five minutes, two iterations); the fixture README shows
-  the build line.
+- The churn fixture moved to `examples/churn-first-build/` (the examples
+  are the semantic suite's fixtures, one source) with its brief, a
+  twelve-line `run.py` and the four-section README; `examples/fraud-no-evaluator/`
+  is new (a protocol in `Measured by`, no evaluator; rules 0.09 PR-AUC,
+  boosting 0.55 under the protocol). The five older examples got a
+  `kapso-brief.md`, a `run.py` and the four-section README, and their
+  `initial_repo/` became `repo/`; their evaluators stay inside the repo
+  until WP2 re-bases them on harnesses.
+- The docs slice (WP10, row 1): `docs/first-build.mdx` replaces the
+  quickstart; the Build group (`docs/build/`: the brief, evaluation, run
+  and watch, the inbox, review, resume and budgets); the brief format
+  reference; the CLI and Python references rewritten for `build`; the
+  Overview with the twelve lines; the old Evolve group regrouped as "How
+  it works" in place, with its snippets on the new arguments (the
+  condensation of those pages waits for the packages that change them);
+  `scripts/check_snippets.py` keeps a quoted file and its page identical
+  and runs in the docs workflow. "Kapso in your coding agent" is WP7's.
 
 ## Risks
 

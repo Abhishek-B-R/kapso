@@ -34,7 +34,7 @@ kapso.index_kg(
 
 # Every time: Load existing index
 kapso = Kapso(kg_index="data/indexes/llm_finetuning.index")
-solution = kapso.evolve(goal="Fine-tune LLaMA with QLoRA")
+solution = kapso.build("Fine-tune LLaMA with QLoRA")
 ```
 
 ### Option 2: Ingest sources
@@ -70,8 +70,8 @@ findings = kapso.research(
 )
 
 # Use research as context
-solution = kapso.evolve(
-    goal="Fine-tune with Unsloth + LoRA",
+solution = kapso.build(
+    "Fine-tune with Unsloth + LoRA",
     context=[findings.to_string()],
 )
 ```

@@ -287,8 +287,8 @@ are doing and why; never launch a campaign the user did not ask for.
 - CLI reference: https://docs.leeroo.com/docs/reference/cli.md
 - Python API: https://docs.leeroo.com/docs/reference/kapso-api.md
 - Configuration: https://docs.leeroo.com/docs/reference/configuration.md
-- Inbox: https://docs.leeroo.com/docs/evolve/inbox.md
-- Resuming runs: https://docs.leeroo.com/docs/evolve/resuming-runs.md
+- Inbox: https://docs.leeroo.com/docs/build/inbox.md
+- Resuming runs: https://docs.leeroo.com/docs/build/resume-and-budgets.md
 - Evaluation integrity: https://docs.leeroo.com/docs/evolve/evaluation-integrity.md
 - Trajectory learning: https://docs.leeroo.com/docs/learning/overview.md
 - Knowledge graph: https://docs.leeroo.com/docs/knowledge/overview.md

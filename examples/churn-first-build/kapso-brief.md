@@ -7,4 +7,4 @@ Target       0.85
 Rules
   - the evaluator is never modified
   - no fitting on the holdout rows; the labels are not in the workspace
-Budget       minutes=5 iterations=2
+Budget       minutes=10 iterations=4

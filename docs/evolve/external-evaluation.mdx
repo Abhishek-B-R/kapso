@@ -21,7 +21,7 @@ branch selected by default.
 import json
 import subprocess
 
-from kapso import IterationEvaluationResult
+from kapso import Budget, IterationEvaluationResult
 
 
 def evaluate_candidate(context):
@@ -43,16 +43,16 @@ def evaluate_candidate(context):
     )
 
 
-solution = kapso.evolve(
-    goal="Improve the support agent",
-    output_path="./campaign",
-    max_iterations=3,
+solution = kapso.build(
+    "Improve the support agent",
+    output="./campaign",
+    budget=Budget(iterations=3),
     iteration_evaluator=evaluate_candidate,
 )
 ```
 
-`solution.metadata["external_metrics"]` contains the metrics attached to the
-internally selected best candidate. All candidate metrics are retained in
+`solution.external_metrics` holds the metrics attached to the delivered
+candidate, and `solution.external_primary_metric` names the primary one. All candidate metrics are retained in
 `.kapso/experiment_history.json` and, for resumable runs, in
 `.kapso/run_state.json`.
 
@@ -177,7 +177,7 @@ and in durable run records without becoming feedback for later ideas.
 The default `record` policy keeps the experiment loop running:
 
 ```python
-solution = kapso.evolve(
+solution = kapso.build(
     ...,
     iteration_evaluator=evaluate_candidate,
     iteration_evaluator_failure_policy="record",
@@ -191,7 +191,7 @@ error is persisted in experiment history and the checkpoint.
 Use `raise` when every external measurement is mandatory:
 
 ```python
-solution = kapso.evolve(
+solution = kapso.build(
     ...,
     iteration_evaluator=evaluate_candidate,
     iteration_evaluator_failure_policy="raise",
@@ -233,11 +233,11 @@ campaign.
   <Card title="Evaluation integrity" icon="shield" href="/docs/evolve/evaluation-integrity">
     Protecting a provided evaluator
   </Card>
-  <Card title="Python API" icon="code" href="/docs/reference/kapso-api#evolve">
+  <Card title="Python API" icon="code" href="/docs/reference/kapso-api#build">
     The iteration_evaluator argument
   </Card>
 </CardGroup>
 
-Related pages: [Evaluation integrity](/docs/evolve/evaluation-integrity) · [Python API](/docs/reference/kapso-api#evolve) · [Overview](/docs/evolve/overview)
+Related pages: [Evaluation integrity](/docs/evolve/evaluation-integrity) · [Python API](/docs/reference/kapso-api#build) · [Overview](/docs/evolve/overview)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

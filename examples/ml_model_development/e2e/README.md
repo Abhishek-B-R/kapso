@@ -52,4 +52,4 @@ FULL evidence tier, and (gate mode) every agent call provably bounded
 inside the campaign window.
 
 Run artifacts land in `runs/<mode>/` (gitignored): the staged
-`initial_repo/`, the campaign `workspace/`, and `result.json`.
+`repo/` copy, the campaign `workspace/`, and `result.json`.

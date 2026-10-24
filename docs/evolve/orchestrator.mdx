@@ -20,17 +20,17 @@ keywords: ["OrchestratorAgent", "experiment loop", "budget tracking", "campaign 
 ### Via Kapso API (recommended)
 
 ```python
-from kapso import Kapso
+from kapso import Kapso, Budget
 
 kapso = Kapso()
-solution = kapso.evolve(
-    goal="Build a classifier with accuracy > 0.9",
-    max_iterations=10,
+solution = kapso.build(
+    "Build a classifier with accuracy > 0.9",
+    budget=Budget(iterations=10),
 )
 
 # Check if goal was achieved
 if solution.succeeded:
-    print(f"Goal achieved with score: {solution.final_score}")
+    print(f"Goal achieved with score: {solution.score}")
 ```
 
 ### Direct usage

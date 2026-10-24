@@ -1,122 +1,46 @@
-# CUDA Attention Optimization Example
+# CUDA optimization: faster multi-head attention
 
-This example demonstrates using Kapso's `build()` function to optimize a vanilla multi-head self-attention implementation for CUDA performance.
+A ninety-minute build on a CUDA machine that speeds up the vanilla
+multi-head self-attention in `repo/module.py` (sequence 256, embedding 768,
+8 heads, batch 32) while keeping its results within 1e-5, with the
+repository's own `evaluate.py` measuring correctness and speedup. Flash
+attention or a Triton kernel reaches two to four times the baseline.
 
-## Environment Setup
+Recorded result: not recorded yet.
 
-Before running this example, install the required dependencies:
+## What you get
+
+- `repo/module.py`, rewritten on a branch of its own inside `build/`.
+- A score from `repo/evaluate.py --path module.py`: the speedup over the
+  baseline, after a correctness check, printed as `Score: 2.3400`.
+- `build/.kapso/solution.json`, the record, read back by `Solution.open("build")`.
+
+## Run it
 
 ```bash
-# Create and activate conda environment (recommended)
-conda create -n kapso python=3.10
-conda activate kapso
-
-# Install PyTorch with CUDA support
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# Install Triton (for custom CUDA kernels)
 pip install triton
-
-# Install Kapso from the project root
-cd /path/to/kapso
-pip install -e .
+kapso doctor build
+kapso build --brief kapso-brief.md --repo repo --output build --detach
+kapso watch build --follow
 ```
 
-Authenticate the coding-agent CLIs the default config uses, then
-verify everything with `kapso doctor`:
+`python run.py` is the same build from Python. A CUDA device is required.
 
-```bash
-# Claude Code sessions (ideation, implementation): log in once
-npm install -g @anthropic-ai/claude-code
-claude auth login   # or: export CLAUDE_CODE_OAUTH_TOKEN=...
+## What to look at
 
-# Codex sessions (research, judging, utilities): log in once
-npm install -g @openai/codex
-codex login
+- `kapso-brief.md`: the interface, the tolerance and the CUDA requirement
+  are rules; the judge rejects a candidate that breaks one.
+- `solution.diff()`: the kernel that won.
+- `cd build && python evaluate.py --path module.py`: the speedup, re-measured
+  by hand.
 
-# embeddings (memory and knowledge-search indexing)
-export OPENAI_API_KEY=your_key_here
+## Change it
 
-kapso doctor   # checks all of the above and prints fixes for misses
-```
-
-## Problem Description
-
-The baseline implementation (`module.py`) is a standard PyTorch multi-head masked self-attention layer. The goal is to optimize it for maximum speedup while maintaining numerical correctness.
-
-### Optimization Opportunities
-
-1. **Flash Attention**: Use `torch.nn.functional.scaled_dot_product_attention` which implements memory-efficient attention
-2. **Triton Kernels**: Write custom Triton kernels for fused operations
-3. **Memory Optimization**: Reduce memory bandwidth by fusing QKV projection with attention
-4. **Tensor Cores**: Leverage FP16/BF16 with tensor cores for faster matrix operations
-
-### Constraints
-
-- Must maintain the same `Model` class interface
-- Must produce numerically correct results (max diff < 1e-5)
-- Must work on CUDA devices
-
-## Files
-
-- `run_build.py` - Main script that uses Kapso to optimize the attention kernel
-- `module.py` - Baseline implementation to be optimized
-- `evaluate.py` - Evaluation script that checks correctness and measures speedup
-- `requirements.txt` - Python dependencies
-
-## Usage
-
-### Run Kapso Evolution
-
-```bash
-cd examples/cuda_optimization
-python run_build.py
-```
-
-This will:
-1. Initialize Kapso
-2. Run multiple iterations to find optimized implementations
-3. Output the best solution to `./output/cuda_optimized`
-
-### Manual Evaluation
-
-To evaluate a specific implementation:
-
-```bash
-python evaluate.py --path module.py
-```
-
-## Expected Output
-
-The evaluation script outputs:
-- Correctness check (pass/fail)
-- Baseline execution time
-- Optimized execution time  
-- Speedup factor (score)
-
-Example:
-```
-============================================================
-FINAL RESULTS
-============================================================
-Correctness: PASS
-Speedup: 2.34x
-Score: 2.3400
-```
-
-## Model Parameters
-
-| Parameter | Value |
-|-----------|-------|
-| max_seqlen | 512 |
-| seq_len | 256 |
-| n_embd | 768 |
-| n_head | 8 |
-| batch_size | 32 |
-
-## Success Criteria
-
-- **Correctness**: Max float difference < 1e-5
-- **Performance**: Speedup > 1.0x (higher is better)
-
-A good optimization should achieve 2-4x speedup using Flash Attention or custom Triton kernels.
+- The shape: the parameters at the top of `repo/evaluate.py`
+  (`max_seqlen`, `seq_len`, `n_embd`, `n_head`, `batch_size`).
+- The target: a number in `Target` once you know the hardware.
+- The budget: the brief's `Budget minutes=90 iterations=8`, or the command's
+  `--budget-minutes` and `--iterations`, which win over it.
+- Research first: `kapso research --objective "flash attention in Triton"
+  -o findings.json` and pass the findings with `build(..., context=[...])`.

@@ -69,6 +69,25 @@ report's readers (the trajectory store, the mining crew) never read
 `metadata` by key; they read the file as prose, so named keys serve them
 better than a dump of the old dictionary.
 
+**The examples are the semantic fixtures, under `examples/`.** The docs
+plan said one source; the WP0 fixture lived under `tests/semantic/`. It
+moved to `examples/churn-first-build/`, and `tests/semantic/README.md`
+points at the examples. Alternative rejected: a copy under `tests/`, which
+is the drift the plan forbids.
+
+**The engine pages stay at their URLs, regrouped as "How it works".** The
+docs plan retires the Evolve pages into condensed How-it-works pages. WP1
+regroups them in the navigation and fixes their snippets, and leaves the
+condensation to the packages that change their content (the config, the
+record and the trace), so each page is rewritten once. Two pages did move
+into Build (the inbox, resume and budgets), with redirects.
+
+**The older examples keep their evaluator inside the repository until
+WP2.** Moving each `evaluate.py` into a protected `evaluation/` directory
+changes how it is invoked and needs each example run again; the harness
+re-base in WP2 does that work once. Until then the brief's rule ("the
+evaluator is never modified") is what protects it, as it did before.
+
 **`Brief` is both the Python object and the file, one grammar.** The
 interfaces document left open whether the brief is an API object or a
 CLI-only file. `Brief.read` parses the file into the object and

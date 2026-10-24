@@ -43,21 +43,28 @@ npx mint@4 broken-links   # what CI runs
 
 Every published page with its rendered address, grouped as in the sidebar. Kept here so the folder listing on GitHub points at the site.
 
-**Getting started**
+**Start**
 
 - [What is Kapso](https://docs.leeroo.com/docs) — `docs/index.mdx`
 - [Install Kapso and verify your setup with kapso doctor](https://docs.leeroo.com/docs/installation) — `docs/installation.mdx`
-- [Run your first Kapso campaign in under ten minutes](https://docs.leeroo.com/docs/quickstart) — `docs/quickstart.mdx`
+- [Your first Kapso build in ten minutes](https://docs.leeroo.com/docs/first-build) — `docs/first-build.mdx`
 - [Docs in your coding agent](https://docs.leeroo.com/docs/agent-access) — `docs/agent-access.mdx`
 - [Kapso skill for coding agents](https://docs.leeroo.com/docs/coding-agent-skills) — `docs/coding-agent-skills.mdx`
 
-**Evolve system**
+**Build**
 
-- [Overview](https://docs.leeroo.com/docs/evolve/overview) — `docs/evolve/overview.mdx`
+- [The brief](https://docs.leeroo.com/docs/build/brief) — `docs/build/brief.mdx`
+- [Evaluation](https://docs.leeroo.com/docs/build/evaluation) — `docs/build/evaluation.mdx`
+- [Run and watch](https://docs.leeroo.com/docs/build/run-and-watch) — `docs/build/run-and-watch.mdx`
+- [The inbox](https://docs.leeroo.com/docs/build/inbox) — `docs/build/inbox.mdx`
+- [Review the result](https://docs.leeroo.com/docs/build/review) — `docs/build/review.mdx`
+- [Resume and budgets](https://docs.leeroo.com/docs/build/resume-and-budgets) — `docs/build/resume-and-budgets.mdx`
+
+**How it works**
+
+- [The engine](https://docs.leeroo.com/docs/evolve/overview) — `docs/evolve/overview.mdx`
 - [Architecture](https://docs.leeroo.com/docs/evolve/architecture) — `docs/evolve/architecture.mdx`
 - [Execution flow](https://docs.leeroo.com/docs/evolve/execution-flow) — `docs/evolve/execution-flow.mdx`
-- [Resuming runs](https://docs.leeroo.com/docs/evolve/resuming-runs) — `docs/evolve/resuming-runs.mdx`
-- [Inbox](https://docs.leeroo.com/docs/evolve/inbox) — `docs/evolve/inbox.mdx`
 - [External evaluation](https://docs.leeroo.com/docs/evolve/external-evaluation) — `docs/evolve/external-evaluation.mdx`
 - [Evaluation integrity](https://docs.leeroo.com/docs/evolve/evaluation-integrity) — `docs/evolve/evaluation-integrity.mdx`
 

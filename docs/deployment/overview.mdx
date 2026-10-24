@@ -1,7 +1,7 @@
 ---
 title: "Turn a Kapso solution into running software with deploy"
 sidebarTitle: "Deployment"
-description: "After evolve() produces a solution, deploy() adapts it for a target and runs it. The pipeline covers adaptation, strategy selection, execution and teardown."
+description: "After build() produces a solution, deploy() adapts it for a target and runs it. The pipeline covers adaptation, strategy selection, execution and teardown."
 keywords: ["Kapso deploy", "deployment pipeline", "DeployStrategy", "running software", "solution deployment"]
 ---
 
@@ -11,7 +11,7 @@ keywords: ["Kapso deploy", "deployment pipeline", "DeployStrategy", "running sof
 
 ```mermaid
 flowchart LR
-    SOL["SolutionResult"] --> SEL["Selector"]
+    SOL["Solution"] --> SEL["Selector"]
     SEL --> ADAPT["Adapter"]
     ADAPT --> RUN["Runner"]
     RUN --> SOFT["Software"]
@@ -28,7 +28,7 @@ flowchart LR
 from kapso import Kapso, DeployStrategy
 
 kapso = Kapso()
-solution = kapso.evolve(goal="Build a classifier")
+solution = kapso.build("Build a classifier")
 
 # Deploy with explicit strategy
 deployed_program = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)

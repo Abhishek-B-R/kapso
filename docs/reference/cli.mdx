@@ -2,14 +2,14 @@
 title: "Kapso CLI reference: every command, flag and default"
 sidebarTitle: "CLI"
 description: "The nine kapso commands and their thirteen subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
-keywords: ["kapso CLI", "kapso evolve", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
+keywords: ["kapso CLI", "kapso build", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
 ---
 
 Kapso installs the `kapso` executable with nine commands, and `kapso-mcp`, the MCP server that serves Kapso's knowledge and experience tools to the coding-agent session you work in (see [below](#kapso-mcp)).
 
 | Command | What it does |
 |---------|--------------|
-| [`kapso evolve`](#kapso-evolve) | Build software from a goal through experimentation |
+| [`kapso build`](#kapso-build) | Build software that meets a brief, by experiment |
 | [`kapso research`](#kapso-research) | Deep web research for an objective |
 | [`kapso learn`](#kapso-learn) | Trajectory learning: import, mine, grade, update, codify |
 | [`kapso deploy`](#kapso-deploy) | Deploy a solution as running software |
@@ -32,38 +32,41 @@ kapso --list-agents
 
 On a standard install the six agents are `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code` and `vertex_claude_code`; the legacy `aider` extra registers a seventh.
 
-## kapso evolve
+## kapso build
 
-Runs an experiment campaign against a goal and returns the best solution.
+Runs an experiment campaign that meets a brief and returns the solution; writes it to `<output>/.kapso/solution.json` too. See [The brief](/docs/build/brief) and [Run and watch](/docs/build/run-and-watch).
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `-g`, `--goal` | Goal or problem description. A resume takes it from the checkpoint | — |
-| `-f`, `--goal-file` | File containing the goal. Mutually exclusive with `--goal` | — |
-| `-i`, `--iterations` | Maximum experiments to run. A resume keeps the launch's cap | `10` |
-| `-o`, `--output` | Output directory | — |
-| `--time-budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
-| `--cost-budget` | Best-effort spend budget in USD | — |
-| `--finalization-reserve-minutes` | Wall-clock escrowed for final checkout and evaluation | — |
-| `--resume` | Continue the compatible checkpoint in `--output`. The goal and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
+| `--brief` | The brief file (`kapso-brief.md`): objective, how it is measured, baseline, target, rules, budget. Mutually exclusive with the two below | — |
+| `-g`, `--goal` | The objective in a sentence. A resume takes it from the checkpoint | — |
+| `-f`, `--goal-file` | A file holding the objective as plain text | — |
+| `--evaluation` | Directory holding your evaluator; copied to `kapso_evaluation/` and protected | — |
+| `--data` | Directory holding your data; copied to `kapso_datasets/` | — |
+| `--repo` | The starting repository, a local path (copied) or a GitHub URL (cloned) | — |
+| `-o`, `--output` | The campaign directory, the solution's trace. Empty for a fresh build | a temporary directory |
+| `-i`, `--iterations` | Maximum experiments this call may run. A resume keeps the launch's cap | `10` |
+| `--budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
+| `--budget-dollars` | Best-effort model-spend budget in USD | — |
+| `--reserve-minutes` | Wall clock escrowed for the final checkout and evaluation | — |
+| `--resume` | Continue the campaign in `--output` from its checkpoint. The brief and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
 | `--detach` | Start the campaign in a session of its own and return at once with its pid, the log, the status path and the `watch` command. Needs `--output`. The run outlives the shell that started it, a coding agent's tool call included | off |
 | `--log` | Where a detached run's output goes | `<output>.log`, beside the campaign directory |
 | `-m`, `--mode` | Config mode: `GENERIC` or `MINIMAL` | from config (`default_mode`) |
 | `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code`, `vertex_claude_code` | from config |
-| `--eval-dir` | Evaluation files directory | — |
-| `--data-dir` | Data files directory | — |
-| `--initial-repo` | Starting repository, as a path or GitHub URL | — |
+| `--config` | Config path | the packaged `config.yaml` |
 | `--kg-index` | Path to a `.index` file for knowledge search | — |
 
+A budget flag wins over the brief's `Budget` line; on a resume the launch record fills what is still unset.
+
 ```bash
-kapso evolve --goal "Build a web scraper for news articles"
-kapso evolve --goal-file problem.txt --iterations 20
-kapso evolve --goal "Build a classifier" --eval-dir ./eval/ --data-dir ./data/
-kapso evolve --goal "Build a classifier" --output ./campaign --detach
-kapso evolve --output ./campaign --resume --detach
+kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output build --detach
+kapso build --goal "Build a web scraper for news articles" --output ./scraper
+kapso build --goal-file problem.txt --iterations 20 --output ./campaign
+kapso build --output ./campaign --resume --detach
 ```
 
-When a session needs something only you can provide, the campaign pauses: the summary block says `WAITING ON YOU` instead of `COMPLETED`, the exit code stays 0, and [`kapso inbox reply`](#kapso-inbox) resumes it. See [the inbox](/docs/evolve/inbox).
+When a session needs something only you can provide, the campaign pauses: the summary block says `WAITING ON YOU` instead of `COMPLETED`, the exit code stays 0, and [`kapso inbox reply`](#kapso-inbox) resumes it. See [the inbox](/docs/build/inbox).
 
 ## kapso research
 
@@ -96,7 +99,7 @@ Trajectory learning. Ten subcommands cover importing finished campaigns, mining 
 | `update` | Run the update crew: fold mined and graded trajectories into the bank |
 | `init-bank` | Create the bank home: a bare repo plus the founding skeleton |
 | `develop` | Run one learner version through the development regime |
-| `codify` | Run one codify request, which is evolve minus ideation, against the bank |
+| `codify` | Run one codify request, which is a build minus ideation, against the bank |
 | `ingest` | Operating-regime chain for one campaign: mine, exam, lesson |
 | `gauntlet` | Run the duplicate and stability traps against a completed development run |
 | `behave` | Run behavior scenarios as semantic production tests |
@@ -218,22 +221,21 @@ kapso learn behave --all
 
 ## kapso deploy
 
-Turns a solution directory into running software.
+Turns the solution a build wrote into running software.
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--solution-path` | Path to the solution code. **Required** | — |
+| `--solution-path` | The campaign directory a build wrote; its `.kapso/solution.json` is the solution. **Required** | — |
 | `--strategy` | `auto`, `local`, `docker`, `modal`, `bentoml` or `langgraph` | `auto` |
-| `--goal` | Goal description for the solution | — |
 | `--env` | Environment variable as `KEY=VALUE`. Repeat for more than one | — |
 | `--coding-agent` | Agent behind the selector and adapter sessions | from config (`deployment.coding_agent`) |
 | `--model` | Model that agent is asked for | from config (`deployment.model`) |
 | `--interactive` | Keep running after deploy instead of returning | off |
 
 ```bash
-kapso deploy --solution-path ./solution
-kapso deploy --solution-path ./solution --strategy docker
-kapso deploy --solution-path ./solution --env API_KEY=xxx --interactive
+kapso deploy --solution-path ../churn-build
+kapso deploy --solution-path ../churn-build --strategy docker
+kapso deploy --solution-path ../churn-build --env API_KEY=xxx --interactive
 ```
 
 ## kapso index_kg
@@ -260,14 +262,14 @@ kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index --force
 
 ## kapso watch
 
-Renders the status of a running `evolve`, `learn` or `learn_knowledge` operation.
+Renders the status of a running `build`, `learn` or `learn_knowledge` operation.
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
 | `path` | Workspace, status file, or directory of status files. **Required** | — |
 | `--json` | Print the status file once, as JSON | off |
 | `--follow` | Re-render on each heartbeat until the operation ends | off |
-| `--tree` | Show the evolve campaign's search lineage from its checkpoint, each node with its score, its platform cost and `refused` as the outcome of a cost-refused node when cost-aware selection is on, external baseline comparison, and the knowledge gates it consulted | off |
+| `--tree` | Show the build's search lineage from its checkpoint, each node with its score, its platform cost and `refused` as the outcome of a cost-refused node when cost-aware selection is on, external baseline comparison, and the knowledge gates it consulted | off |
 
 ```bash
 kapso watch ./campaign
@@ -281,30 +283,30 @@ A campaign writes its status file the moment its workspace is seeded, in phase `
 
 ### The status file
 
-`--json` prints the file as it is. Every operation (`evolve`, `learn`, `learn_knowledge`) carries the same core; `evolve` adds its campaign payload. Fields appear as they are first written, so a reader treats each as optional.
+`--json` prints the file as it is. Every operation (`build`, `learn`, `learn_knowledge`) carries the same core; `build` adds its campaign payload. Fields appear as they are first written, so a reader treats each as optional.
 
 | Field | What it holds |
 |-------|---------------|
-| `operation` | `evolve`, `learn` or `learn_knowledge` |
-| `phases` | The operation's phases in order. Evolve: `setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Knowledge: `ingest`, `merge` |
-| `state` | `starting` (preparing, for evolve the `setup` phase), `running`, `done` or `failed` |
+| `operation` | `build`, `learn` or `learn_knowledge` |
+| `phases` | The operation's phases in order. Build: `setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Knowledge: `ingest`, `merge` |
+| `state` | `starting` (preparing, for a build the `setup` phase), `running`, `done` or `failed` |
 | `phase`, `phase_started_at` | The current phase and when it began |
 | `pid` | The writing process. `kapso watch` reports `DEAD` when it is gone |
 | `started_at`, `heartbeat_at`, `finished_at` | Timestamps, UTC |
 | `heartbeat_seconds` | The writer's beat; `STALLED` after three missed beats |
 | `recent` | The last ten human-readable lines |
 | `error` | The failure, when `state` is `failed` |
-| `budget` | Evolve: `{elapsed_min, total_min}`, the time dial |
-| `iteration` | Evolve: the iteration in progress |
-| `best`, `last` | Evolve: `{score, node}` of the best and the latest candidate |
-| `stopped_reason`, `stop_detail` | Evolve, at the end: why the campaign stopped |
-| `requests` | Evolve, when `stopped_reason` is `waiting_for_user`: the open inbox requests |
-| `platform_budget` | Evolve, with cost-aware selection on: `{used, budget, unit, refused}` |
+| `budget` | Build: `{elapsed_min, total_min}`, the time dial |
+| `iteration` | Build: the iteration in progress |
+| `best`, `last` | Build: `{score, node}` of the best and the latest candidate |
+| `stopped_reason`, `stop_detail` | Build, at the end: why the campaign stopped |
+| `requests` | Build, when `stopped_reason` is `waiting_for_user`: the open inbox requests |
+| `platform_budget` | Build, with cost-aware selection on: `{used, budget, unit, refused}` |
 | `trajectory_id`, `bank_head_before`, `cards` | Learn: what is being learned and what the lesson changed |
 
 ## kapso inbox
 
-What a paused campaign is waiting on you for, and the reply that resumes it. Inside a campaign directory both forms act on that campaign; elsewhere, name it first. See [the inbox](/docs/evolve/inbox).
+What a paused campaign is waiting on you for, and the reply that resumes it. Inside a campaign directory both forms act on that campaign; elsewhere, name it first. See [the inbox](/docs/build/inbox).
 
 | Form | What it does |
 |------|--------------|
@@ -359,14 +361,14 @@ Reports the requirements your **active config** implies, and exits non-zero when
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `verb` | Narrow the report to `research`, `learn_knowledge`, `evolve`, `learn` or `deploy` | union of all five |
+| `verb` | Narrow the report to `research`, `learn_knowledge`, `build`, `learn` or `deploy` | union of all five |
 | `--models` | Live-probe each configured CLI and model pair, spending a few one-token calls | off |
 | `--config` | Config to check | packaged `config.yaml` |
 
 ```bash
 kapso doctor
-kapso doctor evolve
-kapso doctor evolve --models
+kapso doctor build
+kapso doctor build --models
 ```
 
 See [How do I check my setup?](/docs/installation#how-do-i-check-my-setup) for the output format and what each marker means.

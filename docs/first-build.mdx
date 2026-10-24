@@ -1,0 +1,133 @@
+---
+title: "Your first Kapso build in ten minutes"
+sidebarTitle: "Your first build"
+description: "Run the churn example: a brief, a protected evaluator, a ten-minute build on a fresh install, and the Solution it hands back with its score, branch and diff."
+keywords: ["Kapso quickstart", "first build", "kapso build", "churn example", "experiment campaign"]
+---
+
+Ten minutes from a fresh install to a `Solution`. The task is a churn model
+with an evaluator present: the shipped logistic regression scores 0.797
+ROC AUC on held-out rows, the brief asks for 0.85, and a gradient boosting
+model with no feature work reaches 0.832, so there is room (numbers from
+the example's own `baseline.py`, 2026-10-24, on its generated data).
+
+## Before you start
+
+```bash
+kapso doctor build
+```
+
+Every required row must read `[OK ]`; the coding-agent logins are the part
+people miss. See [Install](/docs/installation).
+
+## Get the example
+
+```bash
+git clone --depth 1 https://github.com/Leeroo-AI/kapso /tmp/kapso-src
+cp -r /tmp/kapso-src/examples/churn-first-build . && cd churn-first-build
+python generate.py          # 10,000 training rows, 3,000 held out, seeded
+```
+
+## Read the brief
+
+```text examples/churn-first-build/kapso-brief.md
+Objective    Raise the churn model's out-of-sample ROC AUC above 0.85
+             without changing the prediction contract: predict.py keeps
+             writing id,churn_probability for every holdout id.
+Measured by  kapso_evaluation/evaluate.py, ROC AUC on the held-out rows
+Baseline     0.797 (the shipped logistic regression, bootstrap SE 0.010)
+Target       0.85
+Rules
+  - the evaluator is never modified
+  - no fitting on the holdout rows; the labels are not in the workspace
+Budget       minutes=10 iterations=4
+```
+
+The objective, how it is measured, where it starts, where it should end,
+what must never happen, how much to spend. The judge reads all of it. See
+[The brief](/docs/build/brief).
+
+## Build
+
+<Tabs>
+  <Tab title="CLI">
+    ```bash
+    kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output build --detach
+    kapso watch build --follow
+    ```
+
+    The first line returns at once with the pid, the log and the watch
+    line; the second follows the campaign until it ends.
+  </Tab>
+  <Tab title="Python">
+    ```python examples/churn-first-build/run.py
+    """Your first build: the churn model, scored by the evaluator Kapso protects."""
+    from kapso import Kapso, Brief
+
+    solution = Kapso().build(
+        Brief.read("kapso-brief.md"),
+        evaluation="evaluation", data="data", repo="repo", output="build",
+    )
+    print(solution.explain())
+    ```
+
+    `python run.py` blocks until the build returns.
+  </Tab>
+</Tabs>
+
+`--evaluation` is copied into the workspace and protected: a candidate that
+edits it is rejected. `--repo` is copied, never modified; every experiment
+lands on a branch inside `build/`.
+
+## What you get back
+
+The run ends with a summary block, `COMPLETED` with the score and the stop
+reason. The same solution, from any process:
+
+```python
+from kapso import Solution
+
+solution = Solution.open("build")
+solution.score            # the delivered candidate's ROC AUC
+solution.branch           # generic_exp_2
+solution.succeeded        # the judge's verdict on the objective
+solution.stopped_reason   # goal_achieved, max_iterations, …
+print(solution.diff())    # the delivered code against the seed
+```
+
+If the block says `WAITING ON YOU` instead, a session needs something only
+you can provide; `kapso inbox build` shows the request and
+`kapso inbox reply` resumes the campaign. See [The inbox](/docs/build/inbox).
+
+## Deploy it, learn from it
+
+```python
+software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
+software.run({"tenure_months": 3, "monthly_spend": 92.0, "support_tickets": 4})
+lesson = kapso.learn(solution)
+```
+
+```bash
+kapso deploy --solution-path build --strategy local
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="The brief" icon="file-lines" href="/docs/build/brief">
+    What each line is for, and the three cases
+  </Card>
+  <Card title="Run and watch" icon="play" href="/docs/build/run-and-watch">
+    Every flag, the status file, the summary block
+  </Card>
+  <Card title="Review the result" icon="magnifying-glass" href="/docs/build/review">
+    The Solution and the record
+  </Card>
+  <Card title="Examples" icon="folder-open" href="https://github.com/Leeroo-AI/kapso/tree/main/examples">
+    Seven tasks, each a brief and twelve lines
+  </Card>
+</CardGroup>
+
+Related pages: [The brief](/docs/build/brief) · [Run and watch](/docs/build/run-and-watch) · [Review the result](/docs/build/review) · [Install](/docs/installation)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

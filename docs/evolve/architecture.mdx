@@ -73,7 +73,7 @@ class Kapso:
     def research(objective, mode, depth) -> ResearchFindings
     def learn(source) -> LessonResult              # mine one finished campaign
     def learn_knowledge(*sources, wiki_dir) -> PipelineResult  # ingest into the KG
-    def evolve(goal, ...) -> SolutionResult
+    def build(goal, ...) -> Solution
     def deploy(solution, strategy) -> Software
     def index_kg(wiki_dir, save_to) -> str
 ```
@@ -140,7 +140,8 @@ src/kapso/
 │
 ├── execution/               # Execution layer
 │   ├── orchestrator.py      # OrchestratorAgent
-│   ├── solution.py          # SolutionResult dataclass
+│   └── ...
+│   handles.py               # Brief, Budget, Solution
 │   │
 │   ├── search_strategies/   # Solution exploration
 │   │   ├── base.py          # SearchStrategy ABC

@@ -73,7 +73,7 @@ def main() -> None:
     init_bank(str(sandbox / "bank-home.git"))
 
     workdir = sandbox / "task"
-    shutil.copytree(example_dir / "initial_repo", workdir)
+    shutil.copytree(example_dir / "repo", workdir)
     train_df, test_df = generate(rows=2000, test_rows=500, seed=1337)
     (workdir / "data").mkdir()
     train_df.to_csv(workdir / "data" / "train.csv", index=False)

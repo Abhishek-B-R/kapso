@@ -101,8 +101,8 @@ return DeployedSoftware(config=config, runner=runner, info=info)
 
 | Method | Input | Output |
 |--------|-------|--------|
-| `select()` | `SolutionResult`, optional `allowed_strategies` | `DeploymentSetting` |
-| `explain()` | `SolutionResult` | `str` human-readable explanation |
+| `select()` | `Solution`, optional `allowed_strategies` | `DeploymentSetting` |
+| `explain()` | `Solution` | `str` human-readable explanation |
 
 ---
 
@@ -118,7 +118,7 @@ return DeployedSoftware(config=config, runner=runner, info=info)
 
 | Method | Input | Output |
 |--------|-------|--------|
-| `adapt()` | `SolutionResult`, `DeploymentSetting` | `AdaptationResult` |
+| `adapt()` | `Solution`, `DeploymentSetting` | `AdaptationResult` |
 
 **Key Output Extraction:**
 

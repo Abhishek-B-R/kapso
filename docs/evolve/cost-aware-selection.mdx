@@ -173,7 +173,7 @@ number the refusal records as `campaign_cost_used`.
 | `.kapso/status.json`, payload | `platform_budget: {used, budget, unit, refused}`, present only when cost is enabled; `kapso watch --json` passes it through |
 | `kapso watch ./campaign` | A second bar under the time bar: `cost:   ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░ 2.0/3.0 credits, 1 candidate refused` |
 | `kapso watch ./campaign --tree` | `cost: 2.0` on each node's row after its score, measured over estimated, and `refused` as the outcome of a cost-refused node |
-| `kapso evolve`, the completion summary | `Platform cost: 2.0/3.0 credits, 1 candidate refused` |
+| `kapso build`, the completion summary | `Platform cost: 2.0/3.0 credits, 1 candidate refused` |
 
 A campaign with cost disabled prints, writes and renders none of this.
 
