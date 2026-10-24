@@ -72,8 +72,9 @@
 7. **The plugin** (the layer specified in `docs/plans/kapso-plugin-user-flow.md`
    and the mental model's seams): the `plugin/` tree with the three
    manifests, `.mcp.json` and the self-bootstrapping `kapso-mcp` launcher,
-   the one skill with its Codex sidecar, the repository-as-marketplace files
-   for Claude Code and Codex; the commands `setup`, `build`, `watch`,
+   the four skills of `docs/plans/kapso-plugin-skills.md` (`kapso-setup`,
+   `kapso-brief`, `kapso-harness`, `kapso`) with their Codex sidecars, the
+   repository-as-marketplace files for Claude Code and Codex; the commands `setup`, `build`, `watch`,
    `inbox`, `resume`, `learn`, `deploy`, `doctor`, plus `harness`,
    `experience` and `--harness` on `build` (`/kapso:build` reads the
    harness's setup page when it writes the brief and writes the harness
