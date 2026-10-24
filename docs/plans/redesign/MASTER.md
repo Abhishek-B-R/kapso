@@ -132,7 +132,7 @@ hosts), and before the release.
 | WP | Sub-plan | State |
 |---|---|---|
 | 0 | `wp0-foundations.md` | built and reviewed; gate green; proof run on the fresh machine recorded in the sub-plan |
-| 1 | `wp1-build.md` | planned |
+| 1 | `wp1-build.md` | built on `wp1-build`; gate green; docs and examples slice landed; proof run on the fresh machine in progress (its first attempt found the relative-output crash, fixed) |
 | 2 to 11 | to write when next | |
 
 WP0 landed directly on `redesign` because it is the package that creates

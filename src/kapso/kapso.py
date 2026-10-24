@@ -1250,7 +1250,15 @@ class Kapso:
         time_budget_minutes = spend.minutes
         cost_budget = spend.dollars
         finalization_reserve_minutes = spend.reserve_minutes
-        eval_dir, data_dir, initial_repo, output_path = evaluation, data, repo, output
+        # Absolute from here on: the workspace, its sessions and the record
+        # are addressed from directories other than the launch's (a session
+        # clone commits its run data by path, a resume runs from anywhere),
+        # and a relative `output` broke the first session close on the
+        # fresh-machine proof run. A repository URL is left as it is.
+        eval_dir, data_dir, output_path = _absolute(evaluation), _absolute(data), _absolute(output)
+        initial_repo = (
+            repo if repo is None or self._is_github_url(repo) else _absolute(repo)
+        )
         if resume:
             self._validate_resume_workspace(output_path)
             # A resume needs the launch's own arguments. The launch record

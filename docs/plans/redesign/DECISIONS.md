@@ -69,6 +69,30 @@ report's readers (the trajectory store, the mining crew) never read
 `metadata` by key; they read the file as prose, so named keys serve them
 better than a dump of the old dictionary.
 
+**The facade resolves every path it is given, and the workspace keeps its
+directory absolute.** The first proof run on the fresh machine crashed at
+the first session close: `--output ../churn-build` reached the experiment
+workspace relative, the session clone ran `git add ../churn-build/...`
+from its own directory, and git refused it as outside the repository. The
+code is unchanged from `main`, so every relative `--output` whose session
+left run data behind crashed before WP1 too; the fresh machine found it
+because nothing from the development checkout masked it. `build()` now
+resolves `output`, `evaluation`, `data` and a local `repo` (a URL is left
+alone), and `ExperimentWorkspace` takes `os.path.abspath` of its directory,
+so a direct caller is covered as well. Rule 7 applies: no second code path
+for relative directories.
+
+**A five-minute budget starves the implementation; the proof uses
+fifteen.** The budget's `clamp_timeout` bounds every session by the time
+left outside the reserve, with a 60-second floor, so a five-minute
+campaign gives its first implementation about a minute, which the deadline
+then kills. The example brief says ten minutes and four experiments; the
+proof run passes `--budget-minutes 15 --iterations 2` on the command so
+each session has room, which is also what the flags-win-over-the-brief
+rule is for. The ten-minute claim on the first-build page stands for the
+whole example on a machine with the libraries installed; it is measured by
+the proof run and will be corrected if the run says otherwise.
+
 **The examples are the semantic fixtures, under `examples/`.** The docs
 plan said one source; the WP0 fixture lived under `tests/semantic/`. It
 moved to `examples/churn-first-build/`, and `tests/semantic/README.md`

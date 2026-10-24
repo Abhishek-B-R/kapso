@@ -96,6 +96,39 @@ def test_budget_precedence_is_the_call_then_the_brief_then_the_default(tmp_path,
     assert captured["solve"]["time_budget_minutes"] is None
 
 
+def test_relative_paths_reach_the_engine_absolute(tmp_path, monkeypatch):
+    """A session clone commits its run data by the workspace path from its
+    own directory, so a relative output must not reach it (the first
+    fresh-machine proof run crashed on `git add ../build/...`). The
+    evaluation, data and a local repo are resolved the same way; a URL is
+    left alone."""
+    monkeypatch.chdir(tmp_path)
+    workspace = tmp_path / "campaigns" / "build"
+    git_workspace(workspace)
+    for name in ("evaluation", "data", "repo"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "evaluation" / "evaluate.py").write_text("print('auc: 0.5')\n")
+    captured = fake_orchestrator(monkeypatch, workspace, solve_result())
+
+    solution = facade().build(
+        "g", output="campaigns/build", evaluation="evaluation", data="data", repo="repo",
+    )
+
+    assert captured["workspace_dir"] == str(workspace.resolve())
+    assert captured["eval_dir"] == str((tmp_path / "evaluation").resolve())
+    assert captured["data_dir"] == str((tmp_path / "data").resolve())
+    assert captured["initial_repo"] == str((tmp_path / "repo").resolve())
+    assert solution.trace == workspace.resolve()
+
+    other = tmp_path / "campaigns" / "other"
+    git_workspace(other)
+    captured = fake_orchestrator(monkeypatch, other, solve_result())
+    kapso = facade()
+    kapso._clone_github_repo = lambda url: f"cloned:{url}"
+    kapso.build("g", output="campaigns/other", repo="https://github.com/org/starter")
+    assert captured["initial_repo"] == "cloned:https://github.com/org/starter"
+
+
 def test_build_needs_a_goal_unless_resuming():
     with pytest.raises(ValueError, match="needs a goal"):
         facade().build()
