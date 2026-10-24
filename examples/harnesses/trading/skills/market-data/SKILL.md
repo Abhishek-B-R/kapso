@@ -1,6 +1,6 @@
 ---
 name: market-data
-description: Use the market-data server: list instruments, pull bars and calendars from the pinned snapshot, and build the snapshot from the task's data in setup. Use whenever a session needs prices.
+description: "Use the market-data server: list instruments, pull bars and calendars from the pinned snapshot, and build the snapshot from the task's data in setup. Use whenever a session needs prices."
 ---
 # Market data
 

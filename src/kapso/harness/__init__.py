@@ -2,6 +2,7 @@
 and stages. Design: docs/research/harness-design.md; plan:
 docs/plans/redesign/wp2-harness.md."""
 
+from kapso.harness.check import CheckReport, HarnessRequirement, check_harness
 from kapso.harness.hash import harness_hash, short
 from kapso.harness.manifest import (
     ATTACHMENT_KINDS,
@@ -19,6 +20,9 @@ from kapso.harness.manifest import (
 __all__ = [
     "ATTACHMENT_KINDS",
     "MODULES",
+    "CheckReport",
+    "HarnessRequirement",
+    "check_harness",
     "Finding",
     "HarnessEnvironment",
     "Manifest",

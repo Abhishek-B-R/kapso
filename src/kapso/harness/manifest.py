@@ -9,6 +9,7 @@ and `read_manifest` raises them. A file that does not parse raises the
 parser's own error, with its own position (CLAUDE.md rule 2).
 """
 
+import io
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -126,7 +127,9 @@ def inspect_manifest(root: Path) -> Tuple[Optional[Manifest], List[Finding]]:
     file = root / MANIFEST_FILE
     if not file.is_file():
         return None, [Finding(MANIFEST_FILE, f"no {MANIFEST_FILE} in {root}")]
-    document = yaml.compose(file.read_text(encoding="utf-8"))
+    stream = io.StringIO(file.read_text(encoding="utf-8"))
+    stream.name = str(file)   # the parser's own error then names the file
+    document = yaml.compose(stream)
     if document is None:
         return None, [Finding(MANIFEST_FILE, "the manifest is empty", 1)]
     inspector = _Inspector(root)

@@ -1,6 +1,6 @@
 ---
 name: market-structure
-description: The microstructure facts to check before proposing or implementing execution: sessions, auctions, funding and settlement, tick and lot sizes, per asset class. Use when an idea touches execution, timing or costs.
+description: "The microstructure facts to check before proposing or implementing execution: sessions, auctions, funding and settlement, tick and lot sizes, per asset class. Use when an idea touches execution, timing or costs."
 ---
 # Market structure
 
