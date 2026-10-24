@@ -133,7 +133,8 @@ hosts), and before the release.
 |---|---|---|
 | 0 | `wp0-foundations.md` | built and reviewed; gate green; proof run on the fresh machine recorded in the sub-plan |
 | 1 | `wp1-build.md` | built on `wp1-build` (commits through `1f022925`); gate 1,314 green; docs and examples slice landed; naming review and pull-request review folded (fourteen renames, twenty fixes, see the sub-plan); proof runs: the first found the relative-output crash (fixed), the second showed ideation takes twelve to fourteen minutes so a fifteen-minute campaign delivers nothing (budgets and pages corrected), the third, at forty-five minutes on the final wheel, in progress; PR into `redesign` after it |
-| 2 to 11 | to write when next | |
+| 2 | `wp2-harness.md` | sub-plan written 2026-10-24 while WP1's third proof ran; the host facts the master listed as unverified (Codex hook matchers for MCP tools, `stop_hook_active`) were verified on the development box and are in the sub-plan; cross-model review of the plan in progress; built on `wp2-harness` after WP1 merges |
+| 3 to 11 | to write when next | |
 
 WP0 landed directly on `redesign` because it is the package that creates
 the branch; every later package comes in by pull request.

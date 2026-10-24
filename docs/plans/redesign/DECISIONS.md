@@ -6,6 +6,86 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-24, WP2 (planned; taken while writing the sub-plan)
+
+**The engine never installs a harness's requirements; it names what is
+missing and the line that installs it.** The design says `build()`
+"prepares the harness's requirements in the run's environment". A harness
+can arrive by git URL, and an engine that runs `pip install -r` on whatever
+it fetched is a supply-chain hole the engineer never agreed to. So
+`check`, `harness add`, `doctor` and the refusal in `build()` report each
+missing distribution with `pip install -r <path>`; the engineer runs it
+once per machine. Alternative rejected: installing silently.
+
+**Delegates are the hosts' own sub-agents on both CLIs, not engine-run
+sessions behind a tool.** The design allowed either ("registered as
+sub-agents, or run as their own session where the CLI has none"). Both
+hosts have sub-agents: Claude Code takes `--agents` with the name,
+description and prompt (verified: the model asks it by name and gets the
+reply), and Codex's `multi_agent` is stable. Native agents inherit the
+session's skills, servers and hooks for free and the host records their
+transcripts; an engine-run session behind an MCP tool would sit inside a
+tool call with the host's tool timeout around it. The one open point is
+whether Codex takes named roles per invocation; the sub-plan carries the
+fallback (spawn with the agent file's text as the first message).
+
+**The task statement is an untracked file at the campaign root, copied
+into every session directory; prepared resources are a real directory at
+the root and a symlink everywhere else.** `kapso_evaluation/` is committed
+to the workspace's main, which is why it reaches every clone; a task
+statement committed that way would land in every candidate branch and in
+the delivered code. Untracked and ignored, it reaches sessions the way
+dropped data does (`_bring_dropped_data`), and the ideation worktree gets
+a copy at staging. A snapshot under `prepared/` can be large, so one copy
+at the root and a link per session; the `protect-prepared` hook is the
+guard the harness chose, and the design says a hook is not a boundary.
+Alternative rejected: committing both to main.
+
+**A verification session that writes no verdict leaves the attempt valid
+and tells the judge so.** The verdict contract wants a file; a model that
+forgets it should not kill a campaign (rule 2 is for corrupt data, and a
+malformed verdict does raise). The attempt stays valid, the record says
+`verdict: none`, and the judge reads that verification produced nothing,
+so a missing check is visible rather than silently passed. Alternative
+rejected: treating a missing verdict as void, which would discard good
+attempts on a formatting slip.
+
+**Setup and verification run only when the harness has content for them.**
+A harness with no `setup.md` and no setup attachment gets no setup
+session; the same for verification. The engine's deterministic parts
+(the directory setup, the integrity check, the registered evaluation)
+always run. A build with no harness is byte-for-byte today's behaviour;
+nothing new runs for it. Alternative rejected: a setup session for every
+build, which would add minutes to the first-build time WP1 already found
+long.
+
+**A loaded harness wins over the brief's `Harness` line, and a path in
+that line resolves against the working directory.** The first is the rule
+WP1 set for budgets (call arguments over the brief); the launch print
+names the harness used so the override is visible. The second is what
+every other path the CLI takes does; a brief that is run from its own
+directory, as the examples say, can use a relative path. Alternative
+rejected: resolving against the brief file's directory, which would make
+`Brief` carry a base path and break `parse(render())`.
+
+**Harness servers on Codex are mounted with `default_tools_approval_mode =
+"approve"`.** The probe showed a stdio server's tool refused under a
+read-only or workspace-write sandbox with no key and with `auto` ("MCP
+tool call requires approval, but approval policy is never") and running
+with `approve`. The shipped adapter uses `auto` for hosted gates; whether
+that binds anywhere today is for the package that next touches a Codex
+inference session (noted in the sub-plan).
+
+**`export --format cursor` is dropped from WP2.** The design listed three
+formats; Cursor's plugin layout is not verified from here and nobody has
+asked for it. Two formats ship; a third is one function when wanted.
+
+**The sub-plan was written before WP1's pull request was opened, on the
+same branch.** The third WP1 proof run was in progress, and the plan does
+not depend on its result; the planning document rides in WP1's PR as a
+documentation commit, and WP2's code branch is cut from `redesign` after
+the merge. Alternative rejected: idling for an hour.
+
 ## 2026-10-24, WP1 (planned; taken while revising the sub-plan after review)
 
 **The brief has its own flag, `--brief`; `--goal-file` stays plain text.**
