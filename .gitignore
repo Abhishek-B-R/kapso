@@ -289,3 +289,6 @@ skills-lock.json
 # files here and symlinks .claude/skills/ at them, so ignoring only the symlink
 # directory above still leaves this one showing up in every commit.
 .agents/
+
+# Local records of fresh-machine runs (scripts/redesign/fresh_machine.sh)
+/scripts/redesign/runs/

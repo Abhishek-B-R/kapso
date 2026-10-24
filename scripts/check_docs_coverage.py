@@ -2,14 +2,15 @@
 """Fail when the reference docs do not mention part of the public surface.
 
 The CLI reference sat at one of eight commands for seven months because
-nothing connected `cli.py` to `docs/reference/`. This closes that loop: add a
-command or a public method and the docs build fails until it is written up.
+nothing connected the CLI source to `docs/reference/`. This closes that loop:
+add a command or a public method and the docs build fails until it is written
+up.
 
-Reads argparse subparser names out of cli.py and public method names out of
-kapso.py, then checks each one appears in the matching reference page. Text
-presence is a deliberately shallow test — it cannot tell whether the prose is
-any good, only whether the surface was acknowledged at all, which is the
-failure that actually happened.
+Reads argparse subparser names out of the `kapso.cli` package (one module per
+verb) and public method names out of kapso.py, then checks each one appears
+in the matching reference page. Text presence is a deliberately shallow test
+— it cannot tell whether the prose is any good, only whether the surface was
+acknowledged at all, which is the failure that actually happened.
 """
 
 import re
@@ -17,7 +18,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-CLI_SOURCE = REPO / "src" / "kapso" / "cli.py"
+CLI_PACKAGE = REPO / "src" / "kapso" / "cli"
 API_SOURCE = REPO / "src" / "kapso" / "kapso.py"
 CLI_DOC = REPO / "docs" / "reference" / "cli.mdx"
 API_DOC = REPO / "docs" / "reference" / "kapso-api.mdx"
@@ -37,6 +38,15 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def read_package(package: Path) -> str:
+    """Every module of a package as one text, so a subparser group declared
+    in any verb module is found."""
+    modules = sorted(package.glob("*.py"))
+    if not modules:
+        raise FileNotFoundError(f"expected Python modules under {package}")
+    return "\n".join(read(module) for module in modules)
+
+
 def subcommands(source: str, variable: str) -> list[str]:
     pattern = re.escape(variable) + r'\.add_parser\(\s*\n?\s*"([a-z][a-z_-]*)"'
     return sorted(set(re.findall(pattern, source)))
@@ -48,7 +58,7 @@ def public_methods(source: str) -> list[str]:
 
 
 def main() -> int:
-    cli_source = read(CLI_SOURCE)
+    cli_source = read_package(CLI_PACKAGE)
     api_source = read(API_SOURCE)
     cli_doc = read(CLI_DOC)
     api_doc = read(API_DOC)

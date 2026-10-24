@@ -207,7 +207,7 @@ def test_renderer_blocks_show_each_operation_shape(tmp_path):
 
 
 def test_watch_json_is_a_pure_passthrough(tmp_path, capsys):
-    from kapso.cli import cmd_watch
+    from kapso.cli.watch import cmd_watch
 
     path = tmp_path / "s.json"
     EvolveStatus(path).update(iteration=7)

@@ -1,0 +1,24 @@
+{
+  "model": "repo/predict.py as shipped: logistic regression on imputed, scaled numerics and one-hot categoricals",
+  "metric": "auc, higher is better",
+  "auc": [
+    0.7974,
+    0.7974,
+    0.7974
+  ],
+  "bootstrap_se": 0.0101,
+  "evaluator_seconds": [
+    1.6,
+    1.5,
+    1.5
+  ],
+  "machine": "ip-172-31-30-63",
+  "python": "3.12.12",
+  "sklearn": "1.6.1",
+  "data_sha256": {
+    "data/train.csv": "b97766dc8a5fe95c6ab9c6d0820381a56fe98c23ef6465be2cd5ba12c98451ad",
+    "data/holdout.csv": "90e03e2a6543b6c8ee18bc3f6f901af3b5ee3a1dd50f60c9d6ae7bd055a38ae9",
+    "private/holdout_labels.csv": "80c187dff611e1bb7be4abcbaacab2deb2267a4a8e2f59dbae28e281b939fac7"
+  },
+  "recorded_at": "2026-10-24T20:29:30Z"
+}

@@ -6,7 +6,11 @@ from unittest.mock import Mock
 
 import pytest
 
-import kapso.cli as cli
+import kapso.cli.evolve as evolve_cli
+import kapso.cli.research as research_cli
+from kapso.cli import main
+
+VERB_MODULES = {"evolve": evolve_cli, "research": research_cli}
 
 
 @pytest.mark.parametrize(
@@ -23,12 +27,12 @@ def test_command_passes_config_to_facade(
     facade = Mock()
     facade.research.return_value = SimpleNamespace()
     constructor = Mock(return_value=facade)
-    monkeypatch.setattr(cli, "Kapso", constructor)
-    monkeypatch.setattr(cli, "_print_evolve_summary", lambda _: None)
+    monkeypatch.setattr(VERB_MODULES[verb], "Kapso", constructor)
+    monkeypatch.setattr(evolve_cli, "_print_evolve_summary", lambda _: None)
     argv = ["kapso", verb, argument, "test objective"]
     if config_path:
         argv.extend(["--config", config_path])
     monkeypatch.setattr(sys, "argv", argv)
-    cli.main()
+    main()
     assert constructor.call_args.kwargs["config_path"] == config_path
     getattr(facade, verb).assert_called_once()

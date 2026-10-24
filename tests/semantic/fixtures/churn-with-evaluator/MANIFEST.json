@@ -1,0 +1,18 @@
+{
+  "seed": 20261024,
+  "rows": {
+    "train": 10000,
+    "holdout": 3000
+  },
+  "features": 16,
+  "label": "churned",
+  "positive_rate": {
+    "train": 0.2005,
+    "holdout": 0.207
+  },
+  "sha256": {
+    "data/train.csv": "b97766dc8a5fe95c6ab9c6d0820381a56fe98c23ef6465be2cd5ba12c98451ad",
+    "data/holdout.csv": "90e03e2a6543b6c8ee18bc3f6f901af3b5ee3a1dd50f60c9d6ae7bd055a38ae9",
+    "private/holdout_labels.csv": "80c187dff611e1bb7be4abcbaacab2deb2267a4a8e2f59dbae28e281b939fac7"
+  }
+}

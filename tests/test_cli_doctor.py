@@ -14,7 +14,8 @@ import pytest
 import yaml
 
 import kapso.core.preflight as preflight
-from kapso.cli import DEFAULT_CONFIG_PATH, cmd_doctor
+from kapso.cli.doctor import cmd_doctor
+from kapso.kapso import DEFAULT_CONFIG_PATH
 
 
 def args(verb=None, models=False, config=None):

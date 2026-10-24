@@ -14,8 +14,9 @@ from typing import Any, Dict, List
 
 import pytest
 
-import kapso.cli as cli_module
-from kapso.cli import _print_evolve_summary, main
+from kapso.cli import main
+from kapso.cli.common import _print_evolve_summary
+from kapso.cli.inbox import cmd_inbox
 from kapso.execution.inbox import file_requests, inbox_path, register_campaign
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, config_fingerprint
 from kapso.execution.search_strategies.base import SearchNode
@@ -194,4 +195,4 @@ def test_inbox_help_shows_both_forms(monkeypatch, capsys):
     assert stop.value.code == 0
     out = capsys.readouterr().out
     assert "reply [CAMPAIGN] [ID] [NOTE]" in out and "kapso inbox reply 1" in out
-    assert cli_module.cmd_inbox.__doc__
+    assert cmd_inbox.__doc__

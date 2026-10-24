@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-import kapso.cli as cli_module
+import kapso.cli.watch as watch_cli
 from kapso.cli import main
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
@@ -88,7 +88,7 @@ def test_watch_follow_waits_for_the_status_to_appear(tmp_path, monkeypatch, caps
             status = EvolveStatus(status_file, phase="setup")
             status.done(stopped_reason="goal_achieved")
 
-    monkeypatch.setattr(cli_module.time, "sleep", sleep_then_arrive)
+    monkeypatch.setattr(watch_cli.time, "sleep", sleep_then_arrive)
     _run(monkeypatch, "watch", str(campaign), "--follow")
     out = capsys.readouterr().out
     assert out.startswith("no status yet at")

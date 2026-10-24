@@ -222,7 +222,7 @@ def test_every_shipped_strategy_declares_its_files_and_cloud_targets_their_tool(
 
 def test_preflight_and_cli_take_their_strategy_lists_from_the_registry():
     from kapso.core import preflight
-    from kapso import cli
+    from kapso.cli import deploy as cli
     tools = preflight.deploy_tools()
     assert set(tools) == {"docker", "modal", "bentoml", "langgraph"}
     assert cli.DEPLOY_STRATEGIES == ["auto"] + StrategyRegistry.get().list_strategies()
