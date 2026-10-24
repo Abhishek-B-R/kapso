@@ -1,80 +1,49 @@
-# PyTorch Operation Optimization Example
+# PyTorch optimization: a faster module on CUDA
 
-This example demonstrates using Kapso to optimize a simple PyTorch model that performs matrix multiplication, division, summation, and scaling operations.
+An hour-long build on a CUDA machine that makes the `Model` in
+`repo/module.py` (a matrix multiplication, a division, a summation, a
+scaling) faster than the shipped version while keeping its results within
+1e-5, with the repository's own `evaluate.py` measuring correctness and
+speedup.
 
-## Environment Setup
+Recorded result: not recorded yet.
 
-Before running this example, install the required dependencies:
+## What you get
+
+- `repo/module.py`, rewritten on a branch of its own inside `campaign/`:
+  fused operations, `torch.compile`, in-place operations where safe, a
+  Triton or CUDA kernel if the campaign goes that far.
+- A score from `repo/evaluate.py --path module.py --device cuda`: the
+  speedup over the baseline, after a correctness check.
+- `campaign/.kapso/solution.json`, the record, read back by `Solution.open("campaign")`.
+
+## Run it
 
 ```bash
-# Create and activate conda environment (recommended)
-conda create -n kapso python=3.10
-conda activate kapso
-
-# Install PyTorch with CUDA support
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# Install Kapso from the project root
-cd /path/to/kapso
-pip install -e .
+kapso doctor build
+kapso build --brief kapso-brief.md --repo repo --output campaign --detach
+kapso watch campaign --follow
 ```
 
-Authenticate the coding-agent CLIs the default config uses, then
-verify everything with `kapso doctor`:
+`python run.py` is the same build from Python, into the same `campaign/`
+directory: run one or the other. A CUDA device is required:
+the evaluator runs on it.
 
-```bash
-# Claude Code sessions (ideation, implementation): log in once
-npm install -g @anthropic-ai/claude-code
-claude auth login   # or: export CLAUDE_CODE_OAUTH_TOKEN=...
+## What to look at
 
-# Codex sessions (research, judging, utilities): log in once
-npm install -g @openai/codex
-codex login
+- `kapso-brief.md`: the rules keep the class interface, the numerical
+  tolerance and the CUDA requirement; the judge rejects a faster module
+  that breaks any of them.
+- `solution.diff()`: what changed in `module.py`.
+- `cd campaign && python evaluate.py --path module.py --device cuda`: the
+  speedup, re-measured by hand.
 
-# embeddings (memory and knowledge-search indexing)
-export OPENAI_API_KEY=your_key_here
+## Change it
 
-kapso doctor   # checks all of the above and prints fixes for misses
-```
-
-## Goal
-
-Optimize the `Model` class in `module.py` for maximum speedup while maintaining numerical correctness.
-
-## Initial Implementation
-
-The baseline model performs these operations sequentially:
-1. Matrix multiplication: `x @ weight.T`
-2. Division: `x / 2`
-3. Summation: `sum(x, dim=1)`
-4. Scaling: `x * scaling_factor`
-
-## Optimization Opportunities
-
-- **Operation fusion**: Combine multiple operations into fewer kernel launches
-- **torch.compile()**: Use PyTorch's JIT compilation for automatic optimization
-- **In-place operations**: Reduce memory allocations where safe
-- **Custom kernels**: Write fused Triton/CUDA kernels for maximum performance
-
-## Running the Example
-
-```bash
-# Activate the kapso conda environment
-conda activate kapso
-
-# Run the optimization
-python run_evolve.py
-```
-
-## Evaluation
-
-The evaluation script (`evaluate.py`) tests:
-1. **Correctness**: Max float difference < 1e-5 over 10 trials
-2. **Performance**: Speedup compared to baseline (higher is better)
-
-## Expected Results
-
-Typical optimizations can achieve 1.5-3x speedup by:
-- Using `torch.compile()` for automatic kernel fusion
-- Combining the division and scaling into a single multiplication
-- Using `torch.einsum` for fused operations
+- The target: `Target` in the brief is "above 1.0x"; state a number if you
+  know what the hardware allows.
+- The budget: the brief's `Budget minutes=60 experiments=8`, or the command's
+  `--budget-minutes` and `--budget-experiments`, which win over it.
+- Protect the evaluator from the start by moving `evaluate.py` into a
+  directory of its own and passing it with `--evaluation`.

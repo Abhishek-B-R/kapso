@@ -216,7 +216,7 @@ Configure a role whose entire context is supplied in its prompt, such as
 knowledge-search reranking. Copy the packaged `src/kapso/config.yaml` to
 `kapso-config.yaml` and add this role override under `inference`. Keep the
 other sections, especially `modes`; an inference-only file is not a complete
-configuration for `evolve`:
+configuration for `build`:
 
 ```yaml
 inference:
@@ -232,8 +232,8 @@ inference:
         temperature: 0.1
 ```
 
-Load it with `Kapso(config_path="kapso-config.yaml")` or
-`kapso evolve --config kapso-config.yaml --goal "..."`.
+Load it with `Kapso(config="kapso-config.yaml")` or
+`kapso build --config kapso-config.yaml --goal "..."`.
 `kapso research --config ...` also accepts a config path, but its research
 role must use a web-capable agent. Plain Chat Completions supplies no web
 search here; attempting that route fails explicitly before an API request.
@@ -283,7 +283,7 @@ request timeout. Token usage is returned in metadata; monetary cost tracking
 is unavailable, so do not rely on Kapso's cost budget to cap provider charges.
 
 The adapter is registered for `CliInference` with `inference_only: true` in
-`agents.yaml`. It is excluded from both `evolve -a` and
+`agents.yaml`. It is excluded from both `build -a` and
 `deploy --coding-agent` choices. It cannot read or write workspace files,
 execute commands, use tools, or verify evaluation results; all context must
 be supplied in the prompt. Provider and transport errors propagate; empty,
@@ -307,7 +307,7 @@ class CodingResult:
 
 ## What must an agent return?
 
-When used with `kapso.evolve()`, the coding agent must end its response with XML tags:
+When used with `kapso.build()`, the coding agent must end its response with XML tags:
 
 ```xml
 <code_changes_summary>Brief description of changes made</code_changes_summary>
@@ -319,7 +319,7 @@ When used with `kapso.evolve()`, the coding agent must end its response with XML
 
 The search strategy extracts these tags (`score` becomes a float; `null` or an empty value becomes `None`) and hands them to the feedback generator to validate the evaluation and decide whether to continue. There is no fallback format: output without the tags is a warning and an empty result.
 
-An implementation session may also end without the tags by calling the `request_from_user` tool when the session needs something only a person can provide. Kapso later resumes that very session with your reply, through `claude -p --resume` for Claude Code and `codex exec resume` for Codex, which is why implementation sessions are launched with a session id (`--session-id` on Claude Code, `--json` on Codex to capture the thread id). See the [inbox](/docs/evolve/inbox).
+An implementation session may also end without the tags by calling the `request_from_user` tool when the session needs something only a person can provide. Kapso later resumes that very session with your reply, through `claude -p --resume` for Claude Code and `codex exec resume` for Codex, which is why implementation sessions are launched with a session id (`--session-id` on Claude Code, `--json` on Codex to capture the thread id). See the [inbox](/docs/build/inbox).
 
 ### Example agent output
 

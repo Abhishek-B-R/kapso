@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from kapso.core.config import load_deployment_defaults
-from kapso.execution.solution import SolutionResult
+from kapso.handles import Solution
 
 # The packaged `deployment:` block — the one source for the dataclass
 # defaults below; the facade layers a user config's block over it.
@@ -82,13 +82,13 @@ class DeployConfig:
     Configuration for deploying software.
     
     Attributes:
-        solution: The SolutionResult from Kapso.evolve()
+        solution: The Solution from Kapso.build()
         env_vars: Environment variables to pass to the software
         timeout: Execution timeout in seconds
         coding_agent: Which coding agent runs the selector and adapter sessions
         model: The model that agent is asked for (config `deployment.model`)
     """
-    solution: SolutionResult
+    solution: Solution
     env_vars: Dict[str, str] = None
     timeout: int = 300
     coding_agent: str = DEPLOYMENT_DEFAULTS["coding_agent"]
@@ -102,12 +102,12 @@ class DeployConfig:
     @property
     def code_path(self) -> str:
         """Path to the generated code/repository."""
-        return self.solution.code_path
+        return str(self.solution.campaign)
     
     @property
     def goal(self) -> str:
         """The original goal/objective."""
-        return self.solution.goal
+        return self.solution.brief.objective
 
 
 @dataclass

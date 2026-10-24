@@ -13,7 +13,7 @@ ingest knowledge, deploy.
 
 The copies are deliberately separate files, not symlinks, so each can diverge
 as its agent's conventions do. Today they are identical: campaigns launch,
-resume and reply with `kapso evolve --detach` / `kapso inbox reply --detach`,
+resume and reply with `kapso build --detach` / `kapso inbox reply --detach`,
 which starts the run in a session of its own on every host (the Codex copy
 used to need `setsid -f` where the others used `nohup`). Their test record is
 `docs/plans/coding-agent-skill-findings.md`.

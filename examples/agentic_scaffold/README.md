@@ -1,101 +1,48 @@
-# Agentic Scaffold Example
+# Agentic scaffold: chart images to CSV
 
-This example demonstrates using Kapso's `evolve()` function to optimize an AI workflow that extracts tabular data from chart images using a Vision Language Model (VLM).
+An hour-long build that improves the vision-language extractor in
+`repo/optimize.py`, which turns a chart image into the CSV table it shows,
+from about 0.30 to 0.35 accuracy toward the brief's 0.50, with the
+repository's own `evaluate.py` as the judge: 20 percent header match, 80
+percent SMAPE similarity of the numbers, over 100 line charts.
 
-## Environment Setup
+Recorded result: not recorded yet.
 
-Before running this example, install the required dependencies:
+## What you get
+
+- `repo/optimize.py`, whose `VLMExtractor.image_to_csv()` is rewritten on a
+  branch of its own inside `campaign/`: the prompt, the parsing, a multi-step
+  extraction, validation.
+- A score from `repo/evaluate.py --max-samples 100 --num-workers 50`.
+- `campaign/.kapso/solution.json`, the record, read back by `Solution.open("campaign")`.
+
+## Run it
 
 ```bash
-# Create and activate conda environment (recommended)
-conda create -n kapso python=3.10
-conda activate kapso
-
-# Install dependencies
 pip install openai huggingface_hub
-
-# Install Kapso from the project root
-cd /path/to/kapso
-pip install -e . # or pip install leeroo-kapso
+echo 'OPENAI_API_KEY=sk-...' >> .env     # the extractor and the evaluator call the model
+python repo/prepare_data.py              # downloads subset_line_100/: index.csv, images/, tables/
+kapso doctor build
+kapso build --brief kapso-brief.md --repo repo --output campaign --detach
+kapso watch campaign --follow
 ```
 
-Authenticate the coding-agent CLIs the default config uses, then
-verify everything with `kapso doctor`:
+`python run.py` is the same build from Python, into the same `campaign/`
+directory: run one or the other.
 
-```bash
-# Claude Code sessions (ideation, implementation): log in once
-npm install -g @anthropic-ai/claude-code
-claude auth login   # or: export CLAUDE_CODE_OAUTH_TOKEN=...
+## What to look at
 
-# Codex sessions (research, judging, utilities): log in once
-npm install -g @openai/codex
-codex login
+- `kapso-brief.md`: valid CSV with a header, a vision-capable OpenAI model
+  and a reasonable cost per query are rules the judge enforces.
+- `solution.diff()`: the extractor that won.
+- `cd campaign && python evaluate.py --max-samples 10 --num-workers 4`: a quick
+  re-measurement by hand.
 
-# embeddings (memory and knowledge-search indexing)
-export OPENAI_API_KEY=your_key_here
+## Change it
 
-kapso doctor   # checks all of the above and prints fixes for misses
-```
-
-## Problem Description
-
-The baseline implementation (`optimize.py`) contains a VLM-based extractor that converts chart images to CSV tables. The goal is to optimize the prompt and extraction logic to improve accuracy.
-
-### Optimization Opportunities
-
-1. **Prompt Engineering**: Improve instructions for data extraction
-2. **Output Parsing**: Better handling of VLM output formats
-3. **Multi-Step Extraction**: Break down complex charts into steps
-4. **Error Handling**: Add validation and correction logic
-5. **Format Specification**: More precise CSV formatting rules
-
-### Constraints
-
-- Must output valid CSV format
-- Must work with the specified OpenAI vision model
-- Average cost per query must stay under $0.02
-
-## Files
-
-- `run_evolve.py` - Main script that uses Kapso to optimize the extractor
-- `initial_repo/optimize.py` - Baseline VLM extractor to be optimized
-- `initial_repo/evaluate.py` - Evaluation script that measures accuracy
-- `initial_repo/prepare_data.py` - Script to download and prepare test data
-- `initial_repo/requirements.txt` - Python dependencies
-
-## Usage
-
-### Prepare the Data
-
-First, download the test dataset:
-
-```bash
-cd examples/agentic_scaffold/initial_repo
-python prepare_data.py
-```
-
-This creates a `subset_line_100/` directory with:
-- `index.csv`: mapping of example IDs to image and table paths
-- `images/`: chart images (PNG/JPEG)
-- `tables/`: ground truth CSV tables
-
-### Run Kapso Evolution
-
-```bash
-cd examples/agentic_scaffold
-python run_evolve.py
-```
-
-This will:
-1. Initialize Kapso
-2. Run multiple iterations to find optimized implementations
-3. Output the best solution to `./agentic_optimized`
-
-### Manual Evaluation
-
-To evaluate a specific implementation:
-
-```bash
-cd initial_repo
-python evaluate.py --max-samples 10 --num-workers 4
-```
+- The target: `Target` in the brief.
+- The budget: the brief's `Budget minutes=60 experiments=6`, or the command's
+  `--budget-minutes` and `--budget-experiments`, which win over it.
+- Protect the evaluator and the data from the start by moving `evaluate.py`
+  into a directory of its own and passing it with `--evaluation`, and
+  `subset_line_100/` with `--data`.

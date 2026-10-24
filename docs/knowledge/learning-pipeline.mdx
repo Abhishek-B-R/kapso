@@ -83,8 +83,8 @@ from kapso.knowledge_base.types import Source
 # Repository source
 repo = Source.Repo("https://github.com/user/repo")  # or branch="develop"
 
-# Solution source (from evolve())
-solution = kapso.evolve(goal="...")
+# Solution source (from build())
+solution = kapso.build("...")
 sol_source = Source.Solution(solution)
 
 # Research sources (from research())

@@ -393,7 +393,7 @@ def save_trajectory(
 ) -> str:
     """Gather -> validate -> hash -> register (idempotent) -> upload (§3.4).
 
-    This is the harvest step and the evolve->learn bridge. `contract` is
+    This is the harvest step and the build->learn bridge. `contract` is
     `strict` for new harvests; the corpus importer passes `historical`
     explicitly for pre-store archives, and the manifest then records the
     missing strict parts. Returns the trajectory id.

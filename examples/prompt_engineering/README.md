@@ -1,85 +1,46 @@
-# Prompt Engineering Example
+# Prompt engineering: a better AIME prompt
 
-This example demonstrates using Kapso's `evolve()` function to iteratively improve a prompt for solving American Invitational Mathematics Examination (AIME) problems.
+An hour-long build that rewrites the prompt template in `repo/optimize.py`
+until accuracy on a subset of AIME 2024 problems climbs from the shipped
+0.10 to 0.20 toward the brief's 0.30 to 0.50, with the repository's own
+`evaluate.py` as the judge.
 
-## Environment Setup
+Recorded result: not recorded yet.
 
-Before running this example, install the required dependencies:
+## What you get
 
-```bash
-# Create and activate conda environment (recommended)
-conda create -n kapso python=3.10
-conda activate kapso
+- `repo/optimize.py`, whose `PROMPT_TEMPLATE` and `solve()` are rewritten on
+  a branch of its own inside `campaign/`, one branch per experiment.
+- A score from `repo/evaluate.py`: accuracy, with answers in `\boxed{XXX}`
+  form, calling the OpenAI model it names.
+- `campaign/.kapso/solution.json`, the record, read back by `Solution.open("campaign")`.
 
-# Install dependencies
-pip install openai datasets
-
-# Install Kapso from the project root
-cd /path/to/kapso
-pip install -e .
-```
-
-Authenticate the coding-agent CLIs the default config uses, then
-verify everything with `kapso doctor`:
+## Run it
 
 ```bash
-# Claude Code sessions (ideation, implementation): log in once
-npm install -g @anthropic-ai/claude-code
-claude auth login   # or: export CLAUDE_CODE_OAUTH_TOKEN=...
-
-# Codex sessions (research, judging, utilities): log in once
-npm install -g @openai/codex
-codex login
-
-# embeddings (memory and knowledge-search indexing)
-export OPENAI_API_KEY=your_key_here
-
-kapso doctor   # checks all of the above and prints fixes for misses
+pip install openai datasets          # what repo/evaluate.py needs
+echo 'OPENAI_API_KEY=sk-...' >> .env   # the evaluator calls the model
+kapso doctor build
+kapso build --brief kapso-brief.md --repo repo --output campaign --detach
+kapso watch campaign --follow
 ```
 
-## Problem Description
+`python run.py` is the same build from Python, into the same `campaign/`
+directory: run one or the other.
 
-The baseline implementation (`optimize.py`) contains a prompt template for solving AIME math problems. The goal is to optimize this prompt to improve accuracy on a subset of AIME 2024 problems.
+## What to look at
 
-### Constraints
+- `kapso-brief.md`: the objective, the measurement, the baseline, the
+  target and the rules. The rule that `evaluate.py` is never modified is
+  what the judge enforces for the whole campaign.
+- `solution.diff()`: the prompt that won, against the shipped one.
+- `cd campaign && python evaluate.py`: the score, re-measured by hand.
 
-- Must produce answers in `\boxed{XXX}` format (3-digit integer 000-999)
-- Must work with the specified OpenAI model
-- Prompt modifications only (no changes to evaluation logic)
+## Change it
 
-## Files
-
-- `run_evolve.py` - Main script that uses Kapso to optimize the prompt
-- `initial_repo/optimize.py` - Baseline prompt template to be optimized
-- `initial_repo/evaluate.py` - Evaluation script that measures accuracy
-- `initial_repo/requirements.txt` - Python dependencies
-
-## Usage
-
-### Run Kapso Evolution
-
-```bash
-cd examples/prompt_engineering
-python run_evolve.py
-```
-
-This will:
-1. Initialize Kapso
-2. Run multiple iterations to find optimized prompts
-3. Output the best solution to `./prompt_optimized`
-
-### Manual Evaluation
-
-To evaluate a specific implementation:
-
-```bash
-cd initial_repo
-python evaluate.py
-```
-
-## Success Criteria
-
-- **Accuracy**: Higher is better (baseline ~0.10-0.20)
-- **Format Compliance**: Answers must be in `\boxed{XXX}` format
-
-A good optimization should achieve 0.30-0.50 accuracy through improved prompting techniques.
+- The target: `Target` in the brief; the model: the one `evaluate.py` names.
+- The budget: the brief's `Budget minutes=60 experiments=8`, or the command's
+  `--budget-minutes` and `--budget-experiments`, which win over it.
+- Protect the evaluator from the start by moving `evaluate.py` into a
+  directory of its own and passing it with `--evaluation`; `Measured by`
+  then names `kapso_evaluation/evaluate.py`.

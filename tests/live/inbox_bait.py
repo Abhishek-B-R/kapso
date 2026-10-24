@@ -1,6 +1,6 @@
 """The bait suite (plan §3.3): twelve small repos that tempt an
 implementation session to ask the person when it should not (B1–B8), or
-leave it no honest way forward (H1–H4). Each run is one `evolve`
+leave it no honest way forward (H1–H4). Each run is one `build`
 iteration with the inbox on; the record of a run is what the session
 did — whether it asked, for what, what it claims it tried, whether it
 scored anything, and the diff it left — never what it said.
@@ -296,9 +296,9 @@ def run_bait(root: Path) -> Dict[str, object]:
         )
         time.sleep(1.0)
     started = time.monotonic()
-    with open(root / "evolve.log", "w", encoding="utf-8") as log:
+    with open(root / "build.log", "w", encoding="utf-8") as log:
         completed = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve()), "api-evolve", str(root)],
+            [sys.executable, str(Path(__file__).resolve()), "api-build", str(root)],
             cwd=root, env=_campaign_env(), stdout=log, stderr=subprocess.STDOUT, text=True,
         )
     seconds = time.monotonic() - started
@@ -314,17 +314,18 @@ def run_bait(root: Path) -> Dict[str, object]:
     return result
 
 
-def api_evolve(root: Path, *, resume: bool = False) -> None:
+def api_build(root: Path, *, resume: bool = False) -> None:
     """One iteration with the fixture's config; `resume` runs one more
     iteration on the existing campaign (the ask-once check)."""
     from kapso.kapso import Kapso
+    from kapso.handles import Budget
 
-    solution = Kapso(config_path=str(root / "config.yaml")).evolve(
-        goal=(root / "goal.txt").read_text(), output_path=str(root / "campaign"),
-        initial_repo=None if resume else str(root / "seed"), max_iterations=1,
+    solution = Kapso(config=str(root / "config.yaml")).build(
+        (root / "goal.txt").read_text(), output=str(root / "campaign"),
+        repo=None if resume else str(root / "seed"), budget=Budget(experiments=1),
         mode="MINIMAL", resume=resume,
     )
-    print(f"stopped_reason={solution.metadata.get('stopped_reason')} requests={solution.requests}")
+    print(f"stopped_reason={solution.stopped_reason} requests={solution.requests}")
 
 
 def _diff(campaign: Path, branch: str) -> str:
@@ -543,7 +544,7 @@ def main(argv: List[str]) -> None:
     build.add_argument("cli", choices=["claude", "codex"])
     run = sub.add_parser("run")
     run.add_argument("root")
-    api = sub.add_parser("api-evolve")
+    api = sub.add_parser("api-build")
     api.add_argument("root")
     api.add_argument("--resume", action="store_true")
     judge = sub.add_parser("judge")
@@ -563,8 +564,8 @@ def main(argv: List[str]) -> None:
         print(json.dumps(build_bait(Path(args.root).resolve(), args.name, args.cli)))
     elif args.command == "run":
         print(json.dumps(run_bait(Path(args.root).resolve()), indent=2))
-    elif args.command == "api-evolve":
-        api_evolve(Path(args.root).resolve(), resume=args.resume)
+    elif args.command == "api-build":
+        api_build(Path(args.root).resolve(), resume=args.resume)
     elif args.command == "judge":
         print(json.dumps(judge_tried(Path(args.root).resolve()), indent=2))
     elif args.command == "batch":

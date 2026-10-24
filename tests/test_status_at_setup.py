@@ -17,7 +17,7 @@ from kapso.cli import main
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.memories.repo_memory import RepoMemoryManager
-from kapso.execution.observability import EvolveStatus, OperationStatusView
+from kapso.execution.observability import BuildStatus, OperationStatusView
 from kapso.execution.search_strategies.base import (
     SearchNode,
     SearchStrategy,
@@ -29,18 +29,18 @@ from kapso.execution.search_strategies.base import (
 
 
 def test_a_phase_at_birth_keeps_the_state_starting(tmp_path):
-    status = EvolveStatus(tmp_path / "status.json", phase="setup")
+    status = BuildStatus(tmp_path / "status.json", phase="setup")
     view = OperationStatusView(status.path)
     assert view.state == "starting" and view.phase == "setup"
     assert view.data["phase_started_at"] is not None
     # Only a phase of this operation is a birth phase.
-    with pytest.raises(ValueError, match="unknown evolve phase"):
-        EvolveStatus(tmp_path / "other.json", phase="mine")
+    with pytest.raises(ValueError, match="unknown build phase"):
+        BuildStatus(tmp_path / "other.json", phase="mine")
 
 
 def test_observe_attaches_the_hook_after_birth(tmp_path):
     seen: List[Dict[str, Any]] = []
-    status = EvolveStatus(tmp_path / "status.json", phase="setup")
+    status = BuildStatus(tmp_path / "status.json", phase="setup")
     status.observe(seen.append)
     status.update(iteration=1)
     assert seen and seen[-1]["iteration"] == 1 and seen[-1]["state"] == "running"
@@ -53,7 +53,7 @@ def test_locate_is_none_for_a_campaign_without_a_status_yet(tmp_path):
     assert OperationStatusView.locate(tmp_path / "nowhere") is None
     with pytest.raises(FileNotFoundError, match="no status file yet"):
         OperationStatusView(campaign)
-    EvolveStatus(campaign / ".kapso" / "status.json", phase="setup")
+    BuildStatus(campaign / ".kapso" / "status.json", phase="setup")
     assert OperationStatusView.locate(campaign) == campaign / ".kapso" / "status.json"
 
 
@@ -85,7 +85,7 @@ def test_watch_follow_waits_for_the_status_to_appear(tmp_path, monkeypatch, caps
         # The first wait is the poll for the file; later waits are the
         # follow cadence. The file arrives, already finished, on the poll.
         if not status_file.is_file():
-            status = EvolveStatus(status_file, phase="setup")
+            status = BuildStatus(status_file, phase="setup")
             status.done(stopped_reason="goal_achieved")
 
     monkeypatch.setattr(watch_cli.time, "sleep", sleep_then_arrive)

@@ -1,11 +1,11 @@
 ---
 title: "How Kapso stops experiments from editing your evaluator"
 sidebarTitle: "Evaluation integrity"
-description: "When you supply eval_dir, Kapso treats those files as caller-owned scoring and rejects any candidate branch that modifies them. Provenance and rejection."
-keywords: ["evaluation integrity", "eval_dir", "protected files", "scoring provenance", "reward hacking"]
+description: "When you pass an evaluation directory, Kapso treats those files as caller-owned scoring and rejects any candidate branch that modifies them. Provenance and rejection."
+keywords: ["evaluation integrity", "evaluation directory", "protected files", "scoring provenance", "reward hacking"]
 ---
 
-When `eval_dir` is supplied, Kapso treats its files as caller-owned scoring
+When an evaluation directory is passed (`--evaluation`, `build(evaluation=...)`), Kapso treats its files as caller-owned scoring
 rules. Candidate branches may run those rules and create runtime outputs, but
 they may not modify, delete, replace, or extend the evaluator source.
 
@@ -16,7 +16,7 @@ weakening the evaluation it is supposed to satisfy.
 
 Every `SearchNode` records one of two values:
 
-- `provided`: the caller passed `eval_dir`; its files are protected.
+- `provided`: the caller passed an evaluation directory; its files are protected.
 - `agent_generated`: no suite was supplied, so the agent may build evaluation
   code in `kapso_evaluation/` as before.
 
@@ -26,21 +26,21 @@ history and resumable checkpoints.
 ## Provided suite lifecycle
 
 ```python
-solution = kapso.evolve(
-    goal="Improve the support agent",
-    output_path="./campaign",
-    eval_dir="./evaluation",
-    max_iterations=3,
+solution = kapso.build(
+    "Improve the support agent",
+    output="./campaign",
+    evaluation="./evaluation",
+    budget=Budget(experiments=3),
 )
 ```
 
-Kapso validates and fingerprints `eval_dir` before resolving an initial
+Kapso validates and fingerprints the evaluation directory before resolving an initial
 repository or initializing the experiment workspace. The directory must exist,
 contain at least one file, and contain no symlinks.
 
 ```mermaid
 flowchart TD
-    A["Validate provided eval_dir"] --> B["Hash relative paths and file bytes"]
+    A["Validate the provided evaluation"] --> B["Hash relative paths and file bytes"]
     B --> C["Copy and commit baseline suite"]
     C --> D["Agent implements candidate branch"]
     D --> E["Materialize exact candidate ref"]
@@ -93,27 +93,26 @@ nodes are excluded from:
 - final best-branch checkout.
 
 Recent-history tools can still report the attempt as `INVALID EVALUATION`, so a
-later iteration knows not to repeat the same mistake. `SolutionResult.metadata`
-includes `invalid_evaluations`, and its experiment logs label the node as
+later iteration knows not to repeat the same mistake. `solution.rejected_candidates`
+counts them, and `kapso watch --tree` labels each node as
 rejected.
 
 ## Resume behavior
 
 The provided-suite fingerprint is part of strict run compatibility. Resume
-requires the same `eval_dir` contents and restores the protected manifest from
+requires the same evaluation directory's contents and restores the protected manifest from
 the checkpoint:
 
 ```python
-solution = kapso.evolve(
-    goal="Improve the support agent",
-    output_path="./campaign",
-    eval_dir="./evaluation",
+solution = kapso.build(
+    output="./campaign",
+    evaluation="./evaluation",
     resume=True,
-    max_iterations=1,
+    budget=Budget(experiments=1),
 )
 ```
 
-Omitting `eval_dir`, changing a protected source file, or selecting another
+Omitting the evaluation directory, changing a protected source file, or selecting another
 suite produces an incompatible-checkpoint error before candidate work begins.
 
 ## Security boundary and limitations

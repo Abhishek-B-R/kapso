@@ -1,4 +1,4 @@
-"""Typed budget contracts for evolve campaigns.
+"""Typed budget contracts for build campaigns.
 
 Three pieces, per the budget-aware experimentation design:
 

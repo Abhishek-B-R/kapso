@@ -34,7 +34,7 @@
 # export ANTHROPIC_API_KEY="sk-ant-your-key-here"
 
 # -----------------------------------------------------------------------------
-# OpenAI API Key (required for KAPSO's evolve function)
+# OpenAI API Key (required for KAPSO's build function)
 # -----------------------------------------------------------------------------
 # Get your API key from https://platform.openai.com/
 export OPENAI_API_KEY="your-openai-key-here"

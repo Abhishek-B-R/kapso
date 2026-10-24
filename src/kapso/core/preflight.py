@@ -91,7 +91,7 @@ def deploy_tools() -> Dict[str, Tuple[str, str]]:
             tools[name] = (requires["binary"], requires.get("install", f"install {requires['binary']}"))
     return tools
 
-VERBS = ("research", "learn_knowledge", "evolve", "learn", "deploy")
+VERBS = ("research", "learn_knowledge", "build", "learn", "deploy")
 
 
 # =============================================================================
@@ -627,7 +627,7 @@ def learn_knowledge_requirements(
     return requirements
 
 
-def evolve_requirements(
+def build_requirements(
     config: Dict[str, Any],
     *,
     mode: Optional[str] = None,
@@ -635,7 +635,7 @@ def evolve_requirements(
     kg_index: Optional[str] = None,
     bank_home: Optional[Path] = None,
 ) -> List[Requirement]:
-    """`evolve()` runs a campaign: ideation, implementation, evaluation and
+    """`build()` runs a campaign: ideation, implementation, evaluation and
     feedback sessions, plus whatever MCP gates the strategy names."""
     mode_name, block = _mode_block(config, mode)
     prefix = f"modes.{mode_name}"
@@ -907,7 +907,7 @@ def deploy_requirements(
 _BUILDERS = {
     "research": research_requirements,
     "learn_knowledge": learn_knowledge_requirements,
-    "evolve": evolve_requirements,
+    "build": build_requirements,
     "learn": learn_requirements,
     "deploy": deploy_requirements,
 }
@@ -934,7 +934,7 @@ def requirements_for(
         for name in VERBS:
             merged.extend(
                 _BUILDERS[name](config, bank_home=bank_home)
-                if name in ("evolve", "learn")
+                if name in ("build", "learn")
                 else _BUILDERS[name](config)
             )
         return dedupe(merged)
@@ -990,7 +990,7 @@ def live_model_requirements(
             label=f"{cli} can serve {model}",
             ok=ok,
             fix="copy the packaged config, change the model, and pass "
-                "Kapso(config_path=...) — see README \"Choosing models\"",
+                "Kapso(config=...) — see README \"Choosing models\"",
             origin="; ".join(dict.fromkeys(origins)),
             detail=detail,
         ))
@@ -1024,7 +1024,7 @@ def _specs_for(
         "learn_knowledge": session_specs(
             block.get("learner") or {}, f"modes.{mode_name}.learner"
         ),
-        "evolve": (
+        "build": (
             session_specs(
                 (block.get("search_strategy") or {}).get("params") or {},
                 f"modes.{mode_name}.search_strategy.params",

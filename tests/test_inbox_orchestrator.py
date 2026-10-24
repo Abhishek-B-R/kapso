@@ -211,7 +211,7 @@ def test_a_session_that_asks_pauses_the_campaign(patched, capsys):
     assert len(done_payloads) == 1 and done_payloads[0]["requests"][0]["id"] == 1
 
     out = capsys.readouterr().out
-    assert "kapso evolve — waiting on you" in out
+    assert "kapso build — waiting on you" in out
     assert "#1  env:OPENAI_API_KEY" in out and "reply with   kapso inbox reply" in out
     assert "tried  OPENAI_KEY unset too" in out
 

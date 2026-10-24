@@ -1,0 +1,115 @@
+---
+title: "Resume a Kapso build and set its budgets"
+sidebarTitle: "Resume and budgets"
+description: "Continue an interrupted or budget-stopped build from its exact checkpoint, and how the four budget dials resolve between the call, the brief, the launch record and the config."
+keywords: ["kapso build resume", "checkpoint", "budget", "iterations", "time budget", "run recovery", "durable clock"]
+---
+
+A build that stopped, died or ran out of budget continues from its exact
+search state. Resume is strict: it never turns a missing, corrupt,
+incompatible or completed checkpoint into a new campaign.
+
+## Resume
+
+```bash
+kapso watch campaign                              # DEAD or STALLED: it died; max_iterations: it ran out
+kapso build --output campaign --resume --detach
+```
+
+```python
+solution = Kapso().build(output="campaign", resume=True)
+```
+
+Nothing is retyped: the brief comes from the checkpoint and every launch
+flag from the launch record, `.kapso/launch.json`. Pass only what you mean
+to change, which is usually a bigger budget:
+
+```bash
+kapso build --output campaign --resume --budget-minutes 120 --budget-experiments 8 --detach
+```
+
+A campaign that paused for you resumes through `kapso inbox reply`, not
+`--resume`; a `--resume` with a request still open pauses again without
+running anything. See [The inbox](/docs/build/inbox).
+
+## What a resume requires
+
+- `--output` names an existing campaign directory, a non-bare git
+  repository with `.kapso/run_state.json`.
+- The brief, when passed, matches the checkpoint's exactly; left out, it
+  comes from the checkpoint.
+- The mode, coding agent, evaluation directory, config and knowledge index
+  match the launch's. A difference is refused by name; start a new build
+  in a new output directory instead.
+- The campaign is not `completed`: only reaching the objective completes a
+  campaign, and a completed one is not resumed.
+
+Validation happens before anything is touched: a refused resume creates no
+repository, renames no branch and overwrites no state.
+
+## The budget
+
+Four dials, every one optional:
+
+| Dial | Brief token | Flag | Python |
+|---|---|---|---|
+| Wall clock | `minutes=60` | `--budget-minutes 60` | `Budget(minutes=60)` |
+| Experiments | `experiments=10` | `--budget-experiments 10` | `Budget(experiments=10)` |
+| Model spend, USD | `usd=25` | `--budget-usd 25` | `Budget(usd=25)` |
+| Reserve for the final checkout and evaluation | `reserve_minutes=5` | `--budget-reserve-minutes 5` | `Budget(reserve_minutes=5)` |
+
+Precedence, dial by dial: the flag or the `budget=` argument, then the
+brief's `Budget` line, then on a resume the launch record, then the
+config's defaults. `experiments` is the number this call may run; the clock is durable across resumes (paused time does not count), and
+the result keeps both counts:
+
+```python
+solution.experiments             # this call
+solution.experiments_total       # the whole campaign
+```
+
+A budget stop records why in `stop_detail` (`time_budget`,
+`cost_budget`, `finalization_reserve`) and leaves the checkpoint `running`
+for the next slice.
+
+## The checkpoint
+
+`.kapso/run_state.json` holds the brief, its hash, the configuration
+fingerprint, the search state (every node), the durable clock, the
+cumulative cost and the status. It is written atomically after every
+finalized experiment, so an interrupted write leaves the previous
+checkpoint readable. A resume restores the node history, the feedback for
+the next experiment, the clock and the cost, and continues.
+
+Resume errors are importable from `kapso`:
+
+| Error | Meaning |
+|---|---|
+| `RunCheckpointMissingError` | No checkpoint in the directory |
+| `RunCheckpointCorruptError` | The checkpoint's fields or state are invalid |
+| `RunCheckpointIncompatibleError` | The brief, strategy, configuration or schema does not match |
+| `RunCheckpointCompletedError` | The campaign already reached the objective |
+
+Fix the mismatch or name the right directory; never edit the checkpoint
+to force a resume.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Run and watch" icon="play" href="/docs/build/run-and-watch">
+    Launching and following a build
+  </Card>
+  <Card title="The inbox" icon="inbox" href="/docs/build/inbox">
+    The pause a reply resumes
+  </Card>
+  <Card title="Review the result" icon="magnifying-glass" href="/docs/build/review">
+    What a stopped build delivered so far
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/docs/reference/cli#kapso-build">
+    The --resume flag and the budget flags
+  </Card>
+</CardGroup>
+
+Related pages: [Run and watch](/docs/build/run-and-watch) · [The inbox](/docs/build/inbox) · [Review the result](/docs/build/review) · [CLI reference](/docs/reference/cli#kapso-build)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

@@ -39,7 +39,7 @@ def cmd_research(args) -> None:
     mode_arg = modes[0] if len(modes) == 1 else modes
 
     # Create Kapso instance
-    kapso = Kapso(config_path=args.config)
+    kapso = Kapso(config=args.config)
 
     # Run research
     findings = kapso.research(

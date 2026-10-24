@@ -103,11 +103,11 @@ findings = kapso.research(
     depth="deep",
 )
 
-# Use research as context for evolve
-solution = kapso.evolve(
-    goal="Fine-tune a model with Unsloth + LoRA",
+# Use research as context for a build
+solution = kapso.build(
+    "Fine-tune a model with Unsloth + LoRA",
     context=[findings.to_string()],
-    output_path="./models/unsloth_v1",
+    output="./models/unsloth_v1",
 )
 ```
 

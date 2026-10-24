@@ -1,0 +1,114 @@
+---
+title: "Evaluation: how a Kapso build measures every candidate"
+sidebarTitle: "Evaluation"
+description: "The evaluator contract, and the three states an evaluation can be in: provided by you and protected, proposed by the campaign from the brief's protocol, or versioned by the maintainer."
+keywords: ["kapso evaluation", "evaluator", "kapso_evaluation", "evaluation integrity", "protected evaluator", "hold-out", "metric"]
+---
+
+Every candidate a build produces is measured, and the measurement is what
+the judge scores and the campaign optimises. The evaluator is therefore the
+one thing a campaign must never be allowed to improve. This page is the
+contract an evaluator meets and the three states one can be in.
+
+## The contract
+
+An evaluator is a command the campaign runs from the workspace root. A good
+one:
+
+- runs in one command: `python kapso_evaluation/evaluate.py`, with the
+  candidate's own entry point called inside it;
+- prints the metric as its last line, `name: value`, such as `auc: 0.8412`,
+  and writes `kapso_evaluation/result.json` with `evaluation_script_path`,
+  `evaluation_output` and `score`;
+- exits non-zero with a printed reason on a malformed submission, so a
+  broken candidate is a clear failure, not a low score;
+- is deterministic given the candidate, so repeats agree and the noise you
+  care about is the data's, which you can state (a bootstrap standard
+  error beside the baseline);
+- has a `--fast` mode for smoke checks, marked not comparable with a full
+  score;
+- finishes well under a minute per cycle where the task allows, so a
+  build's budget goes to experiments, not to measuring them.
+
+The [churn example](/docs/first-build) ships one that meets every line.
+
+## Provided: yours, protected
+
+Pass the directory with `--evaluation` (Python: `evaluation=`). It is copied
+to `kapso_evaluation/` in the workspace, committed as the baseline and
+fingerprinted, file by file. A candidate that modifies, deletes, replaces or
+extends it is rejected: its score is cleared, the judge never sees it, and
+it is never chosen as a parent or delivered. The count of such candidates is
+`solution.rejected_candidates`. New runtime artifacts (`result.json`, logs,
+predictions) are allowed; new evaluator source is not. The mechanics are
+on [Evaluation integrity](/docs/evolve/evaluation-integrity).
+
+Data goes the same way: `--data` (Python: `data=`) is copied to
+`kapso_datasets/`. Keep hold-out labels out of both directories; the
+evaluator reaches them where you put them, and the rules in the brief say
+no candidate may.
+
+## Proposed: built from the brief
+
+With no `--evaluation`, the campaign's first node builds the evaluator in
+`kapso_evaluation/` from the brief's `Measured by` line: the data, the
+split, the seed, the metric and how it is printed. The judge then reads
+every candidate's evaluation against the brief, and a candidate that
+weakens the protocol is scored as what it is. Write the protocol
+precisely; the [fraud example](https://github.com/Leeroo-AI/kapso/tree/main/examples/fraud-no-evaluator)
+shows one.
+
+What the shipped config does not do yet is register that evaluator and
+protect it file by file the way a provided one is protected. That is the
+evaluation maintainer's job, and the maintainer runs only when the
+config's `evaluation_maintainer` block is set (the RelBench benchmark
+config sets one; `GENERIC` and `MINIMAL` do not). The config package of
+the redesign decides the default.
+
+## Versioned: the registry
+
+When the evaluation maintainer runs, every evaluator the campaign uses is
+a version in `.kapso/evaluation_registry.json`, with its provenance:
+`provided`, `maintainer_built` (proposed from the brief) or `derived_fast`
+(a fast mode derived from a full one). A score never crosses a version
+boundary. The version the delivered candidate was measured under is
+`solution.evaluator`:
+
+```python
+solution.evaluator             # EvaluatorRef(version=1, evaluator_id="…", provenance="provided")
+solution.evaluator is None     # no maintainer ran, so nothing was registered
+```
+
+Without the maintainer, `solution.evaluator` is `None` for a provided
+evaluator too; the provided evaluator is still protected by the integrity
+check above.
+
+## Your own evaluator in Python
+
+A caller-owned evaluator can also run once per finalized candidate, in an
+isolated worktree, with its metrics kept out of the search loop:
+`build(..., iteration_evaluator=callback)`. The metrics of the delivered
+candidate are `solution.callback_metrics`. See
+[External evaluation](/docs/evolve/external-evaluation) for the callback's
+contract and failure policy.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="The brief" icon="file-lines" href="/docs/build/brief">
+    Where the measurement is stated
+  </Card>
+  <Card title="Evaluation integrity" icon="shield" href="/docs/evolve/evaluation-integrity">
+    How a provided evaluator is protected
+  </Card>
+  <Card title="External evaluation" icon="scale-balanced" href="/docs/evolve/external-evaluation">
+    The Python callback
+  </Card>
+  <Card title="Review the result" icon="magnifying-glass" href="/docs/build/review">
+    Where the score and the version show up
+  </Card>
+</CardGroup>
+
+Related pages: [The brief](/docs/build/brief) · [Evaluation integrity](/docs/evolve/evaluation-integrity) · [External evaluation](/docs/evolve/external-evaluation) · [Review the result](/docs/build/review)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

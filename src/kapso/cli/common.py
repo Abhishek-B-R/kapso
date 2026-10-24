@@ -1,6 +1,6 @@
-"""Shared pieces of the CLI: the agent and strategy lists, detached runs and
-the campaign summary block. Each verb module imports what it needs from
-here; nothing here imports a verb module."""
+"""Shared pieces of the CLI: the agent list, detached runs and the campaign
+summary block. Each verb module imports what it needs from here; nothing
+here imports a verb module."""
 
 import os
 import subprocess
@@ -44,6 +44,11 @@ def _without_detach_flags(argv: Sequence[str]) -> List[str]:
     return kept
 
 
+def _inside(path: Path, directory: Path) -> bool:
+    """Whether `path` lies under `directory` (both resolved)."""
+    return path == directory or directory in path.parents
+
+
 def _default_log(campaign: Path) -> Path:
     """The detached run's log: a sibling of the campaign directory, which
     must stay empty for seeding and holds only the campaign itself."""
@@ -75,28 +80,21 @@ def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) 
     print(f"  inbox:   kapso inbox {campaign}")
 
 
-def _print_evolve_summary(solution) -> None:
+def _print_build_summary(solution) -> None:
     """The block after a campaign: COMPLETED, or WAITING ON YOU when it
-    paused for a reply in the inbox (design v4 §4.6). A pause is not a
-    failure: the exit code stays 0."""
+    paused for a reply in the inbox (design v4 §4.6), each over the
+    solution's own summary. A pause is not a failure: the exit code stays 0."""
     print("\n" + "=" * 60)
-    if solution.metadata.get("stopped_reason") == "waiting_for_user":
-        campaign = str(Path(solution.code_path).resolve())
+    campaign = str(solution.campaign)
+    if solution.stopped_reason == "waiting_for_user":
         requests = solution.requests
         target = f" {requests[0]['id']}" if len(requests) > 1 else ""
         print("WAITING ON YOU")
         print("=" * 60)
-        print(f"Solution so far: {campaign}")
-        if solution.final_score is not None:
-            print(f"Best score so far: {solution.final_score}")
+        print(solution.explain())
         print(f'Reply with:  kapso inbox reply{target} "…"   (inside {campaign})')
         print(f"Any time:    kapso inbox {campaign}")
         return
     print("COMPLETED")
     print("=" * 60)
-    print(f"Solution: {solution.code_path}")
-    print(f"Goal achieved: {solution.succeeded}")
-    if solution.final_score is not None:
-        print(f"Final score: {solution.final_score}")
-    print(f"Cost: {solution.metadata.get('cost', 'N/A')}")
-    print(f"Stopped reason: {solution.metadata.get('stopped_reason', 'N/A')}")
+    print(solution.explain())

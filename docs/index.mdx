@@ -1,70 +1,51 @@
 ---
 title: "Kapso: long-running agents for AI and Data"
 sidebarTitle: "What is Kapso"
-description: "Kapso, by Leeroo, is a team of long-running agents that optimize AI and Data systems, and learn from every experience: state an objective and it runs a campaign of candidate solutions, refining the closest until the objective is met."
+description: "Kapso, by Leeroo, is a team of long-running agents that optimize AI and Data systems, and learn from every experience: write a brief and it runs a campaign of candidate solutions, measured against your evaluator, until the objective is met."
 keywords: ["Kapso", "long-running agents", "automated ML", "experiment campaigns", "optimization engine", "MLE-Bench", "RelBench"]
 ---
 
-Kapso is a team of long-running agents that optimize AI and Data systems. State an objective and it runs a campaign: it designs candidate solutions, has coding agents implement them, measures how far each one is from the objective, and keeps refining the closest until the objective is met. The result ships to your infrastructure.
+Kapso is a team of long-running agents that optimize AI and Data systems. Write a brief and it runs a campaign: it designs candidate solutions, has coding agents implement each one on its own branch, measures how far each is from the objective with an evaluator it cannot touch, and keeps refining the closest until the objective is met. The result ships to your infrastructure.
 
 Kapso learns from every experience. When a campaign ends, it studies its own work: which ideas closed the distance to the objective, which did not, and under what conditions. Each finding is kept as a lesson with the evidence that earned it, and a lesson stays trusted only as long as it keeps holding up. Kapso also reads outside your walls, repositories and papers, and folds what it finds into the same knowledge hub. Every new campaign begins from that hub, so it starts with what earlier work already established, about the problem and about your systems.
 
 Kapso is an open-source Python framework by [Leeroo](https://leeroo.com). The source lives at [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) and the package installs with `pip install leeroo-kapso`.
 
-## The four pillars
-
-<CardGroup cols={2}>
-  <Card title="Evolve" icon="dna" href="/docs/evolve/overview">
-    **`.evolve()`** runs iterative experiments to build software for a goal, using tree search, coding agents and knowledge-graph context. When a session needs a credential or a file only you can provide, the campaign asks and pauses until you reply.
-  </Card>
-  <Card title="Learn" icon="brain" href="/docs/knowledge/overview">
-    Two memories. **`.learn()`** mines your own finished campaigns into evidence-priced lesson cards. **`.learn_knowledge()`** ingests repositories and research into the knowledge graph.
-  </Card>
-  <Card title="Research" icon="magnifying-glass" href="/docs/research/overview">
-    **`.research()`** runs deep web research and returns structured findings you can feed into the knowledge graph or pass as campaign context.
-  </Card>
-  <Card title="Deploy" icon="rocket" href="/docs/deployment/overview">
-    **`.deploy()`** turns a solution into running software, locally, in Docker, or on a cloud platform such as Modal.
-  </Card>
-</CardGroup>
-
-## What a full run looks like
+## The whole thing in twelve lines
 
 ```python
-from kapso import Kapso, Source, DeployStrategy
+from kapso import Kapso, Brief, Budget, Solution
 
-kapso = Kapso(kg_index="data/indexes/legal_contracts.index")
-
-# Research the problem space
-findings = kapso.research(
-    "RLHF and DPO fine-tuning for legal contract analysis",
-    mode=["idea", "implementation"],
-    depth="deep",
+kapso = Kapso()                                      # engine knobs from the packaged config
+solution = kapso.build(
+    Brief.read("kapso-brief.md"),                    # objective, how it is measured, baseline, target, rules
+    evaluation="evaluation", data="data", repo=".",  # your evaluator (protected), your data, your code
+    output="../churn-build", budget=Budget(minutes=60),
 )
-
-# Fold public knowledge into the knowledge graph
-kapso.learn_knowledge(
-    Source.Repo("https://github.com/huggingface/trl"),
-    findings,
-    wiki_dir="data/wikis",
-)
-
-# Run the campaign
-solution = kapso.evolve(
-    goal=(
-        "Fine-tune Llama-3.1-8B on the CUAD dataset for legal clause risk "
-        "classification, target F1 > 0.85 on high-risk clause detection"
-    ),
-    context=[findings.to_string()],
-    output_path="./models/legal_risk_v1",
-)
-
-# Bank what the campaign learned, so the next one starts ahead
-kapso.learn(solution)
-
-# Ship it
-deployed = kapso.deploy(solution, strategy=DeployStrategy.MODAL)
+solution.score, solution.branch, solution.diff()     # what was delivered, how it measured, what changed
+software = kapso.deploy(solution)                    # running software, locally or on a target
+lesson = kapso.learn(solution)                       # what the campaign taught, banked with evidence
+Solution.open("../churn-build")                      # the same solution, from any process
 ```
+
+The same from a shell: `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo . --output ../churn-build --detach`, then `kapso watch ../churn-build --follow`. [Your first build](/docs/first-build) runs it on the churn example.
+
+## The verbs
+
+<CardGroup cols={2}>
+  <Card title="Build" icon="hammer" href="/docs/build/brief">
+    **`build()`** takes a brief and runs the campaign: candidates on their own branches, measured by an evaluator you provide or the campaign builds from your protocol, the best kept. When a session needs a credential or a file only you can provide, the campaign asks and pauses until you reply.
+  </Card>
+  <Card title="Deploy" icon="rocket" href="/docs/deployment/overview">
+    **`deploy()`** turns a solution into running software, locally, in Docker, or on a cloud platform such as Modal.
+  </Card>
+  <Card title="Learn" icon="brain" href="/docs/learning/overview">
+    **`learn()`** mines a finished campaign into evidence-priced lesson cards the next campaign is served.
+  </Card>
+  <Card title="Knowledge and research" icon="magnifying-glass" href="/docs/knowledge/overview">
+    **`learn_knowledge()`** ingests repositories and research into the knowledge graph; **`research()`** runs deep web research and returns structured findings.
+  </Card>
+</CardGroup>
 
 <Note>
   `learn()` mines your own finished campaigns; `learn_knowledge()` ingests outside sources. They are different memories.
@@ -100,11 +81,13 @@ The [technical report](https://arxiv.org/abs/2601.21526) describes the system in
 
 | Component | What it does |
 |-----------|--------------|
-| `Kapso` | The public API. Coordinates research, learning, evolution and deployment |
+| `Kapso` | The public API: `build`, `deploy`, `learn`, and the knowledge verbs |
+| `Brief`, `Budget`, `Solution` | What a build takes and what it hands back, as objects and as files |
 | Orchestrator | Runs the experiment loop and tracks the budget |
 | Search strategy | Explores candidate solutions as a tree |
 | Coding agents | Pluggable implementers: Claude Code, Codex, Gemini, OpenHands, OSS Claude Code |
-| Feedback generator | Validates each evaluation and decides when to stop |
+| Judge | Validates each evaluation against the brief and decides when to stop |
+| Evaluation registry | The evaluator versions a campaign measured with, provided or built, protected |
 | Lesson bank | Evidence-priced cards mined from finished campaigns |
 | Knowledge graph | Repository and research knowledge, searched over Weaviate and Neo4j |
 | Repo memory | Evidence-backed understanding of an existing codebase |
@@ -117,17 +100,17 @@ Kapso connects to [Leeroopedia](https://leeroopedia.com), a curated knowledge ba
 ## Start here
 
 <CardGroup cols={3}>
-  <Card title="Installation" icon="download" href="/docs/installation">
+  <Card title="Install" icon="download" href="/docs/installation">
     The CLIs, the package, and kapso doctor
   </Card>
-  <Card title="Quickstart" icon="rocket" href="/docs/quickstart">
-    Your first campaign
+  <Card title="Your first build" icon="rocket" href="/docs/first-build">
+    The churn example, end to end
   </Card>
-  <Card title="CLI reference" icon="terminal" href="/docs/reference/cli">
-    Every command and flag
+  <Card title="The brief" icon="file-lines" href="/docs/build/brief">
+    What a build takes
   </Card>
 </CardGroup>
 
-Related pages: [Evolve](/docs/evolve/overview) · [Learn](/docs/knowledge/overview) · [Research](/docs/research/overview) · [Deploy](/docs/deployment/overview) · [IOAI 2026](/docs/benchmarks/ioai-2026) · [RelBench](/docs/benchmarks/relbench) · [MLE-Bench](/docs/benchmarks/mle-bench) · [ALE-Bench](/docs/benchmarks/ale-bench) · [Installation](/docs/installation) · [Quickstart](/docs/quickstart) · [CLI reference](/docs/reference/cli)
+Related pages: [Your first build](/docs/first-build) · [The brief](/docs/build/brief) · [Deploy](/docs/deployment/overview) · [Learn](/docs/learning/overview) · [Knowledge](/docs/knowledge/overview) · [IOAI 2026](/docs/benchmarks/ioai-2026) · [RelBench](/docs/benchmarks/relbench) · [MLE-Bench](/docs/benchmarks/mle-bench) · [ALE-Bench](/docs/benchmarks/ale-bench) · [Install](/docs/installation) · [CLI reference](/docs/reference/cli)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

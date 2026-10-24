@@ -7,7 +7,7 @@
 #     from kapso.deployment.adapter import AdapterAgent
 #     
 #     adapter = AdapterAgent()
-#     result = adapter.adapt(solution_path, goal, setting)
+#     result = adapter.adapt(solution, setting)
 
 from kapso.deployment.adapter.agent import AdapterAgent
 from kapso.deployment.adapter.validator import AdaptationValidator

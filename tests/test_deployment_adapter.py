@@ -19,7 +19,7 @@ from kapso.deployment.adapter.validator import AdaptationValidator
 from kapso.deployment.base import DeploymentSetting
 from kapso.deployment.strategies import StrategyRegistry
 from kapso.deployment.strategies.base import deployment_context
-from kapso.execution.solution import SolutionResult
+from tests.handles_support import make_solution
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def solution(tmp_path):
     (src / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
     (src / "__pycache__").mkdir()
     (src / "__pycache__" / "model.cpython-312.pyc").write_bytes(b"\x00")
-    return SolutionResult(goal="score things", code_path=str(src))
+    return make_solution(src, "score things")
 
 
 def setting_for(strategy):
@@ -138,7 +138,7 @@ def test_docker_defaults_are_templated_per_solution_and_reach_the_prompt(solutio
                 f.write("# generated\n")
         return ""  # no run_interface from the agent → config defaults apply
     agent = scripted(writes_docker_files)
-    expected = deployment_context(solution.code_path)
+    expected = deployment_context(str(solution.campaign))
     result = AdapterAgent("fake", "m", max_retries=0).adapt(solution, setting_for("docker"))
     assert result.success
     iface = result.run_interface

@@ -19,7 +19,7 @@ services/wiki_backend/
 
 # Distribution / packaging
 .Python
-build/
+/build/
 develop-eggs/
 dist/
 downloads/
@@ -292,3 +292,6 @@ skills-lock.json
 
 # Local records of fresh-machine runs (scripts/redesign/fresh_machine.sh)
 /scripts/redesign/runs/
+
+# Example builds land beside each example's repo and are never committed.
+examples/*/campaign/

@@ -31,6 +31,7 @@ from kapso.execution.inbox import (
 from kapso.execution.orchestrator import SolveResult
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, config_fingerprint
 from kapso.execution.search_strategies.base import SearchNode
+from kapso.handles import Brief, Budget
 from kapso.kapso import Kapso
 
 ENTRY = {
@@ -72,6 +73,9 @@ def _fake_orchestrator(workspace: Path, monkeypatch):
         def get_experiment_history(self):
             return []
 
+        def get_deliverable_experiment(self):
+            return None
+
         def get_deliverable_score(self):
             return None
 
@@ -105,9 +109,9 @@ def test_a_fresh_campaign_writes_the_launch_record_and_registers(tmp_path, monke
     _fake_orchestrator(workspace, monkeypatch)
     _inbox_on(monkeypatch, registry)
 
-    _facade().evolve(
-        goal="Improve support\nmore detail", output_path=str(workspace), max_iterations=7,
-        time_budget_minutes=120, eval_dir=None, mode="GENERIC", context=["a hint"],
+    _facade().build(
+        "Improve support\nmore detail", output=str(workspace),
+        budget=Budget(experiments=7, minutes=120), mode="GENERIC", context=["a hint"],
     )
 
     record = read_launch_record(workspace)
@@ -115,6 +119,7 @@ def test_a_fresh_campaign_writes_the_launch_record_and_registers(tmp_path, monke
     assert record["mode"] == "GENERIC" and record["output_path"] == str(workspace)
     assert record["context"] == ["a hint"] and record["resumable_from_inbox"] is True
     assert "dotenv_path" in record
+    assert record["brief"]["objective"] == "Improve support\nmore detail"
     listed = list_registered_campaigns(registry)
     assert listed[0]["path"] == str(workspace.resolve()) and listed[0]["goal"] == "Improve support"
 
@@ -131,7 +136,7 @@ def test_the_launch_record_keeps_every_path_absolute(tmp_path, monkeypatch):
     _inbox_on(monkeypatch, tmp_path / "registry.jsonl")
     monkeypatch.chdir(tmp_path)
 
-    _facade().evolve(goal="g", output_path="campaign", eval_dir="eval", data_dir="data")
+    _facade().build("g", output="campaign", evaluation="eval", data="data")
 
     record = read_launch_record(workspace)
     assert record["eval_dir"] == str((tmp_path / "eval").resolve())
@@ -152,8 +157,8 @@ def test_resume_and_reply_load_the_campaigns_dotenv(tmp_path, monkeypatch):
     # A reply, before the agent is even constructed (its knowledge index
     # may need a key), and a resume, before preflight.
     _status(workspace, "done")
-    monkeypatch.setattr(Kapso, "__init__", lambda self, config_path=None, kg_index=None, bank=None: None)
-    monkeypatch.setattr(Kapso, "evolve", lambda self, **kwargs: None)
+    monkeypatch.setattr(Kapso, "__init__", lambda self, config=None, kg_index=None, bank=None: None)
+    monkeypatch.setattr(Kapso, "build", lambda self, **kwargs: None)
     Kapso.reply(str(workspace), 1, "added the key")
     assert loaded == [str(dotenv)]
 
@@ -161,7 +166,7 @@ def test_resume_and_reply_load_the_campaigns_dotenv(tmp_path, monkeypatch):
     loaded.clear()
     monkeypatch.setattr(kapso_module, "load_dotenv", lambda path: loaded.append(path))
     _fake_orchestrator(workspace, monkeypatch)
-    _facade().evolve(output_path=str(workspace), resume=True)
+    _facade().build(output=str(workspace), resume=True)
     assert loaded == [str(dotenv)]
 
 
@@ -170,7 +175,7 @@ def test_a_callback_makes_the_campaign_not_resumable_from_the_inbox(tmp_path, mo
     _init_git_workspace(workspace)
     _fake_orchestrator(workspace, monkeypatch)
     _inbox_on(monkeypatch, tmp_path / "registry.jsonl")
-    _facade().evolve(goal="g", output_path=str(workspace), iteration_evaluator=lambda context: None)
+    _facade().build("g", output=str(workspace), iteration_evaluator=lambda context: None)
     assert read_launch_record(workspace)["resumable_from_inbox"] is False
 
 
@@ -180,7 +185,7 @@ def test_a_resume_writes_neither_record(tmp_path, monkeypatch):
     registry = tmp_path / "registry.jsonl"
     _fake_orchestrator(workspace, monkeypatch)
     _inbox_on(monkeypatch, registry)
-    _facade().evolve(goal="g", output_path=str(workspace), resume=True)
+    _facade().build("g", output=str(workspace), resume=True)
     assert read_launch_record(workspace) is None and not registry.exists()
 
 
@@ -192,7 +197,7 @@ def _paused_campaign(tmp_path, *, requests=1, resumable=True, completed=2, max_i
     node = SearchNode(node_id=3, branch_name="generic_exp_3", solution="# Core Idea\nre-rank with embeddings\n",
                       suspended=True, request_ids=list(range(1, requests + 1)), cli_session_id="cli-1")
     RunCheckpointStore(str(workspace)).save(RunCheckpoint.create(
-        strategy_type="generic", goal="Improve support", config_fingerprint=config_fingerprint({"m": 1}),
+        strategy_type="generic", goal=Brief(objective="Improve support").render(), config_fingerprint=config_fingerprint({"m": 1}),
         status="running", completed_iterations=completed, cumulative_cost=1.0, current_feedback=None,
         strategy_state={"node_history": [node.to_dict()]}, last_stop="waiting_for_user",
     ))
@@ -210,7 +215,7 @@ def _status(workspace: Path, state: str, heartbeat_age: float = 0.0) -> None:
     beat = datetime.now(timezone.utc).timestamp() - heartbeat_age
     stamp = datetime.fromtimestamp(beat, timezone.utc).isoformat(timespec="seconds")
     (workspace / ".kapso" / "status.json").write_text(json.dumps({
-        "operation": "evolve", "phases": ["ideation"], "state": state, "pid": os.getpid(),
+        "operation": "build", "phases": ["ideation"], "state": state, "pid": os.getpid(),
         "started_at": stamp, "heartbeat_at": stamp, "heartbeat_seconds": 60, "phase": None,
         "phase_started_at": None, "recent": [],
     }))
@@ -253,18 +258,18 @@ def test_reply_resumes_with_the_launch_arguments(tmp_path, monkeypatch):
     captured: Dict[str, Any] = {}
     sentinel = object()
 
-    monkeypatch.setattr(Kapso, "__init__", lambda self, config_path=None, kg_index=None, bank=None: captured.update(init=(config_path, kg_index)))
-    monkeypatch.setattr(Kapso, "evolve", lambda self, **kwargs: captured.update(kwargs) or sentinel)
+    monkeypatch.setattr(Kapso, "__init__", lambda self, config=None, kg_index=None, bank=None: captured.update(init=(config, kg_index)))
+    monkeypatch.setattr(Kapso, "build", lambda self, **kwargs: captured.update(kwargs) or sentinel)
 
     assert Kapso.reply(str(workspace), 1, "added the key") is sentinel
     assert captured["init"] == (None, None)
     # The reply names only what differs from the launch — the remaining
-    # iterations — and resumes; evolve(resume=True) takes the goal from the
+    # iterations — and resumes; build(resume=True) takes the goal from the
     # checkpoint and every other argument from the launch record itself.
     assert captured["resume"] is True
-    assert captured["output_path"] == str(workspace.resolve())
-    assert captured["max_iterations"] == 3
-    assert set(captured) == {"init", "resume", "output_path", "max_iterations"}
+    assert captured["output"] == str(workspace.resolve())
+    assert captured["budget"] == Budget(experiments=3)
+    assert set(captured) == {"init", "resume", "output", "budget"}
 
 
 def test_reply_needs_the_campaign_directory_here(tmp_path):

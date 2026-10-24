@@ -1,12 +1,12 @@
 ---
 name: kapso
-description: Operate Kapso (PyPI leeroo-kapso), the long-running agents that optimize AI and Data systems, from a coding session — verify the install with kapso doctor, launch and follow an evolve campaign toward a scored goal, answer a campaign that is WAITING ON YOU, resume an interrupted run, learn from a finished campaign into the lesson bank, ingest repos and research into the knowledge graph, and deploy the winner. Use when the user mentions Kapso or kapso evolve, learn, research, deploy, doctor, watch, inbox, bank, or asks to push a measurable metric (accuracy, latency, score) in a project where kapso is installed. Do not use for ordinary code edits, or for hand-tuning a metric when Kapso is neither installed nor asked for.
+description: Operate Kapso (PyPI leeroo-kapso), the long-running agents that optimize AI and Data systems, from a coding session — verify the install with kapso doctor, launch and follow a build campaign toward a scored goal, answer a campaign that is WAITING ON YOU, resume an interrupted run, learn from a finished campaign into the lesson bank, ingest repos and research into the knowledge graph, and deploy the winner. Use when the user mentions Kapso or kapso build, learn, research, deploy, doctor, watch, inbox, bank, or asks to build and verify something against a measurable metric (accuracy, latency, score) in a project where kapso is installed. Do not use for ordinary code edits, or for hand-tuning a metric when Kapso is neither installed nor asked for.
 ---
 
 # Kapso
 
 Kapso runs experiment campaigns: propose a candidate, implement it on its own git
-branch, score it with the judge, keep the best, repeat. Everything below is 0.7.x.
+branch, score it with the judge, keep the best, repeat. Everything below is 0.8.x.
 Prefer the facts here and the docs links at the end over reading the package source;
 the source is large and a session that greps it runs out of turns before answering.
 
@@ -26,9 +26,9 @@ the source is large and a session that greps it runs out of turns before answeri
 - Secrets come from `.env` in the directory you run from (`find_dotenv(usecwd=True)`);
   a shell export works only if it is actually exported. Config never holds secrets.
 - All knobs live in one YAML. To change anything, copy the packaged file, edit, and
-  pass it with `--config` / `config_path=`. Never set Kapso behaviour through
+  pass it with `--config` / `Kapso(config=...)`. Never set Kapso behaviour through
   environment variables.
-- Run `kapso doctor` (or `kapso doctor evolve|learn|research|learn_knowledge|deploy`)
+- Run `kapso doctor build` (or `kapso doctor learn|research|learn_knowledge|deploy`)
   before any run. Every required row must read `[OK ]`; `[-- ]` rows are optional.
   Add `--models` to live-probe every configured model with one token each; a model
   the login cannot serve fails here in seconds instead of hours in. A usage cap on
@@ -36,59 +36,75 @@ the source is large and a session that greps it runs out of turns before answeri
 - A campaign takes tens of minutes to hours. Launch it with `--detach`: the
   command returns at once with the pid, the log, the status path and the
   `watch` line, and the run outlives your tool call on every host. Hand off in
-  your reply right away: the goal you passed, the metric and target you assumed
+  your reply right away: the brief you passed, the metric and target you assumed
   and that the user's own can replace them, the `kapso watch <campaign> --follow`
   command, and that `WAITING ON YOU` is a pause answered through `kapso inbox`.
   The status file appears within seconds (phase `setup` while the workspace is
   seeded and repo memory bootstrapped, which takes minutes), so do not poll the
-  log or arm monitors unless asked. Never run `kapso evolve` without `--detach`
+  log or arm monitors unless asked. Never run `kapso build` without `--detach`
   from a tool call.
 - A run that ends with `WAITING ON YOU` has paused, not failed (exit code 0).
   Do not restart it; reply through the inbox (below).
 
-## Evolve: run a campaign
+## Build: run a campaign
 
-### The goal text
+### The brief
 
-The judge stops the campaign only when the goal reads as fully achieved, and it
-scores every experiment from what the evaluation prints. So the goal has to name
-a success metric and a number, and it helps to name the judge: "accuracy above
-0.85 as measured by eval/evaluate.py". Both are the user's to give and optional;
-whatever the user gives goes into the goal verbatim.
+The judge stops the campaign only when the objective reads as fully achieved, and
+it scores every experiment from what the evaluation prints. So the brief has to
+name a success metric and a number, and it helps to name the judge. Write it as a
+file, `kapso-brief.md`, one field per line, indented lines continuing the field
+above:
+
+```
+Objective    Raise the churn model's out-of-sample AUC above 0.85
+             without changing the prediction contract.
+Measured by  evaluation/evaluate.py, ROC AUC on the held-out rows
+Baseline     0.797 (logistic regression)
+Target       0.85
+Rules
+  - the evaluator is never modified
+  - no fitting on the held-out rows
+Budget       minutes=60 experiments=10
+```
+
+Only `Objective` is required; whatever the user gives goes in verbatim, and the
+whole brief reaches the judge. `--goal "..."` is the one-line form of the same
+thing.
 
 First look for an evaluation the repo already has: a scoring script, a test
 suite, a benchmark command. Then:
 
 - The repo has one but the request names no metric or target: run it once for
-  the baseline, write the goal with that metric and a target you propose, and
+  the baseline, write the brief with that metric and a target you propose, and
   tell the user in one line what you assumed and that their own success metric
-  goes straight into the goal. Leave headroom below any ceiling you can see; a
+  goes straight into the brief. Leave headroom below any ceiling you can see; a
   target the data cannot reach ends in the inbox, not in a result.
 - The repo has none and the request names none: your whole reply is one
   question, one line, asking whether they have a script or command that
   scores this and what "good" means; nothing is launched, measured or
-  written before the answer. A script they have goes in with `--eval-dir`,
+  written before the answer. A script they have goes in with `--evaluation`,
   protected. If they answer that they have none or do not know, launch with
-  the best metric you can state in the goal and no `--eval-dir`: the campaign
-  builds its own evaluation in `kapso_evaluation/` from the goal, and the
+  the best metric you can state in the brief and no `--evaluation`: the campaign
+  builds its own evaluation in `kapso_evaluation/` from the brief, and the
   judge checks that it is fair. Never write an evaluator on the user's behalf,
   and never ask twice.
-- Put rules in the goal, not methods. The judge enforces data rules and
-  prohibitions ("do not modify eval/evaluate.py", "do not fit on
+- Put rules in the brief, not methods. The judge enforces data rules and
+  prohibitions ("do not modify evaluation/evaluate.py", "do not fit on
   data/test.csv") as invariants for the whole campaign, and would freeze a
   method preference the same way.
 
 ### Launch
 
 ```bash
-kapso doctor evolve
-kapso evolve \
-  --goal "Get the test accuracy of the churn model in train.py above 0.85 as measured by eval/evaluate.py. The evaluator must not be modified." \
-  --initial-repo . \
-  --eval-dir eval \
-  --data-dir data \
+kapso doctor build
+kapso build \
+  --brief kapso-brief.md \
+  --repo . \
+  --evaluation evaluation \
+  --data data \
   --output ../churn-campaign \
-  --time-budget-minutes 60 --iterations 10 \
+  --budget-minutes 60 --budget-experiments 10 \
   --detach
 kapso watch ../churn-campaign --follow
 ```
@@ -97,17 +113,18 @@ kapso watch ../churn-campaign --follow
   the log (`../churn-campaign.log`) and the `watch` line; no `nohup`, `setsid`
   or `&` is needed, on any host. The launch is a tool call of its own: nothing
   chained in front of it.
-- `--initial-repo <path|github url>` seeds the campaign; a non-git directory is
+- `--repo <path|github url>` seeds the campaign; a non-git directory is
   copied and committed as the baseline. The original is never modified. Every
   experiment lands on branch `generic_exp_N` inside `--output`, an empty
   directory outside the repo being seeded (a sibling), so the seed copy never
   contains the campaign.
-- `--eval-dir` is copied to `kapso_evaluation/` and integrity-protected: any
+- `--evaluation` is copied to `kapso_evaluation/` and integrity-protected: any
   candidate that edits it is rejected and unscored. Use it whenever the user has a
-  judge. `--data-dir` is copied to `kapso_datasets/`. The seed copy includes
+  judge. `--data` is copied to `kapso_datasets/`. The seed copy includes
   everything in the directory, `.env` included.
-- Bound the run: `--iterations` (default 10), `--time-budget-minutes` (durable
-  across resumes), `--cost-budget` (best effort; codex sessions report no cost).
+- Bound the run: `--budget-experiments` (default 10), `--budget-minutes` (durable
+  across resumes), `--budget-usd` (best effort; codex sessions report no cost).
+  A flag wins over the brief's `Budget` line.
 - `-m GENERIC` (default, knowledge search on) or `-m MINIMAL`; `-a` picks the coding
   agent (`claude_code` default, `codex`, `gemini`, `openhands`, `oss_claude_code`).
 - The summary block ends `COMPLETED` with score and stop reason, or `WAITING ON YOU`.
@@ -115,15 +132,16 @@ kapso watch ../churn-campaign --follow
 Python, same thing:
 
 ```python
-from kapso import Kapso
-solution = Kapso().evolve(
-    goal="...", initial_repo=".", eval_dir="eval", data_dir="data",
-    output_path="./campaign", time_budget_minutes=60,
+from kapso import Kapso, Brief, Budget, Solution
+solution = Kapso().build(
+    Brief.read("kapso-brief.md"), repo=".", evaluation="evaluation", data="data",
+    output="./campaign", budget=Budget(minutes=60),
 )
-print(solution.explain())   # .final_score .succeeded .code_path .requests
+print(solution.explain())   # .score .goal_achieved .branch .campaign .requests .diff()
+Solution.open("./campaign") # the same solution from any process, once the build returned
 ```
 
-`evolve()` blocks for the whole campaign: from a tool call prefer the CLI with
+`build()` blocks for the whole campaign: from a tool call prefer the CLI with
 `--detach`, or start the script in a session of its own.
 
 ## Inbox: the campaign is waiting on you
@@ -148,17 +166,17 @@ kapso inbox reply ./campaign 1 "added the key to .env" --detach
 
 ```bash
 kapso watch ../churn-campaign                  # DEAD (pid gone) or STALLED means it died
-kapso evolve --output ../churn-campaign --resume --detach
+kapso build --output ../churn-campaign --resume --detach
 ```
 
 A resume is a launch: `--detach` it the same way and hand off with the
 `kapso watch … --follow` line it prints. Do it in the same turn you diagnose
-the death in; a reply that only announces a resume leaves the campaign dead. Other `kapso evolve` processes on the machine belong
+the death in; a reply that only announces a resume leaves the campaign dead. Other `kapso build` processes on the machine belong
 to other campaigns; never kill one. The checkpoint in `.kapso/run_state.json` carries
-the goal and the search state; the launch record `.kapso/launch.json` carries
+the brief and the search state; the launch record `.kapso/launch.json` carries
 every flag of the launch, and a resume reads both, so pass only what you mean
-to change (a bigger `--time-budget-minutes`, say). A resume that changes the mode, coding agent,
-eval-dir, config or knowledge index is refused by name; start a new campaign in
+to change (a bigger `--budget-minutes`, say). A resume that changes the mode, coding agent,
+evaluation, config or knowledge index is refused by name; start a new campaign in
 a new output path instead. A campaign paused by the inbox resumes through
 `kapso inbox reply`, not `--resume`.
 
@@ -180,7 +198,7 @@ print(k.memory.explain())           # bank head, active cards, serving flag
   `kapso bank create org/name`; after that every `learn()` pushes.
 - Serving is off by default. For the next campaign to read the bank, set
   `learning.serving.enabled: true` in your config and pass it. Without that,
-  banked cards have no effect on `evolve()`.
+  banked cards have no effect on `build()`.
 - Follow a learn with `kapso watch learning/status`.
 - The `kapso learn ...` CLI subcommands (import, mine, grade, update, develop,
   codify, gauntlet, behave) are the learner-development regime, not the everyday
@@ -197,7 +215,7 @@ k = Kapso()
 findings = k.research("gradient boosting for churn", mode=["idea", "implementation"], depth="deep")
 k.learn_knowledge(Source.Repo("https://github.com/org/repo"), findings, wiki_dir="data/wikis")
 index = k.index_kg(wiki_dir="data/wikis", save_to="data/indexes/churn.index")
-Kapso(kg_index=index).evolve(goal="...")
+Kapso(kg_index=index).build("...")
 ```
 
 Needs Weaviate on 8080 and Neo4j on 7687 (from a source checkout:
@@ -213,7 +231,7 @@ kapso research --objective "..." --mode idea --mode implementation --depth deep 
 `mode` is `idea`, `implementation`, or `study` (repeat the flag); `depth` is `light`
 or `deep`. In Python `research(objective, mode=[...], depth=...)` with keyword-only
 `mode` and `depth`; pass results into a campaign with
-`evolve(context=[findings.to_string()])`. Runs on codex with web search.
+`build(..., context=[findings.to_string()])`. Runs on codex with web search.
 
 ## Deploy
 
@@ -224,15 +242,15 @@ timeout and use the result, rather than backgrounding it and polling.
 
 ```bash
 kapso doctor deploy
-kapso deploy --solution-path ../churn-campaign --strategy local   # auto|local|docker|modal|bentoml|langgraph
+kapso deploy ../churn-campaign --strategy local   # auto|local|docker|modal|bentoml|langgraph
 ```
 
 To call what was deployed, use the Python API, which hands back the running
 software:
 
 ```python
-from kapso import Kapso, DeployStrategy, SolutionResult
-solution = SolutionResult(goal="churn model", code_path="../churn-campaign")  # or the object evolve() returned
+from kapso import Kapso, DeployStrategy, Solution
+solution = Solution.open("../churn-campaign")   # or the object build() returned
 software = Kapso().deploy(solution, strategy=DeployStrategy.LOCAL)
 print(software.run({"tenure_months": 3, "monthly_spend": 92.0, "support_tickets": 4, "logins_per_week": 1.0, "plan": "basic"}))
 software.stop()
@@ -254,7 +272,7 @@ codex roles on `gpt-5.6-sol`. Swap a model by editing every occurrence in the bl
 you care about (`learning.*` for the crews, `modes.<MODE>.*` for campaigns). The
 `timeout_minutes` caps were calibrated on the shipped models; tell the user a slower
 model may need them raised, but change only what was asked.
-`Kapso(config_path="kapso-config.yaml")` and `--config` on every CLI verb select
+`Kapso(config="kapso-config.yaml")` and `--config` on every CLI verb select
 your file.
 
 ## When Kapso is the wrong tool
@@ -269,8 +287,8 @@ are doing and why; never launch a campaign the user did not ask for.
 - CLI reference: https://docs.leeroo.com/docs/reference/cli.md
 - Python API: https://docs.leeroo.com/docs/reference/kapso-api.md
 - Configuration: https://docs.leeroo.com/docs/reference/configuration.md
-- Inbox: https://docs.leeroo.com/docs/evolve/inbox.md
-- Resuming runs: https://docs.leeroo.com/docs/evolve/resuming-runs.md
+- Inbox: https://docs.leeroo.com/docs/build/inbox.md
+- Resuming runs: https://docs.leeroo.com/docs/build/resume-and-budgets.md
 - Evaluation integrity: https://docs.leeroo.com/docs/evolve/evaluation-integrity.md
 - Trajectory learning: https://docs.leeroo.com/docs/learning/overview.md
 - Knowledge graph: https://docs.leeroo.com/docs/knowledge/overview.md

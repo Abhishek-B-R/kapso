@@ -1,4 +1,4 @@
-"""`kapso deploy`: deploy a solution as running software."""
+"""`kapso deploy`: deploy the solution a build wrote as running software."""
 
 import argparse
 import signal
@@ -6,7 +6,7 @@ import sys
 import time
 
 from kapso.kapso import Kapso, DeployStrategy
-from kapso.execution.solution import SolutionResult
+from kapso.handles import Solution
 from kapso.cli.common import AVAILABLE_AGENTS
 
 NAME = "deploy"
@@ -17,14 +17,8 @@ DEPLOY_STRATEGIES = [member.value for member in DeployStrategy]
 
 def cmd_deploy(args) -> None:
     """Handle the deploy command - deploy solutions."""
-    # Create a SolutionResult from the provided path
-    solution = SolutionResult(
-        goal=args.goal or "Deployed solution",
-        code_path=args.solution_path,
-        experiment_logs=[],
-        final_feedback=None,
-        metadata={},
-    )
+    # The solution a build wrote in that directory (its .kapso/solution.json)
+    solution = Solution.open(args.campaign)
 
     # Parse strategy (argparse already limited it to DEPLOY_STRATEGIES)
     strategy = DeployStrategy(args.strategy.lower())
@@ -37,8 +31,7 @@ def cmd_deploy(args) -> None:
                 key, value = env_str.split('=', 1)
                 env_vars[key] = value
 
-    # Create Kapso instance
-    kapso = Kapso()
+    kapso = Kapso(config=args.config)
 
     # Deploy
     software = kapso.deploy(
@@ -54,7 +47,7 @@ def cmd_deploy(args) -> None:
     print("DEPLOY COMPLETE")
     print("=" * 60)
     print(f"Strategy: {strategy}")
-    print(f"Code path: {args.solution_path}")
+    print(f"Campaign: {solution.campaign}")
     print(f"Software ready: {software.is_healthy()}")
 
     # If interactive mode, keep running until Ctrl+C, then stop the software.
@@ -75,24 +68,30 @@ def cmd_deploy(args) -> None:
 def add_parser(subparsers):
     deploy_parser = subparsers.add_parser(
         "deploy",
-        help="Deploy solutions as running software",
+        help="Deploy the solution a build wrote as running software",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
         epilog="""
 Examples:
-  kapso deploy --solution-path ./solution
-  kapso deploy --solution-path ./solution --strategy docker
-  kapso deploy --solution-path ./solution --env API_KEY=xxx --interactive
+  kapso deploy ../churn-build
+  kapso deploy ../churn-build --strategy docker
+  kapso deploy ../churn-build --env API_KEY=xxx --interactive
 """
     )
 
-    # Required options
-    deploy_parser.add_argument("--solution-path", type=str, required=True, help="Path to solution code")
+    deploy_parser.add_argument(
+        "campaign", type=str,
+        help="The campaign directory a build wrote (holds .kapso/solution.json)",
+    )
 
     # Deploy options
     deploy_parser.add_argument("--strategy", type=str, choices=DEPLOY_STRATEGIES, default="auto", help="Deploy strategy (default: auto)")
-    deploy_parser.add_argument("--goal", type=str, help="Goal description for the solution")
     deploy_parser.add_argument("--env", type=str, action="append", help="Environment variable (KEY=VALUE, can specify multiple)")
     deploy_parser.add_argument("--coding-agent", type=str, choices=AVAILABLE_AGENTS, default=None, help="Coding agent for the selector and adapter sessions (default: config deployment.coding_agent)")
     deploy_parser.add_argument("--model", type=str, default=None, help="Model that agent is asked for (default: config deployment.model)")
     deploy_parser.add_argument("--interactive", action="store_true", help="Keep running after deploy")
+    deploy_parser.add_argument(
+        "--config", type=str, default=None,
+        help="Config path (default: packaged config.yaml); pass the one the build used",
+    )
     return cmd_deploy

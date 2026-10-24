@@ -1,7 +1,7 @@
 # Memories Module
 #
 # Contains memory systems for the execution module:
-# - experiment_memory: Stores experiment history for the evolve loop
+# - experiment_memory: Stores experiment history for the build loop
 # - repo_memory: Stores knowledge about the repository structure
 
 from kapso.execution.memories.experiment_memory import ExperimentHistoryStore, ExperimentRecord

@@ -33,7 +33,7 @@ A suspended node is not judged, never becomes a parent, and does not count as an
 At the pause the terminal prints every open request and how to answer:
 
 ```text
-kapso evolve — waiting on you
+kapso build — waiting on you
 
   #1  env:OPENAI_API_KEY
       for    node 3 · re-rank candidates with text-embedding-3-large
@@ -55,7 +55,7 @@ kapso evolve — waiting on you
 | `fix` | Where the value or grant goes. A credential goes there, never into the reply |
 | `next` | What the session will do once the resource is there |
 
-The summary block after `kapso evolve` says `WAITING ON YOU` instead of `COMPLETED`, and the exit code stays 0. A pause is not a failure.
+The summary block after `kapso build` says `WAITING ON YOU` instead of `COMPLETED`, and the exit code stays 0. A pause is not a failure.
 
 ## How do I answer?
 
@@ -98,7 +98,7 @@ A reply that says the resource is not available is an instruction: the coding ag
 
 The campaign resumes from its checkpoint, and the session that asked is continued through the coding agent's own resume (`claude -p --resume` for Claude Code, `codex exec resume` for Codex) with a follow-up that carries your replies and the next steps the session recorded. The session's earlier context is the CLI's own transcript, so nothing is re-explained. The coding agent verifies for itself. If the coding agent is still blocked, the coding agent asks again with what the coding agent tried, and the new request shows your previous reply next to the new request.
 
-Kapso runs no checks of its own. Nothing is resumed until you reply, and a `kapso evolve --resume` with a request still open pauses again without running anything. Paused time does not count against the campaign's time budget.
+Kapso runs no checks of its own. Nothing is resumed until you reply, and a `kapso build --resume` with a request still open pauses again without running anything. Paused time does not count against the campaign's time budget.
 
 ## What does the session keep across the pause?
 
@@ -120,9 +120,9 @@ Not kept: files git ignores inside the session folder (`*.log` other than `chang
 | `.kapso/run_state.json` | `last_stop: "waiting_for_user"` on a `running` checkpoint |
 | `.kapso/status.json` | `state: done` with `stopped_reason: "waiting_for_user"` and the requests |
 | `on_status` | Fires once at the pause with the same payload |
-| Python | `solution.metadata["stopped_reason"]`, `solution.requests`, `Kapso.inbox(campaign)`, `Kapso.reply(campaign, id, note)` |
+| Python | `solution.stopped_reason`, `solution.requests`, `Kapso.inbox(campaign)`, `Kapso.reply(campaign, id, note)` |
 
-A campaign started from Python with an `iteration_evaluator` callback cannot be resumed from the command line, because the callback lives in your script. `kapso inbox reply` records the note and tells you to call `evolve()` again with `resume=True`.
+A campaign started from Python with an `iteration_evaluator` callback cannot be resumed from the command line, because the callback lives in your script. `kapso inbox reply` records the note and tells you to call `build()` again with `resume=True`.
 
 ## When does the coding agent ask, and when not?
 
@@ -151,14 +151,14 @@ With the inbox off, sessions do not get the tool, the prompt is unchanged, no ca
 ## What can go wrong?
 
 - **The transcript is gone.** Claude Code keeps transcripts for 30 days. If the transcript has been deleted, the reply fails with the coding agent's own error, the node stays suspended and nothing else runs. The code is still on the branch, but the context is lost: start a new campaign.
-- **Kapso is killed during the continuation.** The checkpoint still marks the node suspended. `kapso evolve --resume` continues the same session. Work the continuation had not pushed before the kill is lost; the coding agent redoes the work.
+- **Kapso is killed during the continuation.** The checkpoint still marks the node suspended. `kapso build --resume` continues the same session. Work the continuation had not pushed before the kill is lost; the coding agent redoes the work.
 - **You supplied a wrong value.** The coding agent verifies, asks again, and the new request quotes your previous reply. Reply again after fixing the value.
 - **The session asked for two things.** Answer each request; the node resumes after the last one, and every reply before that prints which requests are still open.
 
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Resuming runs" icon="rotate" href="/docs/evolve/resuming-runs">
+  <Card title="Resuming runs" icon="rotate" href="/docs/build/resume-and-budgets">
     The checkpoint a paused campaign resumes from
   </Card>
   <Card title="CLI reference" icon="terminal" href="/docs/reference/cli#kapso-inbox">
@@ -172,6 +172,6 @@ With the inbox off, sessions do not get the tool, the prompt is unchanged, no ca
   </Card>
 </CardGroup>
 
-Related pages: [Resuming runs](/docs/evolve/resuming-runs) · [CLI reference](/docs/reference/cli#kapso-inbox) · [Configuration](/docs/reference/configuration) · [MCP gates](/docs/evolve/mcp-gates) · [Execution flow](/docs/evolve/execution-flow)
+Related pages: [Resuming runs](/docs/build/resume-and-budgets) · [CLI reference](/docs/reference/cli#kapso-inbox) · [Configuration](/docs/reference/configuration) · [MCP gates](/docs/evolve/mcp-gates) · [Execution flow](/docs/evolve/execution-flow)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

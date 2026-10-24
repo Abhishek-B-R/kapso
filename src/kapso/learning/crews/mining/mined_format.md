@@ -90,5 +90,5 @@ Body — sections in loop order, each present ONLY as far as the flow went:
 
 Cross-cutting: the campaign log duplicates some content ~20× (session re-reads
 of the same file get re-streamed) — dedupe by content, count once. Bundles vary
-by evolve version and completeness: every channel above is a place to look,
+by kapso version and completeness: every channel above is a place to look,
 never a guarantee.

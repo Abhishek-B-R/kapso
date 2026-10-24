@@ -2,7 +2,7 @@
 """
 Task 1: Initialize Repo - Tests
 
-Tests for the initial_repo resolution logic in Kapso.evolve():
+Tests for the initial_repo resolution logic in Kapso.build():
 1. Local path handling
 2. GitHub URL cloning
 3. Workflow search integration (real KG indexing)
@@ -16,6 +16,8 @@ Usage:
 import os
 import shutil
 import tempfile
+
+import git
 import pytest
 from dotenv import load_dotenv
 
@@ -95,11 +97,10 @@ class TestCloneGithubRepo:
         assert os.path.exists(os.path.join(result, "gpt2.py")), "Should contain gpt2.py"
     
     def test_clone_github_repo_invalid_url(self):
-        """Test GitHub repo cloning with invalid URL."""
-        result = self.kapso._clone_github_repo("https://github.com/invalid-user-12345/nonexistent-repo-67890")
-        
-        # Should return None on failure
-        assert result is None
+        """A clone that fails propagates: a build never starts from an
+        empty repository when the person named one."""
+        with pytest.raises(git.exc.GitCommandError):
+            self.kapso._clone_github_repo("https://github.com/invalid-user-12345/nonexistent-repo-67890")
 
 
 class TestLocalPathIntegration:

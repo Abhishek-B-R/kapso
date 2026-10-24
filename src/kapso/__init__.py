@@ -7,7 +7,7 @@
 #     
 #     kapso = Kapso()
 #     kapso.learn_knowledge(Source.Repo("https://github.com/user/repo"), wiki_dir="data/wikis")
-#     solution = kapso.evolve(goal="Create a triage agent")
+#     solution = kapso.build("Create a triage agent")
 #     software = solution.deploy()
 #     result = software.run({"symptoms": "headache"})
 #
@@ -30,14 +30,20 @@ warnings.filterwarnings(
 # All public symbols are loaded lazily via __getattr__.
 #
 # Why lazy? The MCP server subprocess (gated_mcp.server) imports from this
-# package on every cold start. Eager imports of Source, SolutionResult, and
+# package on every cold start. Eager imports of Source, Solution, and
 # DeployStrategy pull in the full execution stack (gitpython, weaviate, etc.)
 # and add ~8 seconds to that cold start. With lazy loading the MCP subprocess
 # boots in under 1 second and Claude Code's MCP connection check succeeds.
 _LAZY_IMPORTS = {
     "Kapso":            ("kapso.kapso",              "Kapso"),
     "Source":           ("kapso.knowledge_base.learners", "Source"),
-    "SolutionResult":   ("kapso.execution.solution", "SolutionResult"),
+    "Brief":            ("kapso.handles",            "Brief"),
+    "Budget":           ("kapso.handles",            "Budget"),
+    "Solution":         ("kapso.handles",            "Solution"),
+    "EvaluatorRef":     ("kapso.handles",            "EvaluatorRef"),
+    "HarnessRef":       ("kapso.handles",            "HarnessRef"),
+    "ExperienceRef":    ("kapso.handles",            "ExperienceRef"),
+    "BriefError":       ("kapso.handles",            "BriefError"),
     "Software":         ("kapso.deployment",          "Software"),
     "DeployStrategy":   ("kapso.deployment",          "DeployStrategy"),
     "DeployConfig":     ("kapso.deployment",          "DeployConfig"),
@@ -104,7 +110,13 @@ __all__ = [
     # Core API
     "Kapso",
     "Source",
-    "SolutionResult",
+    "Brief",
+    "Budget",
+    "Solution",
+    "EvaluatorRef",
+    "HarnessRef",
+    "ExperienceRef",
+    "BriefError",
     # Deployment
     "Software",
     "DeployStrategy",

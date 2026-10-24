@@ -15,12 +15,13 @@ from typing import Any, Dict, List
 import pytest
 
 from kapso.cli import main
-from kapso.cli.common import _print_evolve_summary
-from kapso.cli.inbox import cmd_inbox
+from kapso.cli.common import _print_build_summary
+from kapso.cli.inbox import _campaign_goal, cmd_inbox
 from kapso.execution.inbox import file_requests, inbox_path, register_campaign
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, config_fingerprint
 from kapso.execution.search_strategies.base import SearchNode
-from kapso.execution.solution import SolutionResult
+from kapso.handles import Brief
+from tests.handles_support import make_solution
 from kapso.kapso import Kapso
 
 ENTRY = {
@@ -42,7 +43,7 @@ def _paused_campaign(root: Path, name: str = "campaign", *, requests: int = 1) -
         suspended=True, request_ids=list(range(1, requests + 1)), cli_session_id="cli-1",
     )
     RunCheckpointStore(str(workspace)).save(RunCheckpoint.create(
-        strategy_type="generic", goal="Improve support\nmore detail",
+        strategy_type="generic", goal=Brief(objective="Improve support\nmore detail").render(),
         config_fingerprint=config_fingerprint({"m": 1}), status="running", completed_iterations=2,
         cumulative_cost=1.0, current_feedback=None, strategy_state={"node_history": [node.to_dict()]},
         last_stop="waiting_for_user",
@@ -53,6 +54,22 @@ def _paused_campaign(root: Path, name: str = "campaign", *, requests: int = 1) -
 def _run(monkeypatch, *argv: str) -> None:
     monkeypatch.setattr(sys, "argv", ["kapso", *argv])
     main()
+
+
+def test_the_goal_line_reads_a_brief_or_a_plain_goal(tmp_path):
+    """A campaign launched through build() holds the rendered brief; one a
+    benchmark runner launched holds its plain goal. Both list."""
+    built = _paused_campaign(tmp_path, "built")
+    assert _campaign_goal(built) == "Improve support"
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    RunCheckpointStore(str(plain)).save(RunCheckpoint.create(
+        strategy_type="generic", goal="Predict churn on rel-f1\nwith the official split",
+        config_fingerprint=config_fingerprint({"m": 1}), status="running", completed_iterations=0,
+        cumulative_cost=0.0, current_feedback=None, strategy_state={"node_history": []},
+    ))
+    assert _campaign_goal(plain) == "Predict churn on rel-f1"
+    assert _campaign_goal(tmp_path / "nowhere") == ""
 
 
 def _capture_reply(monkeypatch, result=None) -> List[Any]:
@@ -164,25 +181,22 @@ def test_reply_refuses_a_credential_without_yes(tmp_path, monkeypatch, capsys):
     assert calls == [(str(workspace.resolve()), 1, token, True)]
 
 
-def _solution(workspace: Path, metadata: Dict[str, Any]) -> SolutionResult:
-    return SolutionResult(goal="Improve support", code_path=str(workspace), metadata=metadata)
-
-
 def test_reply_prints_the_campaign_summary(tmp_path, monkeypatch, capsys):
     workspace = _paused_campaign(tmp_path)
     monkeypatch.chdir(workspace)
-    _capture_reply(monkeypatch, _solution(workspace, {"stopped_reason": "max_iterations", "cost": 2.5}))
+    _capture_reply(monkeypatch, make_solution(workspace, "Improve support", stopped_reason="max_iterations", cost_usd=2.5))
     _run(monkeypatch, "inbox", "reply", "1", "added the key")
     out = capsys.readouterr().out
-    assert "COMPLETED" in out and "Stopped reason: max_iterations" in out and "Cost: 2.5" in out
+    assert "COMPLETED" in out and "Stopped:       max_iterations" in out and "Cost:          $2.500" in out
 
 
 def test_the_summary_says_waiting_on_you_when_the_campaign_asked_again(tmp_path, capsys):
     workspace = tmp_path / "campaign"
     request = {"id": 2, "key": "env:OPENAI_API_KEY"}
-    _print_evolve_summary(_solution(workspace, {
-        "stopped_reason": "waiting_for_user", "requests": [request, {**request, "id": 3}],
-    }))
+    _print_build_summary(make_solution(
+        workspace, "Improve support",
+        stopped_reason="waiting_for_user", requests=[request, {**request, "id": 3}],
+    ))
     out = capsys.readouterr().out
     assert "WAITING ON YOU" in out and "COMPLETED" not in out
     assert f'Reply with:  kapso inbox reply 2 "…"   (inside {workspace})' in out

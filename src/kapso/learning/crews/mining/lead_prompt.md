@@ -7,7 +7,7 @@ Manifest: trajectory.yaml — read it first for identity, outcome, inventory.
 
 1. SURVEY. Explore the bundle and build the map: which iterations ran, which
    flows existed per iteration (selected AND rejected at ideation), where each
-   flow's ingredients live in THIS bundle. Bundles vary by evolve version and
+   flow's ingredients live in THIS bundle. Bundles vary by kapso version and
    completeness — the recovery-channels appendix in mined-format.md lists
    places to look, not guarantees. The most stable identities are node ids,
    branch names, and run directories; anchor the map on them. Note what is

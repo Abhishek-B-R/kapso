@@ -4,7 +4,7 @@ description: "Install the Codex and Claude Code CLIs that Kapso's inference runs
 keywords: ["install Kapso", "kapso doctor", "Codex CLI", "Claude Code CLI", "leeroo-kapso", "AI agent setup"]
 ---
 
-Kapso sends every model call through a coding-agent CLI. Install those CLIs and log in **before** installing the Python package — on its own the package cannot reach a model, and `kapso evolve` will stop in seconds rather than fail deep inside a run.
+Kapso sends every model call through a coding-agent CLI. Install those CLIs and log in **before** installing the Python package — on its own the package cannot reach a model, and `kapso build` will stop in seconds rather than fail deep inside a run.
 
 ## Prerequisites
 
@@ -137,11 +137,11 @@ Required checks passed (3 checked).
 ```
 
 ```bash
-kapso doctor evolve
+kapso doctor build
 ```
 
 ```text
-kapso doctor evolve
+kapso doctor build
 ====================================================================
   [OK ] node
   [OK ] claude CLI
@@ -153,14 +153,14 @@ kapso doctor evolve
 Required checks passed (6 checked).
 ```
 
-The five verbs are `research`, `learn_knowledge`, `evolve`, `learn` and `deploy`. With no verb, `doctor` reports the union of all five.
+The five verbs are `research`, `learn_knowledge`, `build`, `learn` and `deploy`. With no verb, `doctor` reports the union of all five.
 
 ### How do I confirm my models are actually reachable?
 
 Add `--models` to fire a one-token live call per configured CLI and model pair. A revoked login, or a model your plan does not include, surfaces here in seconds instead of hours into a campaign. A usage cap on a model you can serve does not: a one-token probe passes until the cap is hit.
 
 ```bash
-kapso doctor evolve --models
+kapso doctor build --models
 ```
 
 <Note>
@@ -289,7 +289,7 @@ The benchmark harnesses live in the source checkout under `benchmarks/` and each
   </Accordion>
 
   <Accordion title="A run fails partway through on a model error">
-    Probe the models directly with `kapso doctor evolve --models` — see [How do I confirm my models are actually reachable?](#how-do-i-confirm-my-models-are-actually-reachable)
+    Probe the models directly with `kapso doctor build --models` — see [How do I confirm my models are actually reachable?](#how-do-i-confirm-my-models-are-actually-reachable)
   </Accordion>
 </AccordionGroup>
 
@@ -317,7 +317,7 @@ I want to set up Kapso, the open-source software factory by Leeroo (PyPI package
    pip show kapso        # the PyPI package named `kapso` is an unrelated tool that shadows the command; if present: pip uninstall -y kapso
    pip install leeroo-kapso
 
-6. Verify. Run `kapso doctor evolve`: every required row must read `[OK ]`; fix what it names and rerun. Then run `kapso doctor` and tell me what its `[-- ]` rows would enable; the Weaviate and Neo4j rows belong to the knowledge-graph features and need Docker, so leave them unless I ask. Finish with `kapso doctor evolve --models`, which spends a few tokens to confirm each configured model is reachable.
+6. Verify. Run `kapso doctor build`: every required row must read `[OK ]`; fix what it names and rerun. Then run `kapso doctor` and tell me what its `[-- ]` rows would enable; the Weaviate and Neo4j rows belong to the knowledge-graph features and need Docker, so leave them unless I ask. Finish with `kapso doctor build --models`, which spends a few tokens to confirm each configured model is reachable.
 
 7. The Kapso skill. Install the skill written for you, so you operate Kapso the way its docs say:
    git clone --depth 1 https://github.com/Leeroo-AI/kapso /tmp/kapso-src
@@ -327,9 +327,9 @@ I want to set up Kapso, the open-source software factory by Leeroo (PyPI package
    Then load it. Ask me whether to also connect the docs: `claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp` or `codex mcp add kapso-docs --url https://docs.leeroo.com/mcp`.
 
 8. Finish with a short overview of what you can now do, and do not start a campaign until I give you a goal:
-   - run a campaign toward a measurable goal, in the background: kapso evolve --goal "<metric and target>" --initial-repo . --eval-dir <judge dir> --output ../<campaign>
+   - run a build toward a measurable objective, in the background: kapso build --brief kapso-brief.md --repo . --evaluation <judge dir> --output ../<campaign> --detach
    - follow it: kapso watch ../<campaign> --follow; answer a pause (WAITING ON YOU): kapso inbox
-   - bank what it taught: Kapso().learn("../<campaign>"); ship the winner: kapso deploy --solution-path ../<campaign> --strategy local
+   - bank what it taught: Kapso().learn("../<campaign>"); ship the winner: kapso deploy ../<campaign> --strategy local
 ```
 
 The last step installs the [Kapso skill](/docs/coding-agent-skills), which has the agent run `kapso doctor` first, name the right package, and launch campaigns in the background with the handoff you need.
@@ -337,8 +337,8 @@ The last step installs the [Kapso skill](/docs/coding-agent-skills), which has t
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/docs/quickstart">
-    Run your first campaign
+  <Card title="Your first build" icon="rocket" href="/docs/first-build">
+    The churn example, end to end
   </Card>
   <Card title="CLI reference" icon="terminal" href="/docs/reference/cli">
     Commands, modes and flags
@@ -348,6 +348,6 @@ The last step installs the [Kapso skill](/docs/coding-agent-skills), which has t
   </Card>
 </CardGroup>
 
-Related pages: [Quickstart](/docs/quickstart) · [CLI reference](/docs/reference/cli) · [Kapso skill for coding agents](/docs/coding-agent-skills) · [What is Kapso](/docs)
+Related pages: [Your first build](/docs/first-build) · [CLI reference](/docs/reference/cli) · [Kapso skill for coding agents](/docs/coding-agent-skills) · [What is Kapso](/docs)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

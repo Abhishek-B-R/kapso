@@ -2,6 +2,7 @@
 (docs/research/evolve-hub-design.md v4 §4.6)."""
 
 import argparse
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +17,7 @@ from kapso.execution.inbox import (
 )
 from kapso.execution.observability import OperationStatusView
 from kapso.execution.run_checkpoint import RunCheckpointStore
-from kapso.cli.common import _default_log, _detach, _print_evolve_summary
+from kapso.cli.common import _default_log, _detach, _inside, _print_build_summary
 
 NAME = "inbox"
 
@@ -41,11 +42,18 @@ def _inbox_campaign(explicit: Optional[str]) -> Optional[Path]:
 
 
 def _campaign_goal(campaign: Path) -> str:
+    """The goal's first line. A campaign launched through build() holds
+    the rendered brief, whose first line starts with the field name; one
+    launched by a benchmark runner holds its plain goal."""
     store = RunCheckpointStore(str(campaign))
     if not store.exists():
         return ""
     goal = store.load().goal.strip()
-    return goal.splitlines()[0] if goal else ""
+    if not goal:
+        return ""
+    first = goal.splitlines()[0]
+    objective = re.match(r"^objective[ \t]+(.*)$", first, re.IGNORECASE)
+    return objective.group(1).strip() if objective else first
 
 
 def _waiting_since(requests) -> str:
@@ -136,6 +144,9 @@ def cmd_inbox_reply(
         )
         sys.exit(1)
     if detach:
+        if log and _inside(Path(log).expanduser().resolve(), campaign):
+            print("Error: --log must be outside the campaign directory")
+            sys.exit(1)
         located = OperationStatusView.locate(campaign)
         if located is not None and OperationStatusView(located).alive:
             pid = OperationStatusView(located).data.get("pid")
@@ -157,14 +168,15 @@ def cmd_inbox_reply(
         return
     solution = Kapso.reply(str(campaign), request_id, note, allow_secret=yes)
     if solution is not None:
-        _print_evolve_summary(solution)
+        _print_build_summary(solution)
 
 
 def add_parser(subparsers):
     inbox_parser = subparsers.add_parser(
         "inbox",
-        help="What evolve is waiting on you for, and how to answer it",
+        help="What a build is waiting on you for, and how to answer it",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
         description=(
             "A session that needs something only a person can provide asks "
             "through the inbox and the campaign pauses. `kapso inbox` shows "

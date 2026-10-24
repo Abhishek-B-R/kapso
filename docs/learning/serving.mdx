@@ -6,7 +6,7 @@ keywords: ["bank serving", "bank_index", "bank_get_card", "pinned bank", "retrie
 ---
 
 <Warning>
-  `learning.serving.enabled` ships as `false`. Until you enable it in [config](/docs/reference/configuration#learning), a campaign never reads the bank, and banked lessons have no effect on `evolve()`.
+  `learning.serving.enabled` ships as `false`. Until you enable it in [config](/docs/reference/configuration#learning), a campaign never reads the bank, and banked lessons have no effect on `build()`.
 </Warning>
 
 Serving is deliberately not retrieval-augmentation. The frame does not pick cards and paste them into a prompt. It introduces the bank, says what is in it, and hands the agent three tools. **Selection belongs to the reading agent.**
@@ -79,7 +79,7 @@ learning:
     local_path: ~/.kapso/bank.git
 ```
 
-Then run a campaign as usual. To restrict which cards are eligible, pass `serving_scope` to [`evolve()`](/docs/reference/kapso-api#evolve).
+Then run a campaign as usual. To restrict which cards are eligible, pass `serving_scope` to [`build()`](/docs/reference/kapso-api#build).
 
 ## Why an introduction rather than an injection
 

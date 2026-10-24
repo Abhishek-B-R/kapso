@@ -10,7 +10,7 @@ was resumed). A request's state is the fold of its events; nothing is
 ever rewritten, and no request carries a value.
 
 Also the two small records that make a reply self-sufficient: the launch
-record (``.kapso/launch.json`` — the evolve arguments the checkpoint does
+record (``.kapso/launch.json`` — the build arguments the checkpoint does
 not hold) and the campaign registry (one line per launch, so ``kapso
 inbox`` with no campaign can list every campaign waiting on a person).
 
@@ -553,7 +553,7 @@ def render_pause_block(
     first = requests[0].id if requests else 1
     reply_target = f" {first}" if len(requests) > 1 else ""
     return "\n".join([
-        "kapso evolve — waiting on you",
+        "kapso build — waiting on you",
         "",
         render_requests(requests, ideas),
         "",

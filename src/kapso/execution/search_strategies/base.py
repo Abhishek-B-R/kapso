@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from kapso.execution.types import ContextData
 from kapso.execution.cost_estimator import validate_cost_refusal, validate_cost_value
 from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
-from kapso.execution.observability import EvolveStatus
+from kapso.execution.observability import BuildStatus
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.environment.handlers.base import ProblemHandler
 from kapso.execution.memories.repo_memory import RepoMemoryManager
@@ -561,7 +561,7 @@ class SearchStrategy(ABC):
         # repo-memory bootstrap below (one inference session, minutes). It
         # beats on its own daemon through setup; solve() attaches the
         # budget view and the caller's hook when the loop starts.
-        self.operation_status = EvolveStatus(
+        self.operation_status = BuildStatus(
             os.path.join(self.workspace_dir, ".kapso", "status.json"),
             heartbeat_seconds=config.status_heartbeat_seconds,
             daemon=config.status_heartbeat_seconds is not None,

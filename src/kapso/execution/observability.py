@@ -124,7 +124,7 @@ class OperationStatus(ABC):
       legal values come from the subclass's PHASES;
     - ``heartbeat_at`` refreshed on every write, plus an OPTIONAL daemon
       thread for operations with no natural per-minute update site
-      (evolve runs it through setup and, once the loop starts, its
+      (a build runs it through setup and, once the loop starts, its
       checkpoint-heartbeat daemon beats the file as well);
     - ``recent``: a 10-line human ring inside the file;
     - an optional ``on_status`` hook, invoked synchronously with the SAME
@@ -169,7 +169,7 @@ class OperationStatus(ABC):
             "started_at": now,
             "heartbeat_at": now,
             # A phase at birth keeps the state `starting`: the operation
-            # is preparing (evolve seeds its workspace), not yet running.
+            # is preparing (a build seeds its workspace), not yet running.
             "phase": phase,
             "phase_started_at": now if phase is not None else None,
             "recent": [],
@@ -201,7 +201,7 @@ class OperationStatus(ABC):
     def observe(
         self, on_status: Optional[Callable[[Dict[str, Any]], None]]
     ) -> None:
-        """Attach (or replace) the hook after construction. Evolve's status
+        """Attach (or replace) the hook after construction. A build's status
         is born at workspace setup, before solve() knows its caller's
         hook; the hook then sees every write from the first iteration on."""
         with self._lock:
@@ -308,8 +308,8 @@ class OperationStatus(ABC):
         self._stop.set()
 
 
-class EvolveStatus(OperationStatus):
-    OPERATION = "evolve"
+class BuildStatus(OperationStatus):
+    OPERATION = "build"
     # `setup` is the strategy constructor's phase: the workspace is seeded
     # and repo memory bootstrapped (one inference session, minutes) before
     # the first iteration. The file exists from that moment, so a watcher
@@ -510,34 +510,34 @@ class OperationStatusView:
         return "\n".join(bordered)
 
     def campaign_tree(self) -> list:
-        if self.operation != "evolve":
-            return ["", "campaign tree is only available for evolve"]
+        if self.operation != "build":
+            return ["", "campaign tree is only available for a build"]
         checkpoint_path = self.path.parent / "run_state.json"
         if not checkpoint_path.exists():
             return ["", "no checkpoint yet"]
         checkpoint = json.loads(checkpoint_path.read_text())
         strategy_state = checkpoint.get("strategy_state")
         if not isinstance(strategy_state, dict):
-            raise ValueError("evolve checkpoint is missing strategy state")
+            raise ValueError("build checkpoint is missing strategy state")
         node_history = strategy_state.get("node_history")
         if not isinstance(node_history, list):
-            raise ValueError("evolve checkpoint is missing node history")
+            raise ValueError("build checkpoint is missing node history")
         nodes = {}
         for node in node_history:
             if not isinstance(node, dict):
-                raise ValueError("evolve checkpoint contains an invalid node")
+                raise ValueError("build checkpoint contains an invalid node")
             node_id = node.get("node_id")
             if isinstance(node_id, bool) or not isinstance(node_id, int) or node_id < 0:
-                raise ValueError("evolve checkpoint node IDs must be non-negative integers")
+                raise ValueError("build checkpoint node IDs must be non-negative integers")
             if node_id in nodes:
-                raise ValueError("evolve checkpoint contains duplicate node IDs")
+                raise ValueError("build checkpoint contains duplicate node IDs")
             parent_node_id = node.get("parent_node_id")
             if parent_node_id is not None and (
                 isinstance(parent_node_id, bool)
                 or not isinstance(parent_node_id, int)
                 or parent_node_id < 0
             ):
-                raise ValueError("evolve checkpoint contains an invalid parent node ID")
+                raise ValueError("build checkpoint contains an invalid parent node ID")
             nodes[node_id] = node
         children = {node_id: [] for node_id in nodes}
         roots = []
@@ -546,7 +546,7 @@ class OperationStatusView:
             if parent_node_id is None:
                 roots.append(node_id)
             elif parent_node_id not in nodes:
-                raise ValueError(f"evolve checkpoint node {node_id} has a missing parent")
+                raise ValueError(f"build checkpoint node {node_id} has a missing parent")
             else:
                 children[parent_node_id].append(node_id)
         for child_ids in children.values():
@@ -557,7 +557,7 @@ class OperationStatusView:
 
         def render(node_id: int, prefix: str, is_last: bool) -> None:
             if node_id in visited:
-                raise ValueError("evolve checkpoint contains a cycle")
+                raise ValueError("build checkpoint contains a cycle")
             visited.add(node_id)
             node = nodes[node_id]
             branch_name = node.get("branch_name") or f"node-{node_id}"
@@ -590,7 +590,7 @@ class OperationStatusView:
         for index, root_id in enumerate(roots):
             render(root_id, "  ", index == len(roots) - 1)
         if len(visited) != len(nodes):
-            raise ValueError("evolve checkpoint contains an unreachable node")
+            raise ValueError("build checkpoint contains an unreachable node")
         credits = credits_summary({
             f"{node_id}:{phase}": values
             for node_id, node in nodes.items()
@@ -603,7 +603,7 @@ class OperationStatusView:
     def _operation_block(self) -> list:
         d = self.data
         lines = []
-        if self.operation == "evolve":
+        if self.operation == "build":
             budget = d.get("budget") or {}
             if budget.get("total_min"):
                 elapsed = float(budget.get("elapsed_min") or 0.0)

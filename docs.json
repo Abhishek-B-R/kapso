@@ -2,52 +2,56 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
   "name": "Kapso by Leeroo",
-
   "colors": {
     "primary": "#2563EB",
     "light": "#DBEAFE",
     "dark": "#2563EB"
   },
-
   "seo": {
     "indexing": "all",
     "metatags": {
       "canonical": "https://docs.leeroo.com"
     }
   },
-
   "favicon": "/docs/logo/logo-transparent.png",
-
   "logo": {
     "light": "/docs/logo/logo-transparent.png",
     "dark": "/docs/logo/logo-transparent.png"
   },
-
   "navigation": {
     "tabs": [
       {
         "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Start",
             "pages": [
               "docs/index",
               "docs/installation",
-              "docs/quickstart",
+              "docs/first-build",
               "docs/agent-access",
               "docs/coding-agent-skills"
             ]
           },
           {
-            "group": "Evolve system",
+            "group": "Build",
+            "pages": [
+              "docs/build/brief",
+              "docs/build/evaluation",
+              "docs/build/run-and-watch",
+              "docs/build/inbox",
+              "docs/build/review",
+              "docs/build/resume-and-budgets"
+            ]
+          },
+          {
+            "group": "How it works",
             "pages": [
               "docs/evolve/overview",
               "docs/evolve/architecture",
               "docs/evolve/execution-flow",
-              "docs/evolve/resuming-runs",
-              "docs/evolve/inbox",
-              "docs/evolve/external-evaluation",
               "docs/evolve/evaluation-integrity",
+              "docs/evolve/external-evaluation",
               {
                 "group": "Components",
                 "pages": [
@@ -118,6 +122,7 @@
             "pages": [
               "docs/reference/cli",
               "docs/reference/kapso-api",
+              "docs/reference/brief-format",
               "docs/deployment/api-reference",
               "docs/reference/configuration"
             ]
@@ -126,34 +131,107 @@
       }
     ]
   },
-
   "redirects": [
-    { "source": "/docs/evolve/reliability-roadmap", "destination": "/docs/evolve/overview" },
-    { "source": "/docs/evolve/cognitive-memory", "destination": "/docs/learning/overview" },
-    { "source": "/docs/evolve/budget-aware-experimentation", "destination": "/docs/evolve/overview" },
-    { "source": "/docs/evolve/evaluators", "destination": "/docs/evolve/external-evaluation" },
-    { "source": "/docs/evolve/stop-conditions", "destination": "/docs/evolve/overview" },
-    { "source": "/docs/concepts/execution-flow", "destination": "/docs/evolve/execution-flow" },
-    { "source": "/docs/concepts/tree-search", "destination": "/docs/evolve/search-strategies" },
-    { "source": "/docs/concepts/architecture", "destination": "/docs/evolve/architecture" },
-    { "source": "/docs/concepts/experiment-lifecycle", "destination": "/docs/evolve/experiment-lifecycle" },
-    { "source": "/docs/concepts/kapso-api", "destination": "/docs/reference/kapso-api" },
-    { "source": "/docs/concepts/tinkerer-api", "destination": "/docs/reference/kapso-api" },
-    { "source": "/docs/concepts/knowledge-system", "destination": "/docs/knowledge/overview" },
-    { "source": "/docs/components/orchestrator", "destination": "/docs/evolve/orchestrator" },
-    { "source": "/docs/components/coding-agents/overview", "destination": "/docs/evolve/coding-agents" },
-    { "source": "/docs/components/search-strategies/overview", "destination": "/docs/evolve/search-strategies" },
-    { "source": "/docs/components/knowledge-search/overview", "destination": "/docs/knowledge/search-backends" },
-    { "source": "/docs/components/wiki-mcp/overview", "destination": "/docs/knowledge/overview" },
-    { "source": "/docs/guides/configuration", "destination": "/docs/reference/configuration" },
-    { "source": "/docs/guides/setup-neo4j", "destination": "/docs/installation" },
-    { "source": "/docs/knowledge/wiki-structure", "destination": "/docs/knowledge/overview" },
-    { "source": "/docs/benchmarks/generic-problems", "destination": "/docs/benchmarks/mle-bench" }
+    {
+      "source": "/docs/evolve/reliability-roadmap",
+      "destination": "/docs/evolve/overview"
+    },
+    {
+      "source": "/docs/evolve/cognitive-memory",
+      "destination": "/docs/learning/overview"
+    },
+    {
+      "source": "/docs/evolve/budget-aware-experimentation",
+      "destination": "/docs/evolve/overview"
+    },
+    {
+      "source": "/docs/evolve/evaluators",
+      "destination": "/docs/evolve/external-evaluation"
+    },
+    {
+      "source": "/docs/evolve/stop-conditions",
+      "destination": "/docs/evolve/overview"
+    },
+    {
+      "source": "/docs/concepts/execution-flow",
+      "destination": "/docs/evolve/execution-flow"
+    },
+    {
+      "source": "/docs/concepts/tree-search",
+      "destination": "/docs/evolve/search-strategies"
+    },
+    {
+      "source": "/docs/concepts/architecture",
+      "destination": "/docs/evolve/architecture"
+    },
+    {
+      "source": "/docs/concepts/experiment-lifecycle",
+      "destination": "/docs/evolve/experiment-lifecycle"
+    },
+    {
+      "source": "/docs/concepts/kapso-api",
+      "destination": "/docs/reference/kapso-api"
+    },
+    {
+      "source": "/docs/concepts/tinkerer-api",
+      "destination": "/docs/reference/kapso-api"
+    },
+    {
+      "source": "/docs/concepts/knowledge-system",
+      "destination": "/docs/knowledge/overview"
+    },
+    {
+      "source": "/docs/components/orchestrator",
+      "destination": "/docs/evolve/orchestrator"
+    },
+    {
+      "source": "/docs/components/coding-agents/overview",
+      "destination": "/docs/evolve/coding-agents"
+    },
+    {
+      "source": "/docs/components/search-strategies/overview",
+      "destination": "/docs/evolve/search-strategies"
+    },
+    {
+      "source": "/docs/components/knowledge-search/overview",
+      "destination": "/docs/knowledge/search-backends"
+    },
+    {
+      "source": "/docs/components/wiki-mcp/overview",
+      "destination": "/docs/knowledge/overview"
+    },
+    {
+      "source": "/docs/guides/configuration",
+      "destination": "/docs/reference/configuration"
+    },
+    {
+      "source": "/docs/guides/setup-neo4j",
+      "destination": "/docs/installation"
+    },
+    {
+      "source": "/docs/knowledge/wiki-structure",
+      "destination": "/docs/knowledge/overview"
+    },
+    {
+      "source": "/docs/benchmarks/generic-problems",
+      "destination": "/docs/benchmarks/mle-bench"
+    },
+    {
+      "source": "/docs/quickstart",
+      "destination": "/docs/first-build"
+    },
+    {
+      "source": "/docs/evolve/inbox",
+      "destination": "/docs/build/inbox"
+    },
+    {
+      "source": "/docs/evolve/resuming-runs",
+      "destination": "/docs/build/resume-and-budgets"
+    }
   ],
-
   "footer": {
     "socials": {
-    "github": "https://github.com/leeroo-ai/kapso"
+      "github": "https://github.com/leeroo-ai/kapso"
     }
   }
 }

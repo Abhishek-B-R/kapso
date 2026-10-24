@@ -16,7 +16,6 @@ import importlib
 
 _LAZY_IMPORTS = {
     "OrchestratorAgent": ("kapso.execution.orchestrator", "OrchestratorAgent"),
-    "SolutionResult": ("kapso.execution.solution", "SolutionResult"),
     "RunCheckpointError": ("kapso.execution.run_checkpoint", "RunCheckpointError"),
     "RunCheckpointMissingError": ("kapso.execution.run_checkpoint", "RunCheckpointMissingError"),
     "RunCheckpointCorruptError": ("kapso.execution.run_checkpoint", "RunCheckpointCorruptError"),

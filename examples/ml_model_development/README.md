@@ -1,111 +1,56 @@
-# ML Model Development Example (Kaggle Spaceship Titanic)
+# ML model development: Spaceship Titanic
 
-This example demonstrates using Kapso's `evolve()` function to iteratively improve a machine learning model for the Kaggle Spaceship Titanic competition.
+A 45-minute build that takes `repo/train.py` from a DummyClassifier at
+about 0.50 accuracy toward the brief's 0.78 on the Kaggle Spaceship Titanic
+data, with the repository's own `evaluate.py` as the judge. This example is
+also the reference for Kapso's full loop (research, learn_knowledge, build,
+learn, build again), in `run_full_loop.py`.
 
-## Environment Setup
+Recorded result: not recorded yet.
 
-Before running this example, install the required dependencies:
+## What you get
 
-```bash
-# Create and activate conda environment (recommended)
-conda create -n kapso python=3.10
-conda activate kapso
+- `repo/train.py`, whose `train_model()` and `predict_with_model()` keep
+  their signatures and get new bodies: features, a model, hyperparameters,
+  on a branch of its own inside `campaign/`.
+- A score from `repo/evaluate.py --data-dir ./data --seed 0`: accuracy on a
+  90/10 train/validation split of `train.csv`.
+- `campaign/.kapso/solution.json`, the record, read back by `Solution.open("campaign")`.
 
-# Install ML dependencies
-pip install pandas numpy scikit-learn torch xgboost lightgbm catboost
-
-# Install Kapso from the project root
-cd /path/to/kapso
-pip install -e .
-```
-
-Authenticate the coding-agent CLIs the default config uses, then
-verify everything with `kapso doctor`:
+## Run it
 
 ```bash
-# Claude Code sessions (ideation, implementation): log in once
-npm install -g @anthropic-ai/claude-code
-claude auth login   # or: export CLAUDE_CODE_OAUTH_TOKEN=...
-
-# Codex sessions (research, judging, utilities): log in once
-npm install -g @openai/codex
-codex login
-
-# embeddings (memory and knowledge-search indexing)
-export OPENAI_API_KEY=your_key_here
-
-kapso doctor   # checks all of the above and prints fixes for misses
+pip install pandas numpy scikit-learn xgboost lightgbm catboost
+kaggle competitions download -c spaceship-titanic && unzip spaceship-titanic.zip -d repo/data/
+kapso doctor build
+kapso build --brief kapso-brief.md --repo repo --output campaign --detach
+kapso watch campaign --follow
 ```
 
-## Problem Description
+Without the Kaggle CLI, download `train.csv` and `test.csv` from
+https://www.kaggle.com/competitions/spaceship-titanic/data into `repo/data/`.
+`python run.py` is the same build from Python, into the same `campaign/`
+directory: run one or the other.
 
-The Spaceship Titanic competition asks you to predict which passengers were transported to an alternate dimension during a collision with a spacetime anomaly.
-
-The baseline implementation (`train.py`) uses a simple DummyClassifier. The goal is to optimize feature engineering, model selection, and hyperparameters to improve accuracy.
-
-### Constraints
-
-- Must maintain the same function signatures (`train_model`, `predict_with_model`)
-- Must work with the provided CSV data format
-- Must produce valid submission DataFrame
-
-## Data Setup
-
-Download the Spaceship Titanic data from Kaggle:
+The full loop, which needs the knowledge-graph backends from
+`scripts/start_infra.sh` and about five hours:
 
 ```bash
-# Using Kaggle CLI
-kaggle competitions download -c spaceship-titanic
-unzip spaceship-titanic.zip -d initial_repo/data/
+python run_full_loop.py
+python resume_full_loop.py learning/e2e-facade/<stamp> --from learn   # re-enter a run at a stage
 ```
 
-Or manually download from: https://www.kaggle.com/competitions/spaceship-titanic/data
+## What to look at
 
-Place `train.csv` and `test.csv` in the `initial_repo/data/` directory.
+- `kapso-brief.md`: the rules say the two functions keep their signatures
+  and `test.csv` is never fitted on; the judge holds every candidate to them.
+- `solution.explain()`: the score, the stop reason, the cost.
+- `cd campaign && python evaluate.py --data-dir ./data --seed 0`: re-measured by hand.
 
-## Usage
+## Change it
 
-### Run Kapso Evolution
-
-```bash
-cd examples/ml_model_development
-python run_evolve.py
-```
-
-This will:
-1. Initialize Kapso
-2. Run multiple iterations to find optimized implementations
-3. Output the best solution to `./model_optimized`
-
-Watch a running campaign live from another terminal:
-
-```bash
-kapso watch ./model_optimized
-```
-
-### Run the full production loop
-
-This example is also the reference for Kapso's complete loop — web
-research → `learn_knowledge()` → `evolve()` → `learn()` → evolve again,
-served the lessons it just earned (requires the KG backends from
-`scripts/start_infra.sh`):
-
-```bash
-python run_full_loop.py    # ~5h end to end; every stage logged to its sandbox
-# re-enter a partially finished run at a stage:
-python resume_full_loop.py learning/e2e-facade/<stamp> --from learn
-```
-
-### Manual Evaluation
-
-To evaluate a specific implementation:
-
-```bash
-cd initial_repo
-python evaluate.py --data-dir ./data --seed 0
-```
-
-## Success Criteria
-
-- **Accuracy**: Higher is better (baseline ~0.50)
-- **Target**: 0.78+ accuracy through improved modeling
+- The target: `Target` in the brief.
+- The budget: the brief's `Budget minutes=45 experiments=4`, or the command's
+  `--budget-minutes` and `--budget-experiments`, which win over it.
+- Protect the evaluator from the start by moving `evaluate.py` into a
+  directory of its own and passing it with `--evaluation`.

@@ -285,7 +285,7 @@ solution = kapso.build(
     evaluation="./backtest", data="./prices", repo="./strategy",
     output="../btc-momentum", budget=Budget(minutes=480),
 )
-solution.branch, solution.score, solution.evaluation.version, solution.trace
+solution.branch, solution.score, solution.evaluator.version, solution.campaign   # names after the WP1 naming review (DECISIONS.md)
 solution.harness                              # the triple the run was made with
 
 software = kapso.deploy(solution, target="paper-trading")

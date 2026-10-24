@@ -1,6 +1,6 @@
 # Experiment Memory Module
 #
-# Stores and retrieves experiment history for the evolve loop.
+# Stores and retrieves experiment history for the build loop.
 # Provides MCP-compatible tools for agents to query past experiments.
 # The lesson artifact per experiment is the implementor-authored
 # technical_difficulties field (fallback-generated when missing) — there

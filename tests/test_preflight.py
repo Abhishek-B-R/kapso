@@ -69,7 +69,7 @@ def by_label(requirements):
 # The headline: requirements follow the config, not a hardcoded union
 # =============================================================================
 
-def test_all_codex_evolve_never_asks_for_claude(packaged, full_machine):
+def test_all_codex_build_never_asks_for_claude(packaged, full_machine):
     """The bug this design replaced: the old doctor demanded `claude` from
     everyone, including a config that can only ever spawn codex."""
     config = copy.deepcopy(packaged)
@@ -79,7 +79,7 @@ def test_all_codex_evolve_never_asks_for_claude(packaged, full_machine):
     mode["coding_agent"] = {"type": "codex", "model": "gpt-5.6-sol"}
     mode["feedback_generator"] = {"type": "codex", "model": "gpt-5.6-sol"}
 
-    found = labels(requirements_for("evolve", config))
+    found = labels(requirements_for("build", config))
     assert "codex CLI" in found
     assert "claude CLI" not in found
     assert "claude authenticated" not in found
@@ -146,11 +146,11 @@ def test_codify_target_decides_whether_gcloud_is_required(packaged, full_machine
 def test_kg_rows_appear_only_when_an_index_is_connected(packaged, full_machine):
     """Knowledge search is opt-in via Kapso(kg_index=...); a campaign
     without one must not be blocked on stores it never opens."""
-    without = labels(requirements_for("evolve", packaged))
+    without = labels(requirements_for("build", packaged))
     assert "Neo4j (localhost:7687)" not in without
 
     with_index = labels(
-        requirements_for("evolve", packaged, kg_index="data/indexes/ml.index")
+        requirements_for("build", packaged, kg_index="data/indexes/ml.index")
     )
     assert "Neo4j (localhost:7687)" in with_index
     assert (
@@ -159,9 +159,9 @@ def test_kg_rows_appear_only_when_an_index_is_connected(packaged, full_machine):
 
 
 def test_caller_passed_coding_agent_overrides_the_mode(packaged, full_machine):
-    """evolve(coding_agent=...) changes which CLI actually runs, so the
+    """build(coding_agent=...) changes which CLI actually runs, so the
     requirement must follow the argument, not the config's default."""
-    found = labels(requirements_for("evolve", packaged, coding_agent="codex"))
+    found = labels(requirements_for("build", packaged, coding_agent="codex"))
     assert "codex CLI" in found
 
 
@@ -174,7 +174,7 @@ def test_gate_policy_decides_whether_a_missing_gate_blocks(
 ):
     monkeypatch.delenv("LEEROOPEDIA_API_KEY", raising=False)
 
-    warn = by_label(requirements_for("evolve", packaged))
+    warn = by_label(requirements_for("build", packaged))
     assert warn["MCP gate 'leeroopedia'"].required is False
     # Hosted gate: the fix is the key alone, never an install step.
     assert "LEEROOPEDIA_API_KEY" in warn["MCP gate 'leeroopedia'"].fix
@@ -185,7 +185,7 @@ def test_gate_policy_decides_whether_a_missing_gate_blocks(
     strict = copy.deepcopy(packaged)
     strict["modes"]["GENERIC"]["search_strategy"]["params"][
         "gate_failure_policy"] = "error"
-    blocking = by_label(requirements_for("evolve", strict))
+    blocking = by_label(requirements_for("build", strict))
     assert blocking["MCP gate 'leeroopedia'"].required is True
     # `error` is the one policy where downgrading is a real option, so it
     # is the one that says so.
@@ -199,7 +199,7 @@ def test_platform_injected_gate_env_is_never_reported_as_user_setup(
     Kapso when it launches a session. Reporting them at preflight would be
     a guaranteed false positive on every clean machine — and the packaged
     config names the experiment_history gate, so this fires by default."""
-    found = labels(requirements_for("evolve", packaged))
+    found = labels(requirements_for("build", packaged))
     assert "MCP gate 'experiment_history'" not in found
 
 
@@ -392,7 +392,7 @@ def test_disabling_preflight_skips_every_probe(packaged, monkeypatch):
     monkeypatch.setattr(preflight.shutil, "which", explode)
     config = copy.deepcopy(packaged)
     config["preflight"] = {"enabled": False}
-    assert preflight.run_preflight("evolve", config) == []
+    assert preflight.run_preflight("build", config) == []
 
 
 def test_settings_fall_back_to_the_packaged_defaults(packaged):
@@ -493,13 +493,13 @@ def test_render_separates_blocking_from_advisory():
         Requirement("nice to have", False, "optional thing", "other.key",
                     required=False),
     ]
-    report = render("evolve", rows)
+    report = render("build", rows)
     assert "[FAIL] hard stop" in report
     assert "[warn] nice to have" in report
     assert "all good" not in report  # passing rows are not noise
     assert "1 of 3 requirements missing" in report
 
-    passing = render("evolve", [Requirement("fine", True, "", "k")])
+    passing = render("build", [Requirement("fine", True, "", "k")])
     assert "preflight passed" in passing
 
 
@@ -515,7 +515,7 @@ def test_dedupe_keeps_every_origin_and_the_worst_verdict():
 
 def test_unknown_verb_fails_loud(packaged):
     with pytest.raises(ValueError, match="unknown verb"):
-        requirements_for("evolve_but_typoed", packaged)
+        requirements_for("build_but_typoed", packaged)
 
 
 def test_api_agent_checks_configured_keys_per_session(monkeypatch):
@@ -576,7 +576,7 @@ def test_research_rejects_api_agent_without_web_tools():
     assert not found["research agent supports web search"].ok
 
 
-def test_evolve_checks_api_inference_role_key(
+def test_build_checks_api_inference_role_key(
     packaged, full_machine, monkeypatch
 ):
     monkeypatch.delenv("RERANK_KEY", raising=False)
@@ -588,7 +588,7 @@ def test_evolve_checks_api_inference_role_key(
     found = {
         r.label: r
         for r in requirements_for(
-            "evolve",
+            "build",
             packaged,
             kg_index="my-index",
         )
@@ -631,7 +631,7 @@ def test_preflight_uses_embedding_endpoint_from_config(packaged, full_machine):
     packaged["modes"][mode]["knowledge_search"]["params"] = {
         "embedding_base_url": "https://embeddings.test/v1",
     }
-    rows = requirements_for("evolve", packaged, kg_index="my-index")
+    rows = requirements_for("build", packaged, kg_index="my-index")
     assert any(row.label ==
                "OPENAI_API_KEY (embeddings: https://embeddings.test/v1)"
                for row in rows)
@@ -639,7 +639,7 @@ def test_preflight_uses_embedding_endpoint_from_config(packaged, full_machine):
 
 @pytest.mark.parametrize("field", ["coding_agent", "feedback_generator"])
 @pytest.mark.parametrize("with_model", [False, True])
-def test_evolve_refuses_inference_agent_in_config(
+def test_build_refuses_inference_agent_in_config(
     packaged, full_machine, field, with_model,
 ):
     mode = packaged["default_mode"]
@@ -648,7 +648,7 @@ def test_evolve_refuses_inference_agent_in_config(
         settings["model"] = "provider/model"
     packaged["modes"][mode][field] = settings
     with pytest.raises(PreflightError) as error:
-        preflight.run_preflight("evolve", packaged)
+        preflight.run_preflight("build", packaged)
     failure = next(
         row for row in error.value.requirements
         if "inference-only" in row.label
@@ -659,7 +659,7 @@ def test_evolve_refuses_inference_agent_in_config(
     assert "inference.roles" in failure.fix
 
 
-def test_python_evolve_override_fails_before_workspace(
+def test_python_build_override_fails_before_workspace(
     packaged, full_machine, tmp_path,
 ):
     kapso = object.__new__(Kapso)
@@ -668,15 +668,15 @@ def test_python_evolve_override_fails_before_workspace(
     kapso._bank_home = None
     output = tmp_path / "campaign"
     with pytest.raises(PreflightError, match="inference-only"):
-        kapso.evolve(
-            goal="test", coding_agent="openai_compatible",
-            output_path=str(output),
+        kapso.build(
+            "test", coding_agent="openai_compatible",
+            output=str(output),
         )
     assert not output.exists()
 
 
 @pytest.mark.parametrize("verb,branch", [
-    ("evolve", "search_strategy.params"),
+    ("build", "search_strategy.params"),
     ("learn_knowledge", "learner.ingestor"),
     ("learn", "mining"),
 ])
@@ -708,7 +708,7 @@ def test_text_inference_roles_remain_allowed(packaged, full_machine):
     packaged["inference"]["default"].update({
         "cli": "openai_compatible", "model": "provider/model",
     })
-    rows = preflight.run_preflight("evolve", packaged)
+    rows = preflight.run_preflight("build", packaged)
     assert not any("inference-only" in row.label for row in rows)
     assert any("OPENAI_API_KEY (https://api.openai.com/v1)" == row.label
                for row in rows)
@@ -722,18 +722,18 @@ def test_inference_like_path_does_not_grant_capability():
                for row in preflight.cli_requirements(specs))
 
 
-def test_evolve_asks_for_the_openai_key_only_when_something_will_embed(packaged, full_machine, monkeypatch):
+def test_build_asks_for_the_openai_key_only_when_something_will_embed(packaged, full_machine, monkeypatch):
     """The shipped config leaves `models.embedding` null, so a stock campaign
     embeds nothing and doctor must not ask for the key (it used to pass and
     the campaign died at the first node's bookkeeping). Naming a model turns
     the row on, with the store as its reason."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    stock = by_label(requirements_for("evolve", packaged))
+    stock = by_label(requirements_for("build", packaged))
     assert not [label for label in stock if label.startswith("OPENAI_API_KEY")]
 
     embedding_on = copy.deepcopy(packaged)
     embedding_on["modes"]["GENERIC"]["models"] = {"embedding": "text-embedding-3-small"}
-    rows = by_label(requirements_for("evolve", embedding_on))
+    rows = by_label(requirements_for("build", embedding_on))
     row = rows["OPENAI_API_KEY (embeddings: https://api.openai.com/v1)"]
     assert row.ok is False and row.required is True
     assert "experiment store" in row.origin and "text-embedding-3-small" in row.origin

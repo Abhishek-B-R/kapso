@@ -1,0 +1,121 @@
+---
+title: "Brief format reference: every line of kapso-brief.md"
+sidebarTitle: "Brief format"
+description: "The grammar of a Kapso brief: the eight fields, continuation lines, list items, budget tokens, what is refused and how, and the Python object the file maps to."
+keywords: ["kapso-brief.md", "brief format", "Brief", "Budget", "objective", "measured by", "rules"]
+---
+
+A brief is a text file, `kapso-brief.md` by convention, and the `Brief`
+object in Python; one grammar, read by `Brief.read(path)` and written by
+`Brief.write(path)`. `build()` renders it whole into the campaign's goal.
+
+## The fields
+
+| Field | Attribute | Takes | Required |
+|---|---|---|---|
+| `Objective` | `objective` | text, any number of lines | yes |
+| `Measured by` | `measured_by` | text | no |
+| `Baseline` | `baseline` | text | no |
+| `Target` | `target` | text | no |
+| `Rules` | `rules` | `- ` items | no |
+| `Budget` | `budget` | `name=value` tokens: `minutes`, `experiments`, `usd`, `reserve_minutes` | no |
+| `Harness` | `harness` | a reference, kept verbatim | no |
+| `Experience` | `experience` | `- ` items, or one comma-separated line | no |
+
+Names are matched as whole words at the start of an unindented line, in
+any case; `Measured by` needs nothing special to delimit it.
+
+## The grammar
+
+- A field starts an unindented line with its name, then whitespace, then
+  the value; the value may also start on the next line.
+- An indented line continues the field above. The lines after a field's
+  first are dedented together, so a pasted block keeps its relative
+  indentation; a bullet or a number at the start of such a line is text,
+  not an item. The first line stands on its own (it follows the name).
+- A blank line between two lines of the same field is a paragraph break;
+  blank lines anywhere else are nothing.
+- `Rules` and `Experience` take items on indented lines starting with
+  `- `; an item continues on further indented lines. `Experience` also
+  takes one comma-separated line.
+- `Budget` takes `name=value` tokens, on the field line or continuation
+  lines: `minutes`, `usd` and `reserve_minutes` are positive numbers
+  written in plain digits (`0.00001`, never `1e-05`), `experiments` a
+  positive integer, `reserve_minutes` smaller than `minutes`.
+- Reference strings are kept as written: `acme/harnesses@v3#trading` and
+  `~/banks/mine.git` survive intact.
+
+```text
+Objective    Raise the churn model's out-of-sample ROC AUC above 0.85
+             without changing the prediction contract.
+
+             The contract: predict.py writes id,churn_probability for
+             every holdout id.
+Measured by  kapso_evaluation/evaluate.py, ROC AUC on the held-out rows
+Baseline     0.797 (logistic regression, bootstrap SE 0.010)
+Target       0.85
+Rules
+  - the evaluator is never modified
+  - no fitting on the holdout rows, and no reading them:
+    the labels are not in the workspace
+Budget       minutes=60 experiments=10
+Harness      predictive-modelling
+Experience   mine, leeroopedia
+```
+
+## What is refused
+
+Each with the file and line number, never guessed at:
+
+| Case | Message |
+|---|---|
+| A line at column zero that is not a field name | `not a field` |
+| A field given twice | `<Field> given twice` |
+| No `Objective`, or an empty one | `Objective is required`, `Objective has no value` |
+| An indented line before any field | `indented line before any field` |
+| Text under `Rules` or `Experience` with no item yet | `expected a `- ` item` |
+| A value on the `Rules` line itself | `takes `- ` items on the lines below it` |
+| `Experience` as both a comma line and items | `not both` |
+| An empty item, or an empty comma-separated entry | `empty item` |
+| `Budget` with no tokens, an unknown name, a non-number, a non-integer `experiments`, or a repeated name | `needs name=value tokens`, `not name=value`, `must be a number`, `must be an integer`, `given twice` |
+| A budget the engine cannot spend: zero, negative, infinite, a reserve not smaller than the minutes | `must be a positive finite number`, `must be smaller than` |
+
+## The Python object
+
+```python
+from kapso import Brief, Budget
+
+brief = Brief.read("kapso-brief.md")
+brief.objective, brief.measured_by, brief.baseline, brief.target
+brief.rules            # list[str]
+brief.budget           # Budget(minutes=60, experiments=10, usd=None, reserve_minutes=None) or None
+brief.harness          # str or None
+brief.experience       # list[str]
+
+Brief(objective="Build a web scraper")                     # a sentence is a brief
+Brief.parse(text)                                          # from a string
+brief.render()                                             # the file's text, deterministic
+brief.write("kapso-brief.md")
+```
+
+`render()` is what the engine receives as its goal and what the checkpoint
+fingerprints. A `Brief` normalizes its text on construction (the first
+line of a field stripped, the rest dedented together, trailing whitespace
+and outer blank lines removed), and over that form
+`Brief.parse(brief.render()) == brief` holds for every brief, which is
+what a bare resume relies on.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="The brief" icon="file-lines" href="/docs/build/brief">
+    What each line is for
+  </Card>
+  <Card title="Python API" icon="code" href="/docs/reference/kapso-api#build">
+    build(), Brief, Budget and Solution
+  </Card>
+</CardGroup>
+
+Related pages: [The brief](/docs/build/brief) · [Python API](/docs/reference/kapso-api#build) · [CLI reference](/docs/reference/cli#kapso-build)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

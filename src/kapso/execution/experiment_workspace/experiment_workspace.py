@@ -83,7 +83,10 @@ class ExperimentWorkspace:
             llm_backend: Shared configured backend for utility completions
         """
         
-        self.workspace_dir = workspace_dir
+        # Absolute: session clones commit their run data by this path from
+        # their own working directory, and a relative one is "outside
+        # repository" there.
+        self.workspace_dir = os.path.abspath(workspace_dir)
         os.makedirs(self.workspace_dir, exist_ok=True)
         self.initial_repo = os.path.abspath(initial_repo) if initial_repo else None
         self.is_seeded = self.initial_repo is not None
@@ -359,6 +362,8 @@ class ExperimentWorkspace:
             # campaign state like the checkpoint, never branch content.
             ".kapso/inbox.jsonl",
             ".kapso/launch.json",
+            # The solution record build() writes when it returns.
+            ".kapso/solution.json",
             # Campaign shared cache holds large reusable artifacts (tables,
             # embeddings); they must never enter experiment branches.
             ".kapso/shared_cache/",
