@@ -64,6 +64,13 @@ experience = kapso.learn(solution)                     # cards with receipts, ba
 
 ## 3. The harness contract
 
+*Superseded on 2026-10-23 by `harness-design.md`: a harness is instruction
+pages, skills, delegates, tool servers and hooks, listed per module in
+`harness.yaml`, with no handler, no prompts of the engine's phases and no
+engine knobs. Section 7's "harness defaults" fall with it: the harness and
+the engine config never share a key. The text below is kept as the record
+of the first draft.*
+
 A harness is a directory. Bundled ones live in the package; yours live in
 your repository or in a git repository of their own.
 
