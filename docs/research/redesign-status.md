@@ -72,13 +72,14 @@
 7. **The plugin** (the layer specified in `docs/plans/kapso-plugin-user-flow.md`
    and the mental model's seams): the `plugin/` tree with the three
    manifests, `.mcp.json` and the self-bootstrapping `kapso-mcp` launcher,
-   the four skills of `docs/plans/kapso-plugin-skills.md` (`kapso-setup`,
-   `kapso-brief`, `kapso-harness`, `kapso`) with their Codex sidecars, the
-   repository-as-marketplace files for Claude Code and Codex; the commands `setup`, `build`, `watch`,
+   the six skills of `docs/plans/kapso-plugin-skills.md` (`kapso-setup`,
+   `kapso-build`, `kapso-evaluation` called by build, `kapso-harness` with
+   `new` and `improve`, `kapso-review`, `kapso`) with their Codex sidecars,
+   the repository-as-marketplace files for Claude Code and Codex; the commands `setup`, `build`, `watch`,
    `inbox`, `resume`, `learn`, `deploy`, `doctor`, plus `harness`,
-   `experience` and `--harness` on `build` (`/kapso:build` reads the
-   harness's setup page when it writes the brief and writes the harness
-   and experience lines into it); the open seams: session-start brief
+   `experience`, `review` and `--harness` on `build` (`/kapso:build` runs
+   `kapso-build`: discovery first, the evaluation built or audited by
+   `kapso-evaluation`, one message, then launch); the open seams: session-start brief
    (S5), delegation tools (S6), learning from host sessions (S7), the skill
    lab re-run; last, the authoring plugin `/kapso:harness new`, which needs
    `check`. Waits for step 1 (the verb names), steps 2 and 3 (the CLI
