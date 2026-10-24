@@ -122,6 +122,21 @@ def fake_orchestrator(
         def get_experiment_history(self):
             return list(history)
 
+        def get_deliverable_experiment(self):
+            # The delivered node, as the real strategy returns it: the
+            # history entry on `best_branch`; with no history, a node whose
+            # judgment is the final one (the two coincide when the last
+            # node is the delivered one); None when nothing was delivered.
+            if best_branch is None:
+                return None
+            for node in history:
+                if node.branch_name == best_branch:
+                    return node
+            return SimpleNamespace(
+                branch_name=best_branch,
+                feedback=result.final_feedback.feedback if result.final_feedback else "",
+            )
+
         def get_deliverable_score(self):
             return score
 

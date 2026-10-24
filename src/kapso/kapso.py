@@ -1543,6 +1543,15 @@ class Kapso:
         campaign = Path(strategy.workspace.workspace_dir).resolve()
         best_branch = strategy.checkout_to_best_experiment_branch()
         head = EvaluationRegistry(str(campaign)).head()
+        # The judge's words on the delivered candidate; with nothing
+        # delivered, the last judgment says why (the third proof run
+        # delivered node 0 and reported node 1's failed judgment).
+        delivered = strategy.get_deliverable_experiment()
+        feedback = (
+            delivered.feedback if delivered is not None
+            else solve_result.final_feedback.feedback
+            if solve_result.final_feedback else None
+        )
         solution = Solution(
             brief=brief,
             campaign=campaign,
@@ -1561,10 +1570,7 @@ class Kapso:
             # The inbox: what the person must answer when the campaign
             # paused for them (empty otherwise).
             requests=list(solve_result.requests),
-            feedback=(
-                solve_result.final_feedback.feedback
-                if solve_result.final_feedback else None
-            ),
+            feedback=feedback,
             evaluator=(
                 EvaluatorRef(
                     version=head.version,

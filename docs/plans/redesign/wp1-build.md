@@ -378,8 +378,29 @@ numpy, pandas and scikit-learn installed from apt. Logs under
   appeared in the judge's session output: the shared token's window is
   being spent by these runs, so no further proof runs beyond the third.
 - **wp1d**, wheel `ef1fce25…` (commit `1f022925`), forty-five minutes and
-  two experiments, the final names: in progress; its result is recorded
-  here when it returns.
+  two experiments, the final names: `kapso doctor build` passed (seven
+  required rows); the build returned (exit 0) after 48 minutes with a
+  delivered candidate: `generic_exp_0` at `0a294f26…`, ROC AUC **0.8474**
+  (baseline 0.797, target 0.85, `goal_achieved: false`), `stopped_reason
+  budget_exhausted (time_budget)`, two experiments, $7.40 of model spend
+  on the shared token. The record under `.kapso/solution.json` has the
+  pinned shape; `Solution.open` in a second process read it back and
+  `diff()` showed the candidate (a spline-logistic and gradient-boosting
+  blend in logit space, `PLAN.md` and `changes.log` beside it). The
+  timeline from the status file: started 22:28:33, node 0 completed at
+  22:53 (ideation and implementation took the first twenty-five minutes),
+  iteration 2 started at 54% of the budget, its implementation was killed
+  at the 60-second floor and its judgment failed ("the required tags were
+  missing after a retry") at 23:16, when the budget ended. Machine 0.88 h,
+  about $0.12. Two things the run showed: (1) the record's `feedback`
+  carried node 1's failed judgment under node 0's score, so `build()` now
+  takes the feedback from the delivered node (`get_deliverable_experiment`)
+  and the label is `Feedback:`; (2) on the shipped config a 45-minute
+  budget buys one scored experiment, and the second one is started with
+  no room to implement, which is the budget finding below. The `kapso
+  deploy` step of the proof only printed the command's help (the script's
+  dry check), so the deploy refusals rest on their unit tests. The churn
+  example's README records this result with its provenance.
 
 ## Findings for later packages
 

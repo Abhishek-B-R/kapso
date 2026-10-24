@@ -46,7 +46,7 @@ def test_a_delivered_build_reads_back_with_its_candidate_score_and_diff(tmp_path
         "Stopped:       goal_achieved",
         "Experiments:   1 this run, 1 in all",
         "Cost:          $1.250",
-        "Last feedback:\nAUC 0.9 beats the target",
+        "Feedback:\nAUC 0.9 beats the target",
     ):
         assert line in explained
     assert "+improved = True" in reopened.diff()

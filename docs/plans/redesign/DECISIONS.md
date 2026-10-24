@@ -6,6 +6,17 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-24, WP1 (after the third proof run)
+
+**`solution.feedback` is the judge's words on the delivered candidate; the
+last judgment only when nothing was delivered.** The third proof run
+delivered node 0 (0.8474) and the record's feedback was node 1's failed
+judgment ("the required tags were missing after a retry"), because
+`build()` took `final_feedback` from the solve result. It now reads the
+delivered node's feedback from the strategy, and `explain()` labels the
+block `Feedback:` rather than `Last feedback:`. Alternative rejected:
+carrying both, which doubles a field nobody asked for.
+
 ## 2026-10-24, WP2 (planned; taken while writing the sub-plan)
 
 **The engine never installs a harness's requirements; it names what is
@@ -41,14 +52,39 @@ at the root and a link per session; the `protect-prepared` hook is the
 guard the harness chose, and the design says a hook is not a boundary.
 Alternative rejected: committing both to main.
 
-**A verification session that writes no verdict leaves the attempt valid
-and tells the judge so.** The verdict contract wants a file; a model that
-forgets it should not kill a campaign (rule 2 is for corrupt data, and a
-malformed verdict does raise). The attempt stays valid, the record says
-`verdict: none`, and the judge reads that verification produced nothing,
-so a missing check is visible rather than silently passed. Alternative
-rejected: treating a missing verdict as void, which would discard good
-attempts on a formatting slip.
+**A verification session that writes no verdict is run once more; still
+nothing, and the attempt is `unverified`: it keeps its score and stays a
+parent, is never delivered while the harness has verification, and the
+judge is told.** The first draft left such an attempt valid; both
+reviewers objected that an unchecked candidate could then be delivered on
+a verifier timeout, which is the one outcome a verification promise must
+exclude. A malformed verdict still raises (rule 2). Alternative rejected:
+treating a missing verdict as void, which would discard good attempts on
+a formatting slip, and treating it as valid, which would deliver them
+unverified.
+
+**Export moves to WP7.** An export has to carry `servers/`, the
+requirements, the hook scripts and the delegates with their references
+rewritten per host, and prove the result loads; that is host plugin
+layout work, which WP7 owns, and nothing in a build needs it. The design's
+surface line points at WP7.
+
+**The recently-used list of local harnesses is dropped.** `list` shows
+what is bundled and what is fetched; a local path is used by path. One
+JSON file and a `forget` command were the price of one row of output.
+
+**Delegates on Codex are named roles, verified, so the design's "own
+session" fallback is not built.** `agents.<name>` with a description and
+a config file whose developer instructions are the prompt; the role is
+spawned by name and the host's sub-agent events carry it. One mechanism
+per host, no runtime fallback.
+
+**Prerequisites are scoped to the modules a verb runs.** The trading
+harness's deployment-only broker server would otherwise refuse every
+build on a laptop with no broker credential. A build refuses on the
+requirements of setup, ideation, implementation, verification and
+feedback and prints the rest as advisory; deploy and learn refuse on
+their own module's.
 
 **Setup and verification run only when the harness has content for them.**
 A harness with no `setup.md` and no setup attachment gets no setup

@@ -73,6 +73,9 @@ def _fake_orchestrator(workspace: Path, monkeypatch):
         def get_experiment_history(self):
             return []
 
+        def get_deliverable_experiment(self):
+            return None
+
         def get_deliverable_score(self):
             return None
 

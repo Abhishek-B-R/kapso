@@ -5,8 +5,13 @@ raises a churn model's out-of-sample ROC AUC from the shipped logistic
 regression's 0.797 toward the brief's 0.85 target, and hands back a `Solution`: the winning branch, its score under an evaluator the
 campaign cannot edit, and the record of the whole campaign.
 
-Recorded result: not recorded yet; the proof runs of the `build` verb on a
-fresh machine are in `docs/plans/redesign/wp1-build.md` as they land.
+Recorded result: ROC AUC 0.8474 on the held-out rows (baseline 0.797,
+target 0.85 not reached), one scored experiment in a 45-minute campaign on
+the shipped config with Claude Code, measured by `evaluation/evaluate.py`
+on a fresh `e2-standard-4` from the wheel of commit `1f022925`, 2026-10-24
+(the third proof run in `docs/plans/redesign/wp1-build.md`). The second
+experiment of that campaign started with no time left to implement; a
+second scored candidate needs about an hour.
 
 ## What you get
 
@@ -54,7 +59,8 @@ it there.
   `--budget-minutes` and `--budget-experiments` on the command, which win
   over it. The ideation step runs ten to fifteen minutes before the first
   candidate is implemented, so a budget under half an hour starves the
-  implementation.
+  implementation, and each further experiment needs about twenty-five
+  minutes of its own.
 - The evaluator: `evaluation/evaluate.py` runs `python predict.py --data
   kapso_datasets --out predictions.csv`, scores the predictions against the
   private labels, prints `auc: 0.8412` as its last line, writes

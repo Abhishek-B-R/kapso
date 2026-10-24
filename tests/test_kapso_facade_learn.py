@@ -346,6 +346,7 @@ def test_build_serving_staging_and_disabled_byte_identity(
             self.search_strategy = SimpleNamespace(
                 workspace=SimpleNamespace(workspace_dir=str(tmp_path / "ws")),
                 checkout_to_best_experiment_branch=lambda: "main",
+                get_deliverable_experiment=lambda: None,
                 get_deliverable_score=lambda: None,
                 get_experiment_history=lambda best_last=True: [],
                 iteration_evaluations=[],
@@ -437,6 +438,7 @@ def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
             self.search_strategy = SimpleNamespace(
                 workspace=SimpleNamespace(workspace_dir=str(tmp_path / "ws")),
                 checkout_to_best_experiment_branch=lambda: "main",
+                get_deliverable_experiment=lambda: None,
                 get_deliverable_score=lambda: None,
                 get_experiment_history=lambda best_last=True: [],
                 iteration_evaluations=[],

@@ -10,6 +10,7 @@ import pytest
 
 from kapso.execution.inbox import read_launch_record, write_launch_record
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, config_fingerprint
+from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import FeedbackResult
 from kapso.handles import Brief, Budget, Solution
 from kapso.kapso import DEFAULT_MAX_ITERATIONS
@@ -251,3 +252,25 @@ def test_the_record_has_the_pinned_shape_and_names_the_delivered_commit(tmp_path
     assert record["cost_usd"] == 1.25 and record["feedback"] == "AUC 0.9 beats the target"
     assert record["evaluator"] is None and record["harness"] is None and record["experience"] == []
     assert "+improved = True" in solution.diff()
+
+
+def test_the_feedback_is_the_judges_words_on_the_delivered_candidate(tmp_path, monkeypatch):
+    # The third proof run delivered node 0 (0.847) while node 1's judgment
+    # failed at the budget's end; the record must carry node 0's feedback,
+    # not the last node's failure text.
+    workspace = tmp_path / "ws"
+    git_workspace(workspace)
+    candidate_branch(workspace, "generic_exp_0", "model.py", "blend = True\n")
+    delivered = SearchNode(node_id=0, branch_name="generic_exp_0", feedback="A solid gain; blend the two models next.", score=0.8474)
+    starved = SearchNode(node_id=1, branch_name="generic_exp_1", feedback="Feedback generation failed: the required tags were missing.", score=None)
+    last = FeedbackResult(stop=False, evaluation_valid=True, feedback=starved.feedback, score=None)
+    fake_orchestrator(
+        monkeypatch, workspace,
+        solve_result(final_feedback=last, stopped_reason="budget_exhausted", iterations_run=2, cumulative_iterations=2),
+        best_branch="generic_exp_0", score=0.8474, history=[delivered, starved],
+    )
+
+    solution = facade().build("g", output=str(workspace))
+
+    assert solution.feedback == delivered.feedback
+    assert "Feedback:\nA solid gain" in solution.explain()

@@ -491,6 +491,9 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
         def get_experiment_history(self) -> List[SearchNode]:
             return [selected]
 
+        def get_deliverable_experiment(self):
+            return selected
+
         def get_deliverable_score(self):
             return selected.score
 

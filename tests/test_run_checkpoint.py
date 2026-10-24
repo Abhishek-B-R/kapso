@@ -669,6 +669,9 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
         def get_experiment_history(self) -> List[SearchNode]:
             return []
 
+        def get_deliverable_experiment(self):
+            return None
+
         def get_deliverable_score(self):
             return None
 
@@ -761,6 +764,9 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
 
         def get_experiment_history(self) -> List[SearchNode]:
             return []
+
+        def get_deliverable_experiment(self):
+            return None
 
         def get_deliverable_score(self):
             return None

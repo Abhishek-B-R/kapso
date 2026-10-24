@@ -713,6 +713,6 @@ class Solution:
                 lines.append(f"  #{request['id']}  {request['key']}")
         if self.feedback:
             lines.append("")
-            lines.append("Last feedback:")
+            lines.append("Feedback:")
             lines.append(self.feedback)
         return "\n".join(lines)
