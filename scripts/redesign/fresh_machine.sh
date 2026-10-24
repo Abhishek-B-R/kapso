@@ -67,7 +67,7 @@ cmd_install() {
   if [ ! -f "$wheel" ]; then echo "no wheel at $wheel" >&2; exit 1; fi
   sha256sum "$wheel" | tee "$RUNS/$id/wheel.sha256"
   gcloud compute scp "$wheel" "ubuntu@$name:/tmp/$(basename "$wheel")" --project "$PROJECT" --zone "$ZONE" --quiet
-  ssh_run "$name" "bash -s" < "$HERE/fresh_machine_install.sh" "$(basename "$wheel")" 2>&1 | tee "$RUNS/$id/install.log"
+  ssh_run "$name" "bash -s -- $(basename "$wheel")" < "$HERE/fresh_machine_install.sh" 2>&1 | tee "$RUNS/$id/install.log"
   push_secret "$name" CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_SECRET"
   push_secret "$name" OPENAI_API_KEY "$OPENAI_SECRET"
   ssh_run "$name" "set -a; . ~/.secrets/env; set +a; printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null && echo 'codex: logged in with the API key'"

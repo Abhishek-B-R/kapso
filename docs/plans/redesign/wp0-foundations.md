@@ -97,4 +97,62 @@ import from it, `scripts/redesign/`, `tests/semantic/`,
 
 ## Review
 
-Pending.
+Two reviewers read the plan, the CLI source and the tests before the split
+was built (`scripts/redesign/review.sh`, Codex astra at xhigh and Claude
+Code opus-5, 2026-10-24). Their findings, and what was done:
+
+| Finding | Answer |
+|---|---|
+| `python -m kapso.cli` stops working when `cli/` becomes a package, and the detach test fakes `Popen` so it would not notice (both reviewers, high) | `cli/__main__.py` added; the proof run starts a real `kapso evolve --detach` on the fresh machine and reads its log |
+| the tests patch attributes on the module object (`subprocess`, `time`, `Kapso`, `_print_evolve_summary`); re-pointing imports alone leaves silent no-ops (both) | every monkeypatch target now names the module that binds the name: `cli.common.subprocess`, `cli.watch.time`, `cli.evolve.Kapso`, `cli.research.Kapso`, `cli.evolve._print_evolve_summary` |
+| the re-export step contradicts rule 7; `__init__` should hold `main()` only (both) | no re-exports; `__init__` has `main()`, the verb tuple and the one import it uses; tests import from the verb modules and `DEFAULT_CONFIG_PATH` from the facade |
+| `scripts/check_docs_coverage.py` and `.github/workflows/docs.yml` hardcode `cli.py` (Codex, high) | the script reads every module of the package; the workflow's path filters name `src/kapso/cli/**` |
+| the shared-helper inventory was wrong in both directions (both) | `common.py` holds the agent list, the three detach helpers and the summary; `_campaign_here` lives in `inbox.py`; `DEPLOY_STRATEGIES` and `RESEARCH_DEPTHS` moved to their only consumers, so `common.py` no longer imports the facade |
+| "verbatim" would carry a function-local import and a `try/except` into a new file (both) | both fixed in the move: the import is at the top of `deploy.py`; the interactive wait installs a SIGINT handler that stops the software and exits, same behaviour, no exception handling |
+| the fresh-machine script needs a failure lifecycle, spend limits and secrets that never touch a command line or a log (both) | created with `--max-run-duration 4h --instance-termination-action DELETE` and labels; `delete` is idempotent and verifies the instance and its disk are gone and prints the cost; secrets travel over ssh stdin into a mode-600 file; no `set -x`; an API key for Codex (see the decisions log) |
+| the churn fixture needs a contract, not a description: seed, size, sealed hold-out, evaluator interface and exit codes, fast mode, a baseline with a noise figure (both) | all in the fixture's README; `generate.py` is seeded and hashed; `evaluate.py` meets the contract; `baseline.py` records repeats and a bootstrap standard error; the hold-out is outside the copied directories and the README says plainly that sealing is the engine's job |
+| the semantic skeleton must keep itself out of the gate, which collects `tests/` recursively (Codex) | `tests/semantic/conftest.py` ignores every file; nothing there is named `test_*` |
+| the acceptance lines need recorded numbers and a captured help text (both) | the gate invocation and the before and after counts are below; the help was diffed against the pre-split file: identical apart from argparse's program name and trailing whitespace on four blank lines |
+| WP0 bypasses the pull-request process (Codex) | by design for the package that creates the branch; recorded in the master plan |
+| the fixture generator's first signal left no headroom (found while building) | the logit gained thresholds, an interaction and a tenure curve: logistic 0.797, boosting with no feature work 0.832 |
+
+Gate: `pytest tests -q --ignore=tests/live --ignore=tests/manual
+--ignore=tests/deployment_examples` plus CI's two `--deselect`s, with
+`PYTHONPATH=<worktree>/src:<worktree>`. Before the split, after merging
+`main`: 1,235 passed, 27 skipped. After: 1,238 passed, 27 skipped (the
+three layout tests).
+
+## Proof run
+
+2026-10-24, `scripts/redesign/fresh_machine.sh`, run id `wp0b` (a first
+attempt, `wp0`, found two script bugs: the install script never received
+the wheel's name, and the smoke's `pkill -f` matched its own ssh shell;
+both fixed before this run). Machine `kapso-fresh-wp0b`, `e2-standard-4`,
+`us-central1-a`, Ubuntu 24.04, labels `purpose=kapso-fresh,run=wp0b`.
+
+- Wheel built from commit `379b4e70`: `leeroo_kapso-0.7.10-py3-none-any.whl`,
+  sha256 `fcc8a8153506a64616e0d8133792d218715730da6fe8924273582fc95013f58d`.
+- Installed as a `uv` tool on Python 3.12; `claude` 2.1.310 and `codex`
+  0.164.0 installed; Codex logged in with the API key over ssh stdin.
+- `kapso --help` and `python -m kapso.cli --help` on the tool's
+  interpreter both print the top-level help (the second shows the module
+  name as argparse's program, as expected).
+- `kapso doctor`: node, both CLIs and both logins, git, the embedding key
+  and gcloud all `[OK ]`; two `[FAIL]` rows, Weaviate and Neo4j, which the
+  default union demands for `learn_knowledge`'s merge; exit 1. See the
+  finding below.
+- `kapso evolve --goal smoke --output ./campaign --detach --iterations 1`
+  returned at once with the pid, the log, the status path and the watch
+  and inbox lines; its log shows the child session preflighting and
+  writing its MCP configuration, so the `-m kapso.cli` re-invocation works
+  in the installed package. The child was killed by its pid.
+- Deleted and verified gone (instance and disk), 0.07 h, about $0.01.
+  Local logs: `scripts/redesign/runs/wp0b/` (gitignored).
+
+## Findings for later packages
+
+- A fresh machine's plain `kapso doctor` exits 1 because the verb-less
+  union includes the knowledge-graph stores a first build never touches.
+  The setup skill (WP7) should run `doctor build`, and the doctor (WP6)
+  should report infrastructure a verb does not need as advisory in the
+  union, so a green first install is green.

@@ -37,7 +37,7 @@ and what proves it done.
 
 | WP | Name | Scope in one line | Owns | Depends on | Size |
 |---|---|---|---|---|---|
-| 0 | Foundations | the `redesign` branch; the CLI split into `src/kapso/cli/<verb>.py` and the handles module; the fresh-machine provisioning script; the semantic suite's skeleton | `src/kapso/cli/`, `scripts/redesign/`, `tests/semantic/` skeleton | none | S |
+| 0 | Foundations | the `redesign` branch; the CLI split into `src/kapso/cli/<verb>.py` and the handles module; the fresh-machine provisioning script; the semantic suite's skeleton | `src/kapso/cli/` (after WP0, each verb module passes to the package that owns the verb; `cli/__init__.py` and `cli/common.py` stay with WP0, and adding a verb is one module plus one tuple entry; `cli/learn.py` passes to WP3), `scripts/redesign/`, `tests/semantic/` skeleton | none | S |
 | 1 | `build` | `Brief`, `Budget`, `Solution`, `Software`, `Experience`; `Kapso.build()` replacing `evolve()`; `kapso build`; `Solution.open`; the rename in code, tests and skills | `src/kapso/handles.py`, the build section of the facade, `src/kapso/cli/build.py`, `skills/` | 0 | M |
 | 2 | Harness package | reference grammar and store; `check`; content hash in the record; staging per module (pages, skills, servers, delegates, merged hooks); prepared resources; prerequisite refusal; `kapso harness new\|check\|list\|add\|update\|remove\|export`; `--harness` on the three verbs | `src/kapso/harness/`, `src/kapso/cli/harness.py`, the staging seams in sessions and prompt assembly | 1 | L |
 | 3 | Experience | reference grammar and homes; `load_experience`, `add_experience`; `kapso experience add\|list\|share`; provenance intro; scope rule; `serving.enabled` removed; `kapso bank`, `learn init-bank`, `learn_knowledge`, `research`, `index_kg` retired into it | `src/kapso/experience/`, `src/kapso/cli/experience.py`, the serving layer | 1, 2 (scope) | M |
@@ -131,9 +131,12 @@ hosts), and before the release.
 
 | WP | Sub-plan | State |
 |---|---|---|
-| 0 | to write | |
+| 0 | `wp0-foundations.md` | built and reviewed; gate green; proof run on the fresh machine recorded in the sub-plan |
 | 1 | `wp1-build.md` | planned |
 | 2 to 11 | to write when next | |
+
+WP0 landed directly on `redesign` because it is the package that creates
+the branch; every later package comes in by pull request.
 
 ## 7. Risks
 
