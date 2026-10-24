@@ -43,6 +43,11 @@
 
 ## 3. To build, in order
 
+The implementation plan for these steps is `docs/plans/redesign/MASTER.md`:
+work packages with ownership and dependencies, the tests each carries, the
+semantic suite as the release gate, and one sub-plan per package written
+when it is next.
+
 1. **`build`**: `Brief`, `Budget`, `Solution` with `open()`; `evolve` renamed
    in the facade, the CLI, the skill and the docs.
 2. **The harness package**: reference resolution and the store under
