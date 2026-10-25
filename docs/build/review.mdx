@@ -76,15 +76,15 @@ summary.
   [inbox](/docs/build/inbox); the campaign continues the session that asked.
 
 When `branch` is `None`, no candidate produced a valid measurement; the
-experiment branches are still in the directory, and `kapso watch campaign
---tree` shows what each one did.
+experiment branches are still in the directory, and `kapso trace campaign`
+shows what each one did.
 
 ## The search, branch by branch
 
 ```bash
 git -C campaign branch         # generic_exp_0, generic_exp_1, …, main
 git -C campaign log --oneline generic_exp_2
-kapso watch campaign --tree    # each node: score, verdict, what it consulted
+kapso trace campaign           # each attempt: score, verdict, what it consulted
 ```
 
 Every experiment stays checked in; the delivered one is checked out.

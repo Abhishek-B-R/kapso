@@ -3,6 +3,7 @@ strategy that scores one candidate per run on a real branch and stages a
 harness exactly as the real one does, a fake inference backend, and the
 patches that keep the engine's sessions out of a test."""
 
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -155,8 +156,14 @@ def patch_engine(monkeypatch, *, inbox: Optional[Dict[str, Any]] = None) -> List
     about it patches the factory again after this."""
     monkeypatch.setattr(orchestrator_module.CodingAgentFactory, "create", staticmethod(lambda config: NoopAgent(config)))
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
-    monkeypatch.setattr(orchestrator_module, "load_mode_config", lambda *a, **k: dict(FAKE_MODE_CONFIG))
-    monkeypatch.setattr(kapso_module, "load_mode_config", lambda *a, **k: dict(FAKE_MODE_CONFIG))
+    # Every launch registers the campaign (wp6-observability.md): the
+    # registry is a file of the test's own, never the machine's.
+    mode_config = {
+        **FAKE_MODE_CONFIG,
+        "inbox": {"enabled": False, "registry": str(Path(tempfile.mkdtemp(prefix="kapso-registry-")) / "campaigns.jsonl")},
+    }
+    monkeypatch.setattr(orchestrator_module, "load_mode_config", lambda *a, **k: dict(mode_config))
+    monkeypatch.setattr(kapso_module, "load_mode_config", lambda *a, **k: dict(mode_config))
     monkeypatch.setattr(kapso_module, "run_preflight", lambda *a, **k: None)
     monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self, coding_agent=None: object())
     strategies: List[ScoringFakeStrategy] = []

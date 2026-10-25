@@ -173,7 +173,9 @@ def fake_orchestrator(
 
     inbox = (
         {"enabled": True, "stop_grace_seconds": 120, "registry": str(inbox_registry)}
-        if inbox_registry is not None else {"enabled": False}
+        # every launch registers the campaign, inbox on or off (wp6-observability.md)
+        if inbox_registry is not None
+        else {"enabled": False, "registry": str(Path(workspace).with_name("registry.jsonl"))}
     )
     monkeypatch.setattr(kapso_module, "load_mode_config", lambda config_path, mode=None: {"inbox": inbox})
     monkeypatch.setattr(kapso_module, "OrchestratorAgent", Orchestrator)

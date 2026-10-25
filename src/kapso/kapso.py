@@ -1474,8 +1474,10 @@ class Kapso:
                     ),
                     "dotenv_path": find_dotenv(usecwd=True),
                 })
-                if inbox_block.get("enabled"):
-                    register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
+                # Every launch registers the campaign, inbox on or off:
+                # `kapso watch` with no path lists what the registry knows
+                # (wp6-observability.md, change 8).
+                register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
         finally:
             in_flight = sys.exc_info()[1]
             if in_flight is not None:

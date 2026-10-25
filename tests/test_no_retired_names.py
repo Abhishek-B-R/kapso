@@ -37,8 +37,10 @@ RETIRED = re.compile(
     r"|serving_scope"
     r"|\bfamily:\w"
     # The observability package (wp6-observability.md): the session
-    # record is session.json, with the host's runs in it.
+    # record is session.json, with the host's runs in it; the watch tree
+    # is the trace's.
     r"|harness\.json"
+    r"|kapso watch[^\n`]*--tree"
 )
 ALLOWED_PATHS = (
     "benchmarks/relbench/data/learning_behavior/",

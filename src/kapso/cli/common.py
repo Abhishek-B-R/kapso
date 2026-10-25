@@ -2,14 +2,17 @@
 summary block. Each verb module imports what it needs from here; nothing
 here imports a verb module."""
 
+import json
 import os
 import subprocess
 import sys
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Sequence
 
 from kapso.execution.coding_agents.factory import CodingAgentFactory
+from kapso.execution.inbox import launch_receipt_path
 
 
 # Available coding agents
@@ -56,6 +59,8 @@ def _default_log(campaign: Path) -> Path:
     return campaign.with_name(campaign.name + ".log")
 
 
+
+
 def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) -> None:
     """Run this very command again in a session of its own, its output in
     a log file, and return at once with what the person needs to follow
@@ -80,6 +85,12 @@ def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) 
         )
         pid = child.pid
         del child
+    launch_receipt_path(campaign).write_text(json.dumps({
+        "pid": pid,
+        "log": str(log_path),
+        "argv": list(argv),
+        "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }, indent=2) + "\n", encoding="utf-8")
     print(f"{label} started in a session of its own (pid {pid})")
     print(f"  log:     {log_path}")
     print(f"  status:  {campaign / '.kapso' / 'status.json'}")

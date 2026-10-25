@@ -137,8 +137,8 @@ missing baseline is reported explicitly. `improved`, `regressed`, and
 `unchanged` are exact numeric comparisons, not statistical significance claims.
 
 `kapso watch ./campaign` shows the last candidate's comparison;
-`kapso watch ./campaign --tree` shows comparisons for checkpointed nodes,
-including after a restart. These are observational reports, not promotion
+`kapso trace ./campaign` shows every attempt's comparison, including after
+a restart. These are observational reports, not promotion
 decisions. Search ranking, stopping, and final selection still use internal
 scores. This keeps holdout measurements out of the optimization loop.
 
