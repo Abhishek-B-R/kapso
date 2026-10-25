@@ -51,7 +51,10 @@ def start_run(host: str, model: str, record_path: Optional[str], stream_path: Op
 def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Optional[BaseException]) -> Optional[Dict[str, Any]]:
     """Append this invocation's entry to the session's record and return
     it; nothing without a record. `error` is the exception in flight when
-    the invocation raised (the caller lets it propagate)."""
+    the invocation raised (the caller lets it propagate). The files
+    changed are the host's own account (the edit tools' inputs, the file
+    changes), not a git status of the directory, which sees the engine's
+    bookkeeping and misses what a session committed."""
     if recorder.record_path is None:
         return None
     digest = digest_stream(recorder.host, _appended_lines(recorder))
@@ -62,7 +65,7 @@ def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Opt
         cli_session_id=metadata.get("cli_session_id") or digest["cli_session_id"],
         exit=run_exit(result, error),
         error=_error_text(result, error),
-        files_changed=list(result.files_changed) if result is not None else [],
+        files_changed=digest["files"],
         started=recorder.started_at,
         ended=_utcnow(),
         duration_seconds=round(time.monotonic() - recorder.started_monotonic, 3),
@@ -103,12 +106,22 @@ def run_entry(
 
 def append_run(record_path: Path, entry: Dict[str, Any]) -> None:
     """Append one entry to the record's `runs`, pricing it against the
-    entry before it, and write the record whole."""
+    entry before it and naming the files changed relative to the session
+    directory, and write the record whole."""
     record = json.loads(Path(record_path).read_text(encoding="utf-8"))
     previous = record["runs"][-1] if record["runs"] else None
     entry["cost_usd"] = _cost_of_run(entry["cost_cumulative"], previous, entry["cli_session_id"])
+    entry["files_changed"] = relative_files(entry["files_changed"], record["session_dir"])
     record["runs"].append(entry)
     write_whole(Path(record_path), json.dumps(record, indent=2) + "\n")
+
+
+def relative_files(files: list, session_dir: str) -> list:
+    """The paths a host reported, relative to the session directory when
+    under it, as they are otherwise (a file written elsewhere is still a
+    fact), sorted and unique."""
+    root = str(session_dir).rstrip("/") + "/"
+    return sorted({path[len(root):] if path.startswith(root) else path for path in files})
 
 
 def run_exit(result: Optional[CodingResult], error: Optional[BaseException]) -> str:

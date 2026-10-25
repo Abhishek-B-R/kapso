@@ -84,6 +84,9 @@ def test_a_codex_implementation_session_reports_no_hooks_and_no_cost():
     assert digest["delegates"] == [{"name": "wait", "receivers": [], "status": "completed", "prompt": None}]
     assert len(digest["errors"]) == 2 and all("bypass-hook-trust" in error for error in digest["errors"])
     assert digest["last_message"].startswith("<code_changes_summary>")
+    # The files changed, from the file_change items (the host's paths).
+    assert [Path(path).name for path in digest["files"]] == ["PLAN.md", "changes.log", "eval_profile.md", "strategy.py"]
+    assert all(path.startswith("/") for path in digest["files"])
 
 
 def test_a_codex_setup_session_and_its_diagnostics_lines():

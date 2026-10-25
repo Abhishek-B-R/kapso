@@ -81,18 +81,26 @@ def result_event(text, cost, *, turns=3, error=False):
 def test_a_successful_turn_leaves_one_entry_with_its_digest(tmp_path, monkeypatch):
     record = session_record(tmp_path)
     agent = claude_agent(tmp_path, monkeypatch, record)
-    script = "\n".join([INIT, TOOL_USE, HOOK, result_event("done", 0.75)])
+    # The files changed are the host's own account (the edit tools'
+    # inputs), relative to the session directory; the adapter's git
+    # status (stubbed to another answer here) is not the record's source.
+    write = stream_event({"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": "t2", "name": "Write",
+         "input": {"file_path": str(tmp_path / "strategy.py"), "content": "x"}},
+        {"type": "tool_use", "id": "t3", "name": "Edit", "input": {"file_path": "/elsewhere/notes.md"}},
+    ]}})
+    script = "\n".join([INIT, TOOL_USE, write, HOOK, result_event("done", 0.75)])
     result = run_script(agent, monkeypatch, script)
     assert result.success and not result.refused
     [entry] = runs(record)
     assert entry["exit"] == "success" and entry["error"] is None
     assert entry["model"] == "test-model" and entry["cli_session_id"] == "s-1"
     assert entry["turns"] == 3 and entry["cost_usd"] == 0.75 and entry["cost_cumulative"] == 0.75
-    assert entry["tools"] == {"mcp__gated-knowledge__bank_index": 1}
+    assert entry["tools"] == {"mcp__gated-knowledge__bank_index": 1, "Write": 1, "Edit": 1}
     assert entry["gates"] == {"gated-knowledge": {"bank_index": 1}}
     assert entry["hooks"] == [{"event": "PreToolUse", "name": "PreToolUse:deny-snapshot", "decision": "deny",
                                "reason": "built once", "exit_code": 0, "outcome": "success"}]
-    assert entry["files_changed"] == ["strategy.py"] and entry["last_message"] == "reading the bank"
+    assert entry["files_changed"] == ["/elsewhere/notes.md", "strategy.py"] and entry["last_message"] == "reading the bank"
     assert entry["started"] <= entry["ended"] and entry["duration_seconds"] >= 0
     assert set(entry) >= {"delegates", "usage", "host_errors"}
 

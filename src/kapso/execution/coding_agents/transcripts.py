@@ -10,7 +10,7 @@ are skipped, as the adapters' parsers skip them; an event-shaped line
 that does not parse raises, since the stream is evidence."""
 import json
 from collections import Counter, defaultdict
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 CLAUDE_HOST = "claude_code"
 CODEX_HOST = "codex"
@@ -21,6 +21,8 @@ GATE_TOOL_PREFIX = "mcp__"
 # Claude Code's delegate task; its other task kinds are background shells.
 DELEGATE_TASK = "local_agent"
 DELEGATE_TOOL = "Agent"
+# The tools that write a file, and the input key naming it.
+EDIT_TOOLS = {"Write": "file_path", "Edit": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
 # What an event line starts with, per host.
 CLAUDE_EVENT_HEAD = "{"
 CODEX_EVENT_HEAD = '{"type":'
@@ -49,6 +51,7 @@ def _empty() -> Dict[str, Any]:
         "hooks": None,
         "delegates": [],
         "errors": [],
+        "files": [],
         "last_message": None,
     }
 
@@ -87,12 +90,13 @@ def digest_claude(lines: Iterable[str]) -> Dict[str, Any]:
     decided; `system/task_started` of a `local_agent` for a delegate,
     joined to its progress (usage), its notification (status, summary)
     and, when it ran in the foreground, the `Agent` tool's result (the
-    report); `result` for the turns, the duration and the host's
-    cumulative cost."""
+    report); the edit tools' inputs for the files written; `result` for
+    the turns, the duration and the host's cumulative cost."""
     digest = _empty()
     tools: Counter = Counter()
     gates: Dict[str, Counter] = defaultdict(Counter)
     hooks: List[Dict[str, Any]] = []
+    files: Set[str] = set()
     delegates: Dict[str, Dict[str, Any]] = {}
     delegate_uses: Dict[str, Dict[str, Any]] = {}      # tool_use_id -> {name, background}
     results: Dict[str, str] = {}                       # tool_use_id -> result text
@@ -141,6 +145,8 @@ def digest_claude(lines: Iterable[str]) -> Dict[str, Any]:
                         gates[server][tool] += 1
                     if name == DELEGATE_TOOL:
                         delegate_uses[part.get("id")] = part.get("input") or {}
+                    if name in EDIT_TOOLS and (part.get("input") or {}).get(EDIT_TOOLS[name]):
+                        files.add(str(part["input"][EDIT_TOOLS[name]]))
                 elif part.get("type") == "text" and part.get("text", "").strip():
                     digest["last_message"] = part["text"]
         elif kind == "user":
@@ -169,6 +175,7 @@ def digest_claude(lines: Iterable[str]) -> Dict[str, Any]:
     digest["gates"] = {server: dict(counts) for server, counts in gates.items()}
     digest["hooks"] = hooks
     digest["delegates"] = list(delegates.values())
+    digest["files"] = sorted(files)
     return digest
 
 
@@ -213,14 +220,16 @@ def digest_codex(lines: Iterable[str]) -> Dict[str, Any]:
     """Codex's `exec --json`: `thread.started` for the thread (the
     session), `item.completed` for the commands, the file changes, the
     gates' tools by server, the collaboration calls (a delegate spawned
-    or waited for) and the agent's messages (the last one is the closing
-    text), `error` items for the host's own errors, `turn.completed` for
-    the turns and the token usage. Codex reports no hook events and no
-    cost: `hooks` and `cost_cumulative` stay null."""
+    or waited for), the file changes (the files they name) and the
+    agent's messages (the last one is the closing text), `error` items
+    for the host's own errors, `turn.completed` for the turns and the
+    token usage. Codex reports no hook events and no cost: `hooks` and
+    `cost_cumulative` stay null."""
     digest = _empty()
     tools: Counter = Counter()
     gates: Dict[str, Counter] = defaultdict(Counter)
     delegates: List[Dict[str, Any]] = []
+    files: Set[str] = set()
     for event in _events(lines, CODEX_EVENT_HEAD):
         kind = event.get("type")
         if kind == "thread.started":
@@ -237,6 +246,8 @@ def digest_codex(lines: Iterable[str]) -> Dict[str, Any]:
                 gates[server][tool] += 1
             elif item_type in ("command_execution", "file_change"):
                 tools[item_type] += 1
+                for change in item.get("changes") or []:
+                    files.add(str(change["path"]))
             elif item_type == "collab_tool_call":
                 delegates.append({
                     "name": item.get("tool"),
@@ -252,4 +263,5 @@ def digest_codex(lines: Iterable[str]) -> Dict[str, Any]:
     digest["tools"] = dict(tools)
     digest["gates"] = {server: dict(counts) for server, counts in gates.items()}
     digest["delegates"] = delegates
+    digest["files"] = sorted(files)
     return digest

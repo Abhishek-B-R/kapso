@@ -17,16 +17,15 @@ being a killed invocation; the times from the node's start and its
 phases' durations), the pull log's `session` key (the event's time
 against the same windows) and the current schemas (the solution record's
 `session_failures`, the checkpoint's `experience`, a node's fields the
-dataclass has gained). The checkpoint's `code_diff` and `agent_output`
-are blanked, the trace reads neither. Paths under the campaign's own
-directory are rebased to `/campaign`.
+dataclass has gained). The checkpoint's `agent_output` is blanked (the
+trace does not read it; the diff it does, for the delivered files).
+Paths under the campaign's own directory are rebased to `/campaign`.
 
 `render` writes `<fixture-dir>/trace.txt`, the golden `kapso trace`
 output, with the fixture's absolute path written as `<campaign>`.
 Byte-for-byte: the same archive gives the same fixture.
 """
 import json
-import re
 import shutil
 import sys
 import tarfile
@@ -36,7 +35,7 @@ from pathlib import Path
 
 import yaml
 
-from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_SUCCESS, EXIT_TIMEOUT, append_run, run_entry
+from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_SUCCESS, EXIT_TIMEOUT, append_run, relative_files, run_entry
 from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, digest_claude
 from kapso.execution.run_checkpoint import RunCheckpoint
 from kapso.execution.search_strategies.base import SearchNode
@@ -58,7 +57,6 @@ SETUP_LABEL = "harness_setup"
 SETUP_MODULE = "setup"
 IMPLEMENTATION_FAILED = "Implementation failed: "
 DEADLINE_ERROR = "Claude Code CLI exceeded its deadline and was terminated"
-DIFF_FILE = re.compile(r"^diff --git a/(.+?) b/", re.MULTILINE)
 KEPT_RECORDS = ("status.json", "launch.json", "experiment_history.json")
 VERIFICATION_KEPT = ("verdict.json", "evaluation_output.txt")
 
@@ -97,13 +95,14 @@ def _build_from(campaign: Path, fixture: Path) -> None:
         record = {key: value for key, value in record.items() if key != "runs"}
         # WP2's records named no stream; the path is where the staging puts it.
         record["stream"] = rebase(record.get("stream") or f"{root}/{SESSIONS_DIR.as_posix()}/{label}/{STREAM_FILE}")
-        record["session_dir"] = rebase(record["session_dir"])
+        session_dir = record["session_dir"]
+        record["session_dir"] = rebase(session_dir)
         record["runs"] = []
         record_path = fixture / SESSIONS_DIR / label / SESSION_RECORD_FILE
         record_path.parent.mkdir(parents=True)
         record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
         node = next((n for n in nodes if n["branch_name"] == label), None)
-        for entry in _run_entries(stream, label, windows[label], node):
+        for entry in _run_entries(stream, label, windows[label], node, session_dir):
             append_run(record_path, entry)
 
     # The serving record and the pull log, each event stamped with the
@@ -136,7 +135,7 @@ def _build_from(campaign: Path, fixture: Path) -> None:
     checkpoint["schema_version"] = RunCheckpoint.SCHEMA_VERSION
     checkpoint.setdefault("experience", [])
     checkpoint["strategy_state"]["node_history"] = [
-        {**defaults, **node, "code_diff": "", "agent_output": ""} for node in nodes
+        {**defaults, **node, "agent_output": ""} for node in nodes
     ]
     RunCheckpoint.from_dict(checkpoint)
     (out / "run_state.json").write_text(rebase(json.dumps(checkpoint, indent=2) + "\n"), encoding="utf-8")
@@ -157,8 +156,11 @@ def _record_for(label: str, root: str) -> dict:
     label's grammar."""
     head = label.partition("/")[0]
     module = {IDEATION: IDEATION, VERIFICATION: VERIFICATION, FEEDBACK: FEEDBACK, SETUP_LABEL: SETUP_MODULE}.get(head, IMPLEMENTATION)
+    # An implementation session runs in its own directory under the
+    # campaign's `sessions/`; the others at the campaign root.
+    session_dir = f"{root}/sessions/{label}" if module == IMPLEMENTATION else root
     return {
-        "module": module, "host": CLAUDE_HOST, "harness": None, "session_dir": root,
+        "module": module, "host": CLAUDE_HOST, "harness": None, "session_dir": session_dir,
         "pages": [], "skills": [], "mcp_servers": [], "agents": [], "hooks": [], "prepared": [],
         "stream": f"{root}/.kapso/sessions/{label}/{STREAM_FILE}",
     }
@@ -210,11 +212,11 @@ def _session_at(moment: datetime, windows: dict) -> str:
     raise ValueError(f"no session window holds {moment.isoformat()}")
 
 
-def _run_entries(stream: Path, label: str, window: tuple, node: dict | None) -> list:
+def _run_entries(stream: Path, label: str, window: tuple, node: dict | None, session_dir: str) -> list:
     """One entry per invocation in a Claude Code stream: a slice ends at
     its `result` event; a trailing slice without one was killed at its
-    deadline. The implementation's last successful invocation changed the
-    files the node's diff names."""
+    deadline. The files changed are the edit tools' inputs, relative to
+    the session directory as the archive recorded it."""
     lines = stream.read_text(encoding="utf-8").splitlines(keepends=True)
     slices, current = [], []
     for line in lines:
@@ -245,12 +247,9 @@ def _run_entries(stream: Path, label: str, window: tuple, node: dict | None) -> 
             else (window[1] - window[0]).total_seconds() if len(slices) == 1 else 0.0
         )
         ended = clock + timedelta(seconds=duration)
-        files = DIFF_FILE.findall(node["code_diff"]) if (
-            node is not None and exit == EXIT_SUCCESS and number == len(slices)
-        ) else []
         entries.append(run_entry(
             digest, model=digest["model"] or model, cli_session_id=session_id, exit=exit, error=error,
-            files_changed=sorted(set(files)), started=clock.isoformat(timespec="seconds"),
+            files_changed=relative_files(digest["files"], session_dir), started=clock.isoformat(timespec="seconds"),
             ended=ended.isoformat(timespec="seconds"), duration_seconds=round(duration, 3),
         ))
         clock = ended

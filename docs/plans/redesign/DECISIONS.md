@@ -8,6 +8,24 @@ shows.
 
 ## 2026-10-25, WP6 (taken while building)
 
+**A run's files are the host's account; the delivered files are the
+diff's.** Both adapters took `files_changed` from a git status of the
+session directory, which listed the engine's own `.kapso/` directories
+for a judge session and nothing for a Codex implementation that had
+committed its work (the proof run's Codex-hosted build delivered a
+candidate whose trace said `files changed: none recorded`). The run
+entry now carries what the host itself reported writing: the edit
+tools' inputs on Claude Code, the `file_change` items on Codex,
+relative to the session directory. A file written through a shell
+command is not in that account, so the trace's delivered candidate
+names the files its branch's diff touches (the checkpoint node's
+`code_diff`), the ground truth of what the branch changed. Two facts,
+two sources, neither a fallback for the other. Alternative rejected:
+keeping the git status and filtering the engine's paths, which still
+misses a committed change and still depends on when the status was
+taken. Shows in `kapso.execution.coding_agents.transcripts` (`files`),
+`session_record.record_run` and `kapso.execution.trace._delivered`.
+
 **A launch is registered before its checks, and a receipt keeps it
 listed.** The proof run's first launch died at the evaluation suite's
 refusal before the campaign directory existed; `kapso watch campaign`

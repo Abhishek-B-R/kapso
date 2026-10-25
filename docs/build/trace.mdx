@@ -156,11 +156,15 @@ delivered        branch, commit, base_commit, files_changed, verification, feedb
 A run entry, as the session record holds it: `started`, `ended`,
 `duration_seconds`, `model`, `cli_session_id`, `exit`, `error`,
 `cost_usd` (this run's share of the host's cumulative figure),
-`cost_cumulative`, `turns`, `usage`, `tools` (by name), `gates` (by
-server, by tool), `hooks` (each with its event, name, decision and
-reason; `null` where the host reports none), `delegates` (each with its
-name, status, usage and report), `host_errors`, `files_changed`,
-`last_message`.
+`cost_cumulative`, `turns`, `usage` (the host's token counts), `tools`
+(by name), `gates` (by server, by tool), `hooks` (each with its event,
+name, decision and reason; `null` where the host reports none),
+`delegates` (each with its name, status, usage and report; on Codex the
+collaboration calls, by verb), `host_errors`, `files_changed` (the files
+the session wrote through its editing tools, relative to its directory;
+a file written by a shell command shows in the branch's diff instead),
+`last_message`. The delivered candidate's `files_changed` are the files
+its branch changed against the seed, from the diff.
 
 ## Where each file lives
 

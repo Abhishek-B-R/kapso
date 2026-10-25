@@ -12,7 +12,8 @@ delivered candidate. `--json` prints the same data, and `TraceView(data)`
 renders it again. No verdict line: the evidence is printed, and the
 reader concludes."""
 import json
-from collections import defaultdict
+import re
+from collections import Counter, defaultdict
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
@@ -59,6 +60,8 @@ HEADLINE_WIDTH = 160
 # line after it along.
 TITLE_WIDTH = 40
 STATUS_DONE = "done"
+# A unified diff's file header, the path after it.
+DIFF_HEADER = re.compile(r"^diff --git a/(.+?) b/", re.MULTILINE)
 STATUS_RUNNING = "running"
 STATUS_FAILED = "failed"
 
@@ -98,7 +101,7 @@ def read_trace(path) -> "TraceView":
         "lessons": _lessons(sources, pulls, nodes),
         "voided": _voided(nodes),
         "failures": _failures(sessions),
-        "delivered": _delivered(record, attempts),
+        "delivered": _delivered(record, nodes),
     }
     return TraceView(data)
 
@@ -382,23 +385,26 @@ def _failures(sessions) -> List[Dict[str, Any]]:
     return failures
 
 
-def _delivered(record, attempts) -> Optional[Dict[str, Any]]:
+def _delivered(record, nodes) -> Optional[Dict[str, Any]]:
+    """The delivered candidate: the files it changed are those its
+    branch's diff against the seed names (the node's `code_diff`), not
+    what a session's editing tools wrote, which a shell command bypasses."""
     if record is None or record.branch is None:
         return None
-    own = next((attempt for attempt in attempts if attempt["branch"] == record.branch), None)
-    files: Set[str] = set()
-    for session in (own["sessions"] if own is not None else []):
-        if session["module"] == IMPLEMENTATION:
-            for run in session["runs"]:
-                files.update(run["files_changed"])
+    node = next((node for node in nodes if node["branch_name"] == record.branch), None)
     return {
         "branch": record.branch,
         "commit": record.commit,
         "base_commit": record.base_commit,
-        "files_changed": sorted(files),
+        "files_changed": diff_files(node["code_diff"]) if node is not None else [],
         "verification": record.verification,
         "feedback": record.feedback,
     }
+
+
+def diff_files(diff: str) -> List[str]:
+    """The paths a unified diff names, sorted and unique."""
+    return sorted(set(DIFF_HEADER.findall(diff or "")))
 
 
 # ================================================================ the view
@@ -587,7 +593,12 @@ def _session_lines(session: Dict[str, Any], full: bool, indent: str = "  ") -> L
 def _run_summary(run: Dict[str, Any]) -> str:
     parts = [f"{run['exit']:<8}"]
     parts.append(f"{run['duration_seconds'] / 60:5.1f} min" if run["duration_seconds"] is not None else "    - min")
-    parts.append(f"${run['cost_usd']:.3f}" if run["cost_usd"] is not None else "cost n/a")
+    if run["cost_usd"] is not None:
+        parts.append(f"${run['cost_usd']:.3f}")
+    elif run["usage"]:
+        parts.append(f"{_tokens(run['usage'])} tokens")
+    else:
+        parts.append("cost n/a")
     parts.append(f"{run['turns']} turns")
     tools = {name: count for name, count in run["tools"].items() if not name.startswith(GATE_TOOL_PREFIX)}
     if tools:
@@ -603,10 +614,15 @@ def _run_summary(run: Dict[str, Any]) -> str:
     elif run["hooks"]:
         denied = sum(hook["decision"] == DENY for hook in run["hooks"])
         parts.append(f"hooks {len(run['hooks'])} fired" + (f", {denied} denied" if denied else ""))
-    if run["delegates"]:
+    delegates = [delegate for delegate in run["delegates"] if "receivers" not in delegate]
+    if delegates:
         parts.append("delegates " + ", ".join(
-            f"{delegate.get('name')} {delegate.get('status')}" for delegate in run["delegates"]
+            f"{delegate.get('name')} {delegate.get('status')}" for delegate in delegates
         ))
+    collab = Counter(delegate.get("name") for delegate in run["delegates"] if "receivers" in delegate)
+    if collab:
+        # Codex's collaboration calls: the verb, not a delegate's name.
+        parts.append("collab " + ", ".join(f"{verb} {count}" for verb, count in sorted(collab.items())))
     if run["error"] and run["exit"] != EXIT_ERROR and run["exit"] != EXIT_TIMEOUT and run["exit"] != EXIT_REFUSED:
         parts.append(f"error {_headline(run['error'])}")
     elif run["error"]:
@@ -632,6 +648,11 @@ def _run_detail(run: Dict[str, Any], indent: str) -> List[str]:
         reason = f": {hook['reason']}" if hook["reason"] else ""
         lines.append(f"{indent}hook {hook['event']} {hook['name']} -> {decision}{reason}")
     for delegate in run["delegates"]:
+        if "receivers" in delegate:
+            lines.append(f"{indent}collab {delegate.get('name')} ({delegate.get('status')})")
+            if delegate.get("prompt"):
+                lines += _indent(delegate["prompt"], indent + "  ")
+            continue
         lines.append(f"{indent}delegate {delegate.get('name')} ({delegate.get('status')})")
         if delegate.get("report"):
             lines += _indent(delegate["report"], indent + "  ")
@@ -724,6 +745,14 @@ def _delivered_lines(data: Dict[str, Any]) -> List[str]:
     lines.append("judge")
     lines += _indent(delivered["feedback"] or "(no feedback recorded)", "  ")
     return lines
+
+
+def _tokens(usage: Dict[str, Any]) -> str:
+    """A host's token usage in one figure: the input, cached included, and
+    the output."""
+    inputs = int(usage.get("input_tokens") or 0)
+    outputs = int(usage.get("output_tokens") or 0)
+    return f"{inputs / 1000:.0f}k in, {outputs / 1000:.1f}k out"
 
 
 def _headline(text: str, width: int = HEADLINE_WIDTH) -> str:
