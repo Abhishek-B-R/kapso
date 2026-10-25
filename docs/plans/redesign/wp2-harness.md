@@ -357,8 +357,8 @@ kapso harness new <name> [--dir <parent>]     # harness.yaml (version 0.1.0) + i
 kapso harness check <ref>                     # `check ok (…)`, warnings, `needs …`; exit 1 on a failure; prints `fetched <path>` when it fetched
 kapso harness list                            # bundled (none ship yet) and fetched, each with version and `needs …`; one line when the store is empty
 kapso harness add <ref>                       # fetch (git) + check + needs, never failing on them; a path is checked in place
-kapso harness update <ref|name>               # re-fetch a branch reference, re-check, print the version change
-kapso harness remove <ref|name>               # delete one fetched clone (every harness in it); a path is refused: nothing was fetched
+kapso harness update <ref>                    # re-fetch a branch reference, print the movement, then check it
+kapso harness remove <ref>                    # delete one fetched clone (every harness in it); a path is refused: nothing was fetched
 kapso build ... --harness <ref>               # wins over the brief's Harness line; validated before --detach forks
 kapso deploy <campaign> --harness <ref>       # must name the record's harness; another version is allowed and printed
 ```
@@ -906,7 +906,51 @@ scope and marked the evaluation invalid, so the record delivered nothing
 had carried the engine's `.kapso/repo_memory.json` and a thousand CSV
 lines beside the strategy change, fixed in `f7a80ee1`. Every harness
 path ran; what failed was the budget's end, which is WP4's finding
-below. The fresh-machine runs follow.
+below.
+
+**Two fresh machines, 2026-10-25**, `kapso-fresh-wp2-claude` and
+`kapso-fresh-wp2-codex` (`e2-standard-4`, Ubuntu 24.04, the wheel as a
+`uv` tool, Claude on the shared token, Codex on the API key), the trading
+example copied over with its data generated on the machine, the harness's
+and the example's requirements on the system `python3`
+(`pip install --break-system-packages`), `kapso harness check
+../harnesses/trading` printing `check ok (7 skills, 2 agents, 2 servers, 6
+hooks)` and `kapso doctor build` passing on both. The first launches
+(wheel from `42729205`) died in the setup session on both machines within
+a minute: Claude Code's `--session-id` wants a UUID (the fix in
+`d603e892`); `kapso watch` showed the campaign `RUNNING ⚠ DEAD` with the
+traceback in the log only (a finding below). Both were relaunched at
+11:12 UTC on the wheel from `d603e892`, seventy-five minutes and two
+experiments. Archives under `scripts/redesign/runs/<id>/` (gitignored);
+`proof_check.py` in the session scratchpad reads them.
+
+| | `wp2-claude` | `wp2-codex`, `--coding-agent codex` |
+|---|---|---|
+| setup session | 364 s, $1.84, `prepared/market-data` with `MANIFEST.json`, the domain statement in `kapso_task.md` (10.8 KB) | 287 s, $1.39, the same; one hook denial in its stream |
+| implementation | 11:24:51 to 11:32:22, scored at 11:27:49 on its first evaluation run | one run, the auditor asked |
+| verification | 16 min with the `lookahead-auditor` delegate (122 mentions in the stream); `valid`, two `shift(-1)` findings in a recon script, explained | `valid`, three findings of the same kind, explained |
+| result | 11:59, 45.4 min, **1.9336**, `goal_achieved`, one experiment, $13.04 | 11:54, 40.3 min, **1.9944**, `goal_achieved`, one experiment, $12.96 |
+| records | one identity in `launch.json`, `status.json`, `run_state.json`, `solution.json`; `status.phases` with `harness_setup` and `verification`; the checkpoint's `harness_setup` done | the same |
+| sessions | `harness_setup`, `ideation/iter1/claude_code`, `generic_exp_0`, `verification/generic_exp_0`, `feedback/generic_exp_0`, each with `harness.json` and `stream.jsonl`; the `SessionStart` hook's response in every stream, its context line in the implementation and verification sessions, the `Agent` tool with the harness's delegates in implementation, verification and feedback | the same |
+| second process | `Solution.open` read the record with `harness` and `verification` filled | the same |
+
+Every item of the proof-run list holds on both, with one exception that
+is a finding: the second machine's sessions all ran on Claude Code.
+`--coding-agent codex` does not route the implementation session in the
+`GENERIC` mode, which reads `implementation_cli` from the strategy's
+parameters (default `claude_code`), so the Codex rows of the host table
+were not exercised by that run. A third campaign on the same machine, on
+the wheel from `f0a81497` with a config copy that sets
+`implementation_cli: codex` (forty-five minutes, one experiment), runs
+implementation and, since the review moved it to the attempt's host,
+verification on Codex; its outcome is recorded below as it lands.
+
+CODEX_PROOF_RESULT
+
+What the judge noticed on the second machine and the engine did not: the
+implementer wrote a new file, `kapso_evaluation/eval_profile.md`, under the
+protected directory, and the integrity check, which rejects a modified
+evaluator, let a new file pass. A finding below.
 
 ## Author test (S3)
 
@@ -988,6 +1032,17 @@ harnesses are kept with the run records (`scripts/redesign/runs/wp2-s3/`).
 - **The Codex adapter leaves a file unclosed** (WP6): `codex_agent.py:264`
   prints `ResourceWarning: unclosed file` in the campaign log after an
   ensemble member's session; pre-existing.
+- **`--coding-agent` does not route the implementation session** (WP4).
+  The `GENERIC` strategy reads `implementation_cli` from its parameters
+  and the flag reaches another field; the second proof machine ran every
+  session on Claude Code under `--coding-agent codex`. The config without
+  modes must make the one knob the flag sets the one the strategy reads,
+  and the CLI reference must say what the flag does until then.
+- **A new file under `kapso_evaluation/` passes the integrity check**
+  (WP6, evaluation governance). The second machine's implementer wrote
+  `kapso_evaluation/eval_profile.md`; the check rejects a modified
+  evaluator and let the addition through, and only the judge noticed. The
+  protected directory should be protected as a tree.
 - **`strict_mcp_config` and the `.claude_mcp` cleanup race**, pre-existing,
   noted in change 9 and left alone.
 
@@ -1118,4 +1173,77 @@ plan above now says so.
 | Q5.7 what to cut | the order of the Changes follows it, except verification, which stays in the first slice because the trading harness's promise is the verdict |
 | Q6 names | `HarnessEnvironment`, `missing`, `harness/bundled/`, `stage_harness` and `StagedHarness`, `remove` for fetched clones only (and no `forget`: the recently-used list is dropped), `check_harness`, `HarnessReferenceError`, `harness_setup`; `kapso_task.md`, `prepared/`, `verdict.json` kept |
 
-The pull-request review is recorded here when the package is built.
+### The pull request: Codex (gpt-6-astra, xhigh), 2026-10-25
+
+Run on `42729205` with `scripts/redesign/review.sh` (findings in the
+session scratchpad, `review_wp2/codex.md`); answered in `6c3e4ffe`
+(the P1s), `011e0361` and `f0a81497`.
+
+| Finding | Answer |
+|---|---|
+| P1 a resume on the same object compared the pre-reload hash | fixed: the loaded handle is reloaded before the checkpoint comparison; test on the same object |
+| P1 a void attempt could become the next parent | fixed: the committed-work fallback skips a void; `_select_parent()` tested |
+| P1 a void attempt could be delivered when the judge raised or the evaluator bridge restored validity | fixed: the void is applied on the judge's except path and kept by the bridge; `is_deliverable` admits `None` or `valid` only. The except itself is pre-existing engine behaviour (a judge failure keeps the evaluation's score) and stays |
+| P1 `Kapso.research()` raised AttributeError | fixed: the constructor's stranded line is back; a test constructs a real `Kapso()` |
+| P2 concurrent staging not atomic | fixed: staging is serialised with a lock, temporary names are unique |
+| P2 staging accumulates across modules | fixed: a module's staging leaves exactly its skills, hooks and delegates in a shared directory; tested across setup, feedback and learning |
+| P2 `.gitignore` substring match | fixed: whole lines; tested with a comment and a `.claude/settings.local.json` seed |
+| P2 a tracked `kapso_task.md` overwritten | fixed: refused before the write |
+| P2 the maintainer's setup session can change pinned data | fixed: `kapso_datasets/` is pinned across it too |
+| P2 setup and verification exceed the budget | fixed: the setup clamp reads a budget view; the verification clamp is taken per attempt and no retry runs under the budget's deadline |
+| P2 a setup request does not pause before the maintainer | fixed: the maintainer's setup waits while the question stands |
+| P2 a `.env` fix after loading reaches `check` but not the sessions | fixed: `.env` is read again after the prerequisite check passes |
+| P2 the `Bearer ${TOKEN}` example fails on Codex, `check` silent | fixed: a reference inside a longer value is a failure; the docs and the guide show a whole-value reference |
+| P2 Codex loses env renaming | fixed: an `env` entry must name the variable it forwards, a `check` failure otherwise; documented |
+| P2 raw Codex ideation sessions lack `KAPSO_HARNESS_ROOT` | fixed: the runner takes the staged environment |
+| P2 null required fields pass `check` | fixed: an empty value is a finding; no manifest without a finding is a failure |
+| P2 a malformed server env crashes `check` | fixed and tested |
+| P2 markers read in the engine's interpreter | fixed: `python3` reports its own marker environment |
+| P2 `source.json` inside the clone changes a root harness's hash | fixed: the record sits beside the clone |
+| P2 two revisions share a cached checkout | fixed: a second reference naming the same directory is refused by name |
+| P2 later judgments write the first attempt's stream | fixed: the judge's staging is merged onto its own settings at every judgment |
+| P2 ideation sessions keep their own stream path | the ideation artifacts stay where the selector reads them; the session record now names the stream it writes (`stream`), and the docs say where an ideation stream lives |
+| P2 deploy and learn reject recorded git shorthand | fixed: a git form of any kind counts as reachable; tested |
+| P2 a loaded harness attached to a generic campaign | fixed: refused |
+| P2 learning attachments never staged | as recorded in Findings: WP3 shapes the crews' sessions; the pages reach them today |
+| P2 learning by path loses provenance | fixed: a campaign directory with a record resolves its harness as a Solution does |
+| P2 a changed version at the recorded source is silent | fixed: both identities are printed on that branch too |
+| P2 a detached resume skips the prerequisite check | fixed: the launch record's harness is loaded and checked before the fork; tested |
+| P2 `harness update` skips the check | fixed |
+| P2 the adapter swallows staging refusals | fixed: a `HarnessError` propagates; tested |
+| P2 the protect hook misses `*** Move to:` | fixed in both file hooks |
+| P2 prepared resources documented as read-only | fixed: the docs say the file-tool hook denies a write and a shell is not covered |
+| P2 the acceptance evidence missing; `--coding-agent codex` does not put verification on Codex | the proof runs above; verification now runs on the implementation CLI, and the flag's routing is a WP4 finding |
+| P3 the task statement's budget shows `the config's` | fixed: the resolved values, `none` where no limit |
+| P3 `VERIFICATION_ATTEMPTS` literal | fixed: `harness.verification_attempts` in the config |
+| P3 function-local imports in tests | fixed |
+| P3 documented exception types | fixed: the reference names the parser's error and `RunCheckpointIncompatibleError` |
+
+### The pull request: Claude Code (opus-5), 2026-10-25
+
+Run on the same brief, reading at `6c3e4ffe` (`review_wp2/claude.md`);
+three of its heaviest findings were the Codex P1s already fixed.
+
+| Finding | Answer |
+|---|---|
+| High `.gitignore` substring match lets staged files into candidate commits | fixed, as above |
+| High a failed verification session is indistinguishable from silence; the retry reuses an expired clamp | fixed: the session's error reaches the verdict's summary, the clamp is taken per attempt, and no retry runs when the budget set the deadline; tested |
+| Medium-high an empty `name`, `version` or `description` passes `check` | fixed, as above |
+| Medium staged skills accumulate across modules | fixed, as above |
+| Medium the judge's staging merged once | fixed, as above |
+| Medium ideation sessions keep their own stream path | the record names it; the docs say so |
+| Medium an unmapped coding agent dies inside the first staging; the adapter's fallback cannot run under a harness | fixed: an explicit `--coding-agent` with no staging is refused at the call; the adapter lets the refusal through instead of trying the fallback |
+| Medium Codex ideation sessions lack the environment | fixed, as above |
+| Medium a setup request does not pause before the maintainer | fixed, as above |
+| Medium-low `update` and `remove` take no name | by design: a fetched harness is named by its reference, which `list` prints; the plan's CLI section now says `<ref>` |
+| Medium-low deploy and learn print both identities only when loaded | fixed, as above |
+| Low the launch print claims an override that did not happen | fixed: the brief's line is compared as a resolved directory or the reference as written |
+| Low `kapso harness list` raises on an unparsable manifest in the store | fixed: a harness with findings lists by its directory, `check` says what is wrong |
+| Medium-low the `needs` sample output and the launch print in the docs | fixed to what the code prints |
+| Low "read-only" in the docs and the setup prompt | fixed: pinned by the hooks, not read-only |
+| Low `rejected_candidates` in the API reference; "forty" files | fixed |
+| Low the guidance block's attachment sections undocumented | fixed in the reference and the use page |
+| Rule 1 `VERIFICATION_ATTEMPTS` | fixed, in the config |
+| Low the hash ignores file mode | kept: a hook or script runs through `python3 <path>`, so the mode changes nothing the engine runs; paths and bytes stay the identity |
+| Question: two `default_tools_approval_mode` overrides for a streamable-http server on Codex | fixed: the key is written once, the harness's mode when it has one |
+| Tests: the fallback agent under a harness, the unmapped host on a build, a failing verification session, the support stub's copy of `stage_harness_for`, two dead assertions | the first three tested; the stub calls the engine's own method; both assertions rewritten |

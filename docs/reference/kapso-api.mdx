@@ -110,7 +110,7 @@ build(
 | `iteration_evaluator` | Score every finalized candidate with your own evaluator, in an isolated worktree | `None` |
 | `iteration_evaluator_failure_policy` | `record` stores your evaluator's error on the candidate; `raise` stops the run | `"record"` |
 | `mode` | Config mode, `GENERIC` or `MINIMAL` | from config |
-| `coding_agent` | Override the agent that writes code | from config |
+| `coding_agent` | Override the coding agent. In mode `GENERIC` the implementation and verification sessions run on the strategy parameter `implementation_cli` (`claude_code` unless a config sets it), which this argument does not change | from config |
 | `context` | Extra context passed to the campaign, such as research findings | `None` |
 | `additional_context` | Free text appended to the campaign context | `""` |
 | `serving_scope` | Restrict which banked lessons are served | `None` |
