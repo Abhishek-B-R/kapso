@@ -26,6 +26,7 @@ MINING_CONFIG = {
     "critic_model": "critic-model",
     "timeout_minutes": 1,
     "repair_rounds": 1,
+    "run_root": "learning/mining",
 }
 
 

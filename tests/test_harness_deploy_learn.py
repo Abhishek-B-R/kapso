@@ -3,9 +3,10 @@ the object when one is loaded (the build's name, any version) and from
 the record otherwise; a different name, a source that is gone, and an
 unmet requirement of the verb's own module are refused by name; the
 deployment module is staged into the selector's and the adapter's
-sessions; the learning pages join the crews' prompts; the trajectory
-manifest carries the build's harness and the learning one when it
-differs."""
+sessions; the learning module into the mining lead's session at the
+bundle root (removed with it, the bundle left as harvested) and into the
+update run's lead and codex workers; the trajectory manifest carries the
+build's harness and the learning one when it differs."""
 
 import json
 import shutil
@@ -21,10 +22,14 @@ from kapso.deployment.adapter.agent import AdapterAgent
 from kapso.deployment.selector.agent import SelectorAgent
 from kapso.execution.coding_agents.base import CodingResult
 from kapso.handles import HarnessRef
-from kapso.harness import HarnessError, load_harness
-from kapso.harness.staging import pages_block
-from kapso.learning.trajectory_store import save_trajectory
+from kapso.harness import HARNESS_ROOT_VARIABLE, HarnessError, load_harness
+from kapso.learning.mining import FORMAT_DOC_NAME, MiningFrame
+from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
+from kapso.learning.update_frame import UpdateFrame
+from tests.test_bank_retriever import card_text
+from tests.test_mining_frame import MINING_CONFIG, FakeFactory, FakeLead, write_valid_mined
 from tests.test_trajectory_store import TRAJECTORY_ID, build_work_dir, make_store
+from tests.test_update_frame import good_lead, make_batch, make_config, seed_bank_home
 from kapso.kapso import Kapso, _source_is_reachable
 from tests.handles_support import facade, make_solution
 
@@ -182,14 +187,142 @@ def test_without_a_harness_the_deploy_sessions_are_unchanged(tmp_path, monkeypat
 
 # ------------------------------------------------------------------- learn
 
-def test_the_learning_pages_block_holds_both_pages_and_no_paths(tmp_path, harness_dir):
-    harness = loaded(tmp_path, harness_dir)
-    block = pages_block(harness, "learning")
-    assert block.startswith("## Domain guidance (harness trading 0.1.0)")
-    assert (harness_dir / "instructions" / "guardrails.md").read_text().strip() in block
-    assert (harness_dir / "instructions" / "learning.md").read_text().strip() in block
-    assert "### Paths" not in block and "Task statement" not in block
-    assert pages_block(None, "learning") == ""
+def learning_harness(tmp_path, harness_dir):
+    """The trading harness with a learning module: the fixture ships pages
+    only, so the module's attachments are added here."""
+    manifest = harness_dir / "harness.yaml"
+    manifest.write_text(manifest.read_text() + (
+        "  learning:\n"
+        "    skills: [backtesting]\n"
+        "    mcp_servers: [market-data]\n"
+        "    agents: [risk-reviewer]\n"
+        "    hooks: [deny-web-fetch]\n"
+    ))
+    return loaded(tmp_path, harness_dir)
+
+
+def test_the_mining_lead_is_staged_with_the_learning_module_and_the_bundle_is_left_as_harvested(tmp_path, harness_dir):
+    harness = learning_harness(tmp_path, harness_dir)
+    store = TrajectoryStore(local=str(tmp_path / "store"))
+    work_dir, log = build_work_dir(tmp_path / "src")
+    save_trajectory(store, TRAJECTORY_ID, work_dir=str(work_dir), campaign_log=str(log))
+    bundle = store.resolve(TRAJECTORY_ID)
+    seen = {}
+
+    def snoop(workspace):
+        root = Path(workspace)
+        seen["skill"] = (root / ".claude" / "skills" / "backtesting" / "SKILL.md").is_file()
+        seen["hooks"] = (root / ".claude" / "harness-hooks.json").is_file()
+        seen["delegates"] = list(json.loads((root / ".claude" / "harness-agents.json").read_text()))
+        seen["crew_agents"] = sorted(p.name for p in (root / ".claude" / "agents").glob("*.md"))
+        return write_valid_mined(workspace)
+
+    lead = FakeLead([snoop])
+    factory = FakeFactory(lead)
+    config = {**MINING_CONFIG, "run_root": str(tmp_path / "mining")}
+    mined = MiningFrame(store, config, agent_factory=factory).mine(TRAJECTORY_ID, harness=harness)
+
+    # The session had the module beside the crew's own agent definitions.
+    assert mined == bundle / "mined"
+    assert seen == {"skill": True, "hooks": True, "delegates": ["risk-reviewer"], "crew_agents": ["critic.md", "flow-writer.md"]}
+    [config_used] = factory.configs
+    specific = config_used.agent_specific
+    assert specific["settings_path"] == str(bundle / ".claude" / "harness-hooks.json")
+    assert specific["agents_path"] == str(bundle / ".claude" / "harness-agents.json")
+    assert set(specific["mcp_servers"]) == {"market-data"}
+    assert specific["env_overrides"] == {HARNESS_ROOT_VARIABLE: str(harness.path)}
+    assert specific["streaming"] is True and specific["effort"] == "xhigh"
+    prompt = lead.prompts[0]
+    assert prompt.startswith("Mine this trajectory bundle")
+    assert (harness_dir / "instructions" / "guardrails.md").read_text().strip() in prompt
+    assert (harness_dir / "instructions" / "learning.md").read_text().strip() in prompt
+    assert "- backtesting — " in prompt and "`/backtesting`" in prompt
+    assert "Task statement" not in prompt      # the campaign had none
+    # The staging went with the session; the bundle is as harvested, with
+    # its derived view committed; the session's record and stream are in
+    # the mining run's directory, never in the bundle.
+    assert not (bundle / ".claude").exists() and not (bundle / FORMAT_DOC_NAME).exists()
+    assert not (bundle / ".kapso").exists()
+    assert store.manifest(TRAJECTORY_ID)["derived"]["mined"]["files"] > 0
+    record_dir = tmp_path / "mining" / TRAJECTORY_ID.replace("/", "--") / ".kapso" / "sessions" / "lead"
+    record = json.loads((record_dir / "harness.json").read_text())
+    assert record["module"] == "learning" and record["host"] == "claude_code" and record["skills"] == ["backtesting"]
+    assert specific["stream_artifact_path"] == str(record_dir / "stream.jsonl")
+
+
+def test_a_bundle_holding_a_staging_directory_of_its_own_is_refused_by_name(tmp_path):
+    store = TrajectoryStore(local=str(tmp_path / "store"))
+    work_dir, log = build_work_dir(tmp_path / "src")
+    save_trajectory(store, TRAJECTORY_ID, work_dir=str(work_dir), campaign_log=str(log))
+    (store.resolve(TRAJECTORY_ID) / ".agents" / "skills").mkdir(parents=True)
+    frame = MiningFrame(store, {**MINING_CONFIG, "run_root": str(tmp_path / "mining")}, agent_factory=FakeFactory(FakeLead([])))
+    with pytest.raises(FileExistsError, match=r"contains a \.agents directory that is not the mining crew's"):
+        frame.mine(TRAJECTORY_ID)
+
+
+def test_the_update_lead_and_its_workers_are_staged_with_the_learning_module(tmp_path, harness_dir):
+    harness = learning_harness(tmp_path, harness_dir)
+    config = make_config(tmp_path)
+    store = TrajectoryStore.from_config(config)
+    seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
+    batch = make_batch(tmp_path, store)
+    lead = FakeLead([good_lead])
+    factory = FakeFactory(lead)
+    run_dir = UpdateFrame(store, config, agent_factory=factory).run_update(
+        batch, config["learning"]["update_crew"]["run_root"], "crew_v1", harness=harness,
+    )
+
+    # The lead: the module in Claude Code's format, the guidance after its prompt.
+    [config_used] = factory.configs
+    specific = config_used.agent_specific
+    assert specific["settings_path"] == str(run_dir / ".claude" / "harness-hooks.json")
+    assert set(specific["mcp_servers"]) == {"market-data"}
+    assert (run_dir / ".claude" / "skills" / "backtesting" / "SKILL.md").is_file()
+    assert (run_dir / ".claude" / "agents" / "critic.md").is_file()
+    page = (harness_dir / "instructions" / "learning.md").read_text().strip()
+    assert page in lead.prompts[0] and "`/backtesting`" in lead.prompts[0]
+    assert lead.prompts[0].index("THE LOOP") < lead.prompts[0].index(page)
+    # The workers: codex's format, the launcher exporting the harness's
+    # variables, reading the guidance between the role and the assignment,
+    # passing the servers, the delegates and the hook trust.
+    assert (run_dir / ".agents" / "skills" / "backtesting" / "SKILL.md").is_file()
+    assert (run_dir / ".codex" / "hooks.json").is_file()
+    assert (run_dir / ".codex" / "harness-agents" / "risk-reviewer.toml").is_file()
+    launcher = (run_dir / "run-role.sh").read_text()
+    assert f"export {HARNESS_ROOT_VARIABLE}={harness.path}\n" in launcher
+    assert 'cat "role-prompts/$ROLE.md" harness-guidance.md "$ASSIGNMENT" | codex exec' in launcher
+    assert "--dangerously-bypass-hook-trust" in launcher
+    assert "mcp_servers.market-data.command=" in launcher and "agents.risk-reviewer.description=" in launcher
+    guidance = (run_dir / "harness-guidance.md").read_text()
+    assert page in guidance and "`$backtesting`" in guidance and "- risk-reviewer — " in guidance
+    assert "Task statement" not in guidance
+    for session, host in (("lead", "claude_code"), ("workers", "codex")):
+        record = json.loads((run_dir / ".kapso" / "sessions" / session / "harness.json").read_text())
+        assert record["module"] == "learning" and record["host"] == host
+
+
+def test_without_a_harness_the_crews_sessions_are_unchanged(tmp_path):
+    config = make_config(tmp_path)
+    store = TrajectoryStore.from_config(config)
+    seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
+    batch = make_batch(tmp_path, store)
+    factory = FakeFactory(FakeLead([good_lead]))
+    run_dir = UpdateFrame(store, config, agent_factory=factory).run_update(
+        batch, config["learning"]["update_crew"]["run_root"], "crew_v1",
+    )
+    launcher = (run_dir / "run-role.sh").read_text()
+    assert 'cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec' in launcher
+    assert "export" not in launcher and launcher.endswith("-c 'model_reasoning_effort=\"xhigh\"'\n")
+    assert not (run_dir / ".kapso").exists() and not (run_dir / ".agents").exists()
+    [config_used] = factory.configs
+    assert set(config_used.agent_specific) == {"auth_mode", "effort", "append_system_prompt", "streaming"}
+
+    mining = FakeFactory(FakeLead([write_valid_mined]))
+    MiningFrame(store, {**MINING_CONFIG, "run_root": str(tmp_path / "mining")}, agent_factory=mining).mine(TRAJECTORY_ID)
+    bundle = store.resolve(TRAJECTORY_ID)
+    assert not (tmp_path / "mining").exists() and not (bundle / ".claude").exists()
+    [config_used] = mining.configs
+    assert set(config_used.agent_specific) == {"auth_mode", "effort", "append_system_prompt", "streaming"}
 
 
 def test_the_trajectory_manifest_carries_both_harness_keys(tmp_path):

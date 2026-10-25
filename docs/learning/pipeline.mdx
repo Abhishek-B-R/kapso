@@ -60,7 +60,7 @@ kapso learn dev import --archive gs://bucket/runs/task/20260731T092629_lane-a2.t
 
 ## Mine
 
-Mining reads a bundle into derived views. The raw bundle is never modified; `mined/` sits beside it.
+Mining reads a bundle into derived views. The raw bundle is never modified; `mined/` sits beside it. On a campaign built with a harness, the lead's session is staged with the harness's learning module at the bundle root, and the staging goes with the session: a harvest leaves the hosts' staging directories out of a bundle, so the bundle is as harvested before and after. The session's record and stream are kept under `learning/mining/<trajectory>/`.
 
 | File | What it holds |
 |------|---------------|

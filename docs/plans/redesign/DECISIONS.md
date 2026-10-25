@@ -141,6 +141,40 @@ dev <command>` with the same flags, and the engineer's form is the plain
 one. Alternative rejected: a subcommand named `campaign`, which is not
 what the onboarding grammar and the docs promise.
 
+**The learning crews are staged in full, and a harvest leaves the hosts'
+staging directories out of a bundle.** The pages-only block the crews'
+prompts carried is gone: the mining lead is staged at the bundle root like
+any session (the learning module's skills, servers, delegates and hooks
+beside the crew's own agent definitions and the contract), the update lead
+in its run directory, and the update crew's `codex exec` workers in the
+same directory in codex's format, `run-role.sh` exporting the harness's
+variables and passing the staged servers, agent roles and hook trust, the
+guidance read from a file beside the launcher. For a bundle to take a
+staging and stay as harvested, the harvest leaves `.claude`, `.agents` and
+`.codex` out at every level: they are the harness's files, recoverable from
+the hash the manifest records, and the session records under
+`.kapso/sessions`, which stay, say what each session ran with. The mining
+crew owns those names at a bundle root for its session and refuses any
+other occupant by name. Alternatives rejected: hiding a harvested `.claude`
+for the session's length (the immutability check would have to learn the
+hidden path, and the lead would see a directory the inventory does not
+name); a symlinked view of the bundle for the session (the record and the
+stream would land in the bundle through the links).
+
+**A mining run has a directory of its own, `learning.mining.run_root`.**
+Staging writes a session's record and stream under the campaign's
+`.kapso/sessions`; a bundle takes no writes, so `stage_harness` takes a
+`records_dir`, and a mining run's go to
+`<run_root>/<trajectory>/.kapso/sessions/lead/`, an update run's to
+`<run_dir>/.kapso/sessions/{lead,workers}/`, as every other crew keeps its
+runs under `learning/`. The mined view itself stays in the bundle.
+
+**The guidance names the task statement only when the campaign has one.**
+A learning run's directory has none and an archived campaign has its
+build's; a build writes the statement before its sessions, and the setup
+session, which writes the domain statement the task statement is composed
+from, has the path in its own prompt.
+
 ## 2026-10-25, WP2 (taken while building)
 
 **A harness's Python requirements are checked against `python3` on PATH,

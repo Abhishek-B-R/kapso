@@ -99,7 +99,7 @@ from kapso.harness import (
     unmet_message,
 )
 from kapso.harness import BUNDLED_ROOT
-from kapso.harness.staging import host_for, pages_block
+from kapso.harness.staging import host_for
 from kapso.execution.inbox import (
     Request,
     idea_line,
@@ -667,8 +667,8 @@ class Kapso:
 
         # The harness for the learning sessions: the build's (or the loaded
         # one, which must share its name) for a Solution; the loaded one, if
-        # any, for a path or a trajectory id. Its learning pages join the
-        # crews' prompts; the trajectory records which harness learned.
+        # any, for a path or a trajectory id. Its learning module is staged
+        # into the crews' sessions; the trajectory records which harness learned.
         # A campaign directory with a record is the same case as its Solution.
         record = source if isinstance(source, Solution) else None
         if record is None and isinstance(source, str) and (Path(source) / ".kapso" / "solution.json").is_file():
@@ -825,7 +825,7 @@ class Kapso:
         manifest = store.manifest(trajectory_id)
         if not manifest.get("derived", {}).get("mined"):
             mined_dir = MiningFrame.from_config(self._config).mine(
-                trajectory_id, domain_guidance=pages_block(learning_harness, "learning")
+                trajectory_id, harness=learning_harness
             )
             print(f"  Mined view: {mined_dir}")
             status.note(f"mined view written ({mined_dir})")
@@ -879,7 +879,7 @@ class Kapso:
             [{"trajectory": trajectory_id}],
             learning_config["update_crew"]["run_root"],
             version,
-            domain_guidance=pages_block(learning_harness, "learning"),
+            harness=learning_harness,
         )
         bank_head_after = self._bank_head()
 

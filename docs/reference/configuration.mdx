@@ -310,10 +310,10 @@ Everything about trajectory learning: mining finished campaigns into an evidence
 |-----|------------------|
 | `trajectory_store` | `local` path and optional `remote` for imported campaigns |
 | `bank` | `local_path` of the bank repository |
-| `serving` | Whether banked lessons are served into campaigns and host sessions (`enabled`), and where a host session's pinned bank is staged (`session_root`) |
+| `serving` | `session_root`, where `kapso-mcp` stages a host session's sources (one directory per process, removed when the server exits) |
 | `retriever` | `probe_budget` for lesson retrieval |
 | `harvest` | Whether finished campaigns are harvested automatically |
-| `mining` | How trajectories are mined into their derived views |
+| `mining` | How trajectories are mined into their derived views (the crew's models, `timeout_minutes`, `repair_rounds`), and `run_root`, where a mining run keeps its session's harness record and stream |
 | `graders` | The grader suite settings |
 | `update_crew` | The crew that folds lessons in: roles, repair rounds, timeouts |
 | `codify` | The codify pipeline |
@@ -333,10 +333,12 @@ learning:
   bank:
     local_path: ~/.kapso/bank.git
   serving:
-    enabled: false
     session_root: ~/.kapso/serving
+  mining:
+    run_root: learning/mining
   update_crew:
     default_version: crew_v4
+    run_root: learning/runs
 ```
 
 The store and the bank are Kapso's own state and live under `~/.kapso`, outside the project you run from, so a campaign's `--data-dir` and seed copy never pick them up.

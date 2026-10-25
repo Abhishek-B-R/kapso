@@ -42,8 +42,16 @@ REQUIRED_FILES_HISTORICAL = (
 )
 CONTRACTS = ("strict", "historical")
 
-# Derived caches are noise, not evidence — excluded at gather time.
-GATHER_EXCLUDED_DIR_NAMES = ("__pycache__",)
+# The directories a host reads a session's staging from (the skills, hooks
+# and delegates kapso.harness.staging writes). A harvest leaves them out at
+# every level: they are the harness's files, recoverable from the hash the
+# manifest records, and the session records under `.kapso/sessions` keep
+# what each session ran with; the mining crew owns these names at a bundle
+# root for the length of its session.
+STAGING_DIRECTORIES = (".claude", ".agents", ".codex")
+# Left out at gather time: derived caches are noise, not evidence; the
+# staging directories are the harness's, not the campaign's.
+GATHER_EXCLUDED_DIR_NAMES = ("__pycache__", *STAGING_DIRECTORIES)
 
 # <task-dir>/<stamp>_<lane>, e.g. rel-amazon--user-churn/20260813T015420_lane-c10
 TRAJECTORY_ID_PATTERN = re.compile(

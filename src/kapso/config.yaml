@@ -362,6 +362,10 @@ learning:
     critic_model: "claude-fable-5"
     timeout_minutes: 240
     repair_rounds: 1
+    # A mining run's own directory, `<run_root>/<trajectory>/`: the lead's
+    # harness staging record and stream (`.kapso/sessions/lead/`) when the
+    # lesson runs with a harness. The mined view itself lives in the bundle.
+    run_root: learning/mining
   retriever:
     # Serving v2 (serving-agentic-redesign.md): no selection knobs — the
     # index carries the whole eligible set and the reading agent selects.

@@ -24,6 +24,7 @@ from kapso.harness import (
     load_harness,
     stage_harness,
 )
+from kapso.learning.trajectory_store import STAGING_DIRECTORIES
 from tests.handles_support import git, git_workspace
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
@@ -106,7 +107,9 @@ def test_the_implementation_module_on_claude_code(harness, tmp_path):
     assert "- backtesting — Build and run a backtest" in guidance and "`/backtesting`" in guidance
     assert '- lookahead-auditor — Audits one attempt' in guidance and 'subagent_type "lookahead-auditor"' in guidance
     assert "- market-data — its tools are named mcp__market-data__<tool>" in guidance
-    assert f"- Task statement: {session_dir / 'kapso_task.md'}" in guidance
+    # The campaign has no task statement yet (a build writes it before its
+    # sessions; a learning run never has one): no line names it.
+    assert "Task statement" not in guidance
     assert f"- Harness root: ${HARNESS_ROOT_VARIABLE} = {harness.path}" in guidance
 
     record = json.loads((tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "harness.json").read_text())
@@ -185,6 +188,17 @@ def test_no_harness_stages_nothing(tmp_path):
     assert tree(tmp_path) == []
     # Without a harness a session keeps exactly the keys it had.
     assert staged.merged_agent_specific({"timeout": 5}) == {"timeout": 5}
+
+
+def test_every_host_stages_into_the_directories_a_harvest_leaves_out(harness, tmp_path):
+    # The contract between staging and the trajectory store: a harvested
+    # bundle holds none of a session's staging, so the mining crew can own
+    # these names at the bundle root. A host that staged elsewhere would
+    # leak its files into the raw inventory.
+    for host in ("claude_code", "codex"):
+        staged = stage(harness, "implementation", host, tmp_path, session=f"sessions/{host}", session_id=host)
+        roots = {path.split("/")[0] for path in tree(staged.session_dir)}
+        assert roots and roots <= set(STAGING_DIRECTORIES)
 
 
 def test_the_statement_and_prepared_resources_reach_a_session_directory(harness, tmp_path):
