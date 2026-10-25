@@ -97,6 +97,8 @@ def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
     orchestrator.cost_config = policy
     orchestrator.harness = None
     orchestrator._harness_setup = None
+    orchestrator._setup_requests = []
+    orchestrator._task_budget = {}
     orchestrator.cost_estimator = lambda context: CostEstimate(
         amount=2.0, unit="credits", basis="Candidate plan"
     )

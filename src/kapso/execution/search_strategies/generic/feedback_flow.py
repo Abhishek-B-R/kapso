@@ -12,6 +12,7 @@ import re
 from typing import Any, Callable, Dict, Optional
 
 from kapso.execution.search_strategies.base import SearchNode
+from kapso.harness.verdict import is_void, render_verification
 from kapso.execution.cost_estimator import validate_cost_value
 from kapso.execution.evaluation_maintainer.maintainer import MANIFEST_MARKER
 
@@ -51,6 +52,7 @@ def generate_feedback(
     finalize_run_selection: Callable[[Dict[str, Any], bool], None],
     execution_valid: bool = True,
     stage_harness_for: Callable[..., Any],
+    verification: Optional[Dict[str, Any]] = None,
 ) -> SearchNode:
     """
     Generate feedback for a node using the FeedbackGenerator.
@@ -90,14 +92,19 @@ def generate_feedback(
             design_axes=design_axes,
             session_end_facts=session_end_facts,
             domain_guidance=staged.guidance,
+            verification=render_verification(verification),
             timeout_seconds=clamped_timeout(
                 feedback_generator.configured_timeout_seconds
             ),
         )
 
-        # Update node with feedback results
+        # Update node with feedback results. A harness verdict of void is
+        # ANDed in after the judge, so the judge's default cannot
+        # resurrect it.
         node.feedback = feedback_result.feedback
-        node.evaluation_valid = feedback_result.evaluation_valid and execution_valid
+        node.evaluation_valid = (
+            feedback_result.evaluation_valid and execution_valid and not is_void(verification)
+        )
         node.score = (
             feedback_result.score
             if node.evaluation_valid

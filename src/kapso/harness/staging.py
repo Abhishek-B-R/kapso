@@ -97,6 +97,22 @@ class StagedHarness:
         return args
 
 
+def pages_block(harness: Optional[Harness], module: str) -> str:
+    """The module's pages alone, as the "Domain guidance" block, for a
+    session the engine runs without staging files into its directory (the
+    learning crews, whose bundles are checked for immutability); "" without
+    a harness."""
+    if harness is None:
+        return ""
+    lines = [f"{GUIDANCE_HEADING} (harness {harness.name} {harness.version})", ""]
+    for page in ("guardrails.md", f"{module}.md"):
+        file = harness.path / "instructions" / page
+        if file.is_file():
+            lines.append(file.read_text(encoding="utf-8").rstrip())
+            lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def no_harness(module: str, host: str, session_dir: Path, session_id: str) -> StagedHarness:
     """What a session gets without a harness: nothing."""
     return StagedHarness(module=module, host=host, session_dir=Path(session_dir), session_id=session_id, guidance="")

@@ -20,6 +20,7 @@ from kapso.deployment.strategies.base import deployment_context
 from kapso.deployment.adapter.validator import AdaptationValidator
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.handles import Solution
+from kapso.harness.staging import host_for, stage_harness
 
 # Left behind when the solution is copied into the adapted workspace: version
 # control and caches are never part of a deployment, and .git alone can be
@@ -76,20 +77,26 @@ class AdapterAgent:
         model: str,
         fallback_agent_type: str = "gemini",
         max_retries: int = 2,
+        harness: Any = None,
     ):
         """
         Initialize the adapter agent.
-        
+
         Args:
             coding_agent_type: Primary coding agent (claude_code, codex, ...)
             model: LLM model for the primary coding agent
             fallback_agent_type: Secondary coding agent if primary fails
             max_retries: Re-runs allowed after a failed validation
+            harness: The loaded harness (kapso.harness.Harness) whose
+                deployment module every adapter session carries; None
+                without one
         """
         self.coding_agent_type = coding_agent_type
         self.model = model
         self.fallback_agent_type = fallback_agent_type
         self.max_retries = max_retries
+        self.harness = harness
+        self._campaign_dir: Optional[Path] = None
         self.registry = StrategyRegistry.get()
         self.validator = AdaptationValidator()
         
@@ -150,7 +157,10 @@ class AdapterAgent:
             AdaptationResult with run interface and adapted path
         """
         print(f"[Adapter] Adapting for {setting.strategy} deployment")
-        
+        # The campaign the adapted copy comes from: where the harness
+        # staging records of the adapter's sessions go.
+        self._campaign_dir = Path(solution.campaign)
+
         # Extract from solution
         original_path = str(solution.campaign)
         goal = solution.brief.objective
@@ -267,8 +277,18 @@ class AdapterAgent:
         adapted_path: str,
         prompt: str,
     ) -> Tuple[List[str], str]:
-        """One coding-agent session over the adapted workspace."""
-        kwargs = {"agent_type": agent_type, "workspace": adapted_path}
+        """One coding-agent session over the adapted workspace, with the
+        harness's deployment module staged into it (the records go to the
+        campaign the adapted copy came from)."""
+        staged = stage_harness(
+            self.harness, "deployment", session_dir=Path(adapted_path),
+            campaign_dir=self._campaign_dir or Path(adapted_path),
+            session_id=f"deployment/adapter/{agent_type}",
+            host=host_for(agent_type) if self.harness is not None else agent_type,
+        )
+        if staged.guidance:
+            prompt += "\n\n" + staged.guidance
+        kwargs = {"agent_type": agent_type, "workspace": adapted_path, "agent_specific": staged.merged_agent_specific({})}
         if model:
             kwargs["model"] = model
         config = CodingAgentFactory.build_config(**kwargs)

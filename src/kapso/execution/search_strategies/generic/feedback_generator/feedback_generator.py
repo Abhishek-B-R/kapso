@@ -148,6 +148,7 @@ class FeedbackGenerator:
         session_end_facts: str = "",
         timeout_seconds: Optional[float] = None,
         domain_guidance: str = "",
+        verification: str = "",
     ) -> FeedbackResult:
         """
         Generate feedback for the iteration.
@@ -189,8 +190,9 @@ class FeedbackGenerator:
             design_axes=design_axes,
             session_end_facts=session_end_facts,
             domain_guidance=domain_guidance,
+            verification=verification,
         )
-        
+
         # Run the coding agent to analyze and generate feedback. The agent is
         # persistent across iterations, so this call's spend is the cumulative
         # delta around it (retry included).
@@ -242,6 +244,7 @@ class FeedbackGenerator:
         design_axes: str = "",
         session_end_facts: str = "",
         domain_guidance: str = "",
+        verification: str = "",
     ) -> str:
         """Build the prompt for the feedback generator."""
         template = load_prompt(self.PROMPT_PATH)
@@ -261,6 +264,7 @@ class FeedbackGenerator:
                 "session_end_facts": session_end_facts
                 or "(not recorded)",
                 "domain_guidance": optional_block(domain_guidance),
+                "verification": optional_block(verification),
             }
         )
     

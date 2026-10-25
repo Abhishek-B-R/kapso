@@ -81,7 +81,11 @@ from kapso.execution.inbox import (
     record_continued,
     requests_for_ids,
 )
-from kapso.harness.staging import StagedHarness, host_for, no_harness, stage_harness
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.execution.coding_agents.base import CodingAgentConfig
+from kapso.execution.coding_agents.factory import CodingAgentFactory
+from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, no_harness, stage_harness
+from kapso.harness.verdict import VERDICT_FILE, is_deliverable, read_verdict, verification_dir
 from kapso.execution.search_strategies.generic.lens_planning import (
     design_axes_brief,
     normalize_design_axes,
@@ -160,6 +164,13 @@ def resolve_inbox_settings(
         record = read_launch_record(workspace_dir) if workspace_dir else None
         resolved["dotenv_path"] = record.get("dotenv_path", "") if record else ""
     return resolved
+
+
+# The harness's verification session (kapso.harness.verdict): its prompt,
+# and how many times a session that wrote no verdict runs before the
+# attempt is left unverified.
+VERIFICATION_PROMPT = "execution/search_strategies/generic/prompts/verification.md"
+VERIFICATION_ATTEMPTS = 2
 
 
 @register_strategy("generic")
@@ -862,6 +873,7 @@ class GenericSearch(SearchStrategy):
                 )
             elif self.enforce_evaluation_integrity(node):
                 if self._evaluate_admitted_candidate(node, lane_index=lane_index):
+                    self._verify_attempt(node)
                     self._generate_feedback(node)
                     self._record_evaluation_attempt(node)
             else:
@@ -885,6 +897,75 @@ class GenericSearch(SearchStrategy):
                     f"[GenericSearch] ✓ Node {node.node_id} completed: "
                     f"score={node.score}, should_stop={node.should_stop}"
                 )
+
+    def _verify_attempt(self, node: SearchNode) -> None:
+        """The harness's verification session for one attempt, between the
+        evaluation and the judge, when the harness has verification
+        content: the attempt's diff and evaluation output at named paths,
+        a detached worktree of its branch, and a verdict file the session
+        writes. The verdict is the node's own state: the judge reads it
+        and a void is ANDed into validity after the judge; delivery skips
+        an unverified attempt. A session that writes no verdict runs once
+        more, then the attempt is unverified."""
+        harness = self.harness
+        if harness is None or not harness.has_content("verification"):
+            return
+        self._status_phase("verification")
+        judge = self.feedback_generator.coding_agent_config
+        host = judge.agent_type
+        directory = verification_dir(Path(self.workspace_dir), node.branch_name)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "diff.patch").write_text(
+            self.workspace.repo.git.diff(f"main...{node.branch_name}"), encoding="utf-8"
+        )
+        (directory / "evaluation_output.txt").write_text(node.evaluation_output or "", encoding="utf-8")
+        verdict_path = directory / VERDICT_FILE
+        if verdict_path.exists():
+            verdict_path.unlink()
+        started = time.monotonic()
+        cost = 0.0
+        with self.workspace.materialize_ref(node.branch_name) as worktree:
+            staged = self.stage_harness_for("verification", worktree, f"verification/{node.branch_name}", host)
+            prompt = render_prompt(load_prompt(VERIFICATION_PROMPT), {
+                "branch": node.branch_name,
+                "diff_path": str(directory / "diff.patch"),
+                "evaluation_output_path": str(directory / "evaluation_output.txt"),
+                "verdict_path": str(verdict_path),
+                "task_statement_path": str(Path(worktree) / TASK_STATEMENT_FILE),
+                "domain_guidance": optional_block(staged.guidance),
+            })
+            own = {
+                **(self._claude_auth_settings if host != "codex" else {}),
+                "env_strip": self.env_strip,
+                "env_defaults": self.env_defaults,
+                "allowed_tools": ["Read", "Bash", "Write", *staged.allowed_tools],
+                "timeout": self._clamped_timeout(float(harness.settings["verification_minutes"]) * 60.0),
+                "streaming": True,
+                "effort": self.session_effort,
+                # The verdict lives outside the worktree; codex's sandbox
+                # must be told it may write there.
+                **({"add_dirs": [str(directory)]} if host == "codex" else {}),
+            }
+            config = CodingAgentConfig(
+                agent_type=host, model=judge.model, debug_model=judge.debug_model,
+                agent_specific=staged.merged_agent_specific(own),
+            )
+            for _attempt in range(VERIFICATION_ATTEMPTS):
+                agent = CodingAgentFactory.create(config)
+                agent.initialize(worktree)
+                agent.generate_code(prompt)
+                cost += agent.get_cumulative_cost()
+                agent.cleanup()
+                if verdict_path.is_file():
+                    break
+        node.verification = read_verdict(verdict_path)
+        node.phase_telemetry["verification"] = {
+            "cost_usd": cost, "duration_seconds": time.monotonic() - started,
+        }
+        print(
+            f"[GenericSearch] Verification of node {node.node_id}: "
+            f"{node.verification['verdict']} — {node.verification['summary']}"
+        )
 
     def _cost_enabled(self) -> bool:
         return bool(getattr(self, "cost_config", {}).get("enabled"))
@@ -1566,9 +1647,12 @@ class GenericSearch(SearchStrategy):
         """Return the best successful SCORED node — a node whose evaluation
         never completed (score=None) can never be best; on minimize metrics
         it would otherwise key as 0 and out-rank every real score."""
+        return self._best_of(self.node_history)
+
+    def _best_of(self, nodes: List[SearchNode]) -> Optional[SearchNode]:
         valid = [
             node
-            for node in self.node_history
+            for node in nodes
             if not node.had_error and node.evaluation_valid and node.score is not None
         ]
         if not valid:
@@ -1593,15 +1677,18 @@ class GenericSearch(SearchStrategy):
         full-tier candidate at delivery. Without registered evidence the
         score leader stands.
         """
+        # An attempt the harness could not verify stays a parent but is
+        # never delivered (kapso.harness.verdict).
+        candidates = [node for node in self.node_history if is_deliverable(node.verification)]
         if self.registered_evaluator_id and not self._cost_enabled():
             committed = select_committed_candidate(
-                self.node_history,
+                candidates,
                 evaluator_id=self.registered_evaluator_id,
                 maximize=self.problem_handler.maximize_scoring,
             )
             if committed is not None:
                 return committed
-        return self.get_best_experiment()
+        return self._best_of(candidates)
 
     def get_deliverable_score(self) -> Optional[float]:
         """The deliverable's authoritative measurement.
@@ -1674,6 +1761,7 @@ class GenericSearch(SearchStrategy):
             # of validity never reaches the judge.
             execution_valid=node.evaluation_valid if self._cost_enabled() else True,
             stage_harness_for=self.stage_harness_for,
+            verification=node.verification,
         )
 
     def _extract_agent_result(self, agent_output: str) -> dict:

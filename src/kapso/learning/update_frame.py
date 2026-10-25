@@ -114,9 +114,12 @@ class UpdateFrame:
         batch: List[Dict[str, str]],
         run_root: str,
         learner_version: str,
+        domain_guidance: str = "",
     ) -> Path:
         """batch: [{trajectory, hindcast_report}] — empty list is a
-        docket-only consolidation run. Returns the run dir (report inside)."""
+        docket-only consolidation run. Returns the run dir (report inside).
+        ``domain_guidance`` is the harness's learning pages, appended to the
+        lead's prompt; "" without one."""
         lr_id = "lr_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         run_dir = Path(run_root).expanduser() / lr_id
         (run_dir / "work").mkdir(parents=True)
@@ -137,6 +140,8 @@ class UpdateFrame:
         agent = self._build_lead(run_dir)
         timeout = self.crew_config["timeout_minutes"] * 60
         prompt = (CREW_DIR / "lead_prompt.md").read_text()
+        if domain_guidance:
+            prompt += "\n\n" + domain_guidance
         agent.generate_code(prompt, timeout_seconds=timeout)
 
         findings = self._validate(run_dir, before_dir, batch)

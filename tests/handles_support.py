@@ -35,6 +35,7 @@ def make_solution(campaign: Any, objective: str = "score things", **overrides: A
         evaluator=None,
         harness=None,
         experience=[],
+        verification=None,
         rejected_candidates=0,
         callback_metrics={},
         callback_primary_metric=None,
@@ -138,6 +139,7 @@ def fake_orchestrator(
             return SimpleNamespace(
                 branch_name=best_branch,
                 feedback=result.final_feedback.feedback if result.final_feedback else "",
+                verification=None,
             )
 
         def get_deliverable_score(self):

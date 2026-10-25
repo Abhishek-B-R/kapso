@@ -32,6 +32,8 @@ def cmd_deploy(args) -> None:
                 env_vars[key] = value
 
     kapso = Kapso(config=args.config)
+    if args.harness:
+        kapso.load_harness(args.harness)
 
     # Deploy
     software = kapso.deploy(
@@ -93,5 +95,10 @@ Examples:
     deploy_parser.add_argument(
         "--config", type=str, default=None,
         help="Config path (default: packaged config.yaml); pass the one the build used",
+    )
+    deploy_parser.add_argument(
+        "--harness", type=str, default=None,
+        help="The harness whose deployment module the sessions carry: the build's "
+             "(from the campaign record, the default) or another version of it",
     )
     return cmd_deploy

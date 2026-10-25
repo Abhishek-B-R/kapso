@@ -83,6 +83,11 @@ class SearchNode:
     evaluation_valid: bool = True
     evaluation_provenance: str = AGENT_GENERATED
     evaluation_integrity_error: str = ""
+    # The harness's verification of this attempt (kapso.harness.verdict):
+    # {"verdict": valid | void | unverified, "summary", "findings"}, its
+    # own state beside the judge's validity; None when no harness
+    # verification ran.
+    verification: Optional[Dict[str, Any]] = None
 
     # Platform execution cost in the campaign's unit, distinct from model USD.
     estimated_cost: Optional[Dict[str, Any]] = None

@@ -87,7 +87,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             fake._config = config
             return fake
 
-        def mine(self, trajectory_id, force=False):
+        def mine(self, trajectory_id, force=False, domain_guidance=""):
             calls.mined.append(trajectory_id)
             # Stamp the manifest as the real miner does, so learn()'s
             # mined-once idempotency is exercised for real.
@@ -120,7 +120,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
         def __init__(self, store, config):
             pass
 
-        def run_update(self, batch, run_root, learner_version):
+        def run_update(self, batch, run_root, learner_version, domain_guidance=""):
             calls.updates.append(
                 {"batch": batch, "version": learner_version}
             )
