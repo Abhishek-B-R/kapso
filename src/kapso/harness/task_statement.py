@@ -50,7 +50,8 @@ def compose_task_statement(
         "none provided: the campaign builds the evaluation from the brief's `Measured by` protocol into `kapso_evaluation/`."
     )
     data = (
-        f"`kapso_datasets/`, copied from `{data_dir}`." if data_dir else "no data directory was provided."
+        "`kapso_datasets/` at the campaign root, a copy of the data directory the build was given; "
+        "read it there, never the original." if data_dir else "no data directory was provided."
     )
     statement = domain_statement.strip() or "(the setup session has not written one)"
     resources = "\n".join(f"- `{PREPARED_DIR}/{name}`" for name in prepared) or "(none yet)"

@@ -47,7 +47,8 @@ def test_the_statement_holds_the_whole_brief_and_the_campaigns_facts(harness, tm
     assert "minutes=75.0 experiments=2 usd=the config’s reserve_minutes=the config’s" in text
     assert "Written by Kapso for harness trading 0.1.0" in text
     assert "`kapso_evaluation/`, provided by the person and protected" in text
-    assert "`kapso_datasets/`, copied from `/abs/data`." in text
+    assert "`kapso_datasets/` at the campaign root, a copy of the data directory the build was given; read it there, never the original." in text
+    assert "/abs/data" not in text   # the original path is not a path a session should reach
     assert "## Domain statement\n\n(the setup session has not written one)" in text
     assert "## Prepared resources\n\n(none yet)" in text
 
