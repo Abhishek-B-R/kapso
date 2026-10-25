@@ -160,7 +160,7 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
             pass
 
     def fake_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None,
-                   web_search=True):
+                   web_search=True, extra_args=None, extra_env=None):
         events["codex_calls"].append(
             {"model": model, "cwd": cwd, "timeout": timeout_seconds,
              "effort": effort, "artifacts_dir": artifacts_dir, "prompt": prompt,
@@ -186,6 +186,7 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
     )
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.workspace = FakeWorkspace()
     strategy.workspace_dir = str(tmp_path / "root")
     strategy.experiment_history_path = str(tmp_path / "history.json")
@@ -199,6 +200,7 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
     strategy.ideation_timeout = 600
     strategy.budget_snapshot = None
     strategy.iteration_count = 0
+    strategy.harness = None
     strategy.session_effort = None
     strategy.env_strip = []
     strategy.env_defaults = {}
@@ -590,7 +592,7 @@ def test_codex_zero_candidates_retries_once(tmp_path, monkeypatch):
         selector_output="unused",
     )
 
-    def flaky_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True):
+    def flaky_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None):
         calls["n"] += 1
         meta = {"last_message_empty": calls["n"] == 1, "stream_tail": "boom",
                 "stream_path": None, "last_path": None}
@@ -615,7 +617,7 @@ def test_codex_timeout_does_not_retry(tmp_path, monkeypatch):
         selector_output="unused",
     )
 
-    def timing_out_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True):
+    def timing_out_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None):
         calls["n"] += 1
         return "short", True, 1.0, {"last_message_empty": True, "stream_tail": "",
                                     "stream_path": None, "last_path": None}
@@ -639,7 +641,7 @@ def test_prompt_echo_candidates_are_dropped(tmp_path, monkeypatch):
     )
     real = _plan("genuine")
 
-    def echoing_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True):
+    def echoing_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None):
         # echo a large verbatim chunk of the prompt inside solution tags,
         # plus one genuine candidate
         echo = prompt[100:600]
@@ -780,7 +782,7 @@ def test_codex_selector_runs_web_on_and_choice_wins(tmp_path, monkeypatch):
     selector_calls = []
 
     def prompt_aware_codex(prompt, model, cwd, timeout_seconds, effort=None,
-                           artifacts_dir=None, web_search=True):
+                           artifacts_dir=None, web_search=True, extra_args=None, extra_env=None):
         meta = {"last_message_empty": False, "stream_tail": "",
                 "stream_path": None, "last_path": None}
         if "### Candidate" in prompt:
@@ -829,7 +831,9 @@ def test_campaign_state_brief_math_minimize():
     from kapso.execution.search_strategies.base import SearchNode
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.problem_handler = SimpleNamespace(maximize_scoring=False)
+    strategy.harness = None
     strategy.node_history = [
         SearchNode(node_id=0, branch_name="e0", score=2.7),
         SearchNode(node_id=1, branch_name="e1", score=2.6),   # improvement

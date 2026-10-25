@@ -63,7 +63,21 @@ from kapso.knowledge_base.learners.defaults import learner_defaults
 from kapso.core.cli_inference import resolve_inference_config
 from kapso.researcher import Researcher, ResearchDepth, ResearchMode
 from kapso.knowledge_base.types import ResearchFindings
-from kapso.core.config import load_config, load_deployment_defaults, load_mode_config
+from kapso.core.config import load_config, load_deployment_defaults, load_harness_defaults, load_mode_config
+from kapso.harness import (
+    BUILD_MODULES,
+    DEPLOY_MODULES,
+    LEARN_MODULES,
+    Harness,
+    HarnessError,
+    advisory_lines,
+    load_harness,
+    reload_harness,
+    resume_refusal,
+    unmet_message,
+)
+from kapso.harness import BUNDLED_ROOT
+from kapso.harness.staging import host_for, pages_block
 from kapso.execution.inbox import (
     Request,
     idea_line,
@@ -122,6 +136,26 @@ class KGIndexError(Exception):
 
 # Path to default configuration
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
+
+
+def _source_is_reachable(source: str) -> bool:
+    """A recorded harness source that can be loaded again from here: a git
+    form (a URL, `git+`, shorthand or scp-like with `@` or `#`), a
+    directory, or a bundled name."""
+    if "://" in source or source.startswith("git+") or "@" in source or "#" in source:
+        return True
+    return Path(source).expanduser().is_dir() or (BUNDLED_ROOT / source).is_dir()
+
+
+def _same_reference(line: str, harness: Harness) -> bool:
+    """Whether the brief's Harness line names the loaded harness: the same
+    directory once resolved from the working directory, or the same
+    reference as written."""
+    candidate = Path(line).expanduser()
+    directory = candidate if candidate.is_absolute() else Path.cwd() / candidate
+    if directory.is_dir():
+        return directory.resolve() == Path(harness.path).resolve()
+    return line in (harness.source, harness.reference.raw)
 
 
 def _absolute(path: Optional[str]) -> Optional[str]:
@@ -226,6 +260,10 @@ class Kapso:
         """
         self.config_path = config or DEFAULT_CONFIG_PATH
         self._config = load_config(self.config_path)
+        # The harness block (store, thresholds, the two session timeouts)
+        # and the loaded harness: none until load_harness() is called.
+        self._harness_settings = load_harness_defaults(self.config_path)
+        self._harness: Optional[Harness] = None
         # By construction time every dependency import has settled, so
         # this atexit registration lands last (LIFO-first at exit) and
         # keeps third-party exit-time warning noise out of user output.
@@ -254,16 +292,33 @@ class Kapso:
         # close them at interpreter exit so scripts end without unclosed-
         # socket ResourceWarnings (onboarding E2E finding #8).
         atexit.register(self.close)
-        
+        # Lazy-initialized web researcher (created on first `.research()` call).
+        self._web_researcher: Optional[Researcher] = None
+
         # Print initialization status
         if kg_index:
             print(f"Initialized Kapso")
         else:
             print(f"Initialized Kapso (Knowledge Graph: disabled)")
 
-        # Lazy-initialized web researcher (created on first `.research()` call).
-        self._web_researcher: Optional[Researcher] = None
-    
+    # ------------------------------------------------------------ harness
+
+    @property
+    def harness(self) -> Optional[Harness]:
+        """The loaded harness, or None: today's generic behaviour."""
+        return self._harness
+
+    def load_harness(self, ref: str) -> Harness:
+        """Resolve a bundled name, a path or a git reference; run `check`
+        and raise on a failure; hash it; read what this machine lacks into
+        `harness.missing` without raising. A second call replaces the
+        first: one object, one harness. Nothing starts here."""
+        self._harness = load_harness(ref, settings=self._harness_settings)
+        print(f"Harness: {self._harness.label()} from {self._harness.source}")
+        for row in self._harness.missing:
+            print(f"  needs {row.label}: {row.fix}  [{', '.join(row.modules)}]")
+        return self._harness
+
     # =========================================================================
     # Knowledge Graph Indexing
     # =========================================================================
@@ -896,6 +951,21 @@ class Kapso:
     ) -> LessonResult:
         status.phase("harvest")
 
+        # The harness for the learning sessions: the build's (or the loaded
+        # one, which must share its name) for a Solution; the loaded one, if
+        # any, for a path or a trajectory id. Its learning pages join the
+        # crews' prompts; the trajectory records which harness learned.
+        # A campaign directory with a record is the same case as its Solution.
+        record = source if isinstance(source, Solution) else None
+        if record is None and isinstance(source, str) and (Path(source) / ".kapso" / "solution.json").is_file():
+            record = Solution.open(source)
+        if record is not None:
+            learning_harness = self._harness_for(record, verb="learn")
+        elif self._harness is not None:
+            learning_harness = reload_harness(self._harness, settings=self._harness_settings)
+        else:
+            learning_harness = None
+
         # --- dispatch (design §2) ---
         if isinstance(source, Solution):
             campaign_dir = source.campaign
@@ -1033,6 +1103,16 @@ class Kapso:
                 # run manifests and logs are.
                 work_dir_exclude=(".git",),
                 bank_head=served_head,
+                # The build's harness, what lessons are scoped by; and the
+                # one that did the learning when it is another version.
+                harness=vars(record.harness) if record is not None and record.harness else None,
+                learning_harness=(
+                    learning_harness.ref_dict()
+                    if learning_harness is not None and (
+                        record is None or record.harness is None
+                        or learning_harness.hash != record.harness.hash
+                    ) else None
+                ),
                 upload=None,
             )
             print(f"  Harvested into store: {trajectory_id}")
@@ -1045,7 +1125,9 @@ class Kapso:
         status.phase("mine", trajectory_id=trajectory_id)
         manifest = store.manifest(trajectory_id)
         if not manifest.get("derived", {}).get("mined"):
-            mined_dir = MiningFrame.from_config(self._config).mine(trajectory_id)
+            mined_dir = MiningFrame.from_config(self._config).mine(
+                trajectory_id, domain_guidance=pages_block(learning_harness, "learning")
+            )
             print(f"  Mined view: {mined_dir}")
             status.note(f"mined view written ({mined_dir})")
 
@@ -1098,6 +1180,7 @@ class Kapso:
             [{"trajectory": trajectory_id}],
             learning_config["update_crew"]["run_root"],
             version,
+            domain_guidance=pages_block(learning_harness, "learning"),
         )
         bank_head_after = self._bank_head()
 
@@ -1263,14 +1346,24 @@ class Kapso:
         if initial_repo is not None and not self._is_github_url(initial_repo) \
                 and not Path(initial_repo).is_dir():
             raise FileNotFoundError(f"repo directory not found: {initial_repo}")
+        checkpoint = None
+        record = None
         if resume:
             self._validate_resume_workspace(output_path)
+            # A resume without a checkpoint is refused by the orchestrator
+            # with its own message; here the checkpoint is read when it
+            # exists, for the brief and the harness comparison.
+            store = RunCheckpointStore(output_path)
+            checkpoint = store.load() if store.exists() else None
+            if brief is None:
+                if checkpoint is None:
+                    checkpoint = store.load()
             if brief is None:
                 # The checkpoint's goal is the brief as the launch rendered
                 # it, so the one grammar reads it back; it comes first so
                 # its budget takes part in the merge below.
                 brief = Brief.parse(
-                    RunCheckpointStore(output_path).load().goal,
+                    checkpoint.goal,
                     source=str(Path(output_path) / ".kapso" / "run_state.json"),
                 )
         spend = (budget or Budget()).merged_over(brief.budget)
@@ -1427,6 +1520,48 @@ class Kapso:
             )
             self._serving_config = serving_config
 
+        # The harness: the loaded one wins over the brief's line (as call
+        # arguments win for budgets); a resume with none loaded takes the
+        # launch record's source first (absolute, resolvable from any
+        # directory), then the brief's line. A resume compares the hash
+        # with the checkpoint's and refuses a changed harness by name.
+        harness = self._harness
+        if harness is not None:
+            # The directory as it is at the call, not at the load: an edit
+            # since changes the hash (and a resume compares that hash), a
+            # fix since clears a row. The object keeps the fresh handle.
+            harness = reload_harness(harness, settings=self._harness_settings)
+            self._harness = harness
+        if harness is None and record is not None and record.get("harness"):
+            harness = load_harness(record["harness"]["source"], settings=self._harness_settings)
+        if harness is None and brief.harness:
+            harness = load_harness(brief.harness, settings=self._harness_settings)
+        if checkpoint is not None:
+            recorded = checkpoint.harness
+            changed = (recorded is None) != (harness is None) or (
+                recorded is not None and recorded["hash"] != harness.hash
+            )
+            if changed:
+                raise RunCheckpointIncompatibleError(resume_refusal(recorded, harness))
+        if harness is not None:
+            unmet = harness.missing_for(BUILD_MODULES)
+            if unmet:
+                raise HarnessError(unmet_message(harness, unmet, "build"))
+            if coding_agent is not None:
+                host_for(coding_agent)   # a host with no staging is refused here, not inside the first session
+            # A variable put in .env since this process started reaches the
+            # sessions, as the prerequisite check above already counted it.
+            load_dotenv(find_dotenv(usecwd=True))
+            overrode = self._harness is not None and bool(brief.harness) and not _same_reference(brief.harness, harness)
+            print(
+                f"  Harness: {harness.label()} from {harness.source}"
+                + (f" (loaded; wins over the brief's line {brief.harness!r})" if overrode else "")
+            )
+            added = harness.sessions_added()
+            print(f"  Harness sessions: {'; '.join(added) if added else 'none (pages and attachments only)'}")
+            for line in advisory_lines(harness, BUILD_MODULES):
+                print(line)
+
         # Create problem handler with all options
         handler = GenericProblemHandler(
             problem_description=problem,
@@ -1449,6 +1584,7 @@ class Kapso:
             # .kapso/.
             workspace_dir=output_path,
             resume=resume,
+            harness=harness,
             iteration_evaluator=iteration_evaluator,
             iteration_evaluator_failure_policy=(
                 iteration_evaluator_failure_policy
@@ -1499,6 +1635,7 @@ class Kapso:
             workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
             write_launch_record(workspace_dir, {
                 "brief": brief.to_dict(),
+                "harness": harness.ref_dict() if harness is not None else None,
                 "config_path": _absolute(self._launch_config_path()),
                 "kg_index": _absolute(self._kg_index_path),
                 "mode": mode,
@@ -1579,8 +1716,9 @@ class Kapso:
                 )
                 if head else None
             ),
-            harness=None,
+            harness=harness.ref() if harness is not None else None,
             experience=[],
+            verification=delivered.verification if delivered is not None else None,
             rejected_candidates=sum(
                 not node.evaluation_valid
                 for node in strategy.get_experiment_history()
@@ -1809,6 +1947,10 @@ class Kapso:
                 f"the delivered candidate {solution.commit[:12]} ({solution.branch}); "
                 f"run `git -C {solution.campaign} checkout {solution.branch}` first"
             )
+        # The harness: the loaded one (the build's name, any version), else
+        # the record's; its deployment module rides into the selector and
+        # adapter sessions.
+        harness = self._harness_for(solution, verb="deploy")
         # The packaged deployment block, with the user config's own block
         # layered over it key by key (the same shape as the inference block).
         deployment = {
@@ -1834,9 +1976,62 @@ class Kapso:
             env_vars=env_vars,
             coding_agent=coding_agent,
             model=model,
+            harness=harness,
         )
-        
+
         return DeploymentFactory.create(strategy, config)
+
+    def _harness_for(self, solution: Solution, *, verb: str) -> Optional[Harness]:
+        """The harness a verb on a finished build runs with: the loaded one
+        when its name is the record's (another version is allowed and
+        printed beside the build's), else the record's source resolved
+        again, else none. A verb refuses while a requirement of its own
+        module is unmet."""
+        recorded = solution.harness
+        loaded = self._harness
+        if loaded is not None:
+            loaded = reload_harness(loaded, settings=self._harness_settings)
+            self._harness = loaded
+            if recorded is None:
+                raise HarnessError(
+                    f"{solution.campaign} was built without a harness, and a {verb} runs as its build "
+                    f"did: the loaded {loaded.label()} is not attached to a finished campaign"
+                )
+            if loaded.name != recorded.name:
+                raise HarnessError(
+                    f"{solution.campaign} was built with harness {recorded.name} {recorded.version}; "
+                    f"the loaded harness is {loaded.name} {loaded.version}: a {verb} runs with the "
+                    "build's harness (another version of it is allowed)"
+                )
+            harness = loaded
+        elif recorded is not None:
+            if not _source_is_reachable(recorded.source):
+                raise HarnessError(
+                    f"{solution.campaign} was built with harness {recorded.name} {recorded.version} "
+                    f"from {recorded.source}, which is not here; pass --harness <ref> (or load one) "
+                    f"pointing at a copy of {recorded.name} {recorded.version}"
+                )
+            harness = load_harness(recorded.source, settings=self._harness_settings)
+            if harness.name != recorded.name:
+                raise HarnessError(
+                    f"{recorded.source} now holds harness {harness.name}, and {solution.campaign} was "
+                    f"built with {recorded.name} {recorded.version}; pass --harness <ref> pointing at "
+                    f"a copy of {recorded.name}"
+                )
+        else:
+            return None
+        if harness.hash != recorded.hash:
+            print(
+                f"  Harness: {harness.label()} for the {verb}; the build ran with "
+                f"{recorded.name} {recorded.version} ({recorded.hash[:12]})"
+            )
+        modules = DEPLOY_MODULES if verb == "deploy" else LEARN_MODULES
+        unmet = harness.missing_for(modules)
+        if unmet:
+            raise HarnessError(unmet_message(harness, unmet, verb))
+        for line in advisory_lines(harness, modules):
+            print(line)
+        return harness
     
     # =========================================================================
     # INITIAL REPO RESOLUTION HELPERS

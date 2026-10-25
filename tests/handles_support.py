@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Optional, Sequence
 
+from kapso.core.config import load_harness_defaults
 import kapso.kapso as kapso_module
 from kapso.execution.orchestrator import SolveResult
 from kapso.handles import Brief, Solution
@@ -34,6 +35,7 @@ def make_solution(campaign: Any, objective: str = "score things", **overrides: A
         evaluator=None,
         harness=None,
         experience=[],
+        verification=None,
         rejected_candidates=0,
         callback_metrics={},
         callback_primary_metric=None,
@@ -82,6 +84,8 @@ def facade() -> Kapso:
     kapso._config = {}
     kapso._bank_home = None
     kapso._kg_index_path = None
+    kapso._harness = None
+    kapso._harness_settings = load_harness_defaults()
     return kapso
 
 
@@ -135,6 +139,7 @@ def fake_orchestrator(
             return SimpleNamespace(
                 branch_name=best_branch,
                 feedback=result.final_feedback.feedback if result.final_feedback else "",
+                verification=None,
             )
 
         def get_deliverable_score(self):

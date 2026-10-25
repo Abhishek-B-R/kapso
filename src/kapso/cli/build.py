@@ -6,6 +6,8 @@ from pathlib import Path
 
 from kapso.kapso import Kapso, DEFAULT_MAX_ITERATIONS
 from kapso.handles import Brief, Budget
+from kapso.execution.inbox import read_launch_record
+from kapso.harness import BUILD_MODULES, unmet_message
 from kapso.cli.common import (
     AVAILABLE_AGENTS,
     _default_log,
@@ -53,6 +55,18 @@ def cmd_build(args) -> None:
                 "must be empty for seeding, and the log would be in it"
             )
             sys.exit(1)
+        # The harness is loaded and its prerequisites checked before the
+        # fork, so the handoff below never claims a launch that would die
+        # on a missing command or variable in the child's log. A bare
+        # resume takes the harness from the launch record, as the build
+        # will.
+        ref = _harness_reference(args, brief)
+        if ref is None and args.resume:
+            record = read_launch_record(campaign)
+            if record is not None and record.get("harness"):
+                ref = record["harness"]["source"]
+        if ref is not None:
+            _load_harness_or_exit(Kapso(config=args.config), args, brief, ref=ref)
         _detach(
             "kapso build",
             _without_detach_flags(sys.argv[1:]),
@@ -65,6 +79,7 @@ def cmd_build(args) -> None:
         return
 
     kapso = Kapso(config=args.config, kg_index=args.kg_index)
+    _load_harness_or_exit(kapso, args, brief)
     solution = kapso.build(
         brief,
         evaluation=args.evaluation,
@@ -82,6 +97,29 @@ def cmd_build(args) -> None:
         coding_agent=args.coding_agent,
     )
     _print_build_summary(solution)
+
+
+def _harness_reference(args, brief):
+    """`--harness` wins over the brief's Harness line; a sentence or a
+    plain-text goal names none."""
+    if args.harness:
+        return args.harness
+    return brief.harness if isinstance(brief, Brief) else None
+
+
+def _load_harness_or_exit(kapso, args, brief, ref=None):
+    """Load the harness a build names (or the one given) and refuse, before
+    anything starts, while a requirement of the build's own modules is
+    unmet."""
+    ref = ref or _harness_reference(args, brief)
+    if ref is None:
+        return None
+    harness = kapso.load_harness(ref)
+    unmet = harness.missing_for(BUILD_MODULES)
+    if unmet:
+        print(unmet_message(harness, unmet, "build"))
+        sys.exit(1)
+    return harness
 
 
 def add_parser(subparsers):
@@ -148,6 +186,11 @@ Examples:
     build_parser.add_argument(
         "--budget-reserve-minutes", type=float, default=None,
         help="Wall clock escrowed for the final checkout and evaluation",
+    )
+    build_parser.add_argument(
+        "--harness", type=str, default=None,
+        help="The harness to build with: a bundled name, a directory, or a git "
+             "reference (wins over the brief's Harness line)",
     )
     build_parser.add_argument(
         "--resume", action="store_true",

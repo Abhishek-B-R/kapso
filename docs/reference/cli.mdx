@@ -1,15 +1,16 @@
 ---
 title: "Kapso CLI reference: every command, flag and default"
 sidebarTitle: "CLI"
-description: "The nine kapso commands and their thirteen subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
-keywords: ["kapso CLI", "kapso build", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
+description: "The ten kapso commands and their nineteen subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
+keywords: ["kapso CLI", "kapso build", "kapso harness", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
 ---
 
-Kapso installs the `kapso` executable with nine commands, and `kapso-mcp`, the MCP server that serves Kapso's knowledge and experience tools to the coding-agent session you work in (see [below](#kapso-mcp)).
+Kapso installs the `kapso` executable with ten commands, and `kapso-mcp`, the MCP server that serves Kapso's knowledge and experience tools to the coding-agent session you work in (see [below](#kapso-mcp)).
 
 | Command | What it does |
 |---------|--------------|
 | [`kapso build`](#kapso-build) | Build software that meets a brief, by experiment |
+| [`kapso harness`](#kapso-harness) | Author, check and fetch harnesses: the domain layer a build loads |
 | [`kapso research`](#kapso-research) | Deep web research for an objective |
 | [`kapso learn`](#kapso-learn) | Trajectory learning: import, mine, grade, update, codify |
 | [`kapso deploy`](#kapso-deploy) | Deploy a solution as running software |
@@ -44,6 +45,7 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `--evaluation` | Directory holding your evaluator; copied to `kapso_evaluation/` and protected | — |
 | `--data` | Directory holding your data; copied to `kapso_datasets/` | — |
 | `--repo` | The starting repository, a local path (copied) or a GitHub URL (cloned) | — |
+| `--harness` | The [harness](/docs/harnesses) to build with: a bundled name, a directory, or a git reference. Wins over the brief's `Harness` line; checked before anything starts, and an unmet need of the build's modules refuses with its fix | the brief's `Harness` line, else none |
 | `-o`, `--output` | The campaign directory, the solution's trace. Empty for a fresh build | a temporary directory |
 | `--budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
 | `--budget-experiments` | Maximum experiments this call may run. A resume keeps the launch's cap | `10` |
@@ -53,7 +55,7 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `--detach` | Start the campaign in a session of its own and return at once with its pid, the log, the status path and the `watch` command. Needs `--output`. The run outlives the shell that started it, a coding agent's tool call included | off |
 | `--log` | Where a detached run's output goes | `<output>.log`, beside the campaign directory |
 | `-m`, `--mode` | Config mode: `GENERIC` or `MINIMAL` | from config (`default_mode`) |
-| `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code`, `vertex_claude_code` | from config |
+| `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code`, `vertex_claude_code`. In mode `GENERIC` the implementation and verification sessions run on the strategy parameter `implementation_cli` (`claude_code` unless a config sets it); this flag does not change that | from config |
 | `--config` | Config path | the packaged `config.yaml` |
 | `--kg-index` | Path to a `.index` file for knowledge search | — |
 
@@ -61,12 +63,60 @@ A budget flag wins over the brief's `Budget` line; on a resume the launch record
 
 ```bash
 kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+kapso build --harness ./harnesses/trading --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
 kapso build --goal "Build a web scraper for news articles" --output ./scraper
 kapso build --goal-file problem.txt --budget-experiments 20 --output ./campaign
 kapso build --output ./campaign --resume --detach
 ```
 
 When a session needs something only you can provide, the campaign pauses: the summary block says `WAITING ON YOU` instead of `COMPLETED`, the exit code stays 0, and [`kapso inbox reply`](#kapso-inbox) resumes it. See [the inbox](/docs/build/inbox).
+
+## kapso harness
+
+Author, check and fetch harnesses, the domain layer a build loads: one directory per domain holding instruction pages, skills, tool servers, delegates and hooks, listed per module in `harness.yaml`. See [Harnesses](/docs/harnesses) and the [harness reference](/docs/reference/harness).
+
+| Subcommand | What it does |
+|------------|--------------|
+| `new` | Write the two-file starter for a new harness: `harness.yaml` and `instructions/guardrails.md` |
+| `check` | Check a harness: failures, warnings, and what this machine lacks |
+| `add` | Fetch a git reference into the store and check it; a directory is checked in place |
+| `update` | Re-fetch a branch or `HEAD` reference; a tag or a commit never moves |
+| `remove` | Delete one fetched clone, every harness in it; a directory is refused |
+| `list` | The bundled and fetched harnesses, each `ready`, with what it needs, or failing check |
+
+A reference is a bundled name (`trading`), a directory (`./trading`), a git URL (`git+https://github.com/acme/harnesses@v3#trading`) or GitHub shorthand (`acme/harnesses@v3#trading`). Every subcommand but `new` takes `--config` for the config whose `harness.store` is the store.
+
+### kapso harness new
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `name` | The harness name, `[a-z0-9][a-z0-9-]*`. **Required** | — |
+| `--dir` | The parent directory | the working directory |
+
+```bash
+kapso harness new trading
+```
+
+### kapso harness check, add, update and remove
+
+| Argument | What it does | Required |
+|----------|--------------|----------|
+| `ref` | A bundled name, a directory, or a git reference | **yes** |
+
+```bash
+kapso harness check ./trading
+kapso harness add acme/harnesses@v3#trading
+kapso harness update acme/harnesses@main#trading
+kapso harness remove acme/harnesses@v3#trading
+```
+
+`check` and `add` print the report: a summary line such as `check ok (7 skills, 2 agents, 2 servers, 6 hooks)`, then one line per `fail`, `warn` or `needs`, then the harness's name and version. A failure exits 1; what the machine lacks never does.
+
+### kapso harness list
+
+```bash
+kapso harness list
+```
 
 ## kapso research
 
@@ -230,6 +280,7 @@ Turns the solution a build wrote into running software.
 | `--env` | Environment variable as `KEY=VALUE`. Repeat for more than one | — |
 | `--coding-agent` | Agent behind the selector and adapter sessions | from config (`deployment.coding_agent`) |
 | `--model` | Model that agent is asked for | from config (`deployment.model`) |
+| `--harness` | The harness whose deployment module the selector and adapter sessions carry: the build's, from the campaign record, or another version of it | the campaign record's |
 | `--interactive` | Keep running after deploy instead of returning | off |
 
 ```bash
@@ -288,7 +339,7 @@ A campaign writes its status file the moment its workspace is seeded, in phase `
 | Field | What it holds |
 |-------|---------------|
 | `operation` | `build`, `learn` or `learn_knowledge` |
-| `phases` | The operation's phases in order. Build: `setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Knowledge: `ingest`, `merge` |
+| `phases` | The operation's phases in order. Build: `setup`, `harness_setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `verification`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Knowledge: `ingest`, `merge` |
 | `state` | `starting` (preparing, for a build the `setup` phase), `running`, `done` or `failed` |
 | `phase`, `phase_started_at` | The current phase and when it began |
 | `pid` | The writing process. `kapso watch` reports `DEAD` when it is gone |
@@ -302,6 +353,7 @@ A campaign writes its status file the moment its workspace is seeded, in phase `
 | `stopped_reason`, `stop_detail` | Build, at the end: why the campaign stopped |
 | `requests` | Build, when `stopped_reason` is `waiting_for_user`: the open inbox requests |
 | `platform_budget` | Build, with cost-aware selection on: `{used, budget, unit, refused}` |
+| `harness`, `harness_setup` | Build, on a harness: `{name, version, hash, source}`, and `{prepared}` once the setup session ran |
 | `trajectory_id`, `bank_head_before`, `cards` | Learn: what is being learned and what the lesson changed |
 
 ## kapso inbox

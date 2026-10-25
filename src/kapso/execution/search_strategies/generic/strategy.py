@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from pathlib import Path
 from kapso.gated_mcp.presets import knowledge_tools_block, user_setup_gaps
 from kapso.execution.search_strategies.base import (
     SearchStrategy,
@@ -80,6 +81,11 @@ from kapso.execution.inbox import (
     record_continued,
     requests_for_ids,
 )
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.execution.coding_agents.base import CodingAgentConfig
+from kapso.execution.coding_agents.factory import CodingAgentFactory
+from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, no_harness, stage_harness
+from kapso.harness.verdict import VERDICT_FILE, is_deliverable, is_void, read_verdict, verification_dir
 from kapso.execution.search_strategies.generic.lens_planning import (
     design_axes_brief,
     normalize_design_axes,
@@ -158,6 +164,12 @@ def resolve_inbox_settings(
         record = read_launch_record(workspace_dir) if workspace_dir else None
         resolved["dotenv_path"] = record.get("dotenv_path", "") if record else ""
     return resolved
+
+
+# The harness's verification session (kapso.harness.verdict): its prompt,
+# and how many times a session that wrote no verdict runs before the
+# attempt is left unverified.
+VERIFICATION_PROMPT = "execution/search_strategies/generic/prompts/verification.md"
 
 
 @register_strategy("generic")
@@ -860,6 +872,7 @@ class GenericSearch(SearchStrategy):
                 )
             elif self.enforce_evaluation_integrity(node):
                 if self._evaluate_admitted_candidate(node, lane_index=lane_index):
+                    self._verify_attempt(node)
                     self._generate_feedback(node)
                     self._record_evaluation_attempt(node)
             else:
@@ -883,6 +896,93 @@ class GenericSearch(SearchStrategy):
                     f"[GenericSearch] ✓ Node {node.node_id} completed: "
                     f"score={node.score}, should_stop={node.should_stop}"
                 )
+
+    def _verify_attempt(self, node: SearchNode) -> None:
+        """The harness's verification session for one attempt, between the
+        evaluation and the judge, when the harness has verification
+        content: the attempt's diff and evaluation output at named paths,
+        a detached worktree of its branch, and a verdict file the session
+        writes. The verdict is the node's own state: the judge reads it
+        and a void is ANDed into validity after the judge; delivery skips
+        an unverified attempt. A session that writes no verdict runs once
+        more, then the attempt is unverified."""
+        harness = self.harness
+        if harness is None or not harness.has_content("verification"):
+            return
+        self._status_phase("verification")
+        # The attempt's own host verifies it: the implementation CLI, so a
+        # campaign on Codex is verified under Codex's hooks and roles.
+        host = self.implementation_cli
+        directory = verification_dir(Path(self.workspace_dir), node.branch_name)
+        directory.mkdir(parents=True, exist_ok=True)
+        # The attempt's own changes: the engine's bookkeeping under .kapso/
+        # (repo memory, for one) is committed on the branch too and is not
+        # the verifier's to read.
+        (directory / "diff.patch").write_text(
+            self.workspace.repo.git.diff(f"main...{node.branch_name}", "--", ".", ":(exclude).kapso"),
+            encoding="utf-8",
+        )
+        (directory / "evaluation_output.txt").write_text(node.evaluation_output or "", encoding="utf-8")
+        verdict_path = directory / VERDICT_FILE
+        if verdict_path.exists():
+            verdict_path.unlink()
+        started = time.monotonic()
+        cost = 0.0
+        failure = None
+        with self.workspace.materialize_ref(node.branch_name) as worktree:
+            staged = self.stage_harness_for("verification", worktree, f"verification/{node.branch_name}", host)
+            prompt = render_prompt(load_prompt(VERIFICATION_PROMPT), {
+                "branch": node.branch_name,
+                "diff_path": str(directory / "diff.patch"),
+                "evaluation_output_path": str(directory / "evaluation_output.txt"),
+                "verdict_path": str(verdict_path),
+                "task_statement_path": str(Path(worktree) / TASK_STATEMENT_FILE),
+                "domain_guidance": optional_block(staged.guidance),
+            })
+            own = {
+                **(self._claude_auth_settings if host != "codex" else {}),
+                "env_strip": self.env_strip,
+                "env_defaults": self.env_defaults,
+                "allowed_tools": ["Read", "Bash", "Write", *staged.allowed_tools],
+                "streaming": True,
+                "effort": self.session_effort,
+                # The verdict lives outside the worktree; codex's sandbox
+                # must be told it may write there.
+                **({"add_dirs": [str(directory)]} if host == "codex" else {}),
+            }
+            for _attempt in range(int(harness.settings["verification_attempts"])):
+                # Clamped at each attempt: a retry gets what is left, not
+                # what the first attempt was given.
+                own["timeout"] = self._clamped_timeout(float(harness.settings["verification_minutes"]) * 60.0)
+                config = CodingAgentConfig(
+                    agent_type=host, model=self.implementation_model, debug_model=self.implementation_model,
+                    agent_specific=staged.merged_agent_specific(own),
+                )
+                agent = CodingAgentFactory.create(config)
+                agent.initialize(worktree)
+                result = agent.generate_code(prompt)
+                cost += agent.get_cumulative_cost()
+                agent.cleanup()
+                if verdict_path.is_file():
+                    break
+                failure = result.error if not result.success else None
+                if own["timeout"] < float(harness.settings["verification_minutes"]) * 60.0:
+                    # The budget, not the session, set the deadline: a retry
+                    # would get less still.
+                    failure = failure or "the session ended without a verdict under the budget's deadline"
+                    break
+        node.verification = read_verdict(verdict_path)
+        if node.verification["verdict"] == "unverified" and failure:
+            # Why nothing was written, for the judge and the record: a
+            # session that died is not one that chose silence.
+            node.verification["summary"] = f"the verification session failed: {failure}"
+        node.phase_telemetry["verification"] = {
+            "cost_usd": cost, "duration_seconds": time.monotonic() - started,
+        }
+        print(
+            f"[GenericSearch] Verification of node {node.node_id}: "
+            f"{node.verification['verdict']} — {node.verification['summary']}"
+        )
 
     def _cost_enabled(self) -> bool:
         return bool(getattr(self, "cost_config", {}).get("enabled"))
@@ -970,6 +1070,7 @@ class GenericSearch(SearchStrategy):
             session_effort=self.session_effort,
             build_prompt=self._build_ideation_prompt,
             run_ensemble=self._generate_solution_ensemble,
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _run_lens_planner_session(self, prompt: str, ideation_dir: str):
@@ -987,6 +1088,7 @@ class GenericSearch(SearchStrategy):
             ideation_web_search=self.ideation_web_search,
             session_effort=self.session_effort,
             artifacts_dir=self._ideation_artifacts_dir(),
+            staged=self.stage_harness_for("ideation", ideation_dir, "lens_planner", "claude_code"),
         )
         # Planning runs inside the ideation step; flip the live phase back
         # so the sessions that follow are not reported as still planning.
@@ -1012,6 +1114,7 @@ class GenericSearch(SearchStrategy):
             campaign_state_brief=self._campaign_state_brief,
             get_best_experiment=self.get_best_experiment,
             run_planner_session=self._run_lens_planner_session,
+            domain_guidance=self.stage_harness_for("ideation", ideation_dir, "lens_planner", "claude_code").guidance,
         )
 
     def _generate_solution_ensemble(
@@ -1044,6 +1147,7 @@ class GenericSearch(SearchStrategy):
             build_prompt=self._build_ideation_prompt,
             resolve_lenses=self._resolve_member_lenses,
             select_candidates=self._select_from_candidates,
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _campaign_state_brief(self) -> str:
@@ -1075,6 +1179,7 @@ class GenericSearch(SearchStrategy):
             env_defaults=self.env_defaults,
             session_effort=self.session_effort,
             artifacts_dir=self._ideation_artifacts_dir(),
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _build_ideation_prompt(
@@ -1082,6 +1187,7 @@ class GenericSearch(SearchStrategy):
         problem: str,
         repo_memory_brief: str,
         allowed_tools: Sequence[str] = (),
+        domain_guidance: str = "",
     ) -> str:
         """Build the ideation prompt for Claude Code; ``allowed_tools`` is
         the session's whitelist, which decides whose gate guidance the
@@ -1093,6 +1199,7 @@ class GenericSearch(SearchStrategy):
             shared_artifacts_brief=self.shared_artifacts_brief,
             inbox_ideation=self._render_inbox_ideation(),
             knowledge_tools=knowledge_tools_block("ideation", allowed_tools),
+            domain_guidance=domain_guidance,
         )
 
     def _render_inbox_ideation(self) -> str:
@@ -1195,6 +1302,7 @@ class GenericSearch(SearchStrategy):
             inbox_settings=getattr(self, "inbox_settings", None),
             continuation=continuation,
             defer_evaluation=self._cost_enabled(),
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _build_implementation_prompt(
@@ -1208,6 +1316,7 @@ class GenericSearch(SearchStrategy):
         lane_brief: str = "",
         inbox_section: str = "",
         allowed_tools: Sequence[str] = (),
+        domain_guidance: str = "",
     ) -> str:
         """Build the implementation prompt for Claude Code; ``allowed_tools``
         is the session's whitelist, which decides whose gate guidance the
@@ -1227,6 +1336,7 @@ class GenericSearch(SearchStrategy):
             lane_brief=lane_brief,
             inbox_section=inbox_section,
             knowledge_tools=knowledge_tools_block("implementation", allowed_tools),
+            domain_guidance=domain_guidance,
         )
 
     def _manifest_of_record(self, node: SearchNode) -> Optional[Dict[str, Any]]:
@@ -1342,8 +1452,9 @@ class GenericSearch(SearchStrategy):
         # OLD (defective-evaluator) measurement. Without this the live
         # requester stayed invalid forever — excluded from parenting and
         # delivery despite carrying an honest new-head score. Tampering
-        # nodes never reach the bridge (integrity errors are filtered).
-        node.evaluation_valid = True
+        # nodes never reach the bridge (integrity errors are filtered); a
+        # harness void stands whatever the measurement.
+        node.evaluation_valid = not is_void(node.verification)
         return True
 
     def refresh_score_projections(
@@ -1404,6 +1515,22 @@ class GenericSearch(SearchStrategy):
             session_started_ts=getattr(
                 self, "_last_session_started_ts", 0.0
             ),
+        )
+
+    def stage_harness_for(self, module: str, session_dir: str, label: str, agent_type: str) -> StagedHarness:
+        """What the loaded harness gives one session of a module, staged
+        into the session's directory (nothing without a harness). An
+        ideation session's id is prefixed with the iteration, so the
+        staging records sit beside the ideation artifacts."""
+        session_id = f"ideation/iter{self.iteration_count}/{label}" if module == "ideation" else label
+        if self.harness is None:
+            return no_harness(module, agent_type, Path(session_dir), session_id)
+        if not session_dir:
+            raise ValueError(f"the {module} session {session_id} has no directory to stage into")
+        return stage_harness(
+            self.harness, module,
+            session_dir=Path(session_dir), campaign_dir=Path(self.workspace_dir),
+            session_id=session_id, host=host_for(agent_type),
         )
 
     def _ideation_artifacts_dir(self) -> str:
@@ -1504,7 +1631,8 @@ class GenericSearch(SearchStrategy):
         # work (a deadline-killed implementation, an evaluation that never
         # ran) is still real progress; branching from `main` strands it on
         # its branch and the next iteration redoes it. Integrity-flagged
-        # candidates stay excluded — never build on an evaluator tamperer.
+        # candidates stay excluded — never build on an evaluator tamperer,
+        # nor on an attempt the harness voided.
         committed = [
             node
             for node in self.node_history
@@ -1512,6 +1640,7 @@ class GenericSearch(SearchStrategy):
             and not node.evaluation_integrity_error
             and not node.cost_refusal
             and not getattr(node, "suspended", False)
+            and not is_void(node.verification)
             and node.code_diff.strip()
             and node.branch_name
         ]
@@ -1540,9 +1669,12 @@ class GenericSearch(SearchStrategy):
         """Return the best successful SCORED node — a node whose evaluation
         never completed (score=None) can never be best; on minimize metrics
         it would otherwise key as 0 and out-rank every real score."""
+        return self._best_of(self.node_history)
+
+    def _best_of(self, nodes: List[SearchNode]) -> Optional[SearchNode]:
         valid = [
             node
-            for node in self.node_history
+            for node in nodes
             if not node.had_error and node.evaluation_valid and node.score is not None
         ]
         if not valid:
@@ -1567,15 +1699,18 @@ class GenericSearch(SearchStrategy):
         full-tier candidate at delivery. Without registered evidence the
         score leader stands.
         """
+        # An attempt the harness could not verify stays a parent but is
+        # never delivered (kapso.harness.verdict).
+        candidates = [node for node in self.node_history if is_deliverable(node.verification)]
         if self.registered_evaluator_id and not self._cost_enabled():
             committed = select_committed_candidate(
-                self.node_history,
+                candidates,
                 evaluator_id=self.registered_evaluator_id,
                 maximize=self.problem_handler.maximize_scoring,
             )
             if committed is not None:
                 return committed
-        return self.get_best_experiment()
+        return self._best_of(candidates)
 
     def get_deliverable_score(self) -> Optional[float]:
         """The deliverable's authoritative measurement.
@@ -1647,6 +1782,8 @@ class GenericSearch(SearchStrategy):
             # The frame run's verdict: in cost mode a session's own claim
             # of validity never reaches the judge.
             execution_valid=node.evaluation_valid if self._cost_enabled() else True,
+            stage_harness_for=self.stage_harness_for,
+            verification=node.verification,
         )
 
     def _extract_agent_result(self, agent_output: str) -> dict:

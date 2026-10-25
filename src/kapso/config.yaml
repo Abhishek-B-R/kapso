@@ -90,6 +90,20 @@ deployment:
   model: "claude-opus-5"
 
 # =============================================================================
+# Harness — the domain layer a build loads (docs/research/harness-design.md).
+# load_harness_defaults() reads this block, with a user config's own
+# `harness:` keys over it. Nothing here names a harness: what a run loads is
+# said at the call, on the command line, or in the brief.
+# =============================================================================
+harness:
+  store: ~/.kapso/harnesses          # fetched git references, one directory per <slug>@<rev>
+  page_warning_lines: 40             # `check` warns on an always-on page longer than this
+  setup_minutes: 20                  # the harness setup session's timeout, clamped by the budget
+  verification_minutes: 10           # each verification session's timeout, clamped by the budget
+  verification_attempts: 2           # sessions run for one attempt before it is recorded unverified
+  server_tool_timeout_seconds: 600   # a harness server's per-call timeout where the host takes one (Codex)
+
+# =============================================================================
 # Platform defaults — the base layer under every mode of every config file
 # =============================================================================
 # load_mode_config() resolves a mode as deep_merge(defaults, modes[<mode>]):

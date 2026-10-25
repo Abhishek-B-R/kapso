@@ -93,6 +93,9 @@ class DeployConfig:
     timeout: int = 300
     coding_agent: str = DEPLOYMENT_DEFAULTS["coding_agent"]
     model: str = DEPLOYMENT_DEFAULTS["model"]
+    # The loaded harness (kapso.harness.Harness) whose deployment module
+    # the selector and adapter sessions carry; None without one.
+    harness: Any = None
     
     def __post_init__(self):
         if self.env_vars is None:

@@ -372,6 +372,16 @@ class ExperimentWorkspace:
             # Leeroopedia token); sessions used to commit it into experiment
             # branches.
             ".claude_mcp/",
+            # A harness's staged files (kapso.harness.staging): the skills,
+            # hooks and delegates each host discovers in its own directory,
+            # the task statement copied into every session, and the link to
+            # the campaign's prepared resources (no trailing slash: a symlink
+            # and a file must match too). Never branch content.
+            ".claude/",
+            ".agents/",
+            ".codex/",
+            "kapso_task.md",
+            "prepared",
             # Seeded repos may arrive with bytecode; once tracked it goes
             # stale on re-import and blocks every later branch checkout.
             "__pycache__/",
@@ -383,7 +393,10 @@ class ExperimentWorkspace:
             with open(gitignore_path, "r") as f:
                 existing = f.read()
 
-        to_add = [line for line in required_lines if line not in existing]
+        # Whole lines: a seed whose ignore file mentions `.claude/` in a
+        # comment or ignores `data/prepared/` has not ignored these.
+        present = {line.strip() for line in existing.splitlines()}
+        to_add = [line for line in required_lines if line not in present]
         if not to_add:
             return
 

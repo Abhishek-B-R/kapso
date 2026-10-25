@@ -16,7 +16,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from kapso.core.prompt_loader import load_prompt, render_prompt
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.harness.staging import StagedHarness
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic import codex_ideation
@@ -240,6 +241,7 @@ def generate_solution(
     session_effort: Optional[str],
     build_prompt: Callable[..., str],
     run_ensemble: Callable[..., Tuple[List[str], List[str], Dict[str, float]]],
+    stage_harness_for: Callable[..., StagedHarness],
 ) -> Tuple[List[str], List[str], Dict[str, float]]:
     """
     Generate solution using Claude Code with MCP gates.
@@ -313,12 +315,15 @@ def generate_solution(
                 ideation_allowed_tools=ideation_allowed_tools,
             )
 
-        # 4. Configure Claude Code for ideation (read-only mode).
+        # 4. Configure Claude Code for ideation (read-only mode), with the
+        # harness's ideation module staged into the worktree.
+        staged = stage_harness_for("ideation", ideation_dir, "claude_code", "claude_code")
+        ideation_allowed_tools = [*ideation_allowed_tools, *staged.allowed_tools]
         config = CodingAgentConfig(
             agent_type="claude_code",
             model=idea_generation_model,
             debug_model=idea_generation_model,
-            agent_specific={
+            agent_specific=staged.merged_agent_specific({
                 **claude_auth_settings,
                 "env_strip": env_strip,
                 "env_defaults": env_defaults,
@@ -329,15 +334,16 @@ def generate_solution(
                 "streaming": True,
                 "planning_mode": False,
                 "effort": session_effort,
-            },
+            }),
         )
 
         # 5. Build the ideation prompt — with the guidance of exactly the
-        # gates this session can call.
+        # gates this session can call, and the harness's pages.
         prompt = build_prompt(
             problem=problem,
             repo_memory_brief=repo_memory_brief,
             allowed_tools=ideation_allowed_tools,
+            domain_guidance=staged.guidance,
         )
 
         # 6. Run Claude Code from the selected parent worktree.
@@ -411,6 +417,7 @@ def generate_solution_ensemble(
     build_prompt: Callable[..., str],
     resolve_lenses: Callable[[str, str], tuple],
     select_candidates: Callable[..., Dict[str, Any]],
+    stage_harness_for: Callable[..., StagedHarness],
 ) -> Tuple[str, List[str], Dict[str, float]]:
     """Fan out ideation across CLI members, then select one solution.
 
@@ -453,16 +460,19 @@ def generate_solution_ensemble(
         # the request envelope — verified live on kimi-k3-fast,
         # 2026-08-03), so an oss member keeps client-side WebFetch only.
         is_oss = member["cli"] == "oss_claude_code"
+        safe_model = re.sub(r"[^A-Za-z0-9._-]", "_", member["model"])
+        staged = stage_harness_for("ideation", ideation_dir, f"{member['cli']}_{safe_model}", member["cli"])
         if member["cli"] == "codex":
             member_allowed_tools: List[str] = []
         elif is_oss:
-            member_allowed_tools = [t for t in ideation_allowed_tools if t != "WebSearch"]
+            member_allowed_tools = [t for t in ideation_allowed_tools if t != "WebSearch"] + staged.allowed_tools
         else:
-            member_allowed_tools = list(ideation_allowed_tools)
+            member_allowed_tools = list(ideation_allowed_tools) + staged.allowed_tools
         prompt = build_prompt(
             problem=problem,
             repo_memory_brief=repo_memory_brief,
             allowed_tools=member_allowed_tools,
+            domain_guidance=staged.guidance,
         ) + "\n\n" + render_prompt(
             addendum_template,
             {
@@ -487,6 +497,8 @@ def generate_solution_ensemble(
                     effort=member.get("effort"),
                     artifacts_dir=artifacts_dir,
                     web_search=ideation_web_search,
+                    extra_args=staged.codex_exec_args(),
+                    extra_env=staged.env,
                 )
 
             def extract(output: str) -> list:
@@ -570,7 +582,7 @@ def generate_solution_ensemble(
             agent_type=member["cli"],
             model=member["model"],
             debug_model=member["model"],
-            agent_specific=agent_specific,
+            agent_specific=staged.merged_agent_specific(agent_specific),
         )
         agent_class = OssClaudeCodeCodingAgent if is_oss else ClaudeCodeCodingAgent
         agent = agent_class(config)
@@ -748,6 +760,7 @@ def select_from_candidates(
     env_defaults: Dict[str, str],
     session_effort: Optional[str],
     artifacts_dir: str,
+    stage_harness_for: Callable[..., StagedHarness],
 ) -> Dict[str, Any]:
     """Run the selector-critic session over the pooled candidates.
 
@@ -762,6 +775,7 @@ def select_from_candidates(
         f"### Candidate {i} (from {c['source']})\n{c['text']}"
         for i, c in enumerate(pool, 1)
     )
+    staged = stage_harness_for("ideation", ideation_dir, "selector", ideation_selector["cli"])
     prompt = render_prompt(
         load_prompt(
             "execution/search_strategies/generic/prompts/ideation_selector.md"
@@ -772,6 +786,7 @@ def select_from_candidates(
             or "(No repo memory available)",
             "campaign_state": campaign_state,
             "candidates": candidates_block,
+            "domain_guidance": optional_block(staged.guidance),
         },
     )
     if expansion > 1:
@@ -811,6 +826,8 @@ def select_from_candidates(
                 effort=selector.get("effort"),
                 artifacts_dir=artifacts_dir,
                 web_search=True,
+                extra_args=staged.codex_exec_args(),
+                extra_env=staged.env,
             )
             return CodingResult(
                 success=not timed_out and bool(output.strip()),
@@ -821,11 +838,11 @@ def select_from_candidates(
             agent_type="claude_code",
             model=selector["model"],
             debug_model=selector["model"],
-            agent_specific={
+            agent_specific=staged.merged_agent_specific({
                 **claude_auth_settings,
                 "env_strip": env_strip,
                 "env_defaults": env_defaults,
-                "allowed_tools": ["Read", "WebSearch", "WebFetch"],
+                "allowed_tools": ["Read", "WebSearch", "WebFetch", *staged.allowed_tools],
                 "timeout": selector_deadline,
                 "streaming": True,
                 "planning_mode": False,
@@ -834,7 +851,7 @@ def select_from_candidates(
                     artifacts_dir, "selector",
                     selector["model"],
                 ),
-            },
+            }),
         )
         agent = ClaudeCodeCodingAgent(config)
         agent.initialize(ideation_dir)
@@ -908,6 +925,7 @@ def build_ideation_prompt(
     shared_artifacts_brief: str,
     inbox_ideation: str = "",
     knowledge_tools: str = "",
+    domain_guidance: str = "",
 ) -> str:
     """Build the ideation prompt for Claude Code. ``inbox_ideation`` is
     the rendered inbox block — the rule against designing around a
@@ -926,6 +944,7 @@ def build_ideation_prompt(
             "shared_artifacts_brief": shared_artifacts_brief,
             "inbox_ideation": inbox_ideation,
             "knowledge_tools": knowledge_tools,
+            "domain_guidance": optional_block(domain_guidance),
         },
     )
 

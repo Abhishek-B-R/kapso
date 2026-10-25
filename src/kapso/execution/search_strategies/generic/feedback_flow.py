@@ -12,6 +12,7 @@ import re
 from typing import Any, Callable, Dict, Optional
 
 from kapso.execution.search_strategies.base import SearchNode
+from kapso.harness.verdict import is_void, render_verification
 from kapso.execution.cost_estimator import validate_cost_value
 from kapso.execution.evaluation_maintainer.maintainer import MANIFEST_MARKER
 
@@ -50,6 +51,8 @@ def generate_feedback(
     manifest_of_record: Callable[[SearchNode], Optional[Dict[str, Any]]],
     finalize_run_selection: Callable[[Dict[str, Any], bool], None],
     execution_valid: bool = True,
+    stage_harness_for: Callable[..., Any],
+    verification: Optional[Dict[str, Any]] = None,
 ) -> SearchNode:
     """
     Generate feedback for a node using the FeedbackGenerator.
@@ -72,6 +75,10 @@ def generate_feedback(
     
     print(f"[GenericSearch] Generating feedback for node {node.node_id}...")
     
+    # The harness's feedback module: its pages in the judge's prompt, its
+    # delegates and skills beside the judge (attached once per campaign).
+    staged = stage_harness_for("feedback", node.workspace_dir, f"feedback/{node.branch_name}", feedback_generator.agent_type)
+    feedback_generator.attach_harness(staged)
     try:
         feedback_result = feedback_generator.generate(
             goal=goal,
@@ -84,14 +91,20 @@ def generate_feedback(
             workspace_dir=node.workspace_dir,
             design_axes=design_axes,
             session_end_facts=session_end_facts,
+            domain_guidance=staged.guidance,
+            verification=render_verification(verification),
             timeout_seconds=clamped_timeout(
                 feedback_generator.configured_timeout_seconds
             ),
         )
 
-        # Update node with feedback results
+        # Update node with feedback results. A harness verdict of void is
+        # ANDed in after the judge, so the judge's default cannot
+        # resurrect it.
         node.feedback = feedback_result.feedback
-        node.evaluation_valid = feedback_result.evaluation_valid and execution_valid
+        node.evaluation_valid = (
+            feedback_result.evaluation_valid and execution_valid and not is_void(verification)
+        )
         node.score = (
             feedback_result.score
             if node.evaluation_valid
@@ -145,7 +158,11 @@ def generate_feedback(
         print(f"[GenericSearch] Error generating feedback: {e}")
         node.feedback = f"Error generating feedback: {e}"
         node.should_stop = False
-    
+        if is_void(verification):
+            # The harness's void holds whether or not the judge spoke.
+            node.evaluation_valid = False
+            node.score = None
+
     return node
 
 

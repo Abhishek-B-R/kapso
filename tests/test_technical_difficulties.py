@@ -16,6 +16,7 @@ from kapso.execution.memories.experiment_memory.store import ExperimentRecord
 
 def make_strategy_stub():
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     return strategy
 
 

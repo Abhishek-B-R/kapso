@@ -36,6 +36,7 @@ kapso learn mine --all --config ./my-config.yaml
 | [`preflight`](#preflight) | Whether requirement checks run before a verb |
 | [`gates`](#gates) | Where the hosted MCP gates live |
 | [`deployment`](#deployment) | The coding agent and model behind `deploy()`'s selector and adapter sessions |
+| [`harness`](#harness) | Where fetched harnesses live, and the harness sessions' timeouts |
 | [`defaults`](#defaults) | Embedding model, heartbeat and request timeout |
 | [`modes`](#modes) | Named bundles of search, agent, feedback and knowledge settings |
 | [`learning`](#learning) | The trajectory store, lesson bank, graders and update crew |
@@ -139,6 +140,29 @@ deployment:
 | `model` | The model that agent is asked for | `claude-opus-5` |
 
 The agent must be able to serve the model: a Claude model name on the `codex` agent is refused by a ChatGPT login. `deploy(coding_agent=..., model=...)` and `kapso deploy --coding-agent` override per call, and a `deployment:` block in your own config file layers over the packaged one key by key.
+
+## harness
+
+```yaml
+harness:
+  store: ~/.kapso/harnesses
+  page_warning_lines: 40
+  setup_minutes: 20
+  verification_minutes: 10
+  verification_attempts: 2
+  server_tool_timeout_seconds: 600
+```
+
+| Key | What it does | Shipped value |
+|-----|--------------|---------------|
+| `store` | Where a harness named by git reference is fetched, one directory per repository and revision | `~/.kapso/harnesses` |
+| `page_warning_lines` | `kapso harness check` warns on an instruction page longer than this; pages go into every prompt of their module whole | `40` |
+| `setup_minutes` | The harness setup session's timeout, clamped by the campaign's budget | `20` |
+| `verification_minutes` | Each verification session's timeout, clamped the same way at each attempt | `10` |
+| `verification_attempts` | How many sessions run for one attempt before it is recorded `unverified` | `2` |
+| `server_tool_timeout_seconds` | How long a session waits on one call to a harness server, where the host takes a per-server timeout (Codex) | `600` |
+
+See [Harnesses](/docs/harnesses). A harness is never named in the config: it is named on the build, in the brief, or in Python.
 
 ## defaults
 

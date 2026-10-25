@@ -46,7 +46,8 @@ solution = Kapso().build(
 | `Target` | The number that ends the campaign. Given, or proposed with headroom and said so | no |
 | `Rules` | Invariants the judge enforces on every candidate: the evaluator untouched, no fitting on the hold-out, no rows dropped, data read-only | no |
 | `Budget` | `minutes`, `experiments`, `usd` (model spend), `reserve_minutes` (escrowed for the final checkout and evaluation) | no |
-| `Harness`, `Experience` | References, kept verbatim for the harness and experience features as they ship | no |
+| `Harness` | The [harness](/docs/harnesses) the build loads: a bundled name, a directory read from where the build runs, or a git reference. `--harness` wins over it | no |
+| `Experience` | References, kept verbatim for the experience feature as it ships | no |
 
 A line starts with its name; indented lines continue it, and a blank line
 between two lines of the same field is a paragraph break. `Rules` and

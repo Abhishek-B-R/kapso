@@ -1,0 +1,11 @@
+{
+  "seed": 20261025,
+  "files": {
+    "data/bars/ALPHA.csv": "f6c0b98c0835a8102cf8781b6cf6a80838493875e4316bcb9f3b424b378eaa0a",
+    "private/oos/ALPHA.csv": "fa95dbbe53a2621a96f3380de51bf67965d9ff1ff71b851b342fb8ecf6803b47",
+    "data/bars/BETA.csv": "c559a7c15a21a0131ae14360838985c54fe8c884cb5766460392eba43bccad9e",
+    "private/oos/BETA.csv": "f3345a1bee6c91ff5c751756f4855f600d8eca6c974fd4d088156b3c17c898e9",
+    "data/bars/GAMMA.csv": "07243389df8e3e48af1403a5ee9782c7912930dff3fdbada0c241a881f2b2eee",
+    "private/oos/GAMMA.csv": "3724fdd53bd8eae8f0393eeb3fbc43a2278515e404699ff9af3ec39ac9d88a90"
+  }
+}

@@ -6,6 +6,71 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-25, WP2 (taken while building)
+
+**A harness's Python requirements are checked against `python3` on PATH,
+not the engine's interpreter.** The sub-plan said `importlib.metadata` in
+the engine's process. The harness's servers, hooks and scripts run on the
+`python3` the authoring guide tells the author to name, which is the
+engine's interpreter only when Kapso is installed into an activated
+environment; a `uv tool` install (the fresh machine, the install skill)
+runs the engine in a venv of its own with no `pip`, so the fix line
+`<sys.executable> -m pip install -r` could not even run there, and a user
+who followed it would have installed into the interpreter nothing of the
+harness uses. `check` now asks `python3` on PATH for its distributions in
+a subprocess, reports its absence as a need of every module, and the fix
+line is `python3 -m pip install -r <file>`. Alternative rejected: checking
+both interpreters, which doubles the rows and still names the wrong one.
+
+**A session that names no directory is refused, not staged into the
+working directory.** Found by a test whose nodes had no directory and
+left `.claude/` and `kapso_task.md` in the repository root; production
+nodes always carry one. The guard sits after the no-harness path, which
+writes nothing, so a build without a harness is untouched.
+
+**The verification session runs on the implementation CLI, not the
+judge's.** The sub-plan had it on the judge's host; the review pointed
+out that a campaign whose attempts are implemented on Codex then had
+its verification on Claude Code, so the Codex rows of the host table
+(hooks, roles) were never exercised by the step that matters most.
+The attempt's own host verifies it, with the implementation model.
+Alternative rejected: a `verification_cli` knob, a knob nobody asked for.
+
+**An `env` entry of a harness server names the variable it forwards, and
+every `env` or `headers` value is one whole reference.** Claude Code
+expands `${VAR}` wherever it sits and would accept
+`"BROKER_API_KEY": "${MY_KEY}"` and `"Bearer ${TOKEN}"`; Codex forwards
+variables by name and takes neither. Rather than translate per host (a
+value on a command line, or a literal header), `check` refuses both
+shapes and the guide says why. The `Bearer` prefix lives inside the
+variable.
+
+**A module's staging into a shared directory is exclusive.** Sessions at
+the campaign root follow one another; the second used to find the
+first's skills beside its own, which contradicted "nothing is inherited"
+and the session's own record. Each staging removes the harness's skills,
+hooks file and delegates that are not this module's. Alternative
+rejected: a directory per session at the root, which moves the judge
+and the maintainer out of the campaign root they read.
+
+**A verification session that fails is said so, and no retry runs under
+the budget's deadline.** The verdict's summary carries the session's
+error (a kill, a crash) instead of "wrote no verdict", so the judge and
+the record can tell a dead session from a silent one; a second session
+is launched only when the first had its configured time, since the
+budget's clamp would give the retry less still.
+
+**A loaded harness is never attached to a campaign built without one.**
+`deploy()` and `learn()` refuse it by name; a verb on a finished build
+runs as the build did. Alternative rejected: silently adding the
+deployment or learning module after the fact, which the Interface
+forbids.
+
+**The store's fetch record sits beside the clone.** Inside it, the record
+changed the hash of a harness at a repository's root on every fetch and
+overwrote an author's own `source.json`; two revisions whose names
+sanitise to one directory are refused rather than served as each other.
+
 ## 2026-10-24, WP1 (after the third proof run)
 
 **`solution.feedback` is the judge's words on the delivered candidate; the

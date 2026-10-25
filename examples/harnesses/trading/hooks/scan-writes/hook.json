@@ -4,7 +4,7 @@
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
-          {"type": "command", "command": "PYTHONPATH=${PLUGIN_ROOT}/skills/lookahead-scan/scripts python ${PLUGIN_ROOT}/hooks/scan-writes/scan_written_file.py"}
+          {"type": "command", "command": "PYTHONPATH=${PLUGIN_ROOT}/skills/lookahead-scan/scripts python3 ${PLUGIN_ROOT}/hooks/scan-writes/scan_written_file.py"}
         ]
       }
     ]

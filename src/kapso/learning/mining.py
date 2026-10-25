@@ -287,11 +287,13 @@ class MiningFrame:
 
     # ------------------------------------------------------------- public
 
-    def mine(self, trajectory_id: str, force: bool = False) -> Path:
+    def mine(self, trajectory_id: str, force: bool = False, domain_guidance: str = "") -> Path:
         """Produce <bundle>/mined/ for one trajectory; returns the mined dir.
 
         Idempotent: an already-mined trajectory is skipped unless `force`
         (the mined view is a derived layer — regeneration replaces it whole).
+        ``domain_guidance`` is the harness's learning pages, appended to the
+        lead's prompt (kapso.harness.staging.pages_block); "" without one.
         """
         manifest = self.store.manifest(trajectory_id)
         bundle_dir = self.store.resolve(trajectory_id)
@@ -307,6 +309,8 @@ class MiningFrame:
         prompt = (CREW_DIR / "lead_prompt.md").read_text().replace(
             "{{trajectory_id}}", trajectory_id
         )
+        if domain_guidance:
+            prompt += "\n\n" + domain_guidance
         result = agent.generate_code(prompt, timeout_seconds=timeout)
         self._write_report(mined_dir, result.output)
 

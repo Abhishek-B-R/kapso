@@ -505,7 +505,7 @@ class ExperienceRef:
 
 
 _RECORD = Path(".kapso") / "solution.json"
-_RECORD_SCHEMA = 2
+_RECORD_SCHEMA = 3
 _LABEL = 15   # the column explain()'s values start at: the longest label, "Goal achieved:", and a space
 
 
@@ -530,9 +530,10 @@ class Solution:
     experiments_total: int        # experiments across every resume
     cost_usd: float
     requests: List[Dict[str, Any]]   # what the person must answer when waiting_for_user
-    feedback: Optional[str]       # the judge's last verdict, in full
+    feedback: Optional[str]       # the judge's words on the delivered candidate, in full
     evaluator: Optional[EvaluatorRef]
     harness: Optional[HarnessRef]
+    verification: Optional[Dict[str, Any]]   # the harness's verdict on the delivered candidate: {verdict, summary, findings}
     experience: List[ExperienceRef]
     rejected_candidates: int      # candidates rejected for touching the evaluator
     callback_metrics: Dict[str, float]      # the caller's own iteration_evaluator, delivered candidate
@@ -587,6 +588,7 @@ class Solution:
                 }
                 for source in self.experience
             ],
+            "verification": self.verification,
             "rejected_candidates": self.rejected_candidates,
             "callback_metrics": dict(self.callback_metrics),
             "callback_primary_metric": self.callback_primary_metric,
@@ -643,6 +645,7 @@ class Solution:
             evaluator=EvaluatorRef(**evaluator) if evaluator else None,
             harness=HarnessRef(**harness) if harness else None,
             experience=[ExperienceRef(**source) for source in data["experience"]],
+            verification=data["verification"],
             rejected_candidates=data["rejected_candidates"],
             callback_metrics=dict(data["callback_metrics"]),
             callback_primary_metric=data["callback_primary_metric"],
@@ -700,7 +703,11 @@ class Solution:
                 f"{self.callback_metrics.get(self.callback_primary_metric)}",
             )
         if self.harness is not None:
-            row("Harness", f"{self.harness.name} {self.harness.version} ({self.harness.hash})")
+            # The hash's first twelve characters, as every print shows it;
+            # the record keeps the full hex.
+            row("Harness", f"{self.harness.name} {self.harness.version} ({self.harness.hash[:12]})")
+        if self.verification is not None:
+            row("Verified", f"{self.verification['verdict']} — {self.verification['summary']}")
         for source in self.experience:
             row("Experience", f"{source.reference} ({source.kind}, {source.resolved})")
         if self.knowledge_index:

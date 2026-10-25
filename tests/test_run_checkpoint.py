@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 import git
 import pytest
 
+from kapso.core.config import load_harness_defaults
 import kapso.execution.run_checkpoint as checkpoint_module
 from kapso.execution.inbox import write_launch_record
 from kapso.execution.orchestrator import OrchestratorAgent, SolveResult
@@ -384,6 +385,7 @@ def test_failed_atomic_replace_preserves_previous_checkpoint(
 
 def test_generic_strategy_state_round_trip() -> None:
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.node_history = [
         SearchNode(
             node_id=0,
@@ -398,6 +400,7 @@ def test_generic_strategy_state_round_trip() -> None:
     source.evaluator_transition = None
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.load_state(source.dump_state())
 
     assert restored.node_history[0].branch_name == "generic_exp_0"
@@ -633,7 +636,7 @@ def test_v2_checkpoint_is_rejected_without_migration(tmp_path: Path) -> None:
     # campaign reads "start a fresh campaign", never "missing cost_config".
     with pytest.raises(
         RunCheckpointIncompatibleError,
-        match=r"expected 3\. .*not migrated",
+        match=r"expected 4\. .*not migrated",
     ):
         store.load()
 
@@ -717,6 +720,8 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     kapso._config = {}
     kapso._bank_home = None
     kapso._kg_index_path = None
+    kapso._harness = None
+    kapso._harness_settings = load_harness_defaults()
     result = kapso.build(
         "Improve support",
         output=str(workspace),
@@ -810,6 +815,8 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     kapso._config = {}
     kapso._bank_home = None
     kapso._kg_index_path = None
+    kapso._harness = None
+    kapso._harness_settings = load_harness_defaults()
 
     kapso.build(output=str(workspace), resume=True)
     assert captured["goal"] == Brief(objective="Raise accuracy above 0.85").render()

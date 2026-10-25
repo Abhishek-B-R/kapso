@@ -51,6 +51,8 @@ def run_codex_ideation(
     effort: str | None = None,
     artifacts_dir: str | None = None,
     web_search: bool = True,
+    extra_args: list[str] | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[str, bool, float, dict]:
     """Run one read-only `codex exec` ideation call.
 
@@ -101,11 +103,17 @@ def run_codex_ideation(
     ])
     if effort:
         cmd.extend(["-c", f'model_reasoning_effort="{effort}"'])
+    # A harness's servers, agent roles and hook trust for this session
+    # (kapso.harness.staging.StagedHarness.codex_exec_args).
+    cmd.extend(extra_args or [])
     # Prompt via stdin, never argv (same self-pkill hazard as the Claude
     # adapter: argv-borne prompt text makes kill patterns match ancestors).
 
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
+    # A harness's variables (KAPSO_HARNESS_ROOT), as every staged session
+    # gets them (kapso.harness.staging.StagedHarness.env).
+    env.update(extra_env or {})
 
     # Stream to a file, not a PIPE: codex output can exceed the 64KB pipe
     # buffer mid-run, which would deadlock a poll loop.

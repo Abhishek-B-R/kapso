@@ -19,6 +19,7 @@ from typing import Any, Dict, List
 import git
 import pytest
 
+from kapso.core.config import load_harness_defaults
 import kapso.kapso as kapso_module
 from kapso.execution.inbox import (
     file_requests,
@@ -62,6 +63,8 @@ def _facade() -> Kapso:
     kapso._config = {}
     kapso._bank_home = None
     kapso._kg_index_path = None
+    kapso._harness = None
+    kapso._harness_settings = load_harness_defaults()
     return kapso
 
 

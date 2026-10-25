@@ -73,7 +73,7 @@ module: what the module's sessions get.
 ```yaml
 schema_version: 1
 name: trading
-version: 0.1.0
+version: 0.1.0              # required; bumped when behaviour changes, recorded with every run
 description: Research, implement, verify and deploy systematic trading strategies.
 
 environment:                # prerequisites, prepared in the run's environment
@@ -258,8 +258,8 @@ model names inside domain content are fine.
 ```
 kapso harness new trading                     # the two-file starter
 kapso harness check ./trading                 # see below
-kapso harness list                            # bundled and installed
-kapso harness export ./trading --format claude | codex | cursor
+kapso harness list                            # bundled and fetched
+kapso harness add | update | remove <ref>     # the store of fetched git references
 kapso build --config ./kapso-config.yaml --harness ./trading --goal "..." --evaluation ./backtest --data ./prices --repo ./strategy
 kapso deploy --harness ./trading --target paper-trading
 ```
@@ -327,9 +327,10 @@ a missing requirements file. It reports separately what the machine lacks
 no module lists; a skill not mentioned in its module's page; an always-on
 page over the size the config sets.
 
-`export` writes the host's plugin layout from skills, agents, `mcp.json` and
-every hook merged into the host's single hooks file, with a note of what the
-host does not reproduce: module routing and the instruction pages, which
+`kapso harness export` is WP7's (`docs/plans/redesign/MASTER.md`), not
+WP2's: it will write the host's plugin layout from skills, agents, `mcp.json`
+and every hook merged into the host's single hooks file, with a note of what
+the host does not reproduce: module routing and the instruction pages, which
 become the plugin's README.
 
 ## 9. Decisions

@@ -205,6 +205,7 @@ def test_registered_integrity_enforced_in_agent_generated_mode(tmp_path):
             yield str(candidate)
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.workspace = FakeWorkspace()
     strategy.evaluation_provenance = AGENT_GENERATED
     strategy.registered_evaluation_manifest = {
@@ -221,6 +222,7 @@ def test_registered_integrity_enforced_in_agent_generated_mode(tmp_path):
 
 def test_evaluation_instructions_swap_with_registration():
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
 
     strategy.registered_evaluation_command = ""
     assert (
@@ -250,6 +252,7 @@ def test_change_request_guidance_teaches_the_mismeasurement_diagnostics():
     nothing taught the WHEN. The instructions must carry both diagnostics,
     the numbers-not-suspicion bar, and stay free of benchmark vocabulary."""
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.registered_evaluation_command = (
         "python kapso_evaluation/kapso_eval.py --fidelity full "
         "--fraction 1.0 --seed 1337"
@@ -278,6 +281,7 @@ def test_registered_evaluation_syncs_into_sessions(tmp_path):
     (session / "kapso_evaluation" / "stale.py").write_text("OLD = 1\n")
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.workspace_dir = str(workspace)
     strategy._sync_registered_evaluation(str(session))
 

@@ -5,6 +5,7 @@ here imports a verb module."""
 import os
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 from typing import List, Sequence
 
@@ -64,7 +65,11 @@ def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) 
     verified 2026-09-07); every host and the skill used to reinvent the
     nohup/setsid dance for this one flag."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(log_path, "a", encoding="utf-8") as log:
+    # The child is meant to outlive this process, so the Popen object is let
+    # go while it runs; Python would otherwise print "subprocess N is still
+    # running" at the end of a successful launch.
+    with warnings.catch_warnings(), open(log_path, "a", encoding="utf-8") as log:
+        warnings.simplefilter("ignore", ResourceWarning)
         child = subprocess.Popen(
             [sys.executable, "-m", "kapso.cli", *argv],
             stdin=subprocess.DEVNULL,
@@ -73,7 +78,9 @@ def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) 
             cwd=os.getcwd(),
             start_new_session=True,
         )
-    print(f"{label} started in a session of its own (pid {child.pid})")
+        pid = child.pid
+        del child
+    print(f"{label} started in a session of its own (pid {pid})")
     print(f"  log:     {log_path}")
     print(f"  status:  {campaign / '.kapso' / 'status.json'}")
     print(f"  follow:  kapso watch {campaign} --follow")

@@ -28,6 +28,10 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch):
 
     class Judge:
         configured_timeout_seconds = 60
+        agent_type = "claude_code"
+
+        def attach_harness(self, staged):
+            """No harness here: nothing to attach."""
 
         def generate(self, **kwargs):
             judged[kwargs["head_branch"]] = kwargs["session_end_facts"]
@@ -38,6 +42,7 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch):
 
     monkeypatch.setattr(strategy_module, "run_implementation", fake_run_implementation)
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.__dict__.update(
         node_expansion_value=2, expansion_lane_env=None, node_history=[],
         workspace=None, workspace_dir="", llm=None,

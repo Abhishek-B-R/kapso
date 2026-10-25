@@ -124,7 +124,7 @@ class DeploymentFactory:
         from kapso.deployment.selector.agent import SelectorAgent
         
         selector = SelectorAgent(
-            coding_agent_type=config.coding_agent, model=config.model,
+            coding_agent_type=config.coding_agent, model=config.model, harness=config.harness,
         )
         return selector.select(config.solution, allowed_strategies=strategies)
     
@@ -138,7 +138,7 @@ class DeploymentFactory:
         from kapso.deployment.selector.agent import SelectorAgent
         
         selector = SelectorAgent(
-            coding_agent_type=config.coding_agent, model=config.model,
+            coding_agent_type=config.coding_agent, model=config.model, harness=config.harness,
         )
         return selector._create_setting_for_strategy(strategy.value)
     
@@ -165,6 +165,7 @@ class DeploymentFactory:
             coding_agent_type=config.coding_agent,
             model=config.model,
             max_retries=2,
+            harness=config.harness,
         )
         
         return adapter.adapt(

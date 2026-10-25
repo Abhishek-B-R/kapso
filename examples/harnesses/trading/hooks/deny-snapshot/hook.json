@@ -4,7 +4,7 @@
       {
         "matcher": "mcp__market-data__snapshot",
         "hooks": [
-          {"type": "command", "command": "python ${PLUGIN_ROOT}/hooks/deny-snapshot/deny_snapshot.py"}
+          {"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/deny-snapshot/deny_snapshot.py"}
         ]
       }
     ]

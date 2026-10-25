@@ -4,7 +4,7 @@
       {
         "matcher": "Bash",
         "hooks": [
-          {"type": "command", "command": "python ${PLUGIN_ROOT}/hooks/deny-web-fetch/deny_web_fetch.py"}
+          {"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/deny-web-fetch/deny_web_fetch.py"}
         ]
       }
     ]

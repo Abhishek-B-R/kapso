@@ -19,6 +19,7 @@ from kapso.deployment.base import DeploymentSetting
 from kapso.deployment.strategies import StrategyRegistry
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.handles import Solution
+from kapso.harness.staging import host_for, stage_harness
 
 
 class SelectorAgent:
@@ -37,16 +38,20 @@ class SelectorAgent:
         self,
         coding_agent_type: str,
         model: str,
+        harness: Any = None,
     ):
         """
         Initialize selector agent.
-        
+
         Args:
             coding_agent_type: Coding agent to use (claude_code, aider, gemini)
             model: LLM model for the coding agent
+            harness: The loaded harness (kapso.harness.Harness) whose
+                deployment module the session carries; None without one
         """
         self.coding_agent_type = coding_agent_type
         self.model = model
+        self.harness = harness
         self.registry = StrategyRegistry.get()
         
         # Path to the selection prompt template
@@ -151,13 +156,24 @@ class SelectorAgent:
         Returns:
             Parsed response or None on failure
         """
+        # The harness's deployment module, staged into the campaign for this
+        # session; its pages follow the prompt (the template is rendered
+        # with str.format, so the block is appended after it).
+        staged = stage_harness(
+            self.harness, "deployment", session_dir=Path(code_path), campaign_dir=Path(code_path),
+            session_id="deployment/selector",
+            host=host_for(self.coding_agent_type) if self.harness is not None else self.coding_agent_type,
+        )
         prompt = self._build_prompt(goal, strategies)
-        
+        if staged.guidance:
+            prompt += "\n\n" + staged.guidance
+
         try:
             config = CodingAgentFactory.build_config(
                 agent_type=self.coding_agent_type,
                 model=self.model,
                 workspace=code_path,
+                agent_specific=staged.merged_agent_specific({}),
             )
             agent = CodingAgentFactory.create(config)
             agent.initialize(code_path)

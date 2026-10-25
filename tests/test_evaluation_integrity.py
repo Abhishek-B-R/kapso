@@ -86,6 +86,7 @@ class StubStrategy(SearchStrategy):
 
 def _provided_strategy(workspace: Path) -> GenericSearch:
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.workspace = MaterializingWorkspace(workspace)
     strategy.registered_evaluation_manifest = {}
     strategy.registered_data_manifest = {}
@@ -242,6 +243,7 @@ def test_unchanged_candidate_and_agent_generated_evaluation_are_valid(
     assert node.evaluation_provenance == PROVIDED
 
     generated = GenericSearch.__new__(GenericSearch)
+    generated.harness = None
     generated.registered_evaluation_manifest = {}
     generated.registered_data_manifest = {}
     generated.evaluation_provenance = AGENT_GENERATED
@@ -269,6 +271,7 @@ def test_invalid_evaluations_cannot_win_strategy_or_history_selection(
     )
 
     generic = GenericSearch.__new__(GenericSearch)
+    generic.harness = None
     generic.node_history = [invalid, valid]
     generic.problem_handler = SimpleNamespace(maximize_scoring=True)
     assert generic.get_best_experiment() is valid
@@ -287,6 +290,7 @@ def test_invalid_evaluations_cannot_win_strategy_or_history_selection(
 
 def test_feedback_invalidity_cannot_stop_or_retain_a_score() -> None:
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.goal = "Improve support"
     strategy.budget_snapshot = None
     strategy.budget_snapshot_monotonic = None
@@ -295,6 +299,8 @@ def test_feedback_invalidity_cannot_stop_or_retain_a_score() -> None:
     strategy.design_axes = ("input representation — features",)
     strategy.feedback_generator = SimpleNamespace(
         configured_timeout_seconds=120.0,
+        agent_type="claude_code",
+        attach_harness=lambda staged: None,
         generate=lambda **kwargs: SimpleNamespace(
             feedback="evaluation is not valid",
             score=100.0,
@@ -342,6 +348,7 @@ def test_invalid_evaluation_is_stored_but_never_ranked_top(
 
 def test_integrity_state_round_trip_and_resume_mismatch() -> None:
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.evaluation_provenance = PROVIDED
     source.provided_evaluation_manifest = {"evaluate.py": "a" * 64}
     source.provided_evaluation_fingerprint = manifest_fingerprint(
@@ -350,6 +357,7 @@ def test_integrity_state_round_trip_and_resume_mismatch() -> None:
     state = source.dump_evaluation_integrity_state()
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.evaluation_provenance = PROVIDED
     restored.provided_evaluation_manifest = {"evaluate.py": "a" * 64}
     restored.provided_evaluation_fingerprint = manifest_fingerprint(

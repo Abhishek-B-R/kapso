@@ -1,0 +1,65 @@
+---
+title: "Harnesses: the domain layer a build loads"
+sidebarTitle: "What a harness is"
+description: "A harness is one directory per domain: instruction pages, skills, tool servers, delegates and hooks, listed per module. A build loads one and every session of the campaign is staged from it."
+keywords: ["Kapso harness", "domain layer", "harness.yaml", "skills", "MCP servers", "hooks", "delegates", "verification"]
+---
+
+Kapso runs the same campaign in every domain: propose a candidate, implement it on its own branch, measure it, judge it, keep the best. What differs between domains is how the work is done well: what to pin before the first experiment, which disciplines every implementer must keep, what a verifier checks, which tools and scripts exist. A harness holds that. It is one directory, written once per domain, and a build loads it.
+
+## Three layers
+
+| Layer | What it holds | Who writes it |
+|---|---|---|
+| The engine | The campaign loop, the search, the judge, the records, the budget | Kapso |
+| The harness | The domain's pages, skills, tool servers, delegates and hooks, listed per module in `harness.yaml` | a domain author, once |
+| The task | The brief, the evaluator, the data, the starting repository | you, per build |
+
+The task's values win over anything a harness page says; the engine's rules win over both. A harness never holds an evaluator, a dataset, a goal, a budget, a credential value or a model choice: those belong to the task, the engine and `.env`.
+
+## The seven modules
+
+A campaign is made of sessions, and each session belongs to one of seven modules. A harness lists, per module, what its sessions get.
+
+| Module | The session | Run by |
+|---|---|---|
+| `setup` | Prepares the campaign once, before the first experiment: pins data as prepared resources and writes the domain statement of the task | `build` |
+| `ideation` | The lens planner, every ensemble member and the selector that propose candidates | `build` |
+| `implementation` | The session that implements one candidate on its branch | `build` |
+| `verification` | One session per attempt, between its evaluation and the judge: valid or void, with evidence | `build` |
+| `feedback` | The judge, reading the evaluation and the verdict | `build` |
+| `deployment` | The selector and the adapter that turn a solution into running software | `deploy` |
+| `learning` | The crews that mine a finished campaign into lessons | `learn` |
+
+Two pages reach every session of a module: `instructions/guardrails.md`, the domain's standing rules, and `instructions/<module>.md`, that module's own page. Skills, servers, delegates and hooks are defined once in the directory and listed on each module that gets them; nothing is inherited between modules.
+
+## What a harness changes in a build
+
+- **A setup session** runs once when the harness has setup content. It pins what every later session should find ready, under `prepared/`, and writes the domain statement the task statement carries.
+- **A task statement**, `kapso_task.md` at the campaign root, is composed by Kapso from the brief, the budget, the evaluation and data references, the domain statement and the prepared resources. Every session reads it first.
+- **Every session is staged**: its pages in the prompt under a `Domain guidance` heading, its skills, servers, delegates and hooks in the host's own format, beside the session. The staging is recorded per session.
+- **Verification per attempt** runs when the harness has verification content: a session reads the attempt's diff and evaluation output and writes a verdict. A void attempt keeps its branch and is never delivered; the judge reads the verdict either way.
+- **One identity in every record**: the harness's name, version, content hash and source are in the launch record, the status file, the checkpoint and the solution, and a resume refuses a harness that is not the launch's.
+
+A build with no harness runs as before: no setup session, no staged file, no guidance heading, `solution.harness` is `None`.
+
+## Where to go
+
+<CardGroup cols={2}>
+  <Card title="Use a harness" icon="play" href="/docs/harnesses/use">
+    Name one on a build, check what the machine lacks, read what the campaign recorded
+  </Card>
+  <Card title="Write a harness" icon="pen" href="/docs/harnesses/write">
+    From the two-file starter to pages, skills, servers, delegates and hooks
+  </Card>
+  <Card title="The trading example" icon="chart-line" href="/docs/harnesses/example-trading">
+    A harness, a task on it, and the run an author reads
+  </Card>
+  <Card title="Harness reference" icon="book" href="/docs/reference/harness">
+    The manifest, the reference grammar, every check rule, the staged files per host, the records
+  </Card>
+</CardGroup>
+
+Related pages: [Use a harness](/docs/harnesses/use) · [Write a harness](/docs/harnesses/write) · [The trading example](/docs/harnesses/example-trading) · [Harness reference](/docs/reference/harness) · [The brief](/docs/build/brief)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

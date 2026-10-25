@@ -33,6 +33,7 @@ def stub_difficulties_fallback(monkeypatch):
 
 def strategy_with_history(policy="best", *, maximize=True):
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.parent_policy = policy
     strategy.registered_evaluator_id = ""
     strategy.fidelity_decision = None
@@ -209,6 +210,7 @@ def test_ideation_reads_from_a_detached_view_of_the_selected_ref(
     )
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.workspace = FakeWorkspace()
     strategy.workspace_dir = str(tmp_path / "root-workspace")
     strategy.experiment_history_path = str(tmp_path / "history.json")
@@ -253,6 +255,7 @@ def test_ideation_reads_from_a_detached_view_of_the_selected_ref(
 
 def test_checkpoint_preserves_policy_and_validates_lineage():
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.parent_policy = "baseline"
     source.node_history = [
         SearchNode(
@@ -269,11 +272,13 @@ def test_checkpoint_preserves_policy_and_validates_lineage():
     state = source.dump_state()
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.parent_policy = "baseline"
     restored.load_state(state)
     assert restored.parent_policy == "baseline"
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.parent_policy = "best"
     with pytest.raises(ValueError, match="does not match"):
         restored.load_state(state)
@@ -288,6 +293,7 @@ def test_checkpoint_preserves_policy_and_validates_lineage():
         ).to_dict()
     ]
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.parent_policy = "baseline"
     with pytest.raises(ValueError, match="must be main"):
         restored.load_state(invalid_lineage)
@@ -295,6 +301,7 @@ def test_checkpoint_preserves_policy_and_validates_lineage():
 
 def test_checkpoint_without_policy_uses_historical_best_default():
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.node_history = []
     source.iteration_count = 0
     source.previous_errors = []
@@ -304,6 +311,7 @@ def test_checkpoint_without_policy_uses_historical_best_default():
     state.pop("parent_policy")
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.load_state(state)
 
     assert restored.parent_policy == "best"

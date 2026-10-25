@@ -135,3 +135,6 @@ namespaces = true
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.json", "*.yaml", "*.yml", "*.md"]
+# The bundled harnesses: whole directories (pages, skills, servers, hooks),
+# not only the extensions above.
+"kapso.harness" = ["bundled/**/*"]

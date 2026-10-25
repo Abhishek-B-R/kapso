@@ -390,6 +390,8 @@ def save_trajectory(
     kapso_commit: Optional[str] = None,
     bank_head: Optional[str] = None,
     upload: Optional[bool] = None,
+    harness: Optional[Dict[str, str]] = None,
+    learning_harness: Optional[Dict[str, str]] = None,
 ) -> str:
     """Gather -> validate -> hash -> register (idempotent) -> upload (§3.4).
 
@@ -420,6 +422,10 @@ def save_trajectory(
         "created": _created_from_stamp(parts["stamp"]),
         "kapso_commit": kapso_commit,
         "bank_head": bank_head,
+        # The harness the build ran with (what the experience package scopes
+        # lessons by), and the one that did the learning when it differs.
+        "harness": harness,
+        "learning_harness": learning_harness,
         "contract": contract,
         "dataset": report.get("dataset"),
         "family": report.get("family"),

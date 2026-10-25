@@ -67,14 +67,14 @@ def test_factory_threads_agent_and_model_to_selector_and_adapter(monkeypatch):
     built = []
 
     class FakeSelector:
-        def __init__(self, coding_agent_type, model):
+        def __init__(self, coding_agent_type, model, harness=None):
             built.append(("selector", coding_agent_type, model))
 
         def select(self, solution, allowed_strategies=None):
             return DeploymentSetting(strategy="local", provider="local", resources={}, interface={}, reasoning="fake")
 
     class FakeAdapter:
-        def __init__(self, coding_agent_type, model, max_retries):
+        def __init__(self, coding_agent_type, model, max_retries, harness=None):
             built.append(("adapter", coding_agent_type, model))
 
         def adapt(self, solution, setting, allowed_strategies=None, env_vars=None):

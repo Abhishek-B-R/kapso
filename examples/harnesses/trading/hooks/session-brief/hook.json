@@ -3,7 +3,7 @@
     "SessionStart": [
       {
         "hooks": [
-          {"type": "command", "command": "python ${PLUGIN_ROOT}/hooks/session-brief/session_brief.py"}
+          {"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/session-brief/session_brief.py"}
         ]
       }
     ]

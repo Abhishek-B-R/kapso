@@ -34,7 +34,7 @@ Requirements:
    alone, or re-invoke the unchanged entrypoint on newly prepared inputs
    — without orphaning prior candidates.
 
-## Goal the evaluation serves
+{{domain_guidance}}## Goal the evaluation serves
 {{goal}}
 
 ## Data

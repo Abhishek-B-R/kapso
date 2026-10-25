@@ -41,7 +41,7 @@ evaluation suite lives in `kapso_evaluation/`. Your job in this transaction:
    `--rescore` alone, or re-invoke the unchanged entrypoint on newly
    prepared inputs — without orphaning prior candidates.
 
-## Goal the evaluation serves
+{{domain_guidance}}## Goal the evaluation serves
 {{goal}}
 
 Work only inside `kapso_evaluation/`. Do not ask questions.

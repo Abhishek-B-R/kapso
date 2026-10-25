@@ -184,7 +184,7 @@ because each has destroyed a real session before:
 Advisory context: size your work to fit — the system enforces deadlines
 mechanically.
 
-## Problem
+{{domain_guidance}}## Problem
 
 <problem>
 {{problem}}

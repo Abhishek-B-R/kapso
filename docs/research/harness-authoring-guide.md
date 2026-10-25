@@ -71,13 +71,13 @@ it applies. Pages are attached by filename.
 
 ```yaml
 schema_version: 1
-name: trading                      # a slug; also the directory name
-version: 0.1.0                     # bump when behaviour changes; the engine records it with every run
+name: trading                      # [a-z0-9][a-z0-9-]*; what the engine records (the directory may be named anything)
+version: 0.1.0                     # required, any string; bump when behaviour changes, the engine records it with every run
 description: Research, implement, verify and deploy systematic trading strategies.
 
-environment:
-  python: requirements.txt         # prepared in the run's environment, never the user's global Python
-  commands: []                     # external commands that must be on PATH
+environment:                       # every key optional; reported by check, never installed by the engine
+  python: requirements.txt         # one path, relative to the harness; checked against python3 on PATH, where servers and hooks run
+  commands: []                     # bare program names that must be on PATH
   gpu: false
 
 modules:
@@ -94,18 +94,23 @@ modules:
 
 Rules:
 
+- `name`, `version` and `description` are required. The module keys are
+  exactly `setup`, `ideation`, `implementation`, `verification`, `feedback`,
+  `learning` and `deployment`; any other key, anywhere, fails `check`.
 - Every module has the same four lists: `skills`, `mcp_servers`, `agents`,
   `hooks`. They mean the same thing on every module. A list is complete:
   nothing is inherited, and a thing wanted in six modules is listed in six
-  modules.
+  modules. A list left out is empty; a module left out gets its
+  instruction pages and nothing else, so leave a module out when the domain
+  has nothing to attach there. Order matters only in `hooks`, which the
+  engine merges in manifest order.
 - A name resolves by kind: a skill to `skills/<name>/SKILL.md`, an agent to
   `agents/<name>.md`, a server to a key in `mcp.json`, a hook to
-  `hooks/<name>/hook.json`. A reference that does not resolve fails `check`.
-- A module left out gets its instruction pages and nothing else. Leave a
-  module out when the domain has nothing to attach there.
+  `hooks/<name>/hook.json`. Names may carry hyphens. A reference that does
+  not resolve fails `check`.
 - There are no other fields. Exploration axes go in the ideation page,
   checks go in the verification page, the deployment target is the
-  `deploy()` call's. An unknown key fails `check`.
+  `deploy()` call's.
 
 Never in the manifest, or anywhere in the harness: an evaluator, a dataset, a
 goal, a budget, a stop rule, a submission allowance, a credential value, a
@@ -116,7 +121,18 @@ model or CLI for Kapso's own agents.
 Pages are the heart of a harness and the only always-on part. Every word of
 a page is in context on every session of its module, competing with the
 agent's own work, so a page is short: rules and where to look, not an essay.
-Forty lines is a long page.
+`check` warns above the config's `harness.page_warning_lines`, forty lines.
+
+What the engine puts around a page: the session's prompt carries a
+`## Domain guidance (harness <name> <version>)` block holding
+`guardrails.md` whole, then the module's page whole, then a `### Paths`
+list with the task statement's path and each prepared resource's. A
+verification session's prompt also names the attempt's diff, its
+evaluation output and the verdict file it must write. So a page refers to
+these by name, "the task statement", "the diff", "the verdict", never by a
+path it would have to guess. The only files under `instructions/` are
+`guardrails.md` and `<module>.md` for the seven module names; another file
+there is a warning. A page's heading is free.
 
 Rules for every page:
 
@@ -170,9 +186,17 @@ Not here: procedure for one module, anything that only matters sometimes.
 ### setup.md
 
 How to turn the user's call into a runnable task in this domain. Say what to
-prepare and the name to return it under (`prepared/<name>`), what the task
-statement must record for this domain (the fields later modules will read),
-and what setup must not do (no attempt work, no evaluation run).
+prepare and the name to leave it under, what the domain statement must
+record for this domain (the fields later modules will read), and what setup
+must not do (no attempt work, no evaluation run, nothing under
+`kapso_evaluation/` or `kapso_datasets/`, which the engine verifies
+afterwards). The mechanics are the engine's and need no words on the page:
+a prepared resource is a directory the session leaves under
+`prepared/<name>/` at the campaign root, with whatever files the harness's
+convention says (nothing is registered, and the engine lists each name in
+the task statement and mounts the directory in every later session at the
+same relative path); the domain statement is written to the path the
+engine's prompt names, and the engine puts it into the task statement.
 
 ```markdown
 1. Read the task's data reference. Build a pinned snapshot with the
@@ -218,7 +242,9 @@ domain's default, the goal can add to it.
 The discipline of building an attempt. In order: the first thing to get
 right, where inputs come from, how to develop (subsample, then full), the
 check to run before launching the evaluation, the delegate to ask and when,
-and what to save for the reviewers.
+and what to save for the reviewers. The files an attempt saves (the
+`results/` names below) are the harness's own convention, introduced here
+and required by its hooks and reviewers; the engine requires none of them.
 
 ```markdown
 - Timestamp discipline first: compute signals from a frame that stops at t,
@@ -241,7 +267,13 @@ and what to save for the reviewers.
 What makes an attempt invalid in this domain, and how to find out. Write the
 steps in order (script, then delegate, then decision), then what the failure
 modes look like here, then what voids an attempt as opposed to what merely
-lowers its score. Verification always runs; the page decides what it does.
+lowers its score. The engine runs one verification session per scored
+attempt when the harness has this page or a verification attachment, in a
+checkout of the attempt, with the diff and the evaluation output at paths
+its prompt names; the session writes the verdict file the prompt names
+(`valid` or `void`, a summary, findings with evidence), and a void attempt is
+never delivered. The page decides what the session checks, not how the
+verdict is filed.
 
 ```markdown
 Keep the evaluation honest. Do these on every attempt, in this order:
@@ -265,8 +297,10 @@ otherwise.
 
 How to score and what to say next. Score against the task's own limits, and
 name the delegate that checks them; say what counts for more than the
-headline number; require the "next axis" sentence; state the stop rule in
-the domain's terms.
+headline number; require the "next axis" sentence; say what "met" means in
+the domain's terms. The stop itself is the engine's and the target the
+task's: a page never sets a stop rule, it tells the judge what to weigh
+before it says the target is met.
 
 ```markdown
 - Ask the risk-reviewer on every evaluated attempt. Its report says whether
@@ -276,8 +310,8 @@ the domain's terms.
   parameter neighbourhood count for more than a higher headline number.
 - Say which exploration axis from the ideation page the next attempt should
   move on, and why, with the evidence from this attempt.
-- Stop when the goal is met with margin on every limit, not at the first
-  attempt that clears the number.
+- The task's target is met only with every limit kept; an attempt that
+  clears the number and breaks a limit is not there yet, say so.
 ```
 
 ### learning.md
@@ -332,9 +366,10 @@ description: Build and run a backtest with timestamp discipline, then read its o
 - `name` equals the directory name.
 - `description` is one or two sentences: what the skill does, then "Use
   when ..." with the situations that call for it. This sentence is what makes
-  the agent open the skill; write the situation, not the topic.
-- Other front matter keys are host-specific and are not read by Codex; do not
-  rely on them.
+  the agent open the skill; write the situation, not the topic. A
+  description with a colon or another YAML special character is quoted.
+- Other front matter keys are host-specific and are not read by Codex;
+  `check` tolerates and ignores them. Do not rely on them.
 
 The body: a short heading, the procedure or the reference pattern (code
 beats prose where there is code), how to run the task's own evaluation
@@ -345,12 +380,18 @@ A deterministic operation that agents get wrong by hand is a script inside
 the skill, and the skill says exactly how to invoke it:
 
 ```
-git diff main...HEAD | python $KAPSO_HARNESS_ROOT/skills/lookahead-scan/scripts/scan.py
+git diff main...HEAD | python3 $KAPSO_HARNESS_ROOT/skills/lookahead-scan/scripts/scan.py
 ```
 
-`KAPSO_HARNESS_ROOT` is set in every session. A script prints something a
-session can act on, and its exit code says whether there is something to act
-on.
+`KAPSO_HARNESS_ROOT` is set in every session, for hooks and servers too, and
+names the harness directory. A script prints something a session can act
+on, and its exit code says whether there is something to act on; the exact
+codes are the skill's own convention, written in the skill. A script runs
+on `python3` from PATH with its own directory on `sys.path`, so it may
+import a sibling module by name; it is not run by `check`, and a path a
+`SKILL.md` quotes is not checked, so a typo there is silent until a session
+hits it. The campaign's base branch is `main`, so `git diff main...HEAD` is
+the attempt's diff in every campaign.
 
 Conventions:
 
@@ -394,10 +435,16 @@ is beyond your reach, and say what would settle it.
 
 The prompt has four parts: the role and what the delegate never does, the
 reading order, what to check (pointing at the page or skill that holds the
-list, so the two never drift), and the report's shape. A delegate inherits
-the module's pages, skills and servers, so it can read the same material the
-session reads. List it on every module whose sessions may call it, and say on
-the page when to call it.
+list, so the two never drift), and the report's shape. The front matter is
+`name` (the file's name) and `description`; nothing else is declared, no
+tool name, arguments or report schema: a session calls a delegate by name
+because the page told it to (on Claude Code it is a sub-agent, on Codex a
+role, and the engine stages it either way), and the report's shape is the
+convention the prompt sets. A delegate's prompt begins with the module's
+guidance block, and it inherits the module's skills and servers, so it can
+read the same material the session reads; a checklist owned by another
+module's page is reached through `KAPSO_HARNESS_ROOT`. List it on every
+module whose sessions may call it, and say on the page when to call it.
 
 ## 8. Servers
 
@@ -412,25 +459,60 @@ engine must be able to mount it in some modules and not others.
 {
   "mcpServers": {
     "market-data": {
-      "command": "python",
+      "command": "python3",
       "args": ["${PLUGIN_ROOT}/servers/market_data.py"]
     },
     "broker": {
-      "command": "python",
-      "args": ["${PLUGIN_ROOT}/servers/broker.py"]
+      "command": "python3",
+      "args": ["${PLUGIN_ROOT}/servers/broker.py"],
+      "env": {"BROKER_API_KEY": "${BROKER_API_KEY}"}
+    },
+    "docs": {
+      "type": "streamable-http",
+      "url": "https://docs.example.com/mcp",
+      "headers": {"Authorization": "${DOCS_AUTHORIZATION}"}
     }
   }
 }
 ```
 
 - The file is the Agent Plugins `mcpServers` schema: stdio servers with
-  `command`, `args`, `env`, `cwd`, or `streamable-http` servers with `url`
-  and `headers`. `${PLUGIN_ROOT}` is the harness directory.
-- A server starts in the session workspace unless `cwd` says otherwise, so
-  it can find `prepared/<name>` by a relative path.
-- A secret is referenced by variable name in `env` (`"BROKER_API_KEY":
-  "${BROKER_API_KEY}"`) and the value comes from the user's environment or
-  `.env`. A literal that looks like a key fails `check`.
+  `command`, `args`, `env`, `cwd`, or streamable-http servers with `type`
+  (`streamable-http`), `url` and `headers`. `${PLUGIN_ROOT}` is the harness
+  directory. A name matches `[A-Za-z0-9_-]+`; `gated-knowledge` is the
+  engine's own server. The script's path and file name are free, named in
+  `args`.
+- A server starts in the session's directory unless `cwd` says otherwise,
+  so it can find `prepared/<name>` by a relative path; `KAPSO_HARNESS_ROOT`
+  is set for it, and on Codex the engine forwards the variables its `env`
+  names, which that host does not inherit.
+- Every `env` and `headers` value is one `${NAME}` reference and nothing
+  else, a secret or a setting alike (`"BROKER_API_KEY": "${BROKER_API_KEY}"`,
+  `"DBT_TARGET": "${DBT_TARGET}"`, `"Authorization": "${DOCS_AUTHORIZATION}"`
+  with the `Bearer` prefix inside the variable); an `env` entry names the
+  variable it forwards, never another one, because Codex forwards by
+  name. The value comes from the user's environment or `.env` beside the
+  run. A literal, a reference inside a longer value or an `env` key that
+  references another name fails `check`, and an unset reference is
+  reported as a need of the modules that mount the server.
+- A stdio server is a small Python file on the `mcp` package's FastMCP:
+
+  ```python
+  from mcp.server.fastmcp import FastMCP
+
+  server = FastMCP("market-data")
+
+  @server.tool()
+  def get_bars(instrument: str, start: str, end: str) -> list[dict]:
+      """Bars of one instrument between two timestamps, from the pinned snapshot."""
+      ...
+
+  if __name__ == "__main__":
+      server.run()          # stdio
+  ```
+
+  The decorated function's docstring is the description the agent sees;
+  `mcp>=1.2` in `requirements.txt` is what this costs.
 - List the server on the modules that may use it and nowhere else. A tool
   that must not be used in a module is kept out by not mounting its server
   there, or by splitting the server in two; a hook catches the slip.
@@ -466,7 +548,7 @@ hooks/deny-snapshot/
       {
         "matcher": "mcp__market-data__snapshot",
         "hooks": [
-          {"type": "command", "command": "python ${PLUGIN_ROOT}/hooks/deny-snapshot/deny_snapshot.py"}
+          {"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/deny-snapshot/deny_snapshot.py"}
         ]
       }
     ]
@@ -474,18 +556,34 @@ hooks/deny-snapshot/
 }
 ```
 
+The file is Claude Code's hooks format, and the engine hands the merged
+file to both hosts (`--settings` on Claude Code, `.codex/hooks.json` on
+Codex). The events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`,
+`PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `SubagentStart`,
+`SubagentStop`, `PreCompact` and `PostCompact`; `matcher` is a regular
+expression over the tool's name and is left out on events without a tool.
+The command string runs through a shell in the session's directory, so an
+environment prefix such as `PYTHONPATH=... python3 ...` works; name
+`python3`, which a stock Ubuntu has, never `python`. Two hooks on the same
+event both run.
+
 The protocol is the host's: the script reads one JSON event on stdin and
-prints one JSON decision on stdout, or prints nothing when it has no
-opinion. Hook commands run in the session workspace. There are five shapes
-worth knowing, each in the trading example:
+prints one JSON decision on stdout; exit 0 with nothing printed is no
+opinion. What the event holds, per tool: `tool_input.command` for `Bash`;
+`tool_input.file_path` for `Write`, `Edit` and `MultiEdit` on Claude Code;
+on Codex the file tool is `apply_patch`, a matcher `Edit|Write|MultiEdit`
+fires on it too, and `tool_input.command` is the patch text with
+`*** Add File:` and `*** Update File:` lines, so a file hook reads both
+shapes; a server's tool is `mcp__<server>__<tool>` on both hosts. There are
+five shapes worth knowing, each in the trading example:
 
 | Shape | Event and matcher | Output | Example |
 |---|---|---|---|
-| context at start | `SessionStart` | `hookSpecificOutput.additionalContext` | `session-brief` reads the snapshot manifest and tells the session which market it is on |
-| deny with a reason | `PreToolUse`, matcher `Bash` or `Edit\|Write\|MultiEdit` | `permissionDecision: deny` and `permissionDecisionReason` | `deny-web-fetch`, `protect-prepared` |
+| context at start | `SessionStart` | `{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "..."}}` | `session-brief` reads the snapshot manifest and tells the session which market it is on |
+| deny with a reason | `PreToolUse`, matcher `Bash` or `Edit\|Write\|MultiEdit` | `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "..."}}` | `deny-web-fetch`, `protect-prepared` |
 | deny one server tool | `PreToolUse`, matcher `mcp__<server>__<tool>` | same | `deny-snapshot`, listed on the modules where the server is mounted but the tool must not be used |
-| advisory after a write | `PostToolUse`, matcher on the file tools | `additionalContext` | `scan-writes` scans the written file and feeds findings back while the change is fresh |
-| ask once at the end | `Stop` | `{"decision": "block", "reason": ...}` | `require-results` asks for the results files, and lets the session end when it is already continuing because of a stop hook |
+| advisory after a write | `PostToolUse`, matcher on the file tools | `{"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "..."}}` | `scan-writes` scans the written file and feeds findings back while the change is fresh |
+| ask once at the end | `Stop` | top level, `{"decision": "block", "reason": "..."}`; the event's `stop_hook_active` is true once the session is already continuing because of a stop hook | `require-results` asks for the results files, and stays silent when `stop_hook_active` is set |
 
 Rules:
 
@@ -495,23 +593,37 @@ Rules:
   manifest's decision: list it on the modules that need it, and leave it off
   the ones that do not. Setup may build the snapshot because setup does not
   list `deny-snapshot`.
-- A Stop hook asks once. Check the host's flag for an already-continuing
-  session and stay silent then, so a session that truly cannot comply is
-  not trapped.
+- A Stop hook asks once. Check `stop_hook_active` in the event and stay
+  silent when it is true, so a session that truly cannot comply is not
+  trapped.
 - Share rules with the skill that owns them. The `scan-writes` hook imports
   the lookahead-scan skill's rule list, so the hook, the skill and the
   auditor agree.
 - Keep hook scripts fast and dependency-free where possible; they run on
-  every matching call.
+  every matching call, on `python3` from PATH, where the harness's
+  requirements are installed when the user followed `check`; the standard
+  library is the safe floor.
+- A malformed or unexpected event is no opinion, not a denial: enforcement
+  is the engine's, a hook is a mistake catcher.
 
 ## 10. Environment
 
-`requirements.txt` lists what the harness's own scripts and servers need,
-and the engine prepares it in the run's environment. `commands` names
-external tools that must be on the path; `gpu: true` says a usable GPU is
-required. `kapso doctor` reports what the machine lacks before a run.
-Nothing in `environment` selects a model, a CLI or a provider for Kapso's own
-agents.
+`requirements.txt` lists what the harness's own scripts and servers import
+(`mcp` for a server, `pandas` for a script that reads bars), not the
+domain's tooling; `environment.python` names it, one path relative to the
+harness. `commands` names external programs that must be on PATH, bare
+names (`dbt`, `git`); `gpu: true` says a usable GPU is required. Every key
+is optional.
+
+Nothing is installed by the engine. `kapso harness check` reads each pin
+against `python3` on PATH, the interpreter the harness's servers, hooks and
+scripts run on, and reports what is missing or too old with the
+`python3 -m pip install -r <file>` line; a program a hook or a server
+runs is checked without being listed. A missing pin, program, variable or
+GPU is a need, not a failure: `check` still exits 0 and says so, and a verb
+refuses to start while a need of the modules it runs is unmet, naming the
+fix. Nothing in `environment` selects a model, a CLI or a provider for
+Kapso's own agents.
 
 ## 11. Check, run, iterate
 
@@ -521,10 +633,18 @@ kapso harness check ./trading
 
 It fails on anything that would break a run: a reference that does not
 resolve, a skill or agent without front matter, malformed `mcp.json` or
-`hook.json`, a hook command whose script is missing, a secret literal, an
-unknown key. It warns on what makes a harness weaker than it looks: a skill,
-agent or hook defined but never listed, a skill never mentioned on its
-module's page, an always-on page over the size the config sets.
+`hook.json`, a hook with an unknown event, a hook command whose script is
+missing, a secret literal, an unknown key, a requirements file that does
+not exist, no page at all. It warns on what makes a harness weaker than it
+looks: a skill, agent, server or hook defined but never listed, a skill
+never mentioned on its module's page (a literal occurrence of its name in
+the page), a page under `instructions/` that is neither `guardrails.md` nor
+a module's, an always-on page over `page_warning_lines`, a long opaque
+value in a server's `env`. It reports, without failing, what the machine
+lacks. It runs no script and starts no server, reads no path a `SKILL.md`
+quotes, and does not compare the directory's name with `name`; files at
+the harness root it does not know (a README, a LICENSE) are ignored.
+Exit 1 on a failure, 0 otherwise.
 
 Then run a task and read the trajectories. Where every attempt did the same
 thing, the harness is already determining behaviour. Where attempts
@@ -612,3 +732,9 @@ verification, a predict-endpoint workflow in deployment.
   scripts the page names, and a `deploy()` argument.
 - **Secrets in `mcp.json`.** Reference the variable by name; the value lives
   in the user's environment.
+- **A stop rule on the feedback page.** "Stop when ..." is the engine's
+  decision against the task's target. The page says what "met" means in
+  the domain, nothing more.
+- **`python` in a command.** A stock Ubuntu has `python3` only; `check`
+  reports the program as missing, and a hook whose interpreter is absent
+  fails open.

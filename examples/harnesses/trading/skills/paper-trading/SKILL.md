@@ -1,6 +1,6 @@
 ---
 name: paper-trading
-description: The paper-trading deployment workflow: runs the selected strategy against the broker server's paper account on the pinned market-data feed, as a scheduled runner. Use when deploy() names the paper-trading target.
+description: "The paper-trading deployment workflow: runs the selected strategy against the broker server's paper account on the pinned market-data feed, as a scheduled runner. Use when deploy() names the paper-trading target."
 ---
 # Paper trading
 

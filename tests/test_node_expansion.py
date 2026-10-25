@@ -86,6 +86,7 @@ def test_parse_selected_solutions():
 def make_stub(monkeypatch, expansion, scores, stop_flags):
     """GenericSearch.__new__ stub wired for _expand_round."""
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.node_expansion_value = expansion
     strategy.node_history = []
     strategy.problem_handler = SimpleNamespace(maximize_scoring=True)
@@ -215,6 +216,7 @@ def test_lane_brief_single_lane_states_pins_without_sibling_talk():
 
 def test_implementation_prompt_injects_lane_brief(monkeypatch):
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.shared_artifacts_brief = "No shared-cache artifacts registered yet."
     monkeypatch.setattr(
         GenericSearch, "_render_budget_status", lambda self: "budget"

@@ -83,6 +83,11 @@ class SearchNode:
     evaluation_valid: bool = True
     evaluation_provenance: str = AGENT_GENERATED
     evaluation_integrity_error: str = ""
+    # The harness's verification of this attempt (kapso.harness.verdict):
+    # {"verdict": valid | void | unverified, "summary", "findings"}, its
+    # own state beside the judge's validity; None when no harness
+    # verification ran.
+    verification: Optional[Dict[str, Any]] = None
 
     # Platform execution cost in the campaign's unit, distinct from model USD.
     estimated_cost: Optional[Dict[str, Any]] = None
@@ -452,6 +457,11 @@ class SearchStrategyConfig:
     # outside the orchestrator gets, records no cadence: a watcher then
     # judges liveness by the pid alone.
     status_heartbeat_seconds: Optional[float] = None
+    # The loaded harness (kapso.harness.Harness), threaded from the
+    # orchestrator to every session the strategy constructs; None is
+    # today's generic behaviour. Typed loosely so this module does not
+    # import the harness package.
+    harness: Optional[Any] = None
 
 
 class SearchStrategy(ABC):
@@ -566,7 +576,13 @@ class SearchStrategy(ABC):
             heartbeat_seconds=config.status_heartbeat_seconds,
             daemon=config.status_heartbeat_seconds is not None,
             phase="setup",
+            # The harness identity, structured, from the first second; a
+            # watcher renders it in the header (WP6).
+            harness=config.harness.ref_dict() if config.harness is not None else None,
         )
+        # The loaded harness, staged into every session this strategy
+        # constructs (None: today's generic behaviour).
+        self.harness = config.harness
 
         # Setup kapso directories (eval_dir -> kapso_evaluation/, data_dir -> kapso_datasets/)
         if not import_from_checkpoint:

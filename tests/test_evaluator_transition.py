@@ -38,6 +38,7 @@ from tests.test_run_checkpoint import (
 
 def test_transition_state_round_trips_and_validates():
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.node_history = []
     source.iteration_count = 0
     source.previous_errors = []
@@ -51,6 +52,7 @@ def test_transition_state_round_trips_and_validates():
     state = source.dump_state()
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.parent_policy = "best"
     restored.load_state(state)
     assert restored.scores_evaluator_id == "ev-2"
@@ -60,6 +62,7 @@ def test_transition_state_round_trips_and_validates():
     broken["evaluator_transition"] = {"status": "half-done"}
     with pytest.raises(ValueError, match="evaluator_transition"):
         fresh = GenericSearch.__new__(GenericSearch)
+        fresh.harness = None
         fresh.parent_policy = "best"
         fresh.load_state(broken)
 
@@ -71,6 +74,7 @@ def test_multi_lane_checkpoint_restores_with_fewer_iterations_than_nodes():
     (first live hit: rel-event/user-ignore resume, 2026-08-09 — 4 lane
     nodes, iteration_count 1, RunCheckpointCorruptError)."""
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.node_history = [
         SearchNode(node_id=i, branch_name=f"generic_exp_{i}")
         for i in range(4)
@@ -83,6 +87,7 @@ def test_multi_lane_checkpoint_restores_with_fewer_iterations_than_nodes():
     state = source.dump_state()
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.parent_policy = "best"
     restored.load_state(state)
     assert restored.iteration_count == 1
@@ -126,6 +131,7 @@ def fake_eval_subprocess(payload, returncode: int = 0):
 
 def make_bridge_strategy(tmp_path, *, branches):
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.registered_evaluator_id = "ev-2"
     strategy.registered_subsample_seed = 1337
     strategy.registered_data_manifest = {}
@@ -577,7 +583,7 @@ def test_change_requests_freeze_late_in_a_time_budget(tmp_path, monkeypatch):
     orchestrator.budget_spec = SimpleNamespace(time_budget_seconds=3600.0)
     filings = []
     orchestrator.evaluation_maintainer.handle_change_request = (
-        lambda request: filings.append(request)
+        lambda request, staged=None: filings.append(request)
         or SimpleNamespace(accepted=False, reason="filed", new_version=None)
     )
     candidate = SimpleNamespace(

@@ -45,6 +45,15 @@
             ]
           },
           {
+            "group": "Harnesses",
+            "pages": [
+              "docs/harnesses/index",
+              "docs/harnesses/use",
+              "docs/harnesses/write",
+              "docs/harnesses/example-trading"
+            ]
+          },
+          {
             "group": "How it works",
             "pages": [
               "docs/evolve/overview",
@@ -123,6 +132,7 @@
               "docs/reference/cli",
               "docs/reference/kapso-api",
               "docs/reference/brief-format",
+              "docs/reference/harness",
               "docs/deployment/api-reference",
               "docs/reference/configuration"
             ]
