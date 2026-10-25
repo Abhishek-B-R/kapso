@@ -25,7 +25,7 @@ from kapso.execution.search_strategies.generic.strategy import GenericSearch
 from kapso.handles import Solution
 from kapso.harness import HarnessError, load_harness
 from kapso.harness.verdict import read_verdict, render_verification
-from tests.handles_support import candidate_branch, git_workspace, make_solution
+from tests.handles_support import candidate_branch, git, git_workspace, make_solution
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
 
@@ -111,6 +111,13 @@ def strategy(tmp_path, harness, monkeypatch):
     git_workspace(campaign)
     (campaign / "kapso_task.md").write_text("# Task statement\n")
     candidate_branch(campaign, "generic_exp_0", "strategy.py", "signal = bars.rolling(20, center=True).mean()\n")
+    # The engine commits its own bookkeeping on the branch too (repo memory).
+    git(campaign, "checkout", "-q", "generic_exp_0")
+    (campaign / ".kapso").mkdir(exist_ok=True)
+    (campaign / ".kapso" / "repo_memory.json").write_text('{"generated_at": "later"}\n')
+    git(campaign, "add", ".kapso/repo_memory.json")
+    git(campaign, "commit", "-q", "-m", "engine bookkeeping")
+    git(campaign, "checkout", "-q", "main")
 
     s = GenericSearch.__new__(GenericSearch)
     s.harness = harness
@@ -147,7 +154,8 @@ def test_a_valid_verdict_reaches_the_judge_and_the_record(strategy, tmp_path, ha
     [call] = FakeVerifier.calls
     directory = tmp_path / "campaign" / ".kapso" / "verification" / "generic_exp_0"
     assert call["verdict_path"] == directory / "verdict.json"
-    assert "center=True" in (directory / "diff.patch").read_text()
+    diff = (directory / "diff.patch").read_text()
+    assert "center=True" in diff and "repo_memory" not in diff   # the attempt's changes, not the engine's
     assert (directory / "evaluation_output.txt").read_text() == "sharpe: 1.4\nmax_drawdown: 0.1\n"
     assert call["workspace"] != tmp_path / "campaign" and not call["workspace"].exists()   # a worktree, removed afterwards
     assert (harness.path / "instructions" / "verification.md").read_text().strip() in call["prompt"]

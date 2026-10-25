@@ -915,8 +915,12 @@ class GenericSearch(SearchStrategy):
         host = judge.agent_type
         directory = verification_dir(Path(self.workspace_dir), node.branch_name)
         directory.mkdir(parents=True, exist_ok=True)
+        # The attempt's own changes: the engine's bookkeeping under .kapso/
+        # (repo memory, for one) is committed on the branch too and is not
+        # the verifier's to read.
         (directory / "diff.patch").write_text(
-            self.workspace.repo.git.diff(f"main...{node.branch_name}"), encoding="utf-8"
+            self.workspace.repo.git.diff(f"main...{node.branch_name}", "--", ".", ":(exclude).kapso"),
+            encoding="utf-8",
         )
         (directory / "evaluation_output.txt").write_text(node.evaluation_output or "", encoding="utf-8")
         verdict_path = directory / VERDICT_FILE
