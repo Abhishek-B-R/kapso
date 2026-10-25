@@ -26,8 +26,11 @@ from kapso.harness import (
     load_harness,
     stage_harness,
 )
+import kapso.execution.search_strategies.generic.feedback_generator.feedback_generator as feedback_module
+from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import FeedbackGenerator
 from kapso.learning.trajectory_store import STAGING_DIRECTORIES
 from tests.handles_support import git, git_workspace
+from tests.harness_support import NoopAgent
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
 
@@ -212,6 +215,31 @@ def test_no_harness_stages_nothing_and_keeps_the_record(tmp_path):
         records_dir=tmp_path / "run" / ".kapso" / "sessions",
     )
     assert elsewhere.record_path == tmp_path / "run" / ".kapso" / "sessions" / "lead" / "session.json"
+
+
+def test_the_judge_attaches_its_session_record_without_a_harness(tmp_path, monkeypatch):
+    """The judge made its agent again with the staged keys only when a
+    harness gave guidance, so a campaign with no harness judged its
+    attempts and recorded no run (the WP6 proof run's churn build). The
+    record and the stream are the session's, harness or not."""
+    created = []
+    monkeypatch.setattr(
+        feedback_module.CodingAgentFactory, "create",
+        classmethod(lambda cls, config: created.append(dict(config.agent_specific)) or NoopAgent(config)),
+    )
+    generator = FeedbackGenerator(CodingAgentConfig(
+        agent_type="claude_code", model="m", debug_model="m", agent_specific={"streaming": True, "timeout": 5},
+    ))
+    staged = stage_harness(None, "feedback", session_dir=tmp_path, campaign_dir=tmp_path, session_id="feedback/generic_exp_0", host="claude_code")
+    generator.attach_harness(staged)
+    assert created[-1]["session_record_path"] == str(staged.record_path)
+    assert created[-1]["stream_artifact_path"] == str(tmp_path / ".kapso" / "sessions" / "feedback" / "generic_exp_0" / "stream.jsonl")
+    assert created[-1]["timeout"] == 5 and created[-1]["streaming"] is True
+    # The next attempt's staging merges onto the judge's own settings,
+    # not onto the previous attempt's record.
+    again = stage_harness(None, "feedback", session_dir=tmp_path, campaign_dir=tmp_path, session_id="feedback/generic_exp_1", host="claude_code")
+    generator.attach_harness(again)
+    assert created[-1]["session_record_path"] == str(again.record_path) and len(created) == 3
 
 
 def test_a_session_staged_again_keeps_the_runs_already_recorded(harness, tmp_path):
