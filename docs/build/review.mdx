@@ -41,6 +41,7 @@ and names `kapso watch`.
 | `rejected_candidates` | Candidates rejected for touching the evaluator, or voided by the harness's verification |
 | `callback_metrics`, `callback_primary_metric` | Your own evaluator's numbers, when you passed an `iteration_evaluator` |
 | `experience` | What the build was served: one entry per loaded source with its `reference`, `kind`, `resolved` location, pinned `head`, `provenance` and `scope`; empty when nothing was loaded |
+| `session_failures` | The sessions' runs that ended `error`, `timeout` or `refused`: each run's `label`, `module`, `host`, `exit` and `error`; empty when every run ended well |
 
 `explain()` renders these as a block; `diff()` is `git diff` from the seed
 to the delivered commit, empty when nothing succeeded.
@@ -61,7 +62,9 @@ The AUC of 0.861 on the held-out rows clears the 0.85 target …
 
 A build on a harness adds two rows before the feedback: `Harness:` with
 the name, version and hash, and `Verified:` with the verdict and its
-summary.
+summary. A build whose sessions failed adds `Sessions failed:` after the
+experiments line, each kind with its count and the error's first line
+(`implementation on codex ×2 (Quota exceeded …)`).
 
 ## Three ways a build ends
 
@@ -84,10 +87,11 @@ shows what each one did.
 ```bash
 git -C campaign branch         # generic_exp_0, generic_exp_1, …, main
 git -C campaign log --oneline generic_exp_2
-kapso trace campaign           # each attempt: score, verdict, what it consulted
+kapso trace campaign           # each attempt: its sessions and runs, its score, its verdict, the cards it read
 ```
 
 Every experiment stays checked in; the delivered one is checked out.
+[Read the record](/docs/build/trace) walks the trace section by section.
 
 ## What next
 

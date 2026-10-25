@@ -65,6 +65,9 @@ the line.
   delivered.
 - `solution.explain()`: the candidate, its score, the harness and the
   verdict; `solution.diff()`: the code against the seed.
+- `kapso trace campaign`: the whole record laid out, every attempt with
+  its sessions and runs, the cards it read, what was voided and on what
+  evidence; `--branch generic_exp_0` for one attempt in full.
 
 ## Change it
 

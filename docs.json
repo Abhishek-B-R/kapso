@@ -41,6 +41,7 @@
               "docs/build/run-and-watch",
               "docs/build/inbox",
               "docs/build/review",
+              "docs/build/trace",
               "docs/build/resume-and-budgets"
             ]
           },

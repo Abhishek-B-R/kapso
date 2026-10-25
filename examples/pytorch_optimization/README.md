@@ -38,6 +38,8 @@ the evaluator runs on it.
 - `solution.diff()`: what changed in `module.py`.
 - `cd campaign && python evaluate.py --path module.py --device cuda`: the
   speedup, re-measured by hand.
+- `kapso trace campaign`: every attempt with its sessions and runs, its
+  score and the judge's words, what was rejected and why, what it cost.
 
 ## Change it
 

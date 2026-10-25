@@ -44,6 +44,7 @@ Kapso(
 | [`deploy()`](#deploy) | `Software` | Turn a solution into running software |
 | [`memory`](#memory) | `MemoryStatus` | Your own bank right now |
 | [`Kapso.status()`](#status) | `OperationStatusView` | Read any operation's status file |
+| [`Kapso.trace()`](#trace) | `TraceView` | Read a campaign's record after the fact |
 | [`close()`](#close) | `None` | Release knowledge-search network clients |
 
 ## load_harness
@@ -257,6 +258,7 @@ read back by `Solution.open(path)`.
 | `experience` | `list[ExperienceRef]` | What the build was served, in load order: each source's `reference`, `kind` (`bank`, `hosted`, `index`), `resolved` location, pinned `head`, `provenance` and `scope`; empty when nothing was loaded |
 | `rejected_candidates` | `int` | Candidates rejected: the judge found the evaluation invalid, the evaluator was touched, or the harness voided the attempt |
 | `callback_metrics`, `callback_primary_metric` | `dict`, `str \| None` | Your own `iteration_evaluator`'s numbers for the delivered candidate |
+| `session_failures` | `list[dict]` | The sessions' runs that ended `error`, `timeout` or `refused`, each `{label, module, host, exit, error}`; `explain()` prints them as `Sessions failed:` after the experiments line |
 
 ```python
 Solution.open(path) -> Solution   # the record a build wrote in that directory;
@@ -383,6 +385,25 @@ print(view.explain())
 ```
 
 `path` accepts a workspace, a status file, or a directory of status files. `view.explain()` renders the same screen as [`kapso watch`](/docs/reference/cli#kapso-watch).
+
+## trace
+
+A static method, a pure reader: the campaign's record after the fact, what [`kapso trace`](/docs/reference/cli#kapso-trace) prints.
+
+```python
+Kapso.trace(path: str) -> TraceView
+```
+
+```python
+view = Kapso.trace("./campaign")
+print(view.explain())                       # the text, every section
+view.data                                   # the JSON, the keys pinned on Read the record
+view.attempts                               # one entry per node: sessions, runs, evaluation, verification, judge, cards
+view.delivered                              # the delivered candidate; None when none succeeded
+print(view.narrow("generic_exp_1").explain())   # one attempt with its evidence in full
+```
+
+`TraceView(data)` renders the text again from the data alone. A campaign still running renders `partial` with the reason; a directory with no `.kapso/` inside raises `FileNotFoundError` by name; `narrow` raises `ValueError` naming the attempts when no attempt ran on the branch. See [Read the record](/docs/build/trace).
 
 ## close
 

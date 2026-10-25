@@ -35,6 +35,8 @@ directory: run one or the other.
   what the judge enforces for the whole campaign.
 - `solution.diff()`: the prompt that won, against the shipped one.
 - `cd campaign && python evaluate.py`: the score, re-measured by hand.
+- `kapso trace campaign`: every attempt with its sessions and runs, its
+  score and the judge's words, what was rejected and why, what it cost.
 
 ## Change it
 

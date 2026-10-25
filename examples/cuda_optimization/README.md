@@ -35,6 +35,8 @@ directory: run one or the other. A CUDA device is required.
 - `solution.diff()`: the kernel that won.
 - `cd campaign && python evaluate.py --path module.py`: the speedup, re-measured
   by hand.
+- `kapso trace campaign`: every attempt with its sessions and runs, its
+  score and the judge's words, what was rejected and why, what it cost.
 
 ## Change it
 

@@ -1,0 +1,206 @@
+---
+title: "Read the record of a Kapso build with kapso trace"
+sidebarTitle: "Read the record"
+description: "kapso trace lays a finished campaign out section by section: every attempt with its sessions and runs, the lessons served and used, what was voided or rejected and on what evidence, the sessions that failed, and the delivered candidate. Text for a person, --json for a script."
+keywords: ["kapso trace", "campaign record", "session record", "run entries", "hooks", "delegates", "voided attempt", "safe to merge", "trace --json"]
+---
+
+A build writes everything it does under `campaign/.kapso/`. `kapso trace`
+reads it back after the fact, without the agent that ran it, and lays the
+evidence out so a reader can answer six questions from the record alone:
+what won, why, what was voided and on what evidence, what was rejected
+and why, what it cost, and whether it is safe to merge.
+
+```bash
+kapso trace campaign                          # every section, the attempts compact
+kapso trace campaign --branch generic_exp_1   # one attempt with its evidence in full
+kapso trace campaign --json                   # the same as data
+```
+
+```python
+view = Kapso.trace("campaign")
+print(view.explain())        # the text
+view.data                    # the JSON
+view.attempts                # one entry per node
+view.delivered               # the delivered candidate, None when none succeeded
+```
+
+A campaign still running renders too, marked `partial` with the reason
+(the phase it is in, the error it failed with, no status yet); follow a
+live one with [`kapso watch`](/docs/build/run-and-watch#watch). A
+directory with no `.kapso/` inside is not a campaign and is refused by
+name.
+
+## The sections
+
+```text
+trace of /home/me/trading/campaign — complete
+objective       Raise the strategy's out-of-sample Sharpe above 1.0 on the 2024
+harness         trading 0.1.0 (83b6c0b60d6a)
+served          mine at a9ddad3d302d, measured by you
+evaluator       none registered: the agent's own evaluation
+budget          43.5 of 40.0 min
+cost            $13.169
+stopped         budget_exhausted (time_budget); 2 experiments, 1 rejected
+delivered       none succeeded
+
+ATTEMPTS
+node 0  generic_exp_0  from main  30.5 min  $11.149
+  idea          Core Idea: Replace the dead-band 20/100 long-only MA cross with a …
+  sessions
+    ideation/iter1/claude_code     claude_code success     3.9 min  $1.077  13 turns  tools Bash 8, ToolSearch 1  gates gated-knowledge 3  hooks 1 fired
+    generic_exp_0                  claude_code success     7.5 min  $3.924  37 turns  tools Bash 48, ListAgents 3, Skill 2, Agent 1, Read 1  hooks 1 fired  delegates lookahead-auditor completed
+      run 2                        claude_code success     2.6 min  $0.000  9 turns
+      run 3                        claude_code success     0.7 min  $0.230  2 turns  tools Bash 1
+    verification/generic_exp_0     claude_code success     2.5 min  $3.278  26 turns  tools Bash 46, Read 2, ToolSearch 2, Agent 1, Monitor 1, +2 more  hooks 1 fired  delegates lookahead-auditor completed
+      run 2                        claude_code success     0.7 min  $0.000  2 turns
+    feedback/generic_exp_0         claude_code success     7.8 min  $2.641  25 turns  tools Bash 29, ListAgents 3, Agent 1, Read 1, Skill 1, +1 more  hooks 1 fired  delegates risk-reviewer completed
+  evaluation    no score (provided), not valid
+  verification  void: The measurement itself is sound, but a task rule was broken, so the attempt is void on the rule rather than on the number. …
+  judge         not valid, continue: Iteration 1: VOID. Nothing is banked. The full 0.86 gap is still open.
+  cards read    5: continuous-forecasts-recover-binary-sizing-edge, estimator-diversity-pays-in-risk-quality, …
+  load-bearing  11: horizon-grid-locates-live-band, continuous-forecasts-recover-binary-sizing-edge, …
+node 1  generic_exp_1  from main  9.8 min  $1.020
+  …
+
+OTHER SESSIONS
+  harness_setup                  claude_code success     3.1 min  $0.999  24 turns  tools Bash 17, Skill 1, ToolSearch 1  gates market-data 3  hooks 1 fired
+
+LESSONS
+mine at a9ddad3d302d, measured by you: 15 cards served
+  read by ideation/iter1 (5): continuous-forecasts-recover-binary-sizing-edge, …
+  load-bearing in node 0 (11): horizon-grid-locates-live-band, …
+
+VOIDED OR REJECTED
+node 0  generic_exp_0  void: The measurement itself is sound, but a task rule was broken, …
+    - the 2024 bars are read by the evaluation alone; develop on 2021 to 2023 (…): `git show 033abdb:output_data_generic_exp_0/risk_line.py` …
+    - remediation of the holdout read is incomplete: …
+
+SESSIONS FAILED
+generic_exp_1  implementation on claude_code  timeout: Claude Code CLI exceeded its 182.63159913599975s deadline and was terminated
+verification/generic_exp_1  verification on claude_code  timeout: Claude Code CLI exceeded its deadline and was terminated
+
+DELIVERED
+none succeeded
+```
+
+The trace above is a real one, abridged: a trading build whose first
+attempt scored a Sharpe of 2.16 and was voided because a development
+script had read the hold-out window, and whose second was cut by the time
+budget. Where each answer sits:
+
+| Question | Where |
+|---|---|
+| What won | The header's `delivered` line and the `DELIVERED` section: the branch, the commit, the files changed, the judge's words in full |
+| Why | The attempt's `evaluation`, `verification` and `judge` lines; `--branch` prints the judge's feedback and the verifier's summary whole |
+| What was voided, on what evidence | `VOIDED OR REJECTED`: the verifier's verdict with each finding, the rule and the evidence as the verifier wrote them |
+| What was rejected and why | The same section: an integrity rejection with the evaluator's output, or the judge's invalidation |
+| What it cost | The header's `cost`, each attempt's figure, each run's; `cost` says when the figure covers the Claude Code sessions only (Codex reports none) |
+| Safe to merge | `DELIVERED`: the verification, the integrity line, the hooks that fired in its sessions and which were denied, the failures in its sessions. The trace prints the evidence and no verdict; the conclusion is the reader's |
+
+Each attempt lists its sessions in the order they ran: the ideation of
+its iteration, the implementation on its branch, the verification and the
+judge. A session has one line per run the host made for it, a resumed or
+retried session two or more; the line carries how the run ended
+(`success`, `error`, `timeout`, `paused` for a session the inbox stopped,
+`refused` for an answer the model's safeguards refused), its duration,
+its cost, its turns, the tools it used, the gates it called, the hooks
+that fired and how many denied, the delegates it asked. `OTHER SESSIONS`
+holds the sessions that belong to no attempt: the harness setup, and a
+node still in flight. `LESSONS` is one entry per source served, with who
+read which cards and which the judge found load-bearing per node;
+`SESSIONS FAILED` lists every run that ended `error`, `timeout` or
+`refused`, and names the kinds of which every run failed.
+
+## One attempt in full
+
+```bash
+kapso trace campaign --branch generic_exp_0
+```
+
+The same sections, with the one attempt's evidence whole: the idea, each
+run's model and host session, its error, each hook's decision and reason,
+each delegate's report, the files it changed and its closing message; the
+evaluator's output; the verifier's summary and findings; the judge's
+feedback. The data behind `--json` always carries all of it; `--branch`
+is how the text shows it.
+
+## The data
+
+`--json` prints what `Kapso.trace(path).data` holds, and
+`TraceView(data)` renders the same text again from it. A script or a
+skill reads the keys as pinned:
+
+```text
+schema_version   1
+campaign         the directory
+state            complete | partial
+branch           the branch the view is narrowed to, or null
+header           objective, harness, experience (one label per source), evaluator,
+                 budget {elapsed_min, total_min}, cost {usd, coverage},
+                 stopped_reason, stop_detail, experiments, rejected,
+                 delivered {branch, commit}, status {state, phase, error}
+attempts[]       node, parent, branch, idea, sessions[] {label, module, host, runs[]},
+                 evaluation {score, valid, provenance, integrity_error, output},
+                 verification {verdict, summary, findings} | null,
+                 judge {stop, valid, feedback}, cards {read, load_bearing},
+                 cost_usd, duration_seconds
+sessions[]       the sessions that belong to no attempt, the same shape
+lessons[]        reference, kind, provenance, head, served, read_by {session: [cards]},
+                 load_bearing_by {node: [cards]}
+voided[]         node, branch, reason, evidence[]
+failures[]       label, module, host, exit, error, every_run
+delivered        branch, commit, base_commit, files_changed, verification, feedback | null
+```
+
+A run entry, as the session record holds it: `started`, `ended`,
+`duration_seconds`, `model`, `cli_session_id`, `exit`, `error`,
+`cost_usd` (this run's share of the host's cumulative figure),
+`cost_cumulative`, `turns`, `usage`, `tools` (by name), `gates` (by
+server, by tool), `hooks` (each with its event, name, decision and
+reason; `null` where the host reports none), `delegates` (each with its
+name, status, usage and report), `host_errors`, `files_changed`,
+`last_message`.
+
+## Where each file lives
+
+```text
+campaign/.kapso/
+├── solution.json                    the record Solution.open reads
+├── status.json                      what kapso watch reads
+├── run_state.json                   the checkpoint: every node with its evaluation, verification and feedback
+├── launch.json                      every flag of the launch
+├── sessions/<session>/session.json  the session's record: what it was staged with, and its runs
+├── sessions/<session>/stream.jsonl  the host's own event stream, where a delegate's report is in full
+├── serving/serving-record.yaml      what the campaign was served, each source at its pinned head
+├── serving/serving-pull.jsonl       the pull log: every bank read, by session
+└── verification/<branch>/           diff.patch, evaluation_output.txt, verdict.json per verified attempt
+```
+
+The session labels are the branch for an implementation session,
+`verification/<branch>` and `feedback/<branch>` for its verifier and its
+judge, `ideation/iter<n>/<member>` for the ideation of iteration `n`, and
+`harness_setup` for the setup session. The trace joins the sessions to
+their attempts by these labels and the pull log's events by the session
+the gate served.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Run and watch" icon="eye" href="/docs/build/run-and-watch">
+    The live view while it runs
+  </Card>
+  <Card title="Review the result" icon="magnifying-glass" href="/docs/build/review">
+    The Solution and the record
+  </Card>
+  <Card title="Use a harness" icon="layer-group" href="/docs/harnesses/use">
+    What a session is staged with
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/docs/reference/cli#kapso-trace">
+    Every flag of kapso trace
+  </Card>
+</CardGroup>
+
+Related pages: [Run and watch](/docs/build/run-and-watch) · [Review the result](/docs/build/review) · [Use a harness](/docs/harnesses/use) · [CLI reference](/docs/reference/cli#kapso-trace)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).
