@@ -314,14 +314,20 @@ class BuildStatus(OperationStatus):
     # and repo memory bootstrapped (one inference session, minutes) before
     # the first iteration. The file exists from that moment, so a watcher
     # sees the campaign from its first seconds.
+    # `harness_setup` is the harness's own setup session (a domain statement
+    # and prepared resources), once per campaign before the first
+    # iteration; `verification` is the harness's per-attempt check between
+    # the evaluation and the judge. Both exist only with a harness.
     PHASES = (
-        "setup", "lens_planning", "ideation", "implementation", "evaluation",
-        "feedback",
+        "setup", "harness_setup", "lens_planning", "ideation", "implementation",
+        "evaluation", "verification", "feedback",
     )
     # payload: budget{elapsed_min,total_min}, best{score,node},
     #          last{score,node}, iteration, stopped_reason, stop_detail,
     #          requests (waiting_for_user), platform_budget{used,budget,
-    #          unit,refused} (only when cost is enabled). Documented in
+    #          unit,refused} (only when cost is enabled), harness{name,
+    #          version,hash,source} (null without one), harness_setup
+    #          {prepared} once the harness setup session ran. Documented in
     #          docs/reference/cli.mdx under `kapso watch` — keep in step.
 
 

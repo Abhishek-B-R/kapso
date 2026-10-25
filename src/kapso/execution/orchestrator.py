@@ -28,11 +28,23 @@ from kapso.execution.search_strategies import (
     SearchStrategy,
     SearchStrategyFactory,
 )
+from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.search_strategies.generic import FeedbackGenerator, FeedbackResult
+from kapso.execution.search_strategies.generic.implementation import render_inbox_section
 from kapso.environment.handlers.base import ProblemHandler
-from kapso.execution.inbox import idea_line, render_pause_block, request_payload
-from kapso.harness.task_statement import write_task_statement
+from kapso.execution.inbox import (
+    idea_line,
+    load_requests,
+    open_requests,
+    render_pause_block,
+    request_payload,
+)
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.gated_mcp.presets import get_mcp_config, knowledge_tools_block
+from kapso.harness.load import HarnessError
+from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE
+from kapso.harness.task_statement import prepared_names, setup_statement_path, write_task_statement
 from kapso.core.cli_inference import CliInference, resolve_inference_config
 from kapso.core.config import load_mode_config
 from kapso.execution.search_strategies.base import ExperimentResult, SearchNode
@@ -108,6 +120,26 @@ _MAINTAINER_BLOCK_KEYS = {
 }
 
 
+# The harness setup session (kapso.harness): its inbox identity, the node
+# it files requests under (none: it runs before the first experiment), its
+# prompt, the line that offers the inbox, and the campaign directories it
+# must leave alone.
+HARNESS_SETUP_SESSION = "harness_setup"
+HARNESS_SETUP_NODE = -1
+HARNESS_SETUP_PROMPT = "execution/search_strategies/generic/prompts/harness_setup.md"
+HARNESS_SETUP_INBOX_LINE = (
+    "\n- If an input the task statement names is missing (a file, a variable), ask for it "
+    "with the request_from_user tool, naming it exactly, and finish; the campaign pauses "
+    "and your session runs again once the person has answered.\n"
+)
+PINNED_DIRECTORIES = ("kapso_evaluation", "kapso_datasets")
+
+
+def _directory_manifest(path: Path) -> Dict[str, str]:
+    """The files under a campaign directory by hash; {} when it is absent."""
+    return build_evaluation_manifest(str(path)) if path.is_dir() else {}
+
+
 @dataclass
 class SolveResult:
     """Result from orchestrator.solve()."""
@@ -177,6 +209,10 @@ class OrchestratorAgent:
         # its own check, with its own message, in the facade).
         self.harness = harness
         self._harness_setup: Optional[Dict[str, Any]] = None
+        # The requests the harness setup session filed with the inbox: the
+        # campaign pauses on them before iteration 1.
+        self._setup_requests: List[Any] = []
+        self._task_budget: Dict[str, Any] = {}
         # The problem's scoring direction: the history store ranks by it and
         # the checkpoint records it for the MCP history process.
         self.maximize_scoring = getattr(problem_handler, "maximize_scoring", True)
@@ -711,6 +747,130 @@ class OrchestratorAgent:
             data_dir=self.data_dir,
         )
 
+    def _run_harness_setup(self) -> None:
+        """The harness's setup session, once per fresh campaign, at the
+        campaign root, when the harness has setup content: it writes its
+        domain statement and prepared resources; the engine composes the
+        task statement from them, verifies the pinned evaluation and data,
+        records the step in the checkpoint and the status file, and pauses
+        the campaign when the session asked the person for an input."""
+        harness = self.harness
+        if harness is None or not harness.has_content("setup") or self._harness_setup is not None:
+            return
+        strategy = self.search_strategy
+        campaign = Path(strategy.workspace_dir)
+        strategy._status_phase("harness_setup")
+        host = strategy.implementation_cli
+        staged = strategy.stage_harness_for("setup", str(campaign), HARNESS_SETUP_SESSION, host)
+        pinned = {name: _directory_manifest(campaign / name) for name in PINNED_DIRECTORIES}
+
+        inbox = getattr(strategy, "inbox_settings", None)
+        inbox_on = bool(inbox and inbox.get("enabled"))
+        mcp_servers: Dict[str, Any] = {}
+        mcp_tools: List[str] = []
+        inbox_agent_settings: Dict[str, Any] = {}
+        if inbox_on:
+            mcp_servers, mcp_tools = get_mcp_config(
+                gates=["inbox"],
+                include_base_tools=False,
+                gate_failure_policy=strategy.gate_failure_policy,
+                inbox={
+                    "KAPSO_INBOX_PATH": str(inbox["path"]),
+                    "KAPSO_SESSION_ID": HARNESS_SETUP_SESSION,
+                    "KAPSO_NODE_ID": str(HARNESS_SETUP_NODE),
+                },
+            )
+            inbox_agent_settings = {
+                "session_id": HARNESS_SETUP_SESSION,
+                "inbox_path": str(inbox["path"]),
+                "inbox_stop_grace_seconds": float(inbox["stop_grace_seconds"]),
+            }
+        allowed = [
+            "Read", "Write", "Edit", "Bash",
+            *[tool for tool in mcp_tools if tool.startswith("mcp__")],
+            *staged.allowed_tools,
+        ]
+        own = {
+            **(strategy._claude_auth_settings if host != "codex" else {}),
+            "env_strip": strategy.env_strip,
+            "env_defaults": strategy.env_defaults,
+            "mcp_servers": mcp_servers,
+            "allowed_tools": allowed,
+            "timeout": strategy._clamped_timeout(float(harness.settings["setup_minutes"]) * 60.0),
+            "streaming": True,
+            "effort": strategy.session_effort,
+            **inbox_agent_settings,
+        }
+        config = CodingAgentConfig(
+            agent_type=host,
+            model=strategy.implementation_model,
+            debug_model=strategy.implementation_model,
+            agent_specific=staged.merged_agent_specific(own),
+        )
+        answered = (
+            render_inbox_section(load_requests(inbox["path"]), dotenv_path=inbox.get("dotenv_path", ""))
+            if inbox_on else ""
+        )
+        prompt = render_prompt(load_prompt(HARNESS_SETUP_PROMPT), {
+            "task_statement_path": str(campaign / TASK_STATEMENT_FILE),
+            "statement_path": setup_statement_path(campaign).relative_to(campaign).as_posix(),
+            "prepared_dir": PREPARED_DIR,
+            "inbox_line": HARNESS_SETUP_INBOX_LINE if inbox_on else "",
+            "knowledge_tools": (
+                knowledge_tools_block("implementation", allowed) if inbox_on
+                else "The harness's own servers and skills, listed below; no engine knowledge tools in this session."
+            ),
+            "domain_guidance": optional_block(
+                staged.guidance + (("\n\n" + answered) if answered else "")
+            ),
+        })
+
+        print(f"[Orchestrator] Harness setup session starting ({host}, {harness.label()})")
+        started = time.monotonic()
+        agent = CodingAgentFactory.create(config)
+        agent.initialize(str(campaign))
+        result = agent.generate_code(prompt)
+        cost = agent.get_cumulative_cost()
+        agent.cleanup()
+        duration = time.monotonic() - started
+        self.budget_ledger.record(
+            CostEntry(component="harness_setup", cost_usd=float(cost), duration_seconds=duration)
+        )
+        for name, before in pinned.items():
+            if _directory_manifest(campaign / name) != before:
+                raise HarnessError(
+                    f"the harness setup session of {harness.label()} changed {name}/, the campaign's "
+                    f"pinned {'evaluation' if name == 'kapso_evaluation' else 'data'}; a harness prepares "
+                    f"resources under {PREPARED_DIR}/ and leaves these alone"
+                )
+        if inbox_on:
+            asked = [
+                request for request in open_requests(load_requests(inbox["path"]))
+                if request.session == HARNESS_SETUP_SESSION
+            ]
+            if asked:
+                self._setup_requests = asked
+                print(
+                    f"[Orchestrator] Harness setup asked the person ({len(asked)} request(s)); "
+                    "the campaign pauses before its first experiment"
+                )
+                return
+        if not result.success:
+            raise HarnessError(f"the harness setup session of {harness.label()} failed: {result.error}")
+        prepared = list(prepared_names(campaign))
+        self._harness_setup = {
+            "done": True,
+            "prepared": prepared,
+            "cost_usd": float(cost),
+            "duration_seconds": round(duration, 1),
+        }
+        self._write_task_statement(**self._task_budget)
+        status = getattr(strategy, "operation_status", None)
+        if status is not None:
+            status.update(harness_setup={"prepared": prepared})
+        self._save_run_checkpoint(status="running")
+        print(f"[Orchestrator] Harness setup done: prepared {', '.join(prepared) or 'nothing'}")
+
     def _stage_maintainer(self, module: str, label: str):
         """The harness's module for one maintainer session at the campaign
         root; None without a harness."""
@@ -1143,6 +1303,8 @@ class OrchestratorAgent:
     def _waiting_requests(self) -> List[Any]:
         """Open inbox requests of nodes waiting for the person; empty for
         strategies without an inbox."""
+        if self._setup_requests:
+            return list(self._setup_requests)
         hook = getattr(self.search_strategy, "waiting_requests", None)
         return list(hook()) if callable(hook) else []
 
@@ -1357,10 +1519,14 @@ class OrchestratorAgent:
         self.budget_ledger.start_clock()
         # With a harness, the task statement every session reads first is
         # written before any session runs (and again after harness setup).
-        self._write_task_statement(
+        self._task_budget = dict(
             experiments=experiment_max_iter, minutes=time_budget_minutes,
             usd=cost_budget, reserve_minutes=finalization_reserve_minutes,
         )
+        self._write_task_statement(**self._task_budget)
+        # The harness's own setup session, once, before the evaluation is
+        # registered: a domain statement and prepared resources.
+        self._run_harness_setup()
         # The maintainer's setup transaction runs inside the budgeted clock,
         # before iteration 1; on resume it validates registry consistency.
         self._ensure_evaluation_registered()
