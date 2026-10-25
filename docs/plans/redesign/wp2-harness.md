@@ -883,6 +883,31 @@ cross about 0.92, a 20-day momentum sign about 2.8, a volatility-targeted
 momentum about 2.2, buy-and-hold negative; the target of 1.0 is
 reachable and the baseline is not already there.
 
+## Proof runs
+
+**Rehearsal on the development box, 2026-10-25 11:12 UTC**, the trading
+example with the worktree's code, fifteen minutes and one experiment, on
+Claude Code (`claude-opus-5`), the shared token and the inbox on. The
+setup session ran four minutes, built `prepared/market-data` through the
+server's `snapshot` tool (its first attempt reached the data through the
+original directory the statement named, fixed in `346c48f0`) and wrote a
+domain statement that even flagged the brief's budget line against the
+campaign's; the task statement carried it. The implementer, staged with
+the harness, scored a volatility-targeted momentum signal at a Sharpe of
+2.2095 with `results/equity_curve.csv` and `results/trades.csv` saved; the
+six hooks' `SessionStart` lines are in its stream. Then the budget was
+spent: the verification session got the 102-second clamp twice, spawned
+the `lookahead-auditor` delegate on Claude Code (the `SubagentStart`
+events are in its stream) and was killed before writing a verdict, so the
+attempt was `unverified`; the judge got the 60-second floor, was killed
+after six tool calls, and its retry answered that no attempt was in
+scope and marked the evaluation invalid, so the record delivered nothing
+(`Candidate: none succeeded`, one rejected, $4.04). The verifier's diff
+had carried the engine's `.kapso/repo_memory.json` and a thousand CSV
+lines beside the strategy change, fixed in `f7a80ee1`. Every harness
+path ran; what failed was the budget's end, which is WP4's finding
+below. The fresh-machine runs follow.
+
 ## Author test (S3)
 
 Run 2026-10-25 on the development box: two model authors, each with the
@@ -950,6 +975,19 @@ harnesses are kept with the run records (`scripts/redesign/runs/wp2-s3/`).
 - **Learning attachments** (WP3). Only the learning module's pages reach
   the crews (`pages_block`); its skills, servers and hooks are not staged,
   because the crews' sessions are WP3's to shape.
+- **A spent budget starves the sessions that finish an attempt** (WP4).
+  In the rehearsal the setup, ideation and implementation sessions used
+  the fifteen minutes, and the verification and judge sessions that
+  followed were clamped to the floor and killed: the attempt was
+  `unverified`, and the judge's retry after its kill answered with no
+  attempt in scope and marked a 2.21 evaluation invalid. Finalisation
+  needs reserved time, as `reserve_minutes` reserves it for the final
+  checkout, or the campaign must stop before an implementation it cannot
+  finish; the judge's retry after a deadline kill should carry the
+  original prompt or fail loud rather than answer (WP6).
+- **The Codex adapter leaves a file unclosed** (WP6): `codex_agent.py:264`
+  prints `ResourceWarning: unclosed file` in the campaign log after an
+  ensemble member's session; pre-existing.
 - **`strict_mcp_config` and the `.claude_mcp` cleanup race**, pre-existing,
   noted in change 9 and left alone.
 

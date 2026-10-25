@@ -96,3 +96,14 @@ def test_a_program_every_module_runs_refuses_with_its_fix(tmp_path, monkeypatch)
     with pytest.raises(HarnessError) as caught:
         kapso.build("g", output=str(workspace), budget=Budget(experiments=1))
     assert "python3 (command, for the SessionStart hook): install python3 and put it on PATH" in str(caught.value)
+
+
+def test_a_coding_agent_with_no_staging_is_refused_before_anything_starts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    workspace = tmp_path / "ws"
+    git_workspace(workspace)
+    calls = fake_orchestrator(monkeypatch, workspace, solve_result())
+    kapso = loaded_facade(tmp_path, TRADING)
+    with pytest.raises(HarnessError, match="coding agent 'gemini' has no staging"):
+        kapso.build("g", output=str(workspace), budget=Budget(experiments=1), coding_agent="gemini")
+    assert not (workspace / "kapso_task.md").exists()

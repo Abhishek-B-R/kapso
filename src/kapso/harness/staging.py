@@ -17,6 +17,8 @@ changed since it was loaded.
 import json
 import os
 import shutil
+import threading
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -73,10 +75,12 @@ class StagedHarness:
     allowed_tools: List[str] = field(default_factory=list)         # `mcp__<server>` per mounted server
     env: Dict[str, str] = field(default_factory=dict)              # KAPSO_HARNESS_ROOT
     record: Dict[str, Any] = field(default_factory=dict)
+    record_path: Optional[Path] = None                             # <campaign>/.kapso/sessions/<id>/harness.json
 
     def merged_agent_specific(self, own: Dict[str, Any]) -> Dict[str, Any]:
         """The session's own keys over the staged ones; `env_overrides` and
-        `mcp_servers` are merged, not replaced."""
+        `mcp_servers` are merged, not replaced. A session that streams
+        elsewhere (ideation, beside its artifacts) has the record say so."""
         merged = {**self.agent_specific, **own}
         # A key appears only when something is there to merge, so a session
         # without a harness keeps exactly the keys it had.
@@ -84,6 +88,10 @@ class StagedHarness:
             merged["env_overrides"] = {**self.env, **(own.get("env_overrides") or {})}
         if self.mcp_servers or own.get("mcp_servers"):
             merged["mcp_servers"] = {**(own.get("mcp_servers") or {}), **self.mcp_servers}
+        stream = own.get("stream_artifact_path")
+        if self.record_path is not None and stream and stream != self.record.get("stream"):
+            self.record["stream"] = str(stream)
+            _write_whole(self.record_path, json.dumps(self.record, indent=2) + "\n")
         return merged
 
     def codex_exec_args(self) -> List[str]:
@@ -143,14 +151,20 @@ def stage_harness(
             f"{harness.name} now hashes {current[:12]}; {harness.restore_hint()}"
         )
     stager = _Stager(harness, module, session_dir, campaign_dir, session_id, host)
-    stager.refuse_tracked_collisions()
-    stager.mount_campaign_files()
-    stager.skills()
-    stager.servers()
-    stager.hooks()
-    stager.agents()
-    stager.record()
+    # Ensemble members stage into one directory from several threads; the
+    # files are written one staging at a time.
+    with _STAGING_LOCK:
+        stager.refuse_tracked_collisions()
+        stager.mount_campaign_files()
+        stager.skills()
+        stager.servers()
+        stager.hooks()
+        stager.agents()
+        stager.record()
     return stager.staged
+
+
+_STAGING_LOCK = threading.Lock()
 
 
 class _Stager:
@@ -232,8 +246,14 @@ class _Stager:
             os.symlink(prepared.resolve(), link)
 
     def skills(self) -> None:
+        root = self.session_dir / _SKILLS_DIR[self.host]
+        # Exactly this module's skills: one left here by another module's
+        # staging of the same directory goes, since nothing is inherited.
+        for name in self.harness.manifest.listed("skills"):
+            if name not in self.attachments.skills and (root / name).is_dir():
+                shutil.rmtree(root / name)
         for name in self.attachments.skills:
-            target = self.session_dir / _SKILLS_DIR[self.host] / name
+            target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(self.harness.path / "skills" / name, target, dirs_exist_ok=True)
 
@@ -262,10 +282,12 @@ class _Stager:
             self.staged.allowed_tools.append(f"mcp__{name}")
 
     def hooks(self) -> None:
+        file = self.session_dir / _HOOKS_FILE[self.host]
         if not self.attachments.hooks:
+            if file.is_file():
+                file.unlink()   # another module's, staged here before
             return
         merged = merge_hooks(self.harness.path, self.attachments.hooks)
-        file = self.session_dir / _HOOKS_FILE[self.host]
         _write_whole(file, json.dumps(merged, indent=2) + "\n")
         if self.host == CLAUDE_HOST:
             self.staged.agent_specific["settings_path"] = str(file)
@@ -273,7 +295,12 @@ class _Stager:
             self.staged.agent_specific["hooks_trust_bypass"] = True
 
     def agents(self) -> None:
+        target = self.session_dir / _AGENTS_PATH[self.host]
         if not self.attachments.agents:
+            if target.is_file():
+                target.unlink()   # another module's, staged here before
+            elif target.is_dir():
+                shutil.rmtree(target)
             return
         prompts = {}
         for name in self.attachments.agents:
@@ -307,8 +334,10 @@ class _Stager:
             "agents": list(self.attachments.agents),
             "hooks": list(self.attachments.hooks),
             "prepared": list(self.prepared),
+            "stream": self.staged.agent_specific["stream_artifact_path"],
         }
-        _write_whole(self.session_record_dir() / "harness.json", json.dumps(self.staged.record, indent=2) + "\n")
+        self.staged.record_path = self.session_record_dir() / "harness.json"
+        _write_whole(self.staged.record_path, json.dumps(self.staged.record, indent=2) + "\n")
 
     # ------------------------------------------------------------ guidance
 
@@ -367,6 +396,6 @@ def _write_whole(file: Path, text: str) -> None:
     never sees a half file and a second writer of the same content is
     harmless."""
     file.parent.mkdir(parents=True, exist_ok=True)
-    temporary = file.with_name(f".{file.name}.{os.getpid()}.tmp")
+    temporary = file.with_name(f".{file.name}.{uuid.uuid4().hex}.tmp")
     temporary.write_text(text, encoding="utf-8")
     os.replace(temporary, file)

@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 PREPARED = (Path.cwd() / "prepared").resolve()
-PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update|Delete|Move to) File: (.+)$", re.MULTILINE)
+PATCH_FILE = re.compile(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$", re.MULTILINE)
 
 event = json.load(sys.stdin)
 tool_input = event.get("tool_input", {})

@@ -5,7 +5,7 @@ description: "From the two-file starter kapso harness new writes to a harness wi
 keywords: ["kapso harness new", "harness.yaml", "SKILL.md", "mcp.json", "hook.json", "delegates", "guardrails", "harness check"]
 ---
 
-A harness is written once per domain and read by every session of every campaign in it. The smallest one is two files; the trading example has forty. Start small, run a build, read what the sessions did, and add what they lacked.
+A harness is written once per domain and read by every session of every campaign in it. The smallest one is two files; the trading example has thirty-six. Start small, run a build, read what the sessions did, and add what they lacked.
 
 ## Start
 
@@ -106,14 +106,14 @@ Run the scan on the attempt's diff; a hit is a finding with its file and line:
   "mcpServers": {
     "market-data": {"command": "python3", "args": ["${PLUGIN_ROOT}/servers/market_data.py"]},
     "broker": {"command": "python3", "args": ["${PLUGIN_ROOT}/servers/broker.py"], "env": {"BROKER_API_KEY": "${BROKER_API_KEY}"}},
-    "docs": {"type": "streamable-http", "url": "https://docs.example.com/mcp", "headers": {"Authorization": "Bearer ${DOCS_TOKEN}"}}
+    "docs": {"type": "streamable-http", "url": "https://docs.example.com/mcp", "headers": {"Authorization": "${DOCS_AUTHORIZATION}"}}
   }
 }
 ```
 
 A stdio server has `command`, `args`, `env` and `cwd`; a streamable-http server has `type`, `url` and `headers`. `${PLUGIN_ROOT}` is the harness directory, expanded at staging. A server runs with the session's directory as its working directory, with `KAPSO_HARNESS_ROOT` set, beside the engine's own gates; on Codex the engine forwards the variables the server names, which that host does not inherit. Names match `[A-Za-z0-9_-]+`; `gated-knowledge` is the engine's own server.
 
-A value that looks like a credential is a failure: write `"${NAME}"` and put the value in `.env` beside the run, or in the environment. `check` reports the variable as something the machine lacks, scoped to the modules that mount the server, and a build whose modules need it refuses before any session.
+Every `env` and `headers` value is one `${NAME}` reference, the whole value (`Bearer ...` prefix included, so the variable holds the whole header), and an `env` entry names the variable it forwards (`"BROKER_API_KEY": "${BROKER_API_KEY}"`, never another name: Codex forwards by name). The value lives in `.env` beside the run, or in the environment. A literal, a credential-shaped value, a reference embedded in a longer value or an `env` key that references another variable is a failure; an unset reference is reported as something the machine lacks, scoped to the modules that mount the server, and a build whose modules need it refuses before any session.
 
 ## Delegates
 

@@ -55,7 +55,7 @@ modules:
 | | `risk-reviewer` | reads an attempt's risk line and equity curve for the judge |
 | hooks | `session-brief` | `SessionStart`: one context line pointing at the task statement |
 | | `deny-web-fetch` | `PreToolUse` on `Bash`: denies `curl`, `wget`, `aria2c`; all prices come from the snapshot |
-| | `protect-prepared` | `PreToolUse` on the file tools: denies a write under `prepared/` |
+| | `protect-prepared` | `PreToolUse` on the file tools: denies a file-tool write under `prepared/` (a shell write is not covered: a hook is a mistake catcher, not a boundary) |
 | | `deny-snapshot` | `PreToolUse` on `mcp__market-data__snapshot`: the snapshot is built in setup only |
 | | `scan-writes` | `PostToolUse` on the file tools: scans a written file for look-ahead patterns |
 | | `require-results` | `Stop`: an implementation session does not end before `results/equity_curve.csv` and `results/trades.csv` exist |

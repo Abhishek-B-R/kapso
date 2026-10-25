@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+import kapso.cli.build as build_cli
+import kapso.cli.deploy as deploy_cli
 import kapso.cli.harness as harness_cli
 from kapso.cli import main
 from kapso.harness import BUNDLED_ROOT
@@ -28,7 +30,7 @@ def _run(monkeypatch, *argv):
 @pytest.fixture
 def settings(monkeypatch, tmp_path):
     values = {"store": str(tmp_path / "store"), "page_warning_lines": 40, "setup_minutes": 20,
-              "verification_minutes": 10, "server_tool_timeout_seconds": 600}
+              "verification_minutes": 10, "verification_attempts": 2, "server_tool_timeout_seconds": 600}
     monkeypatch.setattr(harness_cli, "load_harness_defaults", lambda config=None: dict(values))
     monkeypatch.chdir(tmp_path)
     return values
@@ -138,7 +140,7 @@ def test_add_fetches_checks_and_never_fails_on_needs(settings, monkeypatch, caps
     assert "fetched\n  trading                  0.1.0" in out and "needs kapso-test-missing-tool (command)" in out
 
     _run(monkeypatch, "update", f"git+file://{bare}@main#trading")
-    assert "trading 0.1.0 at " in capsys.readouterr().out
+    assert ": a tag or a commit never moves" in capsys.readouterr().out
 
     _run(monkeypatch, "remove", f"git+file://{bare}@main#trading")
     assert capsys.readouterr().out.startswith("removed ")
@@ -147,8 +149,6 @@ def test_add_fetches_checks_and_never_fails_on_needs(settings, monkeypatch, caps
 
 
 def test_the_build_and_deploy_parsers_take_the_harness_flag():
-    import kapso.cli.build as build_cli
-    import kapso.cli.deploy as deploy_cli
     for module in (build_cli, deploy_cli):
         parser = argparse.ArgumentParser()
         subparsers = parser.add_subparsers(dest="command")

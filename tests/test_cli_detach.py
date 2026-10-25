@@ -13,7 +13,7 @@ import pytest
 
 import kapso.cli.common as cli_common
 from kapso.cli import main
-from kapso.execution.inbox import inbox_path, load_requests
+from kapso.execution.inbox import LAUNCH_SCHEMA_VERSION, inbox_path, load_requests, write_launch_record
 from kapso.execution.observability import BuildStatus
 from tests.test_inbox_cli import _paused_campaign
 
@@ -151,3 +151,16 @@ def test_build_detach_validates_the_harness_before_it_forks(tmp_path, monkeypatc
     out = capsys.readouterr().out
     assert "cannot run a build on this machine; it needs:" in out
     assert "kapso-test-missing-tool (command): install kapso-test-missing-tool and put it on PATH" in out
+
+    # A bare resume takes the harness from the launch record and checks it
+    # the same way, before forking.
+    campaign = tmp_path / "campaign"
+    campaign.mkdir()
+    write_launch_record(campaign, {
+        "schema_version": LAUNCH_SCHEMA_VERSION,
+        "harness": {"name": "trading", "version": "0.1.0", "hash": "0" * 64, "source": str(harness)},
+    })
+    with pytest.raises(SystemExit) as caught:
+        _run(monkeypatch, "build", "--output", "campaign", "--resume", "--detach")
+    assert caught.value.code == 1 and popen == []
+    assert "kapso-test-missing-tool (command)" in capsys.readouterr().out

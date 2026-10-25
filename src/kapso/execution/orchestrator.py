@@ -12,6 +12,7 @@
 
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -739,8 +740,18 @@ class OrchestratorAgent:
         and the prepared resources; nothing without a harness."""
         if self.harness is None:
             return
+        campaign = Path(self.search_strategy.workspace_dir)
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", TASK_STATEMENT_FILE],
+            cwd=campaign, capture_output=True, text=True,
+        )
+        if tracked.returncode == 0:
+            raise HarnessError(
+                f"the repository tracks {TASK_STATEMENT_FILE}, the task statement the engine writes at "
+                "the campaign root for every session; rename or untrack it before building with a harness"
+            )
         write_task_statement(
-            Path(self.search_strategy.workspace_dir),
+            campaign,
             brief_text=self.goal,
             harness=self.harness,
             budget=budget,
@@ -1534,7 +1545,11 @@ class OrchestratorAgent:
         self._run_harness_setup()
         # The maintainer's setup transaction runs inside the budgeted clock,
         # before iteration 1; on resume it validates registry consistency.
-        self._ensure_evaluation_registered()
+        # Not while the setup session's question stands: the campaign
+        # pauses before spending the maintainer's session on an input the
+        # person has not given.
+        if not self._setup_requests:
+            self._ensure_evaluation_registered()
 
         # The fidelity policy: deterministic profile grants over measured
         # evaluation timing. Enabled by mode (or auto-affordability); the

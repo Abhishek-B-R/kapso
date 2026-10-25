@@ -393,7 +393,10 @@ class ExperimentWorkspace:
             with open(gitignore_path, "r") as f:
                 existing = f.read()
 
-        to_add = [line for line in required_lines if line not in existing]
+        # Whole lines: a seed whose ignore file mentions `.claude/` in a
+        # comment or ignores `data/prepared/` has not ignored these.
+        present = {line.strip() for line in existing.splitlines()}
+        to_add = [line for line in required_lines if line not in present]
         if not to_add:
             return
 

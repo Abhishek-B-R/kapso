@@ -109,6 +109,8 @@ def check_harness(root: Path, *, page_warning_lines: int, dotenv_path: Optional[
     manifest, findings = inspect_manifest(root)
     report = CheckReport(failures=list(findings), manifest=manifest)
     if manifest is None:
+        if not findings:
+            report.failures.append(Finding(MANIFEST_FILE, "no manifest could be read, and no finding says why", None))
         return report
     checker = _Checker(root, manifest, report, page_warning_lines, dotenv_path)
     checker.pages()
@@ -295,8 +297,10 @@ class _Checker:
         else:
             self.fail(MCP_FILE, f"server `{name}` has neither `command` (stdio) nor `url` (streamable-http)")
             return
-        for key, value in (entry.get("env") or {}).items():
-            self.env_value(name, key, value, modules)
+        env = entry.get("env")
+        if isinstance(env, dict):   # a wrong shape was reported by stdio_server
+            for key, value in env.items():
+                self.env_value(name, key, value, modules)
 
     def stdio_server(self, name: str, entry: Dict[str, Any], modules: Tuple[str, ...]) -> None:
         unknown = sorted(set(entry) - set(_STDIO_KEYS))
@@ -342,12 +346,21 @@ class _Checker:
         reference = _REFERENCE.match(value)
         if reference:
             variable = reference.group(1)
+            if where == "env" and variable != key:
+                # Codex forwards a variable by name, so the server reads the
+                # key only when the key is the variable.
+                self.fail(MCP_FILE, f"server `{server}`: env.{key} references ${{{variable}}}; an env entry names the variable it forwards, so write \"${{{key}}}\" and set {key} in .env")
+                return
             if not (os.environ.get(variable) or variable in self.dotenv_names):
                 self.need(
                     label=f"{variable} (env, for the {server} server)",
                     fix=f"add {variable}=... to .env",
                     modules=modules,
                 )
+            return
+        if "${" in value:
+            # Neither host expands a reference inside a longer value.
+            self.fail(MCP_FILE, f"server `{server}`: {where}.{key} embeds a reference in a longer value; write the whole value as one \"${{NAME}}\" reference (prefix included) and put it in .env")
             return
         upper = key.upper()
         if any(word in upper for word in SECRET_NAME_WORDS):

@@ -156,24 +156,26 @@ class _Inspector:
         for required in _REQUIRED_KEYS:
             if required not in top:
                 self.note(document, f"`{required}` is required")
+        # A key present with an empty value (`version:`) constructs to
+        # None, which is as wrong as a bad value: each is a finding.
         schema = self.scalar(top.get("schema_version"), "schema_version")
-        if schema is not None and schema != SCHEMA_VERSION:
+        if self.present("schema_version", top) and schema != SCHEMA_VERSION:
             self.note(
                 top["schema_version"],
                 f"schema_version {schema!r} is not supported; this Kapso reads schema_version {SCHEMA_VERSION}",
             )
         name = self.scalar(top.get("name"), "name")
-        if name is not None and (not isinstance(name, str) or not valid_name(name)):
+        if self.present("name", top) and (not isinstance(name, str) or not valid_name(name)):
             self.note(top["name"], f"name {name!r} must match [a-z0-9][a-z0-9-]*")
             name = None
         version = self.scalar(top.get("version"), "version")
         if isinstance(version, (int, float)) and not isinstance(version, bool):
             version = str(version)
-        if version is not None and (not isinstance(version, str) or not version.strip()):
+        if self.present("version", top) and (not isinstance(version, str) or not version.strip()):
             self.note(top["version"], "version must be a non-empty string")
             version = None
         description = self.scalar(top.get("description"), "description")
-        if description is not None and (not isinstance(description, str) or not description.strip()):
+        if self.present("description", top) and (not isinstance(description, str) or not description.strip()):
             self.note(top["description"], "description must be a non-empty string")
             description = None
         environment = self.environment(top["environment"]) if "environment" in top else HarnessEnvironment()
@@ -215,6 +217,13 @@ class _Inspector:
             self.note(node, f"{what} must be a single value")
             return None
         return yaml.SafeLoader("").construct_object(node)
+
+    @staticmethod
+    def present(key: str, top: Dict[str, yaml.Node]) -> bool:
+        """The key is there with a scalar: its value is checked, and a
+        wrong one is a finding (a missing key, or one that is not a
+        scalar, was noted already)."""
+        return key in top and isinstance(top[key], yaml.ScalarNode)
 
     def names(self, node: yaml.Node, what: str) -> Tuple[str, ...]:
         if not isinstance(node, yaml.SequenceNode):

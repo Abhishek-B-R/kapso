@@ -65,8 +65,10 @@ def mcp_config_overrides(mcp_servers: Dict[str, Any]) -> List[str]:
             overrides += ["-c", f"mcp_servers.{name}.tool_timeout_sec={spec['timeout'] // 1000}"]
             # Under a read-only sandbox codex refuses MCP calls that "require
             # approval" (exec never prompts); a knowledge gate is read-only
-            # by nature, so its tools are pre-approved.
-            overrides += ["-c", f'mcp_servers.{name}.default_tools_approval_mode="auto"']
+            # by nature, so its tools are pre-approved; a harness server
+            # says its own mode (approve). The key is written once.
+            mode = spec.get("approval_mode") or "auto"
+            overrides += ["-c", f"mcp_servers.{name}.default_tools_approval_mode={json.dumps(mode)}"]
             # Headers: a literal goes as it is; a `${VAR}` reference is
             # forwarded by name through env_http_headers (verified
             # 2026-10-25: `headers` is not a codex key, these two are).
@@ -78,8 +80,6 @@ def mcp_config_overrides(mcp_servers: Dict[str, Any]) -> List[str]:
             if referenced:
                 body = ", ".join(f"{k} = {json.dumps(v)}" for k, v in referenced.items())
                 overrides += ["-c", f"mcp_servers.{name}.env_http_headers={{{body}}}"]
-            if spec.get("approval_mode"):
-                overrides += ["-c", f"mcp_servers.{name}.default_tools_approval_mode={json.dumps(spec['approval_mode'])}"]
             continue
         overrides += ["-c", f"mcp_servers.{name}.command={json.dumps(spec['command'])}"]
         args = spec.get("args") or []

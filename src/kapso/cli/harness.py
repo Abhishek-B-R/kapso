@@ -35,14 +35,12 @@ def cmd_harness(args) -> None:
         return
     if command == "update":
         before, after = store.update(reference)
-        manifest = read_manifest(store.resolve(reference))
         if before == after:
-            print(f"{manifest.name} {manifest.version} at {after[:12]}: a tag or a commit never moves")
+            print(f"at {after[:12]}: a tag or a commit never moves")
         else:
-            print(f"{manifest.name} {manifest.version} now at {after[:12]} (was {before[:12]})")
-        return
-    # check and add: resolve (fetching when needed, and saying so), then the
-    # report; a failure exits 1, what the machine lacks never does.
+            print(f"now at {after[:12]} (was {before[:12]})")
+    # check, add and update: resolve (fetching when needed, and saying so),
+    # then the report; a failure exits 1, what the machine lacks never does.
     fetched_before = reference.kind != "git" or store.is_fetched(reference)
     path = store.resolve(reference)
     if not fetched_before:

@@ -8,10 +8,15 @@ changed harness refused."""
 import json
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from kapso.core.config import load_harness_defaults
+from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
+from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
+from kapso.execution.coding_agents.adapters.codex_agent import CodexCodingAgent
+from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.harness import (
     GUIDANCE_HEADING,
     HARNESS_ROOT_VARIABLE,
@@ -138,8 +143,7 @@ def test_the_same_module_on_codex(harness, tmp_path):
     assert staged.agent_specific["hooks_trust_bypass"] is True
     assert "settings_path" not in staged.agent_specific and "agents_path" not in staged.agent_specific
     assert staged.agent_specific["agents"] == {"lookahead-auditor": {
-        "description": json.loads((session_dir / ".codex" / "harness-agents" / "lookahead-auditor.toml").read_text().split(" = ", 1)[1]) and
-        "Audits one attempt for look-ahead and leakage in signal timing, joins, resampling and data access, and reports pass, fail or inconclusive with evidence.",
+        "description": "Audits one attempt for look-ahead and leakage in signal timing, joins, resampling and data access, and reports pass, fail or inconclusive with evidence.",
         "config_file": str(session_dir / ".codex" / "harness-agents" / "lookahead-auditor.toml"),
     }}
     server = staged.mcp_servers["market-data"]
@@ -248,10 +252,6 @@ def test_a_harness_changed_since_the_load_is_refused(harness, tmp_path):
 
 
 def test_the_adapters_carry_the_staged_keys(harness, tmp_path):
-    from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
-    from kapso.execution.coding_agents.adapters.codex_agent import CodexCodingAgent
-    from kapso.execution.coding_agents.base import CodingAgentConfig
-
     claude = stage(harness, "implementation", "claude_code", tmp_path)
     command = ClaudeCodeCodingAgent(CodingAgentConfig(
         agent_type="claude_code", model="m", debug_model="m",
@@ -273,3 +273,57 @@ def test_the_adapters_carry_the_staged_keys(harness, tmp_path):
     assert f'mcp_servers.market-data.cwd="{codex.session_dir}"' in joined
     assert 'agents.lookahead-auditor.description="Audits one attempt' in joined
     assert f'agents.lookahead-auditor.config_file="{codex.session_dir / ".codex" / "harness-agents" / "lookahead-auditor.toml"}"' in joined
+
+
+def test_staging_another_module_into_the_same_directory_leaves_only_its_attachments(harness, tmp_path):
+    """Sessions at the campaign root follow one another (setup, the judge,
+    a maintainer session): each sees exactly its module's skills, hooks
+    and delegates, nothing inherited from the one before."""
+    first = stage(harness, "setup", "claude_code", tmp_path, session="", session_id="harness_setup")
+    root = first.session_dir
+    assert (root / ".claude" / "skills" / "market-data").is_dir()
+    assert json.loads((root / ".claude" / "harness-hooks.json").read_text())["hooks"].keys() >= {"SessionStart", "PreToolUse"}
+
+    second = stage(harness, "feedback", "claude_code", tmp_path, session="", session_id="feedback/generic_exp_0")
+    assert sorted(p.name for p in (root / ".claude" / "skills").iterdir()) == ["risk-limits"]
+    assert json.loads((root / ".claude" / "harness-agents.json").read_text()).keys() == {"risk-reviewer"}
+    assert second.record["skills"] == ["risk-limits"] and second.record["hooks"] == ["session-brief", "deny-web-fetch", "protect-prepared"]
+
+    third = stage(harness, "learning", "claude_code", tmp_path, session="", session_id="learning")
+    assert not (root / ".claude" / "harness-hooks.json").exists()
+    assert not (root / ".claude" / "harness-agents.json").exists()
+    assert list((root / ".claude" / "skills").iterdir()) == []
+    assert third.record["skills"] == [] and third.record["hooks"] == [] and third.record["agents"] == []
+
+
+def test_the_record_names_the_stream_a_session_writes(harness, tmp_path):
+    staged = stage(harness, "ideation", "claude_code", tmp_path, session=".kapso/ideation/iter1", session_id="ideation/iter1/claude_code")
+    record_path = staged.record_path
+    assert record_path == tmp_path / "campaign" / ".kapso" / "sessions" / "ideation" / "iter1" / "claude_code" / "harness.json"
+    assert json.loads(record_path.read_text())["stream"] == staged.agent_specific["stream_artifact_path"]
+    # An ideation session streams beside its artifacts; the record follows it.
+    elsewhere = str(tmp_path / "campaign" / ".kapso" / "ideation" / "iter1" / "claude_code_opus.stream.txt")
+    merged = staged.merged_agent_specific({"stream_artifact_path": elsewhere})
+    assert merged["stream_artifact_path"] == elsewhere
+    assert json.loads(record_path.read_text())["stream"] == elsewhere
+
+
+def test_the_ignore_writer_matches_whole_lines(tmp_path):
+    """A seed whose ignore file mentions `.claude/` in a comment or ignores
+    `data/prepared/` has not ignored the staged files; the writer adds the
+    lines a session's closing add-all must not sweep up."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / ".gitignore").write_text("# prepared resources live under data/prepared/\n.claude/settings.local.json\n")
+    commits = []
+    fake = SimpleNamespace(
+        workspace_dir=str(workspace),
+        repo=SimpleNamespace(git=SimpleNamespace(add=lambda paths: None, commit=lambda *args, **kwargs: commits.append(args))),
+    )
+    ExperimentWorkspace._ensure_workspace_gitignore(fake)
+    lines = [line.strip() for line in (workspace / ".gitignore").read_text().splitlines()]
+    assert "prepared" in lines and ".claude/" in lines and ".agents/" in lines and ".codex/" in lines and "kapso_task.md" in lines
+    # Written once: a second pass adds nothing.
+    before = (workspace / ".gitignore").read_text()
+    ExperimentWorkspace._ensure_workspace_gitignore(fake)
+    assert (workspace / ".gitignore").read_text() == before and len(commits) == 1

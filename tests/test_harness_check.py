@@ -293,3 +293,38 @@ def test_render_shows_the_summary_then_each_kind(harness, monkeypatch):
     assert lines[0] == "check ok (7 skills, 2 agents, 2 servers, 7 hooks)"
     assert any(line.startswith("  warn   hooks/extra/") for line in lines)
     assert any(line.startswith("  needs  python3 (command") and line.endswith("]") for line in lines)
+
+
+# ---------------------------------------------------- references in env
+
+def test_a_reference_inside_a_longer_value_is_a_failure(harness):
+    edit_json(harness / "mcp.json", lambda d: d["mcpServers"].update({"docs": {
+        "type": "streamable-http", "url": "https://docs.example.com/mcp", "headers": {"Authorization": "Bearer ${DOCS_TOKEN}"},
+    }}))
+    edit(harness / "harness.yaml", "mcp_servers: [market-data, broker]", "mcp_servers: [market-data, broker, docs]")
+    report = check(harness)
+    assert [f.message for f in report.failures] == [
+        "server `docs`: headers.Authorization embeds a reference in a longer value; write the whole value as one \"${NAME}\" reference (prefix included) and put it in .env"
+    ]
+
+
+def test_an_env_entry_names_the_variable_it_forwards(harness):
+    edit_json(harness / "mcp.json", lambda d: d["mcpServers"]["broker"].update(env={"BROKER_API_KEY": "${MY_BROKER_KEY}"}))
+    report = check(harness)
+    assert [f.message for f in report.failures] == [
+        "server `broker`: env.BROKER_API_KEY references ${MY_BROKER_KEY}; an env entry names the variable it forwards, so write \"${BROKER_API_KEY}\" and set BROKER_API_KEY in .env"
+    ]
+
+
+def test_an_env_that_is_not_a_mapping_is_reported_not_crashed(harness):
+    edit_json(harness / "mcp.json", lambda d: d["mcpServers"]["broker"].update(env=["bad"]))
+    report = check(harness)
+    assert [f.message for f in report.failures] == ["server `broker`: `env` must map names to strings"]
+
+
+def test_a_required_field_left_empty_is_a_finding(harness):
+    edit(harness / "harness.yaml", "version: 0.1.0", "version:")
+    report = check(harness)
+    assert report.manifest is None and [f.message for f in report.failures] == ["version must be a non-empty string"]
+    edit(harness / "harness.yaml", "name: trading", "name: null")
+    assert "name None must match [a-z0-9][a-z0-9-]*" in [f.message for f in check(harness).failures]

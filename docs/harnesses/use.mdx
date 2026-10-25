@@ -50,8 +50,8 @@ name     trading 0.1.0
 The report has three kinds of line. A `fail` line is a harness that cannot load: the author's problem, and `check` exits 1. A `warn` line is something the author should look at; the harness loads. A `needs` line is what this machine lacks, with the line that fixes it and the modules that need it:
 
 ```text
-  needs  python: pyarrow>=15 (installed 14.0.2): pip install "pyarrow>=15"  [setup, ideation, implementation, verification, feedback, learning, deployment]
-  needs  BROKER_API_KEY (variable, for server broker): set it in the environment or in .env beside the run  [deployment]
+  needs  python: pyarrow>=15 (installed 14.0.2): python3 -m pip install -r /home/me/harnesses/trading/requirements.txt  [setup, ideation, implementation, verification, feedback, learning, deployment]
+  needs  BROKER_API_KEY (env, for the broker server): add BROKER_API_KEY=... to .env  [deployment]
 ```
 
 Nothing is installed for you. A build refuses an unmet need of the modules it runs (setup, ideation, implementation, verification, feedback), before any session, naming each item and its fix; a need of another module is printed as advisory and the build goes on. `deploy` and `learn` check their own module the same way, at the call.
@@ -70,13 +70,13 @@ The store's own commands:
 The launch prints the harness and what it adds:
 
 ```text
-Harness: trading 0.1.0 (3f9c1a2b7e40) from /home/me/harnesses/trading
-  sessions added: harness setup, verification per attempt
+  Harness: trading 0.1.0 (3f9c1a2b7e40) from /home/me/harnesses/trading
+  Harness sessions: harness setup; verification per attempt
 ```
 
 1. **The task statement.** Kapso writes `kapso_task.md` at the campaign root: the brief whole, the budget, the evaluation and data references, the harness, the domain statement and the prepared resources. Every session is told to read it first, and its values win over any harness page.
 2. **The setup session**, once, before the first experiment, when the harness has a setup page or setup attachments. It runs at the campaign root with the setup module's skills, servers and hooks, writes the domain statement to `.kapso/harness_setup/statement.md` and leaves what every later session should find ready under `prepared/<name>/`. Kapso verifies afterwards that `kapso_evaluation/` and `kapso_datasets/` are byte for byte what they were; a change fails the build naming the harness. When the session needs something only you can provide, the campaign pauses on the [inbox](/docs/build/inbox) as any session does. The status file shows the phase `harness_setup`, and a resume never runs setup twice.
-3. **Every session is staged.** Its prompt carries a `## Domain guidance (harness trading 0.1.0)` block: `guardrails.md`, then the module's page, whole, then the paths of the task statement and the prepared resources. Beside the session, in the host's own format: skills, the merged hooks file, the delegates, and the servers mounted with the engine's own gates. The staging is written to `.kapso/sessions/<session>/harness.json` and the host's event stream to `stream.jsonl` beside it.
+3. **Every session is staged.** Its prompt carries a `## Domain guidance (harness trading 0.1.0)` block: `guardrails.md`, then the module's page, whole, then the module's skills, delegates and servers each with its description and how to reach it, then the paths of the task statement and the prepared resources. Beside the session, in the host's own format: skills, the merged hooks file, the delegates, and the servers mounted with the engine's own gates. The staging is written to `.kapso/sessions/<session>/harness.json` and the host's event stream to `stream.jsonl` beside it.
 4. **Verification per attempt**, when the harness has verification content. Between the evaluation and the judge, Kapso writes the attempt's diff and evaluation output under `.kapso/verification/<branch>/`, checks the branch out in a worktree of its own, and runs one verification session there. The session writes `verdict.json`:
 
    | Verdict | What the engine does |
@@ -93,7 +93,7 @@ Harness: trading 0.1.0 (3f9c1a2b7e40) from /home/me/harnesses/trading
 | Path | What it is |
 |---|---|
 | `kapso_task.md` | The task statement every session read |
-| `prepared/<name>/` | What the setup session pinned; read-only after it returns, mounted at the same relative path in every session |
+| `prepared/<name>/` | What the setup session pinned, mounted at the same relative path in every session; the harness's file-tool hook denies a write under it, a shell command is not covered (a hook catches a mistake, the engine's permissions are the boundary) |
 | `.kapso/harness_setup/statement.md` | The setup session's domain statement |
 | `.kapso/sessions/<session>/harness.json` | What the session was staged with: module, host, pages, skills, servers, delegates, hooks, prepared resources |
 | `.kapso/sessions/<session>/stream.jsonl` | The host's event stream, where a hook's decision and a delegate's report are |

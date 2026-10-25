@@ -23,7 +23,9 @@ from kapso.execution.coding_agents.base import CodingResult
 from kapso.handles import HarnessRef
 from kapso.harness import HarnessError, load_harness
 from kapso.harness.staging import pages_block
-from kapso.kapso import Kapso
+from kapso.learning.trajectory_store import save_trajectory
+from tests.test_trajectory_store import TRAJECTORY_ID, build_work_dir, make_store
+from kapso.kapso import Kapso, _source_is_reachable
 from tests.handles_support import facade, make_solution
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
@@ -191,8 +193,6 @@ def test_the_learning_pages_block_holds_both_pages_and_no_paths(tmp_path, harnes
 
 
 def test_the_trajectory_manifest_carries_both_harness_keys(tmp_path):
-    from kapso.learning.trajectory_store import save_trajectory
-    from tests.test_trajectory_store import TRAJECTORY_ID, build_work_dir, make_store
     store = make_store(tmp_path)
     work_dir, log = build_work_dir(tmp_path / "src", strict=False)
     built = {"name": "trading", "version": "0.1.0", "hash": "a" * 64, "source": "/h/trading"}
@@ -209,3 +209,43 @@ def test_the_trajectory_manifest_carries_both_harness_keys(tmp_path):
         make_store(tmp_path / "plain"), TRAJECTORY_ID, work_dir=str(work_dir), campaign_log=str(log), contract="historical",
     )
     assert make_store(tmp_path / "plain").manifest(plain)["harness"] is None
+
+
+def test_a_loaded_harness_is_not_attached_to_a_campaign_built_without_one(tmp_path, harness_dir):
+    solution = solution_with(tmp_path, None)
+    with pytest.raises(HarnessError, match="was built without a harness, and a deploy runs as its build did"):
+        kapso_for(tmp_path, harness_dir)._harness_for(solution, verb="deploy")
+
+
+def test_a_changed_version_at_the_recorded_source_is_said_too(tmp_path, harness_dir, capsys):
+    solution = solution_with(tmp_path, loaded(tmp_path, harness_dir))
+    manifest = harness_dir / "harness.yaml"
+    manifest.write_text(manifest.read_text().replace("version: 0.1.0", "version: 0.2.0"))
+    resolved = kapso_for(tmp_path)._harness_for(solution, verb="learn")
+    assert resolved.version == "0.2.0"
+    assert "for the learn; the build ran with trading 0.1.0" in capsys.readouterr().out
+
+
+def test_a_recorded_git_source_counts_as_reachable():
+    assert _source_is_reachable("acme/harnesses@v3#trading")
+    assert _source_is_reachable("git+https://github.com/acme/harnesses@v3#trading")
+    assert _source_is_reachable("git@github.com:acme/harnesses@v3#trading")
+    assert not _source_is_reachable("/nowhere/at/all")
+
+
+def test_the_adapter_lets_a_harness_refusal_through(tmp_path, harness_dir, monkeypatch):
+    """A changed harness, a collision or a host with no staging stops the
+    deploy with its message; the fallback agent is not tried without the
+    harness either."""
+    RecordingAgent.calls = []
+    monkeypatch.setattr(adapter_module.CodingAgentFactory, "create", staticmethod(lambda config: RecordingAgent(config)))
+    harness = loaded(tmp_path, harness_dir)
+    page = harness_dir / "instructions" / "guardrails.md"
+    page.write_text(page.read_text() + "\n- edited after the load\n")
+    adapted = tmp_path / "campaign_adapted_local"
+    adapted.mkdir()
+    adapter = AdapterAgent(coding_agent_type="claude_code", model="m", harness=harness)
+    adapter._campaign_dir = tmp_path / "campaign"
+    with pytest.raises(HarnessError, match="the harness changed since launch"):
+        adapter._run_with_fallback(str(adapted), "Adapt the winner for local.")
+    assert RecordingAgent.calls == []

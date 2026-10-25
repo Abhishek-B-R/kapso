@@ -14,7 +14,7 @@ from kapso.execution.coding_agents.base import CodingResult
 from kapso.execution.observability import BuildStatus
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.search_strategies.base import SearchNode
-from kapso.harness.staging import host_for, no_harness, stage_harness
+from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
 FAKE_MODE_CONFIG = {"search_strategy": {"type": "generic", "params": {}}, "inbox": {"enabled": False}}
 
@@ -74,13 +74,9 @@ class ScoringFakeStrategy:
         return seconds
 
     def stage_harness_for(self, module: str, session_dir: str, label: str, agent_type: str):
-        session_id = f"ideation/iter{self.iteration_count}/{label}" if module == "ideation" else label
-        if self.harness is None:
-            return no_harness(module, agent_type, Path(session_dir), session_id)
-        return stage_harness(
-            self.harness, module, session_dir=Path(session_dir), campaign_dir=Path(self.workspace_dir),
-            session_id=session_id, host=host_for(agent_type),
-        )
+        # The engine's own method, on this fake: the records tests pin the
+        # contract itself, not a copy of it.
+        return GenericSearch.stage_harness_for(self, module, session_dir, label, agent_type)
 
     def run(self, context: str, budget_progress: float = 0.0) -> SearchNode:
         node_id = len(self.node_history)

@@ -14,7 +14,7 @@ from typing import List, Tuple
 
 import git
 
-from kapso.harness.manifest import MANIFEST_FILE, read_manifest
+from kapso.harness.manifest import MANIFEST_FILE, inspect_manifest
 from kapso.harness.reference import DEFAULT_REV, HarnessReference, HarnessReferenceError
 
 SOURCE_FILE = "source.json"
@@ -124,13 +124,17 @@ class HarnessStore:
                 if ".git" in manifest_file.relative_to(clone).parts:
                     continue
                 harness = manifest_file.parent
-                manifest = read_manifest(harness)
+                # A manifest with findings still lists, by its directory;
+                # `check` says what is wrong with it.
+                manifest, _findings = inspect_manifest(harness)
                 subdirectory = harness.relative_to(clone).as_posix()
                 reference = f"{source['remote']}@{source['rev']}"
                 if subdirectory != ".":
                     reference += f"#{subdirectory}"
                 found.append(FetchedHarness(
-                    path=harness, name=manifest.name, version=manifest.version,
+                    path=harness,
+                    name=manifest.name if manifest is not None else harness.name,
+                    version=manifest.version if manifest is not None else "?",
                     reference=reference, commit=source["commit"],
                 ))
         return found

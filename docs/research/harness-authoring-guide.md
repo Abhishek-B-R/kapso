@@ -470,7 +470,7 @@ engine must be able to mount it in some modules and not others.
     "docs": {
       "type": "streamable-http",
       "url": "https://docs.example.com/mcp",
-      "headers": {"Authorization": "Bearer ${DOCS_TOKEN}"}
+      "headers": {"Authorization": "${DOCS_AUTHORIZATION}"}
     }
   }
 }
@@ -486,12 +486,15 @@ engine must be able to mount it in some modules and not others.
   so it can find `prepared/<name>` by a relative path; `KAPSO_HARNESS_ROOT`
   is set for it, and on Codex the engine forwards the variables its `env`
   names, which that host does not inherit.
-- Every `env` and `headers` value is a `${NAME}` reference, a secret or a
-  setting alike (`"BROKER_API_KEY": "${BROKER_API_KEY}"`,
-  `"DBT_TARGET": "${DBT_TARGET}"`); the value comes from the user's
-  environment or `.env` beside the run. A literal fails `check`, and an
-  unset reference is reported as a need of the modules that mount the
-  server.
+- Every `env` and `headers` value is one `${NAME}` reference and nothing
+  else, a secret or a setting alike (`"BROKER_API_KEY": "${BROKER_API_KEY}"`,
+  `"DBT_TARGET": "${DBT_TARGET}"`, `"Authorization": "${DOCS_AUTHORIZATION}"`
+  with the `Bearer` prefix inside the variable); an `env` entry names the
+  variable it forwards, never another one, because Codex forwards by
+  name. The value comes from the user's environment or `.env` beside the
+  run. A literal, a reference inside a longer value or an `env` key that
+  references another name fails `check`, and an unset reference is
+  reported as a need of the modules that mount the server.
 - A stdio server is a small Python file on the `mcp` package's FastMCP:
 
   ```python

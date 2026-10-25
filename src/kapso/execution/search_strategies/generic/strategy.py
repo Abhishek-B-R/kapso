@@ -170,7 +170,6 @@ def resolve_inbox_settings(
 # and how many times a session that wrote no verdict runs before the
 # attempt is left unverified.
 VERIFICATION_PROMPT = "execution/search_strategies/generic/prompts/verification.md"
-VERIFICATION_ATTEMPTS = 2
 
 
 @register_strategy("generic")
@@ -911,8 +910,9 @@ class GenericSearch(SearchStrategy):
         if harness is None or not harness.has_content("verification"):
             return
         self._status_phase("verification")
-        judge = self.feedback_generator.coding_agent_config
-        host = judge.agent_type
+        # The attempt's own host verifies it: the implementation CLI, so a
+        # campaign on Codex is verified under Codex's hooks and roles.
+        host = self.implementation_cli
         directory = verification_dir(Path(self.workspace_dir), node.branch_name)
         directory.mkdir(parents=True, exist_ok=True)
         # The attempt's own changes: the engine's bookkeeping under .kapso/
@@ -928,6 +928,7 @@ class GenericSearch(SearchStrategy):
             verdict_path.unlink()
         started = time.monotonic()
         cost = 0.0
+        failure = None
         with self.workspace.materialize_ref(node.branch_name) as worktree:
             staged = self.stage_harness_for("verification", worktree, f"verification/{node.branch_name}", host)
             prompt = render_prompt(load_prompt(VERIFICATION_PROMPT), {
@@ -943,26 +944,38 @@ class GenericSearch(SearchStrategy):
                 "env_strip": self.env_strip,
                 "env_defaults": self.env_defaults,
                 "allowed_tools": ["Read", "Bash", "Write", *staged.allowed_tools],
-                "timeout": self._clamped_timeout(float(harness.settings["verification_minutes"]) * 60.0),
                 "streaming": True,
                 "effort": self.session_effort,
                 # The verdict lives outside the worktree; codex's sandbox
                 # must be told it may write there.
                 **({"add_dirs": [str(directory)]} if host == "codex" else {}),
             }
-            config = CodingAgentConfig(
-                agent_type=host, model=judge.model, debug_model=judge.debug_model,
-                agent_specific=staged.merged_agent_specific(own),
-            )
-            for _attempt in range(VERIFICATION_ATTEMPTS):
+            for _attempt in range(int(harness.settings["verification_attempts"])):
+                # Clamped at each attempt: a retry gets what is left, not
+                # what the first attempt was given.
+                own["timeout"] = self._clamped_timeout(float(harness.settings["verification_minutes"]) * 60.0)
+                config = CodingAgentConfig(
+                    agent_type=host, model=self.implementation_model, debug_model=self.implementation_model,
+                    agent_specific=staged.merged_agent_specific(own),
+                )
                 agent = CodingAgentFactory.create(config)
                 agent.initialize(worktree)
-                agent.generate_code(prompt)
+                result = agent.generate_code(prompt)
                 cost += agent.get_cumulative_cost()
                 agent.cleanup()
                 if verdict_path.is_file():
                     break
+                failure = result.error if not result.success else None
+                if own["timeout"] < float(harness.settings["verification_minutes"]) * 60.0:
+                    # The budget, not the session, set the deadline: a retry
+                    # would get less still.
+                    failure = failure or "the session ended without a verdict under the budget's deadline"
+                    break
         node.verification = read_verdict(verdict_path)
+        if node.verification["verdict"] == "unverified" and failure:
+            # Why nothing was written, for the judge and the record: a
+            # session that died is not one that chose silence.
+            node.verification["summary"] = f"the verification session failed: {failure}"
         node.phase_telemetry["verification"] = {
             "cost_usd": cost, "duration_seconds": time.monotonic() - started,
         }

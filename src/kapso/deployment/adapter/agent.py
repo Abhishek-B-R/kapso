@@ -20,6 +20,7 @@ from kapso.deployment.strategies.base import deployment_context
 from kapso.deployment.adapter.validator import AdaptationValidator
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.handles import Solution
+from kapso.harness import HarnessError
 from kapso.harness.staging import host_for, stage_harness
 
 # Left behind when the solution is copied into the adapted workspace: version
@@ -258,14 +259,18 @@ class AdapterAgent:
         Returns (files_changed, output), or None when both failed."""
         try:
             return self._run_agent(self.coding_agent_type, self.model, adapted_path, prompt)
+        except HarnessError:
+            raise   # a harness refusal (changed content, a collision, a host with no staging) is the caller's
         except (ImportError, ValueError) as e:
             print(f"[Adapter] Primary agent not available: {e}")
         except Exception as e:
             print(f"[Adapter] Primary agent error: {e}")
-        
+
         print(f"[Adapter] Trying fallback agent: {self.fallback_agent_type}")
         try:
             return self._run_agent(self.fallback_agent_type, None, adapted_path, prompt)
+        except HarnessError:
+            raise
         except Exception as e:
             print(f"[Adapter] Fallback agent also failed: {e}")
             return None

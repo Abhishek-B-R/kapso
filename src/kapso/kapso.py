@@ -76,7 +76,8 @@ from kapso.harness import (
     resume_refusal,
     unmet_message,
 )
-from kapso.harness.staging import pages_block
+from kapso.harness import BUNDLED_ROOT
+from kapso.harness.staging import host_for, pages_block
 from kapso.execution.inbox import (
     Request,
     idea_line,
@@ -135,6 +136,26 @@ class KGIndexError(Exception):
 
 # Path to default configuration
 DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
+
+
+def _source_is_reachable(source: str) -> bool:
+    """A recorded harness source that can be loaded again from here: a git
+    form (a URL, `git+`, shorthand or scp-like with `@` or `#`), a
+    directory, or a bundled name."""
+    if "://" in source or source.startswith("git+") or "@" in source or "#" in source:
+        return True
+    return Path(source).expanduser().is_dir() or (BUNDLED_ROOT / source).is_dir()
+
+
+def _same_reference(line: str, harness: Harness) -> bool:
+    """Whether the brief's Harness line names the loaded harness: the same
+    directory once resolved from the working directory, or the same
+    reference as written."""
+    candidate = Path(line).expanduser()
+    directory = candidate if candidate.is_absolute() else Path.cwd() / candidate
+    if directory.is_dir():
+        return directory.resolve() == Path(harness.path).resolve()
+    return line in (harness.source, harness.reference.raw)
 
 
 def _absolute(path: Optional[str]) -> Optional[str]:
@@ -1522,7 +1543,12 @@ class Kapso:
             unmet = harness.missing_for(BUILD_MODULES)
             if unmet:
                 raise HarnessError(unmet_message(harness, unmet, "build"))
-            overrode = self._harness is not None and brief.harness and brief.harness != harness.source
+            if coding_agent is not None:
+                host_for(coding_agent)   # a host with no staging is refused here, not inside the first session
+            # A variable put in .env since this process started reaches the
+            # sessions, as the prerequisite check above already counted it.
+            load_dotenv(find_dotenv(usecwd=True))
+            overrode = self._harness is not None and bool(brief.harness) and not _same_reference(brief.harness, harness)
             print(
                 f"  Harness: {harness.label()} from {harness.source}"
                 + (f" (loaded; wins over the brief's line {brief.harness!r})" if overrode else "")
@@ -1962,21 +1988,20 @@ class Kapso:
         if loaded is not None:
             loaded = reload_harness(loaded, settings=self._harness_settings)
             self._harness = loaded
-            if recorded is not None and loaded.name != recorded.name:
+            if recorded is None:
+                raise HarnessError(
+                    f"{solution.campaign} was built without a harness, and a {verb} runs as its build "
+                    f"did: the loaded {loaded.label()} is not attached to a finished campaign"
+                )
+            if loaded.name != recorded.name:
                 raise HarnessError(
                     f"{solution.campaign} was built with harness {recorded.name} {recorded.version}; "
                     f"the loaded harness is {loaded.name} {loaded.version}: a {verb} runs with the "
                     "build's harness (another version of it is allowed)"
                 )
             harness = loaded
-            if recorded is not None and loaded.hash != recorded.hash:
-                print(
-                    f"  Harness: {loaded.label()} for the {verb}; the build ran with "
-                    f"{recorded.name} {recorded.version} ({recorded.hash[:12]})"
-                )
         elif recorded is not None:
-            if "://" not in recorded.source and not recorded.source.startswith("git+") \
-                    and not Path(recorded.source).is_dir():
+            if not _source_is_reachable(recorded.source):
                 raise HarnessError(
                     f"{solution.campaign} was built with harness {recorded.name} {recorded.version} "
                     f"from {recorded.source}, which is not here; pass --harness <ref> (or load one) "
@@ -1991,6 +2016,11 @@ class Kapso:
                 )
         else:
             return None
+        if harness.hash != recorded.hash:
+            print(
+                f"  Harness: {harness.label()} for the {verb}; the build ran with "
+                f"{recorded.name} {recorded.version} ({recorded.hash[:12]})"
+            )
         modules = DEPLOY_MODULES if verb == "deploy" else LEARN_MODULES
         unmet = harness.missing_for(modules)
         if unmet:

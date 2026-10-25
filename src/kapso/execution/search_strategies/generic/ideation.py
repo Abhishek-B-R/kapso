@@ -498,6 +498,7 @@ def generate_solution_ensemble(
                     artifacts_dir=artifacts_dir,
                     web_search=ideation_web_search,
                     extra_args=staged.codex_exec_args(),
+                    extra_env=staged.env,
                 )
 
             def extract(output: str) -> list:
@@ -826,6 +827,7 @@ def select_from_candidates(
                 artifacts_dir=artifacts_dir,
                 web_search=True,
                 extra_args=staged.codex_exec_args(),
+                extra_env=staged.env,
             )
             return CodingResult(
                 success=not timed_out and bool(output.strip()),

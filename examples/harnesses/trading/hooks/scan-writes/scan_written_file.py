@@ -18,7 +18,7 @@ from pathlib import Path
 
 from rules import scan_lines
 
-PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+)$", re.MULTILINE)
+PATCH_FILE = re.compile(r"^\*\*\* (?:(?:Add|Update) File|Move to): (.+)$", re.MULTILINE)
 
 event = json.load(sys.stdin)
 tool_input = event.get("tool_input", {})

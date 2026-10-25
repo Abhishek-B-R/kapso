@@ -9,7 +9,7 @@ The task statement: `{{task_statement_path}}`. Its brief, evaluation and data se
 ## What you produce
 
 1. **Your domain statement**: write it to `{{statement_path}}` (create the directory if needed). It is the setup page's list for this task: what you pinned, what the task statement must record for this domain, what you found or could not find. Kapso puts it into the task statement's "Domain statement" section; do not edit `{{task_statement_path}}` yourself.
-2. **Prepared resources**: anything every later session should find ready, each under `{{prepared_dir}}/<name>/` in this directory. Kapso mounts `{{prepared_dir}}/` for every later session at the same relative path and lists each name in the task statement. A resource is read-only once you return it.
+2. **Prepared resources**: anything every later session should find ready, each under `{{prepared_dir}}/<name>/` in this directory. Kapso mounts `{{prepared_dir}}/` for every later session at the same relative path and lists each name in the task statement. Once you return, a resource is pinned: every later session reads it, and the harness's hooks deny a write under it.
 
 Leaving no prepared resource is fine when the domain needs none.
 

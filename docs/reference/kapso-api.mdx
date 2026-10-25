@@ -192,7 +192,7 @@ read back by `Solution.open(path)`.
 | `harness` | `HarnessRef \| None` | `name`, `version`, `hash`, `source` of the harness the build ran with; `None` without one |
 | `verification` | `dict \| None` | The harness's verdict on the delivered candidate: `verdict`, `summary`, `findings`; `None` when no verification ran |
 | `experience` | | The experience sources the build ran with, as that feature ships |
-| `rejected_candidates` | `int` | Candidates rejected for touching the evaluator |
+| `rejected_candidates` | `int` | Candidates rejected: the judge found the evaluation invalid, the evaluator was touched, or the harness voided the attempt |
 | `callback_metrics`, `callback_primary_metric` | `dict`, `str \| None` | Your own `iteration_evaluator`'s numbers for the delivered candidate |
 | `knowledge_index`, `experience_head` | `str \| None` | The knowledge index and the lesson-bank commit the build drew on |
 

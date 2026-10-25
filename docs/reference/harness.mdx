@@ -81,7 +81,7 @@ Each session of a module gets, in its own directory:
 | environment | `KAPSO_HARNESS_ROOT` = the harness directory | the same |
 | the task statement and `prepared/` | a copy of `kapso_task.md` and a symlink to `prepared/` in a session directory that is not the campaign root | the same |
 
-The prompt carries the guidance block: a `## Domain guidance (harness <name> <version>)` heading, `guardrails.md` whole, the module's page whole, then `### Paths` with the task statement's path and each prepared resource's. Learning crews get the pages only.
+The prompt carries the guidance block: a `## Domain guidance (harness <name> <version>)` heading, `guardrails.md` whole, the module's page whole, then `### Skills`, `### Delegates` and `### Tool servers` listing the module's attachments with their descriptions and how to reach them, then `### Paths` with the task statement's path and each prepared resource's. Learning crews get the pages only. An ideation session's stream goes where the ideation artifacts live, `.kapso/ideation/iter<n>/`, and its `harness.json` names that path under `stream`.
 
 Staging is idempotent and refuses a path the campaign's repository tracks, by name. The harness is hashed again at each staging; a hash other than the launch's fails the session naming both. The campaign's repository ignores `.claude/`, `.agents/`, `.codex/`, `kapso_task.md` and `prepared`.
 
@@ -100,7 +100,7 @@ For each attempt with a score, when the harness has verification content, under 
 {"verdict": "void", "summary": "one paragraph", "findings": [{"rule": "the rule broken", "evidence": "file:line, tool output, or a delegate's words"}]}
 ```
 
-`verdict` is `valid` or `void`; `summary` is a non-empty string; `findings` is a list of `{rule, evidence}`, at least one on a void. Anything else raises `HarnessError` naming the file. A session that writes no file runs once more; then the attempt is recorded `{"verdict": "unverified", ...}`. `SearchNode.verification` holds the verdict; a void clears the score after the judge, counts as rejected, and the attempt is neither a parent nor delivered; an unverified attempt keeps its score and may be a parent but is never delivered. The judge's prompt renders the verdict beside the evaluation.
+`verdict` is `valid` or `void`; `summary` is a non-empty string; `findings` is a list of `{rule, evidence}`, at least one on a void. Anything else raises `HarnessError` naming the file. The session runs on the implementation CLI, the attempt's own host; a session that writes no file runs again, `harness.verification_attempts` sessions in all, each clamped afresh; then the attempt is recorded `{"verdict": "unverified", ...}`. `SearchNode.verification` holds the verdict; a void clears the score after the judge, counts as rejected, and the attempt is neither a parent nor delivered; an unverified attempt keeps its score and may be a parent but is never delivered. The judge's prompt renders the verdict beside the evaluation.
 
 ## Records
 
@@ -122,6 +122,7 @@ harness:
   page_warning_lines: 40
   setup_minutes: 20
   verification_minutes: 10
+  verification_attempts: 2
   server_tool_timeout_seconds: 600
 ```
 
@@ -141,7 +142,7 @@ harness.label()                                             # "trading 0.1.0 (3f
 harness.has_content("setup")                                # whether the setup session runs
 ```
 
-`load_harness` raises `HarnessReferenceError` on a reference of no form, `ManifestError` with the file and line on a manifest that does not parse, and `HarnessError` on a `check` failure. A verb raises `HarnessError` on an unmet need of its modules, on a resume with a harness that is not the launch's, and on a `deploy` or `learn` whose loaded harness has another name than the record's.
+`load_harness` raises `HarnessReferenceError` on a reference of no form, `ManifestError` with the file and line on a manifest with a finding, the YAML or JSON parser's own error on a file that does not parse, and `HarnessError` on a `check` failure. A verb raises `HarnessError` on an unmet need of its modules and on a `deploy` or `learn` whose loaded harness has another name than the record's, or is loaded over a campaign built without one; a resume with a harness that is not the launch's raises the checkpoint's `RunCheckpointIncompatibleError`, naming both identities and the way out.
 
 Related pages: [What a harness is](/docs/harnesses) · [Use a harness](/docs/harnesses/use) · [Write a harness](/docs/harnesses/write) · [CLI reference](/docs/reference/cli#kapso-harness) · [Python API](/docs/reference/kapso-api#load-harness) · [Brief format](/docs/reference/brief-format)
 

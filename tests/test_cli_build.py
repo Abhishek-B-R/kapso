@@ -148,7 +148,7 @@ def test_the_harness_flag_loads_before_the_build_and_wins_over_the_brief(monkeyp
     facade.load_harness.return_value.missing_for.return_value = []
     _run(monkeypatch, "--brief", str(path), "--harness", "./harness/trading", "--output", "out")
     facade.load_harness.assert_called_once_with("./harness/trading")
-    assert facade.method_calls[0] == facade.load_harness.call_args_list[0]._replace() or facade.method_calls[0][0] == "load_harness"
+    assert facade.method_calls[0][0] == "load_harness"   # loaded before build()
     assert facade.build.call_args.args == (Brief.read(path),)
 
 

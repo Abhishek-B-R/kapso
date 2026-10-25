@@ -100,6 +100,7 @@ harness:
   page_warning_lines: 40             # `check` warns on an always-on page longer than this
   setup_minutes: 20                  # the harness setup session's timeout, clamped by the budget
   verification_minutes: 10           # each verification session's timeout, clamped by the budget
+  verification_attempts: 2           # sessions run for one attempt before it is recorded unverified
   server_tool_timeout_seconds: 600   # a harness server's per-call timeout where the host takes one (Codex)
 
 # =============================================================================

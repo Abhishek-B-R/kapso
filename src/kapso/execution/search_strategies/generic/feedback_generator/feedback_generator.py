@@ -110,23 +110,24 @@ class FeedbackGenerator:
 
         # Create the coding agent
         self.agent = CodingAgentFactory.create(coding_agent_config)
-        self._harness_attached = False
+        # The judge's own settings, kept apart so each attempt's staging is
+        # merged onto them and not onto the previous attempt's merge.
+        self._own_agent_specific = dict(coding_agent_config.agent_specific)
 
     @property
     def agent_type(self) -> str:
         return self.coding_agent_config.agent_type
 
     def attach_harness(self, staged) -> None:
-        """The harness's feedback module for every judgment of this
-        campaign: the staged keys (delegates, hooks, skills, servers) join
-        the judge's agent once; nothing happens without a harness."""
-        if self._harness_attached or not staged.guidance:
+        """The harness's feedback module for this judgment: the staged keys
+        (delegates, hooks, skills, servers, and this attempt's own stream)
+        join the judge's own settings, and the agent is made again, so each
+        judgment streams to its own session record; nothing happens
+        without a harness."""
+        if not staged.guidance:
             return
-        self.coding_agent_config.agent_specific = staged.merged_agent_specific(
-            self.coding_agent_config.agent_specific
-        )
+        self.coding_agent_config.agent_specific = staged.merged_agent_specific(self._own_agent_specific)
         self.agent = CodingAgentFactory.create(self.coding_agent_config)
-        self._harness_attached = True
 
     @property
     def configured_timeout_seconds(self) -> Optional[float]:

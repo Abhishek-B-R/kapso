@@ -12,8 +12,9 @@ import json
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Callable, List
+from typing import Callable, List, Optional
 
+import git
 import pytest
 
 import kapso.execution.search_strategies.generic.strategy as strategy_module
@@ -25,7 +26,7 @@ from kapso.execution.search_strategies.generic.strategy import GenericSearch
 from kapso.handles import Solution
 from kapso.harness import HarnessError, load_harness
 from kapso.harness.verdict import is_deliverable, read_verdict, render_verification
-from tests.handles_support import candidate_branch, git, git_workspace, make_solution
+from tests.handles_support import candidate_branch, git as run_git, git_workspace, make_solution
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
 
@@ -35,6 +36,7 @@ class FakeVerifier:
     verdict file named in its prompt."""
     calls: List[dict] = []
     script: Callable[[Path, str], None] = staticmethod(lambda verdict_path, prompt: None)
+    error: Optional[str] = None   # a session that dies instead of finishing
 
     def __init__(self, config):
         self.config = config
@@ -47,6 +49,8 @@ class FakeVerifier:
         verdict_path = Path(prompt.split("Write exactly one JSON file at `", 1)[1].split("`", 1)[0])
         FakeVerifier.calls.append({"workspace": self.workspace, "prompt": prompt, "config": self.config, "verdict_path": verdict_path})
         FakeVerifier.script(verdict_path, prompt)
+        if FakeVerifier.error:
+            return CodingResult(success=False, output="", error=FakeVerifier.error)
         return CodingResult(success=True, output="done")
 
     def get_cumulative_cost(self) -> float:
@@ -76,7 +80,6 @@ class Workspace:
     a detached worktree of a ref."""
 
     def __init__(self, path: Path):
-        import git
         self.workspace_dir = str(path)
         self.repo = git.Repo(path)
 
@@ -112,15 +115,17 @@ def strategy(tmp_path, harness, monkeypatch):
     (campaign / "kapso_task.md").write_text("# Task statement\n")
     candidate_branch(campaign, "generic_exp_0", "strategy.py", "signal = bars.rolling(20, center=True).mean()\n")
     # The engine commits its own bookkeeping on the branch too (repo memory).
-    git(campaign, "checkout", "-q", "generic_exp_0")
+    run_git(campaign, "checkout", "-q", "generic_exp_0")
     (campaign / ".kapso").mkdir(exist_ok=True)
     (campaign / ".kapso" / "repo_memory.json").write_text('{"generated_at": "later"}\n')
-    git(campaign, "add", ".kapso/repo_memory.json")
-    git(campaign, "commit", "-q", "-m", "engine bookkeeping")
-    git(campaign, "checkout", "-q", "main")
+    run_git(campaign, "add", ".kapso/repo_memory.json")
+    run_git(campaign, "commit", "-q", "-m", "engine bookkeeping")
+    run_git(campaign, "checkout", "-q", "main")
 
     s = GenericSearch.__new__(GenericSearch)
     s.harness = harness
+    s.implementation_cli = "claude_code"
+    s.implementation_model = "implementer"
     s.workspace_dir = str(campaign)
     s.workspace = Workspace(campaign)
     s.feedback_generator = FakeJudge()
@@ -160,7 +165,7 @@ def test_a_valid_verdict_reaches_the_judge_and_the_record(strategy, tmp_path, ha
     assert call["workspace"] != tmp_path / "campaign" and not call["workspace"].exists()   # a worktree, removed afterwards
     assert (harness.path / "instructions" / "verification.md").read_text().strip() in call["prompt"]
     assert "- lookahead-auditor — " in call["prompt"] and "`/lookahead-scan`" in call["prompt"]
-    assert call["config"].agent_specific["timeout"] == 10 * 60 and call["config"].model == "judge"
+    assert call["config"].agent_specific["timeout"] == 10 * 60 and call["config"].model == "implementer" and call["config"].agent_type == "claude_code"
     assert node.verification == {"verdict": "valid", "summary": "no look-ahead; costs charged on turnover", "findings": []}
     assert node.evaluation_valid is True and node.score == 0.9
     [judged] = strategy.feedback_generator.seen
@@ -227,6 +232,33 @@ def test_no_verdict_is_retried_once_then_unverified_and_never_delivered(strategy
     assert strategy.get_deliverable_experiment() is sibling
     strategy.node_history = [node]
     assert strategy.get_deliverable_experiment() is None
+
+
+def test_a_session_that_dies_is_said_so_and_a_budget_clamp_ends_the_retries(strategy):
+    """A killed or failed session is not one that chose silence: its error
+    reaches the summary the judge and the record see. When the budget set
+    the deadline, a second session would get less still and is not run."""
+    FakeVerifier.error = "Deadline of 102.2s reached — terminating Claude Code"
+    FakeVerifier.script = staticmethod(lambda verdict_path, prompt: None)
+    node = node_for(strategy)
+    strategy._verify_attempt(node)
+    assert len(FakeVerifier.calls) == 2   # the configured time was given, so one retry
+    assert node.verification["verdict"] == "unverified"
+    assert node.verification["summary"] == "the verification session failed: Deadline of 102.2s reached — terminating Claude Code"
+
+    FakeVerifier.calls = []
+    strategy._clamped_timeout = lambda seconds: 60.0   # the budget's end
+    clamped = node_for(strategy, "generic_exp_0", node_id=1)
+    strategy._verify_attempt(clamped)
+    assert len(FakeVerifier.calls) == 1
+    assert clamped.verification["summary"].startswith("the verification session failed: Deadline")
+    FakeVerifier.error = None
+    strategy._clamped_timeout = lambda seconds: seconds
+
+    FakeVerifier.calls = []
+    silent = node_for(strategy, "generic_exp_0", node_id=2)
+    strategy._verify_attempt(silent)
+    assert len(FakeVerifier.calls) == 2 and silent.verification["summary"] == "the verification session wrote no verdict"
 
 
 def test_a_malformed_verdict_raises(strategy):
