@@ -368,6 +368,10 @@ learning:
     critic_model: "claude-fable-5"
     timeout_minutes: 240
     repair_rounds: 1
+    # A lead turn the model's safeguards refused is launched again this
+    # many times (a fresh session, the same prompt) before the lesson
+    # fails; the learn status notes each relaunch.
+    refusal_relaunches: 1
     # A mining run's own directory, `<run_root>/<trajectory>/`: the lead's
     # harness staging record and stream (`.kapso/sessions/lead/`) when the
     # lesson runs with a harness. The mined view itself lives in the bundle.

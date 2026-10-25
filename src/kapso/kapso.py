@@ -912,7 +912,7 @@ class Kapso:
         manifest = store.manifest(trajectory_id)
         if not manifest.get("derived", {}).get("mined"):
             mined_dir = MiningFrame.from_config(self._config).mine(
-                trajectory_id, harness=learning_harness
+                trajectory_id, harness=learning_harness, status=status,
             )
             print(f"  Mined view: {mined_dir}")
             status.note(f"mined view written ({mined_dir})")

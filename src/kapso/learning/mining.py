@@ -38,6 +38,9 @@ FORMAT_DOC_NAME = "mined-format.md"
 # The lead's session, as the harness staging records it under the mining
 # run directory (`<run_root>/<trajectory>/.kapso/sessions/lead/`).
 LEAD_SESSION = "lead"
+# The learn status's line when the model's safeguards refused the lead's
+# turn and the frame launched it again (wp6-observability.md, change 12).
+REFUSAL_NOTE = "lead refused by the model's safeguards; relaunched"
 
 FLOW_STATUSES = (
     "ideated", "selected-unbuilt", "build-failed", "evaluated", "judged", "champion"
@@ -297,7 +300,9 @@ class MiningFrame:
 
     # ------------------------------------------------------------- public
 
-    def mine(self, trajectory_id: str, force: bool = False, harness: Optional[Harness] = None) -> Path:
+    def mine(
+        self, trajectory_id: str, force: bool = False, harness: Optional[Harness] = None, status=None,
+    ) -> Path:
         """Produce <bundle>/mined/ for one trajectory; returns the mined dir.
 
         Idempotent: an already-mined trajectory is skipped unless `force`
@@ -307,6 +312,9 @@ class MiningFrame:
         prompt; the skills, servers, delegates and hooks beside it) and
         removed with the rest of the staging, the session's record and
         stream kept under `<run_root>/<trajectory>/`; none without one.
+        ``status`` is the learn status the frame notes a relaunch in (a
+        turn the model's safeguards refused is launched again, up to
+        `refusal_relaunches` times, before the frame fails loud).
         """
         manifest = self.store.manifest(trajectory_id)
         bundle_dir = self.store.resolve(trajectory_id)
@@ -327,7 +335,7 @@ class MiningFrame:
         )
         if staged.guidance:
             prompt += "\n\n" + staged.guidance
-        result = agent.generate_code(prompt, timeout_seconds=timeout)
+        result, relaunched = self._launch(agent, prompt, timeout, status, 0)
         self._write_report(mined_dir, result.output)
 
         findings = MinedViewValidator(bundle_dir, manifest).validate()
@@ -336,7 +344,7 @@ class MiningFrame:
         while findings and rounds_used < repair_rounds:
             rounds_used += 1
             repair_prompt = self._repair_prompt(findings)
-            result = agent.generate_code(repair_prompt, timeout_seconds=timeout)
+            result, relaunched = self._launch(agent, repair_prompt, timeout, status, relaunched)
             self._write_report(mined_dir, result.output)
             findings = MinedViewValidator(bundle_dir, manifest).validate()
         agent.cleanup()
@@ -425,6 +433,25 @@ class MiningFrame:
         agent = self.agent_factory.create(agent_config)
         agent.initialize(str(bundle_dir))
         return agent
+
+    def _launch(self, agent, prompt: str, timeout: float, status, relaunched: int):
+        """One lead invocation. A turn the model's safeguards refused
+        (`CodingResult.refused`) is launched again with the same prompt, a
+        fresh session, while the run's `refusal_relaunches` last, each
+        noted in the learn status; a refusal past them fails loud. An
+        ordinary failure is the caller's to judge from the result."""
+        relaunches = int(self.config["refusal_relaunches"])
+        result = agent.generate_code(prompt, timeout_seconds=timeout)
+        while result.refused and relaunched < relaunches:
+            relaunched += 1
+            if status is not None:
+                status.note(REFUSAL_NOTE)
+            result = agent.generate_code(prompt, timeout_seconds=timeout)
+        if result.refused:
+            raise RuntimeError(
+                f"mining lead refused by the model's safeguards after {relaunched} relaunch(es): {result.error}"
+            )
+        return result, relaunched
 
     # ----------------------------------------------------------- outputs
 
