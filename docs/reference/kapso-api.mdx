@@ -95,7 +95,7 @@ kapso.experience                                               # the loaded sour
 kapso.share_experience("https://github.com/acme/kapso-bank.git")
 ```
 
-Loading resolves the reference, confirms the source exists and is readable (a bank's format, the hosted gate's key, an index's record), pins it as it is on disk (a bank at its head, an index at its id; loading never pulls), prints one line and appends it to the object's sources; a reference loaded again replaces its entry. Loading never ingests and never creates: a source that does not exist is refused with the `kapso experience add` line that makes it. `share_experience` attaches a git remote to your bank and pushes it, creating the bank first when there is none; `learn()` pushes there from then on, and the intro says the cards are measured by you and your team.
+Loading resolves the reference, confirms the source exists and is readable (a bank's format, the hosted gate's key, an index's record), pins it as it is on disk (a bank at its head, an index at its id; loading never pulls), prints one line and appends it to the object's sources; a reference loaded again replaces its entry. Loading never ingests and never creates: a source that does not exist is refused with the `kapso experience add` line that makes it. `build()` serves the loaded sources, which win over the brief's `Experience` line as the loaded harness wins over its `Harness` line; with nothing loaded, a fresh build loads the brief's items, and a resume takes the launch's list at its pins. `share_experience` attaches a git remote to your bank and pushes it, creating the bank first when there is none; `learn()` pushes there from then on, and the intro says the cards are measured by you and your team.
 
 ## add_experience
 

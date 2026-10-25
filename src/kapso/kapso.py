@@ -1241,6 +1241,15 @@ class Kapso:
             for line in advisory_lines(harness, BUILD_MODULES):
                 print(line)
 
+        # The experience: the loaded sources are what is served, and a
+        # loaded list wins over the brief's Experience line as the loaded
+        # harness wins over its Harness line; a fresh build with nothing
+        # loaded takes the brief's items (a resume took the record's list
+        # above, with its pins).
+        if not self._experience and record is None:
+            for reference in brief.experience:
+                self.load_experience(reference)
+
         # Experience serving (docs/plans/redesign/wp3-experience.md): what
         # is loaded is what is served, in two phases. The PLAN (the gate
         # environment, the heads; no filesystem writes) happens before

@@ -47,6 +47,7 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `--data` | Directory holding your data; copied to `kapso_datasets/` | — |
 | `--repo` | The starting repository, a local path (copied) or a GitHub URL (cloned) | — |
 | `--harness` | The [harness](/docs/harnesses) to build with: a bundled name, a directory, or a git reference. Wins over the brief's `Harness` line; checked before anything starts, and an unmet need of the build's modules refuses with its fix | the brief's `Harness` line, else none |
+| `--experience` | Comma-separated [experience](/docs/experience) to serve: `mine`, `mine:all`, `leeroopedia`, a bank path or git reference, an index name. Wins over the brief's `Experience` line; each source is loaded before anything starts, and one that does not exist refuses with the `kapso experience add` line that makes it | the brief's `Experience` line, else nothing served |
 | `-o`, `--output` | The campaign directory, the solution's trace. Empty for a fresh build | a temporary directory |
 | `--budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
 | `--budget-experiments` | Maximum experiments this call may run. A resume keeps the launch's cap | `10` |
@@ -58,13 +59,13 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `-m`, `--mode` | Config mode: `GENERIC` or `MINIMAL` | from config (`default_mode`) |
 | `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code`, `vertex_claude_code`. In mode `GENERIC` the implementation and verification sessions run on the strategy parameter `implementation_cli` (`claude_code` unless a config sets it); this flag does not change that | from config |
 | `--config` | Config path | the packaged `config.yaml` |
-| `--kg-index` | Path to a `.index` file for knowledge search | — |
 
-A budget flag wins over the brief's `Budget` line; on a resume the launch record fills what is still unset.
+A budget flag wins over the brief's `Budget` line; on a resume the launch record fills what is still unset, the experience included: a bare resume is served the sources the launch pinned, and a resume that names a different list is refused by name.
 
 ```bash
 kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
 kapso build --harness ./harnesses/trading --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+kapso build --experience mine,leeroopedia --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
 kapso build --goal "Build a web scraper for news articles" --output ./scraper
 kapso build --goal-file problem.txt --budget-experiments 20 --output ./campaign
 kapso build --output ./campaign --resume --detach

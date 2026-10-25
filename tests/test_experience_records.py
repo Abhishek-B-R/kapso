@@ -195,6 +195,28 @@ def test_a_resume_with_nothing_loaded_re_pins_each_bank_at_the_recorded_head(tmp
     assert Solution.open(str(workspace)).experience[0].head == launched
 
 
+def test_a_fresh_build_takes_the_briefs_experience_line_and_a_loaded_list_wins_over_it(tmp_path, monkeypatch):
+    home = seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
+    _workspace, captured = _campaign(tmp_path, monkeypatch, [])
+    monkeypatch.chdir(tmp_path)
+
+    # Nothing loaded: the brief's items are loaded, in order, and served.
+    kapso = _kapso(tmp_path, home)
+    kapso.build(Brief(objective="Improve support", experience=["mine:all"]), output=str(tmp_path / "fresh"))
+    assert [(s.reference, s.scope) for s in kapso.experience] == [("mine", "all")]
+    assert [(r["reference"], r["scope"]) for r in captured["experience"]] == [("mine", "all")]
+
+    # A loaded list wins over the brief's line, which is not even resolved.
+    kapso = _kapso(tmp_path, home)
+    kapso.load_experience("mine")
+    kapso.build(Brief(objective="Improve support", experience=["./nowhere/bank.git"]), output=str(tmp_path / "second"))
+    assert [(s.reference, s.scope) for s in kapso.experience] == [("mine", "harness")]
+
+    # A brief line that names nothing refuses the build by name.
+    with pytest.raises(ExperienceReferenceError, match="a reference written as a path must exist"):
+        _kapso(tmp_path, home).build(Brief(objective="Improve support", experience=["./nowhere/bank.git"]), output=str(tmp_path / "third"))
+
+
 def test_a_resume_that_names_a_different_list_is_refused_by_name(tmp_path, monkeypatch):
     home = seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
     recorded = {"reference": "mine", "kind": "bank", "resolved": str(home), "head": _head(home),

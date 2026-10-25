@@ -43,10 +43,11 @@ def _run(monkeypatch, *argv):
 
 
 HARNESS = {"harness"}   # loaded on the facade before build(), never a build() keyword
+EXPERIENCE = {"experience"}   # the same: each reference loaded before build()
 
 
 def test_every_flag_of_the_parser_is_accounted_for():
-    assert _parser_dests() == FACADE_KWARGS | set(BUDGET_FIELDS) | CONSTRUCTOR | BRIEF | DETACH | HARNESS
+    assert _parser_dests() == FACADE_KWARGS | set(BUDGET_FIELDS) | CONSTRUCTOR | BRIEF | DETACH | HARNESS | EXPERIENCE
 
 
 def test_every_flag_reaches_where_it_belongs(monkeypatch):
@@ -165,3 +166,22 @@ def test_a_goal_sentence_loads_no_harness(monkeypatch):
     _, facade = _mock_facade(monkeypatch)
     _run(monkeypatch, "--goal", "g", "--output", "out")
     facade.load_harness.assert_not_called()
+    facade.load_experience.assert_not_called()
+
+
+def test_the_experience_flag_loads_each_source_before_the_build_and_wins_over_the_brief(monkeypatch, tmp_path):
+    path = tmp_path / "kapso-brief.md"
+    path.write_text("Objective    Raise AUC above 0.85\nExperience   leeroopedia\n")
+    _, facade = _mock_facade(monkeypatch)
+    _run(monkeypatch, "--brief", str(path), "--experience", "mine, org-x", "--output", "out")
+    assert [call.args for call in facade.load_experience.call_args_list] == [("mine",), ("org-x",)]
+    assert [name for name, _, _ in facade.method_calls[:2]] == ["load_experience", "load_experience"]
+    assert facade.build.call_args.args == (Brief.read(path),)
+
+
+def test_the_briefs_experience_line_loads_when_no_flag_is_given(monkeypatch, tmp_path):
+    path = tmp_path / "kapso-brief.md"
+    path.write_text("Objective    Raise AUC above 0.85\nExperience   mine, leeroopedia\n")
+    _, facade = _mock_facade(monkeypatch)
+    _run(monkeypatch, "--brief", str(path), "--output", "out")
+    assert [call.args for call in facade.load_experience.call_args_list] == [("mine",), ("leeroopedia",)]
