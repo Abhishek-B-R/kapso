@@ -1507,6 +1507,8 @@ class GenericSearch(SearchStrategy):
         session_id = f"ideation/iter{self.iteration_count}/{label}" if module == "ideation" else label
         if self.harness is None:
             return no_harness(module, agent_type, Path(session_dir), session_id)
+        if not session_dir:
+            raise ValueError(f"the {module} session {session_id} has no directory to stage into")
         return stage_harness(
             self.harness, module,
             session_dir=Path(session_dir), campaign_dir=Path(self.workspace_dir),

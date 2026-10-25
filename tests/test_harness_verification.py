@@ -134,13 +134,13 @@ def strategy(tmp_path, harness, monkeypatch):
     return s
 
 
-def node_for(branch: str = "generic_exp_0", node_id: int = 0) -> SearchNode:
-    return SearchNode(node_id=node_id, branch_name=branch, parent_branch_name="main", solution="# idea\n",
+def node_for(strategy, branch: str = "generic_exp_0", node_id: int = 0) -> SearchNode:
+    return SearchNode(node_id=node_id, branch_name=branch, parent_branch_name="main", solution="# idea\n", workspace_dir=strategy.workspace_dir,
                       evaluation_output="sharpe: 1.4\nmax_drawdown: 0.1\n", score=1.4)
 
 
 def test_a_valid_verdict_reaches_the_judge_and_the_record(strategy, tmp_path, harness):
-    node = node_for()
+    node = node_for(strategy)
     strategy._verify_attempt(node)
     strategy._generate_feedback(node)
 
@@ -166,7 +166,7 @@ def test_a_valid_verdict_reaches_the_judge_and_the_record(strategy, tmp_path, ha
 
 def test_a_void_verdict_clears_the_score_and_the_judge_cannot_resurrect_it(strategy):
     FakeVerifier.script = staticmethod(void_verdict)
-    node = node_for()
+    node = node_for(strategy)
     strategy._verify_attempt(node)
     strategy._generate_feedback(node)   # the judge says valid with 0.9
     assert node.verification["verdict"] == "void"
@@ -182,7 +182,7 @@ def test_a_void_verdict_clears_the_score_and_the_judge_cannot_resurrect_it(strat
 
 def test_no_verdict_is_retried_once_then_unverified_and_never_delivered(strategy, tmp_path):
     FakeVerifier.script = staticmethod(lambda verdict_path, prompt: None)
-    node = node_for()
+    node = node_for(strategy)
     strategy._verify_attempt(node)
     strategy._generate_feedback(node)
     assert len(FakeVerifier.calls) == 2
@@ -193,7 +193,7 @@ def test_no_verdict_is_retried_once_then_unverified_and_never_delivered(strategy
     # Unverified: a parent still, never the deliverable; a verified sibling is.
     candidate_branch(tmp_path / "campaign", "generic_exp_1", "other.py", "x = 1\n")
     FakeVerifier.script = staticmethod(valid_verdict)
-    sibling = node_for("generic_exp_1", node_id=1)
+    sibling = node_for(strategy, "generic_exp_1", node_id=1)
     strategy._verify_attempt(sibling)
     strategy._generate_feedback(sibling)
     sibling.score = 0.5
@@ -207,13 +207,13 @@ def test_no_verdict_is_retried_once_then_unverified_and_never_delivered(strategy
 def test_a_malformed_verdict_raises(strategy):
     FakeVerifier.script = staticmethod(lambda verdict_path, prompt: verdict_path.write_text(json.dumps({"verdict": "void", "summary": "no evidence", "findings": []})))
     with pytest.raises(HarnessError, match="a void verdict needs at least one finding"):
-        strategy._verify_attempt(node_for())
+        strategy._verify_attempt(node_for(strategy))
     FakeVerifier.script = staticmethod(lambda verdict_path, prompt: verdict_path.write_text(json.dumps({"verdict": "maybe", "summary": "?"})))
     with pytest.raises(HarnessError, match='verdict must be "valid" or "void"'):
-        strategy._verify_attempt(node_for())
+        strategy._verify_attempt(node_for(strategy))
     FakeVerifier.script = staticmethod(lambda verdict_path, prompt: verdict_path.write_text("{not json"))
     with pytest.raises(json.JSONDecodeError):
-        strategy._verify_attempt(node_for())
+        strategy._verify_attempt(node_for(strategy))
 
 
 def test_a_harness_without_verification_content_runs_no_session(strategy, harness):
@@ -224,7 +224,7 @@ def test_a_harness_without_verification_content_runs_no_session(strategy, harnes
     manifest.write_text(text[:start] + text[end:])
     settings = dict(load_harness_defaults(), store=str(Path(strategy.workspace_dir).parent / "store"))
     strategy.harness = load_harness(str(harness.path), settings=settings, say=lambda line: None)
-    node = node_for()
+    node = node_for(strategy)
     strategy._verify_attempt(node)
     strategy._generate_feedback(node)
     assert FakeVerifier.calls == [] and node.verification is None
