@@ -95,7 +95,7 @@ budget. Where each answer sits:
 | Why | The attempt's `evaluation`, `verification` and `judge` lines; `--branch` prints the judge's feedback and the verifier's summary whole |
 | What was voided, on what evidence | `VOIDED OR REJECTED`: the verifier's verdict with each finding, the rule and the evidence as the verifier wrote them |
 | What was rejected and why | The same section: an integrity rejection with the evaluator's output, or the judge's invalidation |
-| What it cost | The header's `cost`, each attempt's figure, each run's; `cost` says when the figure covers the Claude Code sessions only (Codex reports none) |
+| What it cost | The header's `cost`, each attempt's figure, each run's; `cost` says when the figure covers the Claude Code sessions only (Codex reports none) and how many runs ended with no cost figure |
 | Safe to merge | `DELIVERED`: the verification, the integrity line, the hooks that fired in its sessions and which were denied, the failures in its sessions. The trace prints the evidence and no verdict; the conclusion is the reader's |
 
 Each attempt lists its sessions in the order they ran: the ideation of
@@ -137,13 +137,13 @@ campaign         the directory
 state            complete | partial
 branch           the branch the view is narrowed to, or null
 header           objective, harness, experience (one label per source), evaluator,
-                 budget {elapsed_min, total_min}, cost {usd, coverage},
+                 budget {elapsed_min, total_min}, cost {usd, coverage, unpriced_runs},
                  stopped_reason, stop_detail, experiments, rejected,
                  delivered {branch, commit}, status {state, phase, error}
 attempts[]       node, parent, branch, idea, sessions[] {label, module, host, runs[]},
                  evaluation {score, valid, provenance, integrity_error, output},
                  verification {verdict, summary, findings} | null,
-                 judge {stop, valid, feedback}, cards {read, load_bearing},
+                 judge {stop, valid, feedback}, cards {read, listed, load_bearing},
                  cost_usd, duration_seconds
 sessions[]       the sessions that belong to no attempt, the same shape
 lessons[]        reference, kind, provenance, head, served, read_by {session: [cards]},
@@ -158,7 +158,8 @@ A run entry, as the session record holds it: `started`, `ended`,
 `cost_usd` (this run's share of the host's cumulative figure),
 `cost_cumulative`, `turns`, `usage` (the host's token counts), `tools`
 (by name), `gates` (by server, by tool), `hooks` (each with its event,
-name, decision and reason; `null` where the host reports none),
+name, decision and reason, a hook that blocked a tool call included;
+`null` where the host reports none),
 `delegates` (each with its name, status, usage and report; on Codex the
 collaboration calls, by verb), `host_errors`, `files_changed` (the files
 the session wrote through its editing tools, relative to its directory;

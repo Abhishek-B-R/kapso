@@ -9,6 +9,7 @@ Lines that are not events (merged stderr, the CLI's own text, warnings)
 are skipped, as the adapters' parsers skip them; an event-shaped line
 that does not parse raises, since the stream is evidence."""
 import json
+import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Set
 
@@ -21,6 +22,12 @@ GATE_TOOL_PREFIX = "mcp__"
 # Claude Code's delegate task; its other task kinds are background shells.
 DELEGATE_TASK = "local_agent"
 DELEGATE_TOOL = "Agent"
+# A hook that blocks a tool call reaches the model as the tool's error
+# result, `<event>:<matcher> hook error: <what the hook printed>`, not as
+# a hook_response event; the record keeps it as a denial all the same.
+HOOK_ERROR = re.compile(r"^(?P<event>[A-Za-z]+):(?P<matcher>\S+) hook error: (?P<reason>.+)", re.DOTALL)
+HOOK_DENY = "deny"
+HOOK_BLOCKING = "blocking"
 # The tools that write a file, and the input key naming it.
 EDIT_TOOLS = {"Write": "file_path", "Edit": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
 # What an event line starts with, per host.
@@ -87,7 +94,8 @@ def digest_claude(lines: Iterable[str]) -> Dict[str, Any]:
     session and the servers mounted; `assistant` content for the tools
     (a gate's tool counted under its server) and the closing text;
     `system/hook_response` for the hooks that fired and what they
-    decided; `system/task_started` of a `local_agent` for a delegate,
+    decided, and a tool's error result for a hook that blocked the call;
+    `system/task_started` of a `local_agent` for a delegate,
     joined to its progress (usage), its notification (status, summary)
     and, when it ran in the foreground, the `Agent` tool's result (the
     report); the edit tools' inputs for the files written; `result` for
@@ -154,7 +162,18 @@ def digest_claude(lines: Iterable[str]) -> Dict[str, Any]:
             if isinstance(content, list):
                 for part in content:
                     if isinstance(part, dict) and part.get("type") == "tool_result":
-                        results[part.get("tool_use_id")] = _result_text(part.get("content"))
+                        text = _result_text(part.get("content"))
+                        results[part.get("tool_use_id")] = text
+                        blocked = HOOK_ERROR.match(text) if part.get("is_error") else None
+                        if blocked:
+                            hooks.append({
+                                "event": blocked["event"],
+                                "name": f"{blocked['event']}:{blocked['matcher']}",
+                                "decision": HOOK_DENY,
+                                "reason": blocked["reason"].strip(),
+                                "exit_code": None,
+                                "outcome": HOOK_BLOCKING,
+                            })
         elif kind == "result":
             digest["turns"] += int(event.get("num_turns") or 0)
             duration_ms += int(event.get("duration_ms") or 0)

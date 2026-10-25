@@ -4,7 +4,7 @@ harness         trading 0.1.0 (83b6c0b60d6a)
 served          mine at a9ddad3d302d, measured by you
 evaluator       none registered: the agent's own evaluation
 budget          43.5 of 40.0 min
-cost            $13.169
+cost            $13.169 (2 runs ended with no cost figure)
 stopped         budget_exhausted (time_budget); 2 experiments, 1 rejected
 delivered       none succeeded
 
@@ -22,7 +22,7 @@ node 0  generic_exp_0  from main  30.5 min  $11.149
   evaluation    no score (provided), not valid
   verification  void: The measurement itself is sound, but a task rule was broken, so the attempt is void on the rule rather than on the number. What I checked: (1) the lookahead-sc…
   judge         not valid, continue: Iteration 1: VOID. Nothing is banked. The full 0.86 gap is still open.
-  cards read    5: continuous-forecasts-recover-binary-sizing-edge, estimator-diversity-pays-in-risk-quality, horizon-grid-locates-live-band, measured-diagnosis-enables-one-pass-build, risk-scaling-leaves-sharpe-to-forecast-under-proportional-costs
+  cards read    5 (15 listed): continuous-forecasts-recover-binary-sizing-edge, estimator-diversity-pays-in-risk-quality, horizon-grid-locates-live-band, measured-diagnosis-enables-one-pass-build, risk-scaling-leaves-sharpe-to-forecast-under-proportional-costs
   load-bearing  11: horizon-grid-locates-live-band, continuous-forecasts-recover-binary-sizing-edge, estimator-diversity-pays-in-risk-quality, risk-scaling-leaves-sharpe-to-forecast-under-proportional-costs, measured-diagnosis-enables-one-pass-build, single-bar-perturbation-localizes-next-bar-causality, robustness-evidence-justifies-transfer, sealed-holdout-redirects-uncertain-score-gains, trusted-repository-scripts-use-plain-python-with-user-site-packages, protected-directory-rules-override-generic-artifact-paths, content-comparison-validates-stored-records-before-acceptance
 node 1  generic_exp_1  from main  9.8 min  $1.020
   idea          Core Idea: Spend the last experiment converting the void into a banked score: destroy the holdout-derived per-instrument steer still sitting in the shared cach…
@@ -34,7 +34,7 @@ node 1  generic_exp_1  from main  9.8 min  $1.020
   evaluation    no score (provided), valid
   verification  unverified: the verification session failed: Claude Code CLI exceeded its 60.0s deadline and was terminated
   judge         valid, continue: Feedback generation failed: the required tags were missing after a retry.
-  cards read    none
+  cards read    none (15 listed)
   load-bearing  none
 
 OTHER SESSIONS

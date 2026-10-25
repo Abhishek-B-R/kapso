@@ -59,7 +59,7 @@ def test_the_trading_build_lays_out_the_void_the_timeout_and_the_cards():
     assert data["state"] == COMPLETE and data["branch"] is None
     header = data["header"]
     assert header["harness"]["name"] == "trading" and header["experience"] == ["mine at a9ddad3d302d, measured by you"]
-    assert header["cost"] == {"usd": 13.1687975, "coverage": "all"}
+    assert header["cost"] == {"usd": 13.1687975, "coverage": "all", "unpriced_runs": 2}
     assert (header["stopped_reason"], header["stop_detail"], header["experiments"], header["rejected"]) == ("budget_exhausted", "time_budget", 2, 1)
     assert header["delivered"] == {"branch": None, "commit": None} and header["status"]["state"] == "done"
     first, second = view.attempts
@@ -184,7 +184,7 @@ def test_a_running_campaign_renders_partial_from_the_status_and_the_checkpoint(t
     header = data["header"]
     assert header["objective"] == "Raise the Sharpe" and header["harness"] == HARNESS
     assert header["experience"] == ["mine at a9ddad3d302d, measured by you"]
-    assert header["cost"] == {"usd": 2.5, "coverage": "claude_code"}       # a Codex session ran: its cost is not in the figure
+    assert header["cost"] == {"usd": 2.5, "coverage": "claude_code", "unpriced_runs": 0}   # a Codex session ran: its cost is not in the figure
     assert header["experiments"] == 1 and header["delivered"] == {"branch": None, "commit": None}
     assert header["status"] == {"state": "running", "phase": "implementation", "error": None}
     [attempt] = view.attempts

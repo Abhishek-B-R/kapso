@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 import yaml
 
 from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_REFUSED, EXIT_TIMEOUT
-from kapso.execution.coding_agents.transcripts import CODEX_HOST, GATE_TOOL_PREFIX
+from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, CODEX_HOST, GATE_TOOL_PREFIX
 from kapso.execution.evaluation_maintainer.registry import EvaluationRegistry
 from kapso.execution.inbox import read_launch_record
 from kapso.execution.observability import OperationStatusView, source_line
@@ -211,6 +211,12 @@ def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sourc
         "cost": {
             "usd": cost,
             "coverage": COVERAGE_CLAUDE if any(session["host"] == CODEX_HOST for session in sessions) else COVERAGE_ALL,
+            # The Claude Code runs that ended with no cost figure (killed
+            # before their result event): their spend is not in `usd`.
+            "unpriced_runs": sum(
+                1 for session in sessions if session["host"] == CLAUDE_HOST
+                for run in session["runs"] if run["cost_usd"] is None
+            ),
         },
         "stopped_reason": _first(
             record.stopped_reason if record is not None else None,
@@ -283,6 +289,7 @@ def _attempts(nodes, sessions, pulls) -> Tuple[List[Dict[str, Any]], Set[str]]:
             "judge": {"stop": node["should_stop"], "valid": node["evaluation_valid"], "feedback": node["feedback"]},
             "cards": {
                 "read": _cards_read(pulls, [session["label"] for session in own]),
+                "listed": _cards_listed(pulls, [session["label"] for session in own]),
                 "load_bearing": list(node["cards_load_bearing"]),
             },
             "cost_usd": node["cost_usd"],
@@ -305,6 +312,17 @@ def _cards_read(pulls, labels) -> List[str]:
         if _served_to(event, labels):
             read.update(row["card"] for row in event.get("served", []) if row["exposure"] != INDEXED_ONLY)
     return sorted(read)
+
+
+def _cards_listed(pulls, labels) -> int:
+    """How many distinct cards the sessions saw listed (a `bank_index`
+    call lists the eligible set): read nothing of fifteen listed is a
+    different fact from read nothing of none."""
+    listed: Set[str] = set()
+    for event in pulls:
+        if _served_to(event, labels):
+            listed.update(row["card"] for row in event.get("listed", []))
+    return len(listed)
 
 
 def _lessons(sources, pulls, nodes) -> List[Dict[str, Any]]:
@@ -492,8 +510,12 @@ def _header_lines(data: Dict[str, Any]) -> List[str]:
     if cost["usd"] is None:
         lines.append(_row("cost", "not recorded"))
     else:
-        coverage = " (Claude Code sessions only; Codex reports no cost)" if cost["coverage"] == COVERAGE_CLAUDE else ""
-        lines.append(_row("cost", f"${cost['usd']:.3f}{coverage}"))
+        notes = []
+        if cost["coverage"] == COVERAGE_CLAUDE:
+            notes.append("Claude Code sessions only; Codex reports no cost")
+        if cost["unpriced_runs"]:
+            notes.append(f"{cost['unpriced_runs']} run{'s' if cost['unpriced_runs'] != 1 else ''} ended with no cost figure")
+        lines.append(_row("cost", f"${cost['usd']:.3f}" + (f" ({'; '.join(notes)})" if notes else "")))
     stopped = header["stopped_reason"] or "not stopped"
     if header["stop_detail"]:
         stopped += f" ({header['stop_detail']})"
@@ -570,7 +592,10 @@ def _attempt_lines(attempt: Dict[str, Any], full: bool) -> List[str]:
     else:
         lines.append(_row("  judge", f"{verdict}: {_headline(judge['feedback']) if judge['feedback'] else '(no feedback recorded)'}"))
     cards = attempt["cards"]
-    lines.append(_row("  cards read", f"{len(cards['read'])}: {', '.join(cards['read'])}" if cards["read"] else "none"))
+    listed = f" ({cards['listed']} listed)" if cards["listed"] else ""
+    lines.append(_row(
+        "  cards read", f"{len(cards['read'])}{listed}: {', '.join(cards['read'])}" if cards["read"] else f"none{listed}",
+    ))
     lines.append(_row(
         "  load-bearing", f"{len(cards['load_bearing'])}: {', '.join(cards['load_bearing'])}" if cards["load_bearing"] else "none",
     ))

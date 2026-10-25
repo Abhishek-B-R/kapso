@@ -51,6 +51,27 @@ def test_a_claude_implementation_session_with_a_background_delegate():
     assert digest["usage"] is None
 
 
+def test_a_hook_that_blocks_a_tool_call_is_a_denial_in_the_record():
+    """Claude Code reports a blocking PreToolUse hook as the tool's error
+    result (`PreToolUse:Bash hook error: …`), not as a hook_response
+    event: the WP6 proof run's setup session was denied a web fetch and
+    the record said nothing (S4's readers found it in the log)."""
+    init = json.dumps({"type": "system", "subtype": "init", "session_id": "s", "model": "m", "mcp_servers": []})
+    denied = json.dumps({"type": "user", "message": {"role": "user", "content": [{
+        "type": "tool_result", "is_error": True, "tool_use_id": "t1",
+        "content": "PreToolUse:Bash hook error: Web fetches are off in this harness: use get_bars on the market-data server.",
+    }]}})
+    plain_error = json.dumps({"type": "user", "message": {"role": "user", "content": [{
+        "type": "tool_result", "is_error": True, "tool_use_id": "t2", "content": "command not found: curl",
+    }]}})
+    digest = digest_claude([init + "\n", denied + "\n", plain_error + "\n"])
+    assert digest["hooks"] == [{
+        "event": "PreToolUse", "name": "PreToolUse:Bash", "decision": "deny",
+        "reason": "Web fetches are off in this harness: use get_bars on the market-data server.",
+        "exit_code": None, "outcome": "blocking",
+    }]
+
+
 def test_a_claude_verification_session_stops_its_delegate_and_reports_it():
     digest = digest_claude(lines("claude_verification.jsonl"))
     assert digest["cli_session_id"] == "7e29d2e2-a7ed-4f08-9213-6c61f7be9ff9"
