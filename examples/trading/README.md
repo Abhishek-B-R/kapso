@@ -11,9 +11,13 @@ timing discipline and the risk line, a look-ahead scan the implementer runs
 before the backtest, an auditor the verifier asks, and hooks that deny a
 web fetch or a write under the snapshot.
 
-Recorded result: not recorded yet; the proof run of the harness package on
-a fresh machine, on both coding-agent CLIs, is in
-`docs/plans/redesign/wp2-harness.md` as it lands.
+Recorded result: a Sharpe of **1.93** out of sample on 2026-10-25, on a
+fresh machine with Claude Code, in 45 minutes and one experiment (the
+setup session pinned the snapshot, the implementer wrote a
+volatility-targeted momentum ensemble, the verifier's verdict was valid,
+the judge called the target met); a second fresh machine scored 1.99 the
+same way. Both campaigns and their records are described in
+`docs/plans/redesign/wp2-harness.md` under "Proof runs".
 
 ## What you get
 
