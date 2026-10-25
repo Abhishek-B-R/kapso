@@ -122,11 +122,12 @@ buys nothing).
   watch` says `done`.
 - **The launch receipt**, `<campaign>.launch.json` beside the log:
   `{pid, log, argv, started_at}`, written by `--detach` before the child
-  starts. `kapso watch` on a campaign with no status reads it: the pid
-  alive is `starting (pid N, 12s ago; log: …)`; the pid gone is `stopped
-  before writing a status; the log says why: <log>` (exit 1, and
-  `--follow` stops waiting); without a receipt the line stays `no status
-  yet … or nothing runs there`.
+  starts. `kapso watch` on a campaign with no status reads it, whether or
+  not the campaign directory exists yet: the pid alive is `starting (pid
+  N, 12s ago; log: …)`; the pid gone is `stopped before writing a
+  status; the log says why: <log>` (exit 1, and `--follow` stops
+  waiting); without a receipt the line stays `no status yet … or nothing
+  runs there`.
 - **`kapso watch` completed.** The header renders `harness: trading
   0.1.0 (83b6c0b60d6a)` and one `served:` line per source from the
   status file's own fields. With no path it lists, newest first, the
@@ -141,7 +142,9 @@ buys nothing).
   is not `False` (running or starting, with a fresh beat, or no cadence
   to judge by) or whose state is `done` with `stopped_reason:
   waiting_for_user`. The registry is written on every launch through the
-  facade, inbox on or off. `kapso inbox` is unchanged: it lists requests,
+  facade, inbox on or off, before the launch checks when the launch names
+  an output directory, so a launch that dies at a check is listed by its
+  receipt (the reader keeps a path with a receipt beside it). `kapso inbox` is unchanged: it lists requests,
   not campaigns. `--tree` is retired: the trace renders the attempts.
 - **`kapso doctor [verb] --json`**: `{"scope", "version", "kapso" (the
   executable), "python", "config_path", "ok", "requirements": [{"label",

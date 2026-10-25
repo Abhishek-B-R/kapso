@@ -8,6 +8,24 @@ shows.
 
 ## 2026-10-25, WP6 (taken while building)
 
+**A launch is registered before its checks, and a receipt keeps it
+listed.** The proof run's first launch died at the evaluation suite's
+refusal before the campaign directory existed; `kapso watch campaign`
+said `no status yet` (the receipt was read only once the directory
+existed) and `kapso watch --all` knew nothing of it (the registry was
+written after the orchestrator's construction, and its reader dropped
+any path with no directory). Now a launch with an output directory is
+registered as soon as the brief is read, before the evaluation refusal
+and the preflight (a resume was registered by its launch; a build with
+no output directory is registered once the orchestrator has made one);
+the registry's reader keeps a path with a launch receipt beside it; and
+the watch verb reads the receipt whether or not the directory exists.
+A foreground launch that dies at a check leaves a registry line and
+nothing else, which the listing skips. Alternative rejected: writing
+the receipt into the registry's own line, which would make the registry
+a second receipt. Shows in `Kapso.build`, `kapso.execution.inbox.
+list_registered_campaigns` and `kapso.cli.watch`.
+
 **The trace's JSON carries six keys the plan did not list.** `sessions`
 (top level): the session records that belong to no attempt, the harness
 setup and a node still in flight, which the attempts' `sessions` cannot
