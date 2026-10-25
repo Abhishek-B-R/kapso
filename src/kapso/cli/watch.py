@@ -53,7 +53,7 @@ def cmd_watch(args) -> None:
         # A detached launch left a receipt beside the log: the child's pid
         # tells a campaign still starting from one that died before its
         # status, and the log says why (wp6-observability.md, change 7).
-        receipt = read_launch_receipt(campaign) if campaign.is_dir() else None
+        receipt = None if campaign.is_file() else read_launch_receipt(campaign)
         if receipt is None:
             print(
                 f"no status yet at {expected} — the campaign is still starting "

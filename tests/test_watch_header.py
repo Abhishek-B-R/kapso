@@ -84,3 +84,20 @@ def test_the_receipt_tells_starting_from_stopped(tmp_path, capsys):
     receipt.write_text("{}")
     with pytest.raises(ValueError, match="a launch receipt carries a pid and a log"):
         read_launch_receipt(campaign)
+
+
+def test_the_receipt_is_read_before_the_directory_exists(tmp_path, capsys):
+    """A launch that dies at a launch check (a refused evaluation suite,
+    a failed preflight) never creates the campaign directory; the receipt
+    beside its log still tells what happened (the WP6 proof run's first
+    launch was told `no status yet`)."""
+    campaign = tmp_path / "campaign"
+    log = tmp_path / "campaign.log"
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    launch_receipt_path(campaign).write_text(json.dumps({"pid": gone.pid, "log": str(log), "argv": ["build"],
+                                                         "started_at": "2026-10-25T22:07:49+00:00"}))
+    with pytest.raises(SystemExit) as stopped:
+        watch(campaign)
+    assert stopped.value.code == 1
+    assert capsys.readouterr().out.strip() == f"stopped before writing a status; the log says why: {log}"

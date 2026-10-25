@@ -17,8 +17,12 @@ import pytest
 
 import kapso.cli.watch as watch_module
 from kapso.cli.watch import cmd_watch
-from kapso.execution.inbox import launch_receipt_path, register_campaign
+import kapso.kapso as kapso_module
+from kapso.execution.evaluation_integrity import EvaluationIntegrityError
+from kapso.execution.inbox import launch_receipt_path, list_registered_campaigns, register_campaign
 from kapso.execution.observability import BuildStatus, LessonStatus, campaign_listing, render_listing
+from tests.handles_support import facade
+from tests.harness_support import patch_engine
 
 
 def campaign(tmp_path, name, *, state=None, stopped_reason=None, stale=False, dead=False, started=False):
@@ -104,3 +108,34 @@ def test_watch_with_no_path_lists_and_follow_needs_a_campaign(tmp_path, monkeypa
     registry.unlink()
     cmd_watch(SimpleNamespace(path=None, json=False, follow=False, all=False, config=None))
     assert capsys.readouterr().out.startswith("nothing running or waiting")
+
+
+def test_a_launch_refused_at_a_check_is_registered_all_the_same(tmp_path, monkeypatch):
+    """The WP6 proof run's first launch died at the evaluation suite's
+    refusal before the campaign directory existed, and `kapso watch --all`
+    knew nothing of it: a launch with an output directory is registered
+    before its checks, so the listing shows it stopped by its receipt."""
+    patch_engine(monkeypatch)
+    evaluation = tmp_path / "evaluation"
+    evaluation.mkdir()
+    (evaluation / "evaluate.py").write_text("print('score: 1')\n")
+    (evaluation / "result.json").write_text("{}")
+    workspace = tmp_path / "campaign"
+    with pytest.raises(EvaluationIntegrityError, match="left by an earlier run"):
+        facade().build("Improve support", evaluation=str(evaluation), output=str(workspace))
+    assert not workspace.exists()
+    registry = kapso_module.load_mode_config(None, None)["inbox"]["registry"]
+    [line] = Path(registry).read_text().splitlines()
+    assert json.loads(line)["path"] == str(workspace.resolve()) and json.loads(line)["goal"] == "Improve support"
+    # A foreground launch leaves no receipt and no directory: nothing to
+    # list. A detached one's receipt, its pid gone, lists the campaign
+    # stopped.
+    assert list_registered_campaigns(registry) == []
+    assert campaign_listing(registry, tmp_path / "status", everything=True) == []
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    launch_receipt_path(workspace).write_text(json.dumps({"pid": gone.pid, "log": str(tmp_path / "campaign.log"),
+                                                          "argv": ["build"], "started_at": "2026-10-25T22:07:49+00:00"}))
+    [listed] = campaign_listing(registry, tmp_path / "status", everything=True)
+    assert listed["state"] == "stopped" and listed["path"] == str(workspace.resolve())
+

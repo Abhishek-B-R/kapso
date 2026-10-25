@@ -1238,6 +1238,16 @@ class Kapso:
         goal_text = brief.render()
         if max_iterations is None:
             max_iterations = DEFAULT_MAX_ITERATIONS
+        # A launch with an output directory is registered before the launch
+        # checks: a campaign that dies at one (a refused evaluation suite,
+        # a failed preflight) is still one `kapso watch --all` lists,
+        # stopped, with its receipt's log (wp6-observability.md, change 8).
+        # A resume was registered by its launch; a build with no output
+        # directory is registered once the orchestrator has made one.
+        inbox_block = load_mode_config(self.config_path, mode).get("inbox") or {}
+        registered = output_path is not None and not resume
+        if registered:
+            register_campaign(inbox_block["registry"], output_path, brief.objective)
         if eval_dir:
             # Validate caller-owned evaluation inputs before resolving an
             # initial repository or initializing the experiment workspace
@@ -1454,12 +1464,7 @@ class Kapso:
 
             # On a fresh campaign, record the launch so a resume (`kapso build
             # --resume`, `kapso inbox reply`) continues with the launch's own
-            # brief and flags without the person retyping anything; with the
-            # inbox on (docs/research/evolve-hub-design.md v4), also register
-            # the campaign so `kapso inbox` can list it.
-            inbox_block = (
-                load_mode_config(self.config_path, mode).get("inbox") or {}
-            )
+            # brief and flags without the person retyping anything.
             if not resume:
                 workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
                 write_launch_record(workspace_dir, {
@@ -1488,10 +1493,11 @@ class Kapso:
                     ),
                     "dotenv_path": find_dotenv(usecwd=True),
                 })
-                # Every launch registers the campaign, inbox on or off:
-                # `kapso watch` with no path lists what the registry knows
-                # (wp6-observability.md, change 8).
-                register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
+                # A build that named no output directory is registered now
+                # that the orchestrator has made one; every other launch was
+                # registered before its checks.
+                if not registered:
+                    register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
         finally:
             in_flight = sys.exc_info()[1]
             if in_flight is not None:

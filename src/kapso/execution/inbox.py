@@ -497,10 +497,13 @@ def read_launch_receipt(campaign: Path) -> Optional[Dict[str, Any]]:
 
 
 def list_registered_campaigns(registry_path: str | Path) -> List[Dict[str, Any]]:
-    """Registered campaigns whose directory still exists, newest first,
-    each path once under its latest launch (a campaign deleted and
-    launched again at the same path has two lines). Missing registry →
-    none; a malformed line raises."""
+    """Registered campaigns that still exist, newest first, each path once
+    under its latest launch (a campaign deleted and launched again at the
+    same path has two lines). A campaign exists when its directory does,
+    or when a launch receipt lies beside the path: a detached launch that
+    died at a launch check made no directory, and the receipt is what
+    `kapso watch` tells it by. Missing registry → none; a malformed line
+    raises."""
     path = Path(registry_path).expanduser()
     if not path.is_file():
         return []
@@ -509,7 +512,8 @@ def list_registered_campaigns(registry_path: str | Path) -> List[Dict[str, Any]]
         entry = json.loads(line)
         if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
             raise ValueError(f"{path}:{number}: registry line must carry a path")
-        if Path(entry["path"]).is_dir():
+        campaign = Path(entry["path"])
+        if campaign.is_dir() or launch_receipt_path(campaign).is_file():
             campaigns.pop(entry["path"], None)
             campaigns[entry["path"]] = entry
     return list(reversed(campaigns.values()))
