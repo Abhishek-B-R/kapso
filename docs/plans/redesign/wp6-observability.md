@@ -193,6 +193,18 @@ buys nothing).
   the evidence for "safe to merge" is the delivered candidate's
   verification, its integrity, the hooks' denials in its sessions and
   the failures, each printed.
+
+  Built with these keys beyond the sketch above (DECISIONS.md, "The
+  trace's JSON carries keys the plan did not list"): top-level
+  `sessions` (the sessions that belong to no attempt: the harness setup,
+  a node in flight) and `branch` (the branch a view is narrowed to);
+  `header.status` (`state`, `phase`, `error` of the status file) and
+  `header.cost.unpriced_runs` (the Claude Code runs that ended with no
+  cost figure); `attempts[].evaluation.output`, `attempts[].cost_usd`,
+  `attempts[].duration_seconds` and `attempts[].cards.listed`;
+  `lessons[].kind`. The delivered candidate's `files_changed` are the
+  files its branch's diff names; a run entry's are the host's own
+  account of what it wrote.
 - **The summary's failed-sessions line.** `Solution.session_failures`
   (schema 5): the run entries that ended `error`, `timeout` or
   `refused`, each `{label, module, host, exit, error}`;

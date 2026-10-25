@@ -44,7 +44,7 @@ the receipt into the registry's own line, which would make the registry
 a second receipt. Shows in `Kapso.build`, `kapso.execution.inbox.
 list_registered_campaigns` and `kapso.cli.watch`.
 
-**The trace's JSON carries six keys the plan did not list.** `sessions`
+**The trace's JSON carries keys the plan did not list.** `sessions`
 (top level): the session records that belong to no attempt, the harness
 setup and a node still in flight, which the attempts' `sessions` cannot
 hold and the failures section must still see. `branch`: the branch the
@@ -57,8 +57,13 @@ evidence of a rejection and of a crashed evaluator (S5's injection).
 `lessons[].kind`: a hosted source renders differently from a bank (its
 reads are not logged per card). `attempts[].cost_usd` and
 `duration_seconds`: the node's own figures, "what it cost" per attempt.
-Alternative rejected: deriving each from the text's sections at the
-reader's end, which WP7's skills would have to repeat. Shows in
+After S4's first reading, two more: `header.cost.unpriced_runs`, the
+Claude Code runs killed before their result event, whose spend the
+total lacks (both readers worked it out from a `cost n/a` line), and
+`attempts[].cards.listed`, the cards a session saw listed beside the
+ones it read (`none (15 listed)` is not `none`). Alternative rejected:
+deriving each from the text's sections at the reader's end, which WP7's
+skills would have to repeat. Shows in
 `kapso.execution.trace` and `tests/test_trace.py`; WP7 reads the keys as
 pinned there.
 
