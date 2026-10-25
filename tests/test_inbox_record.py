@@ -245,3 +245,12 @@ def test_launch_mismatches_name_fingerprinted_changes_and_ignore_respelled_paths
         "mode": ("MINIMAL", "GENERIC"),
         "eval_dir": (record["eval_dir"], None),
     }
+    # The loaded experience is identity by reference and scope: a bank
+    # that moved since the launch (another head) is not a change, a
+    # different list or scope is, by name.
+    mine = {"reference": "mine", "kind": "bank", "resolved": "/b", "head": "aaa", "provenance": "measured by you", "scope": "harness"}
+    served = {**record, "experience": [mine]}
+    assert launch_mismatches(served, {**served, "experience": [{**mine, "head": "bbb"}]}) == {}
+    lifted = [{**mine, "scope": "all"}]
+    assert launch_mismatches(served, {**served, "experience": lifted}) == {"experience": ([mine], lifted)}
+    assert launch_mismatches(served, {**served, "experience": []}) == {"experience": ([mine], [])}

@@ -98,11 +98,20 @@ class UpdateFrame:
         store: TrajectoryStore,
         config: Dict[str, Any],
         agent_factory=CodingAgentFactory,
+        bank_home: Optional[Path] = None,
     ):
+        """``bank_home`` is the bank the run clones, edits and pushes back
+        to: the facade's resolved home (`Kapso(bank=)` may have moved it
+        off the config); the config's `learning.bank.local_path` when the
+        caller passes none."""
         self.store = store
         self.learning_config = config["learning"]
         self.crew_config = self.learning_config["update_crew"]
         self.bank_config = self.learning_config["bank"]
+        self.bank_home = (
+            Path(bank_home).expanduser() if bank_home is not None
+            else Path(self.bank_config["local_path"]).expanduser()
+        )
         self.score_band = self.learning_config["graders"]["score_band"]
         self.codify_config = self.learning_config["codify"]
         self.agent_factory = agent_factory
@@ -124,9 +133,8 @@ class UpdateFrame:
         run_dir = Path(run_root).expanduser() / lr_id
         (run_dir / "work").mkdir(parents=True)
 
-        bank_home = self.bank_config["local_path"]
         subprocess.run(
-            ["git", "clone", str(Path(bank_home).expanduser()), str(run_dir / "bank")],
+            ["git", "clone", str(self.bank_home), str(run_dir / "bank")],
             check=True, capture_output=True,
         )
         before_dir = run_dir / "bank-before"

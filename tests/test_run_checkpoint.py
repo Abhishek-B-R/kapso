@@ -636,7 +636,7 @@ def test_v2_checkpoint_is_rejected_without_migration(tmp_path: Path) -> None:
     # campaign reads "start a fresh campaign", never "missing cost_config".
     with pytest.raises(
         RunCheckpointIncompatibleError,
-        match=r"expected 4\. .*not migrated",
+        match=r"expected 5\. .*not migrated",
     ):
         store.load()
 

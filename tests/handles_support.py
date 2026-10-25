@@ -39,8 +39,6 @@ def make_solution(campaign: Any, objective: str = "score things", **overrides: A
         rejected_candidates=0,
         callback_metrics={},
         callback_primary_metric=None,
-        knowledge_index=None,
-        experience_head=None,
     )
     fields.update(overrides)
     return Solution(**fields)

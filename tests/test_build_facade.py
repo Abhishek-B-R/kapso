@@ -26,8 +26,7 @@ RECORD_KEYS = [
     "schema_version", "brief", "branch", "commit", "base_commit", "score",
     "goal_achieved", "stopped_reason", "stop_detail", "experiments", "experiments_total",
     "cost_usd", "requests", "feedback", "evaluator", "harness", "experience", "verification",
-    "rejected_candidates", "callback_metrics", "callback_primary_metric", "knowledge_index",
-    "experience_head",
+    "rejected_candidates", "callback_metrics", "callback_primary_metric",
 ]
 
 
@@ -245,7 +244,7 @@ def test_the_record_has_the_pinned_shape_and_names_the_delivered_commit(tmp_path
 
     record = json.loads((workspace / ".kapso" / "solution.json").read_text())
     assert list(record) == RECORD_KEYS
-    assert record["schema_version"] == 3
+    assert record["schema_version"] == 4
     assert record["brief"] == Brief(objective="g").to_dict()
     assert (record["branch"], record["commit"], record["base_commit"]) == ("generic_exp_1", winner, base)
     assert (record["score"], record["goal_achieved"], record["stopped_reason"]) == (0.9, True, "goal_achieved")

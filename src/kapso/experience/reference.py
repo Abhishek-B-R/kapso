@@ -78,6 +78,15 @@ def valid_index_name(name: str) -> bool:
     return bool(_NAME.match(name))
 
 
+def recorded_reference(record: dict) -> str:
+    """The reference string that re-loads a recorded source (a campaign's
+    launch record): `mine` at every scope is `mine:all`; every other
+    source is its reference as recorded."""
+    if record["reference"] == MINE and record["scope"] == SCOPE_ALL:
+        return MINE_ALL
+    return record["reference"]
+
+
 def parse_experience_reference(
     text: str, *, indexes_root: Path, cwd: Optional[Path] = None,
 ) -> ExperienceReference:

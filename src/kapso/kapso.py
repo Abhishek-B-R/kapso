@@ -71,8 +71,10 @@ from kapso.core.config import (
     load_mode_config,
 )
 from kapso.experience import (
+    ExperienceError,
     ExperienceSource,
     parse_experience_reference,
+    recorded_reference,
     resolve_source,
 )
 from kapso.harness import (
@@ -1214,7 +1216,7 @@ class Kapso:
 
         # --- the lesson ---
         status.phase("lesson")
-        frame = UpdateFrame(store, self._config)
+        frame = UpdateFrame(store, self._config, bank_home=self._bank_home)
         run_dir = frame.run_update(
             [{"trajectory": trajectory_id,
               "hindcast_report": exam_report_path}]
@@ -1437,10 +1439,30 @@ class Kapso:
                     "cost_budget": cost_budget,
                     "finalization_reserve_minutes": finalization_reserve_minutes,
                 })
+                # The loaded experience is campaign identity: a resume with
+                # nothing loaded takes the record's list and re-pins each
+                # source at its recorded head and scope; one that names a
+                # different list is refused by name below.
+                if not self._experience and record.get("experience"):
+                    for recorded in record["experience"]:
+                        self.load_experience(recorded_reference(recorded))
+                for source in self._experience:
+                    recorded = next(
+                        (r for r in record.get("experience", []) if r["reference"] == source.reference), None,
+                    )
+                    if recorded is not None and source.kind == "index" and source.head != recorded["head"]:
+                        raise ExperienceError(
+                            f"{source.reference} was re-ingested since this campaign launched "
+                            f"(index {recorded['head']} then, {source.head} now); a campaign is served "
+                            "the corpus it started with — start a new one to use the new index"
+                        )
+                    if recorded is not None and source.kind == "bank":
+                        source.head = recorded["head"]
                 mismatches = launch_mismatches(record, {
                     **arguments,
                     "kg_index": self._kg_index_path,
                     "config_path": self._launch_config_path(),
+                    "experience": [vars(source.ref()) for source in self._experience],
                 })
                 if mismatches:
                     changed = "; ".join(
@@ -1610,6 +1632,7 @@ class Kapso:
             workspace_dir=output_path,
             resume=resume,
             harness=harness,
+            experience=[vars(source.ref()) for source in self._experience],
             iteration_evaluator=iteration_evaluator,
             iteration_evaluator_failure_policy=(
                 iteration_evaluator_failure_policy
@@ -1659,6 +1682,7 @@ class Kapso:
             write_launch_record(workspace_dir, {
                 "brief": brief.to_dict(),
                 "harness": harness.ref_dict() if harness is not None else None,
+                "experience": [vars(source.ref()) for source in self._experience],
                 "config_path": _absolute(self._launch_config_path()),
                 "kg_index": _absolute(self._kg_index_path),
                 "mode": mode,
@@ -1739,7 +1763,9 @@ class Kapso:
                 if head else None
             ),
             harness=harness.ref() if harness is not None else None,
-            experience=[],
+            # What the campaign was served (wp3-experience.md): the loaded
+            # sources, each at its pinned head and scope.
+            experience=[source.ref() for source in self._experience],
             verification=delivered.verification if delivered is not None else None,
             rejected_candidates=sum(
                 not node.evaluation_valid
@@ -1751,12 +1777,6 @@ class Kapso:
             callback_primary_metric=getattr(
                 solve_result.best_experiment, "primary_metric", None
             ),
-            # Memory provenance (design §8.2): the exact stores this
-            # solution drew on.
-            knowledge_index=self._kg_index_path,
-            experience_head=next(
-                (s.head for s in self._experience if s.kind == "bank"), None
-            ) if serving else None,
         )
         solution.save()
 

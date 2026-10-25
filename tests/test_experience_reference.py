@@ -29,6 +29,8 @@ def settings_for(tmp_path: Path) -> dict:
         "indexes": str(tmp_path / "homes" / "indexes"),
         "bank_home": str(tmp_path / "bank.git"),
         "hosted": {"url": "https://mcp.leeroopedia.com/mcp?token={LEEROOPEDIA_API_KEY}", "tool_timeout_seconds": 600},
+        "session_root": str(tmp_path / "serving"),
+        "probe_budget": 1,
     }
 
 

@@ -308,6 +308,7 @@ def test_feedback_invalidity_cannot_stop_or_retain_a_score() -> None:
             evaluation_valid=False,
             duration_seconds=None,
             cost_usd=0.0,
+            cards_load_bearing=[],
         ),
     )
     node = SearchNode(

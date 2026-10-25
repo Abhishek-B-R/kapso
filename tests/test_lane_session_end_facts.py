@@ -37,7 +37,7 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch):
             judged[kwargs["head_branch"]] = kwargs["session_end_facts"]
             return SimpleNamespace(
                 feedback="ok", evaluation_valid=True, score=1.0, stop=False,
-                duration_seconds=None, cost_usd=0.0,
+                duration_seconds=None, cost_usd=0.0, cards_load_bearing=[],
             )
 
     monkeypatch.setattr(strategy_module, "run_implementation", fake_run_implementation)

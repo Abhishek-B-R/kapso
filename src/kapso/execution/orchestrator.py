@@ -203,6 +203,7 @@ class OrchestratorAgent:
         goal: Optional[str] = None,
         strategy_params_overrides: Optional[Dict[str, Any]] = None,
         harness: Optional[Any] = None,
+        experience: Optional[List[Dict[str, Any]]] = None,
     ):
         self.problem_handler = problem_handler
         # The loaded harness (kapso.harness.Harness) or None: threaded to the
@@ -210,6 +211,11 @@ class OrchestratorAgent:
         # status file, never part of the config fingerprint (its hash is
         # its own check, with its own message, in the facade).
         self.harness = harness
+        # What the campaign is served (the experience package's records):
+        # the loaded sources as plain records, written into the status
+        # file and the checkpoint beside the harness; the facade's launch
+        # record fingerprints the list.
+        self.experience: List[Dict[str, Any]] = [dict(source) for source in experience or []]
         self._harness_setup: Optional[Dict[str, Any]] = None
         # The requests the harness setup session filed with the inbox: the
         # campaign pauses on them before iteration 1.
@@ -573,6 +579,7 @@ class OrchestratorAgent:
             goal=self.goal,
             status_heartbeat_seconds=self._status_heartbeat_seconds(),
             harness=self.harness,
+            experience=self.experience,
         )
 
     def _status_heartbeat_seconds(self) -> Optional[float]:
@@ -1218,6 +1225,7 @@ class OrchestratorAgent:
             maximize_scoring=self.maximize_scoring,
             harness=self.harness.ref_dict() if self.harness is not None else None,
             harness_setup=self._harness_setup,
+            experience=self.experience,
         )
         with self._checkpoint_lock:
             self.checkpoint_store.save(checkpoint)
@@ -1636,6 +1644,7 @@ class OrchestratorAgent:
                 / ".kapso" / "status.json",
                 heartbeat_seconds=heartbeat_seconds,
                 harness=self.harness.ref_dict() if self.harness is not None else None,
+                experience=self.experience,
             )
         status.observe(on_status)
         status.update(
@@ -1972,6 +1981,7 @@ class OrchestratorAgent:
                         evaluation_valid=node.evaluation_valid,
                         feedback=node.feedback,
                         score=node.score,
+                        cards_load_bearing=list(node.cards_load_bearing),
                     )
 
                 self.current_feedback = node.feedback

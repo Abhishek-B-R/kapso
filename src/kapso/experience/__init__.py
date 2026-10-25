@@ -11,6 +11,7 @@ from kapso.experience.reference import (
     ExperienceReference,
     ExperienceReferenceError,
     parse_experience_reference,
+    recorded_reference,
     valid_index_name,
 )
 from kapso.experience.sources import (
@@ -54,6 +55,7 @@ __all__ = [
     "hosted_key_missing",
     "hosted_key_present",
     "parse_experience_reference",
+    "recorded_reference",
     "resolve_source",
     "valid_index_name",
 ]

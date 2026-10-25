@@ -103,7 +103,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             return f"mined/{trajectory_id}"
 
     class FakeGrading:
-        def __init__(self, store, config):
+        def __init__(self, store, config, bank_home=None):
             pass
 
         def grade_exam(self, trajectory_id, bank_dir, bank_head,
@@ -117,7 +117,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             return report
 
     class FakeUpdate:
-        def __init__(self, store, config):
+        def __init__(self, store, config, bank_home=None):
             pass
 
         def run_update(self, batch, run_root, learner_version, domain_guidance=""):
@@ -389,7 +389,11 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
     assert "## Experience (measured before)" in intro
     assert "1 card measured by you, under no harness" in intro
     assert "bank_index()" in intro
-    assert solution.experience_head == kapso.experience[0].head
+    # the solution carries the source at its pinned head and scope
+    assert [(s.reference, s.head, s.scope) for s in solution.experience] == [
+        ("mine", kapso.experience[0].head, "harness"),
+    ]
+    assert "Experience:" in solution.explain() and "measured by you" in solution.explain()
     # the serving record landed inside the campaign workspace
     record = tmp_path / "out2" / ".kapso" / "serving" / "serving-record.yaml"
     assert record.is_file()
