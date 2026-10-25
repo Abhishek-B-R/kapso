@@ -883,6 +883,43 @@ cross about 0.92, a 20-day momentum sign about 2.8, a volatility-targeted
 momentum about 2.2, buy-and-hold negative; the target of 1.0 is
 reachable and the baseline is not already there.
 
+## Author test (S3)
+
+Run 2026-10-25 on the development box: two model authors, each with the
+authoring guide, the design document and the trading example and nothing
+else, asked to write a `pipeline-dbt` harness in a scratch directory and
+to log every guess as one line of `GUESSES.md`. Neither ran `kapso`.
+
+| Author | Files | `kapso harness check` | Guesses |
+|---|---|---|---|
+| Codex `gpt-6-astra`, xhigh | 22 (8 pages, 4 skills, 1 delegate, 1 server, 2 hooks) | `check ok (4 skills, 1 agents, 1 servers, 2 hooks)`, one need (`dbt (command)`), no warning | 66 |
+| Claude Code `claude-opus-5` | 39 (8 pages, 7 skills, 2 delegates, 2 servers, 7 hooks) | `check ok (7 skills, 2 agents, 2 servers, 7 hooks)`, seven needs (six `${VAR}` references of its servers, `dbt (command)`), no warning | 65 |
+
+Both pass `check` with no warning on the first try, so the guide's
+conventions carry: the front matter, the quoting, the reference
+resolution, the manifest's shape, the hooks' shape. The guesses are the
+sentences the guide lacks, and the two lists overlap heavily: the seven
+module keys and that an omitted module or list means empty; `version`
+required and free-form; the page-size threshold (40 lines) and that the
+task statement, the diff and the evaluation output reach a session by
+paths the engine supplies; that a prepared resource is a directory left
+under `prepared/<name>/` with no registration and that `results/` names
+are the author's; the hook event list, each event's decision JSON (the
+`Stop` shape differs), `stop_hook_active`, the input fields per tool and
+that silence is exit 0 with nothing on stdout; a minimal FastMCP server;
+`python3` in the guide's own snippets (it still says `python` in places);
+that check runs no script and reads no path quoted in a `SKILL.md`; that
+a missing command is a need, never a failure; and one contradiction, the
+feedback page's example of a margin-based stop rule beside the rule that
+a harness holds no stop rule. The guide was revised the same day with
+those sentences (the manifest's keys and defaults, the paths the engine
+supplies, the prepared-resource and `results/` conventions, the verdict
+file, the hook events and each shape's decision JSON, a minimal FastMCP
+server, the streamable-http form, `python3`, what `check` does not do, the
+feedback example without its stop rule); the published `write` page
+carries the sentences a user needs. The two `GUESSES.md` files and both
+harnesses are kept with the run records (`scripts/redesign/runs/wp2-s3/`).
+
 ## Findings for later packages
 
 - **A build without `OPENAI_API_KEY` crashes at the orchestrator's
