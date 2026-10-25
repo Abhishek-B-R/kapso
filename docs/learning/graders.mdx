@@ -74,8 +74,8 @@ The verifier runs on a **different model** from the writer on purpose. A report 
 | Full | Every held-out trajectory, when developing a learner | Writer, verifier, aggregation, assessor. Gauntlet verdicts merge in |
 
 ```bash
-kapso learn grade --bank ./bank --bank-head lr_042 --trajectory <id>
-kapso learn grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml --learner-version crew_v4
+kapso learn dev grade --bank ./bank --bank-head lr_042 --trajectory <id>
+kapso learn dev grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml --learner-version crew_v4
 ```
 
 ## The split manifest
@@ -108,7 +108,7 @@ Scores tell you how a bank did. The gauntlet asks whether the *learning step its
 | Stability | Runs the same input twice | Touched cards, states, transitions and scores match within `0.1`; prose is free to differ |
 
 ```bash
-kapso learn gauntlet --learner-version crew_v4
+kapso learn dev gauntlet --learner-version crew_v4
 ```
 
 The stability tolerance is `learning.graders.gauntlet.stability_tolerance`. Prose being free to differ is deliberate: two runs that reach the same decisions by the same evidence have not disagreed just because they worded it differently.

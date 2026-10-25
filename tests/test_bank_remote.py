@@ -11,7 +11,6 @@ import pytest
 from kapso.learning.bank_remote import (
     bank_origin,
     connect_bank,
-    create_bank_repo,
 )
 from kapso.learning.update_frame import init_bank
 
@@ -74,9 +73,3 @@ def test_connect_to_unreachable_url_leaves_the_bank_untouched(tmp_path):
     with pytest.raises(RuntimeError, match="not reachable"):
         connect_bank(home, str(tmp_path / "typo.git"))
     assert bank_origin(home) == str(share)
-
-
-def test_create_rejects_malformed_slug():
-    # Regression: a bare name (no org/) must fail before any gh call.
-    with pytest.raises(ValueError, match="org/name"):
-        create_bank_repo("not-a-slug")

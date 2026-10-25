@@ -49,10 +49,10 @@ One finished campaign moves through four stages. Each stage is bounded by a **fr
 
 | Stage | Command | What happens |
 |-------|---------|--------------|
-| Import | [`kapso learn import`](/docs/reference/cli#kapso-learn-import) | The campaign bundle enters the trajectory store under a stable identity |
-| Mine | [`kapso learn mine`](/docs/reference/cli#kapso-learn-mine) | The bundle is read into derived `mined/` views: strategy, operations, artifacts |
-| Grade | [`kapso learn grade`](/docs/reference/cli#kapso-learn-grade) | The bank is graded against the trajectory before it learns from it |
-| Update | [`kapso learn update`](/docs/reference/cli#kapso-learn-update) | The update crew folds the result in as one reviewed, tagged commit |
+| Import | [`kapso learn dev import`](/docs/reference/cli#kapso-learn-dev-import) | The campaign bundle enters the trajectory store under a stable identity |
+| Mine | [`kapso learn dev mine`](/docs/reference/cli#kapso-learn-dev-mine) | The bundle is read into derived `mined/` views: strategy, operations, artifacts |
+| Grade | [`kapso learn dev grade`](/docs/reference/cli#kapso-learn-dev-grade) | The bank is graded against the trajectory before it learns from it |
+| Update | [`kapso learn dev update`](/docs/reference/cli#kapso-learn-dev-update) | The update crew folds the result in as one reviewed, tagged commit |
 
 `kapso.learn(solution)` runs all four for a single campaign. See [From campaign to banked lesson](/docs/learning/pipeline).
 

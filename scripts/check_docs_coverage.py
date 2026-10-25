@@ -28,7 +28,7 @@ API_DOC = REPO / "docs" / "reference" / "kapso-api.mdx"
 SUBPARSER_GROUPS = (
     ("subparsers", "kapso"),
     ("learn_sub", "kapso learn"),
-    ("bank_sub", "kapso bank"),
+    ("dev_sub", "kapso learn dev"),
     ("sub", "kapso harness"),
     ("experience_sub", "kapso experience"),
 )

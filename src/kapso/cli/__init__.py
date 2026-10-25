@@ -21,12 +21,12 @@ from dotenv import find_dotenv, load_dotenv
 # README tells users to create next to their project was never read.
 load_dotenv(find_dotenv(usecwd=True))
 
-from kapso.cli import bank, build, deploy, doctor, experience, harness, inbox, learn, watch
+from kapso.cli import build, deploy, doctor, experience, harness, inbox, learn, watch
 from kapso.cli.common import list_agents
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 # The verbs, in the order `kapso --help` lists them.
-VERB_MODULES = (build, harness, experience, learn, deploy, watch, inbox, bank, doctor)
+VERB_MODULES = (build, harness, experience, learn, deploy, watch, inbox, doctor)
 
 
 def main():
@@ -75,7 +75,7 @@ Examples:
     # =========================================================================
     # Parse and execute
     # =========================================================================
-    args = parser.parse_args()
+    args = parser.parse_args(learn.normalize_argv(sys.argv[1:]))
 
     # Handle global options
     if args.list_agents:

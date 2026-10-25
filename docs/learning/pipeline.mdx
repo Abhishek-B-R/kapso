@@ -8,10 +8,10 @@ keywords: ["kapso learn", "trajectory store", "mining", "update crew", "learning
 Four stages turn one finished campaign into banked cards. `kapso.learn(solution)` runs all four; each is also a command you can run on its own.
 
 ```bash
-kapso learn import --archive ./campaign.tgz
-kapso learn mine --all
-kapso learn grade --bank ./bank --bank-head lr_042 --trajectory <id>
-kapso learn update --learner-version crew_v4 --batch-manifest batch.yaml
+kapso learn dev import --archive ./campaign.tgz
+kapso learn dev mine --all
+kapso learn dev grade --bank ./bank --bank-head lr_042 --trajectory <id>
+kapso learn dev update --learner-version crew_v4 --batch-manifest batch.yaml
 ```
 
 ## The frame does the mechanics, agents do the judgment
@@ -54,8 +54,8 @@ Bundles are stored **unpacked**, one object per file, never as a tarball. Atomic
 Reads go through exactly three doors — `manifest`, `resolve` and `open_ref` — and there is no other door. That is what lets a card cite a line in a campaign log and have the citation still resolve months later.
 
 ```bash
-kapso learn import --subset subset.yaml
-kapso learn import --archive gs://bucket/runs/task/20260731T092629_lane-a2.tgz
+kapso learn dev import --subset subset.yaml
+kapso learn dev import --archive gs://bucket/runs/task/20260731T092629_lane-a2.tgz
 ```
 
 ## Mine
@@ -74,8 +74,8 @@ Per-iteration directories carry the same treatment for each experiment.
 The frame's verification is not a formality. It checks the schema, coverage arithmetic against stable identities, ref resolution with a **quote re-grep** — every quoted line must still be found at the reference it cites — index consistency, and raw immutability against the manifest hashes.
 
 ```bash
-kapso learn mine --all
-kapso learn mine --trajectory <id> --force
+kapso learn dev mine --all
+kapso learn dev mine --trajectory <id> --force
 ```
 
 ## Grade
@@ -88,8 +88,8 @@ The bank is graded **against a trajectory before it learns from that trajectory*
 | Full | How does this bank do across a held-out split? |
 
 ```bash
-kapso learn grade --bank ./bank --bank-head lr_042 --trajectory <id>
-kapso learn grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml --learner-version crew_v4
+kapso learn dev grade --bank ./bank --bank-head lr_042 --trajectory <id>
+kapso learn dev grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml --learner-version crew_v4
 ```
 
 See [Grading](/docs/learning/graders) for what a report contains and how scores are bounded.
@@ -103,7 +103,7 @@ The transaction is rejected whole on any violation. Checks cover the surface, th
 A green transaction commits as **one reviewed commit**, tagged `lr_<id>`, and pushed to the bank home.
 
 ```bash
-kapso learn update --learner-version crew_v4 --batch-manifest batch.yaml
+kapso learn dev update --learner-version crew_v4 --batch-manifest batch.yaml
 ```
 
 Omit `--batch-manifest` for docket-only consolidation.
@@ -113,7 +113,7 @@ Omit `--batch-manifest` for docket-only consolidation.
 For one arriving campaign:
 
 ```bash
-kapso learn ingest --trajectory <id> --learner-version crew_v4
+kapso learn dev ingest --trajectory <id> --learner-version crew_v4
 ```
 
 `ingest` is the operating-regime chain: mine, then exam, then lesson. From Python, [`learn()`](/docs/reference/kapso-api#learn) does the same for a `Solution`:
