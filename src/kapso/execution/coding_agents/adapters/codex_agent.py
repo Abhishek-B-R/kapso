@@ -18,6 +18,7 @@
 
 import json
 import os
+import sys
 import re
 import shutil
 import signal
@@ -28,6 +29,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 from kapso.execution.inbox import new_requests_for_session
+from kapso.execution.coding_agents.session_record import record_run, start_run
+from kapso.execution.coding_agents.transcripts import CODEX_HOST
 from kapso.execution.coding_agents.base import (
     CodingAgentConfig,
     CodingAgentInterface,
@@ -229,6 +232,9 @@ class CodexCodingAgent(CodingAgentInterface):
             str(k): str(v) for k, v in (spec.get("env_defaults") or {}).items()
         }
         self._stream_artifact_path: Optional[str] = spec.get("stream_artifact_path")
+        # The session's record, when the session keeps one: every
+        # invocation appends its run entry there (session_record.py).
+        self._session_record_path: Optional[str] = spec.get("session_record_path")
         self._session_id: Optional[str] = spec.get("session_id")
         self._inbox_path: Optional[str] = spec.get("inbox_path")
         if self._inbox_path and not self._session_id:
@@ -312,6 +318,21 @@ class CodexCodingAgent(CodingAgentInterface):
         return cmd
 
     def _run_session(
+        self, model: str, tail: List[str], prompt: str, timeout: float
+    ) -> CodingResult:
+        """One host invocation, recorded in the session's record whatever
+        way it ends (wp6-observability.md): the turn runs, and its run
+        entry is appended in a `finally`, with the exception in flight
+        when there is one, which then propagates."""
+        recorder = start_run(CODEX_HOST, model, self._session_record_path, self._stream_artifact_path)
+        result: Optional[CodingResult] = None
+        try:
+            result = self._run_session_turn(model, tail, prompt, timeout)
+        finally:
+            record_run(recorder, result, sys.exc_info()[1])
+        return result
+
+    def _run_session_turn(
         self, model: str, tail: List[str], prompt: str, timeout: float
     ) -> CodingResult:
         last_fd, last_path = tempfile.mkstemp(prefix="codex_agent_", suffix=".last")
@@ -428,6 +449,7 @@ class CodexCodingAgent(CodingAgentInterface):
 
         reader.join(timeout=_DEADLINE_GRACE_SECONDS)
         stream_file.close()
+        process.stdout.close()
         with open(last_path, "r", encoding="utf-8", errors="replace") as fh:
             last_message = fh.read().strip()
         os.unlink(last_path)

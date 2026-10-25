@@ -38,9 +38,14 @@ class CodingResult:
     
     # Optional: Agent-generated commit message (used by hybrid commit generator)
     commit_message: Optional[str] = None
-    
+
     # Agent-specific metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # The model's safeguards refused the turn: the answer was the refusal
+    # text, not work (a failure a caller may retry on its own terms; the
+    # mining frame relaunches its lead once).
+    refused: bool = False
 
 
 @dataclass

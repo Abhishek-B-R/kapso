@@ -32,6 +32,11 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# The model's safeguard refusal, as the CLI reports it in the result: the
+# API's error line, with the safeguards named.
+API_ERROR_HEAD = "API Error"
+REFUSAL_MARKER = "safeguards flagged"
+
 # Shutdown mechanics for the streaming deadline: after SIGTERM, how long the
 # CLI gets to flush its final stream-json result event (which carries the real
 # cost) before SIGKILL. Process-teardown grace, not an operator knob.
@@ -54,6 +59,8 @@ _COLORS = {
 }
 
 from kapso.execution.inbox import new_requests_for_session
+from kapso.execution.coding_agents.session_record import record_run, start_run
+from kapso.execution.coding_agents.transcripts import CLAUDE_HOST
 from kapso.execution.coding_agents.base import (
     CodingAgentInterface, 
     CodingAgentConfig, 
@@ -251,6 +258,9 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         self._stream_artifact_path: Optional[str] = config.agent_specific.get(
             "stream_artifact_path"
         )
+        # The session's record, when the session keeps one: every
+        # invocation appends its run entry there (session_record.py).
+        self._session_record_path: Optional[str] = config.agent_specific.get("session_record_path")
 
         # The campaign inbox (docs/research/evolve-hub-design.md v4 §4.2):
         # kapso mints the session id up front (--session-id) so neither the
@@ -526,6 +536,27 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         )
 
     def _run_streaming(
+        self,
+        prompt: str,
+        model: str,
+        timeout_seconds: Optional[float],
+        resume_session_id: Optional[str] = None,
+    ) -> CodingResult:
+        """One host invocation, recorded in the session's record whatever
+        way it ends (wp6-observability.md): the turn runs, and its run
+        entry is appended in a `finally`, with the exception in flight
+        when there is one, which then propagates."""
+        recorder = start_run(CLAUDE_HOST, model, self._session_record_path, self._stream_artifact_path)
+        result: Optional[CodingResult] = None
+        try:
+            result = self._run_streaming_turn(
+                prompt, model, timeout_seconds, resume_session_id=resume_session_id
+            )
+        finally:
+            record_run(recorder, result, sys.exc_info()[1])
+        return result
+
+    def _run_streaming_turn(
         self,
         prompt: str,
         model: str,
@@ -1021,11 +1052,18 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
             files_changed = self._get_changed_files()
             self._cumulative_cost += total_cost
             
+            output = result_text or "\n".join(assistant_texts)
+            # The model's safeguards refused the turn: the CLI answers with
+            # the API's refusal line as the result, and the turn did no
+            # work (the WP3 proof's mining lead, 2026-10-25).
+            refused = output.startswith(API_ERROR_HEAD) and REFUSAL_MARKER in output
             return CodingResult(
-                success=True,
-                output=result_text or "\n".join(assistant_texts),
+                success=not refused,
+                output=output,
                 files_changed=files_changed,
+                error=output if refused else None,
                 cost=total_cost,
+                refused=refused,
                 metadata={
                     "model": model,
                     "planning_mode": self._planning_mode,
