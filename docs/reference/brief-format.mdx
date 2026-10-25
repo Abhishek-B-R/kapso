@@ -19,7 +19,7 @@ object in Python; one grammar, read by `Brief.read(path)` and written by
 | `Target` | `target` | text | no |
 | `Rules` | `rules` | `- ` items | no |
 | `Budget` | `budget` | `name=value` tokens: `minutes`, `experiments`, `usd`, `reserve_minutes` | no |
-| `Harness` | `harness` | a reference, kept verbatim | no |
+| `Harness` | `harness` | a [harness reference](/docs/reference/harness#the-reference): a bundled name, a directory read from where the build runs, or a git reference; `--harness` and `load_harness()` win over it | no |
 | `Experience` | `experience` | `- ` items, or one comma-separated line | no |
 
 Names are matched as whole words at the start of an unindented line, in

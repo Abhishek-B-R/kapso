@@ -29,6 +29,7 @@ SUBPARSER_GROUPS = (
     ("subparsers", "kapso"),
     ("learn_sub", "kapso learn"),
     ("bank_sub", "kapso bank"),
+    ("sub", "kapso harness"),
 )
 
 
@@ -48,7 +49,7 @@ def read_package(package: Path) -> str:
 
 
 def subcommands(source: str, variable: str) -> list[str]:
-    pattern = re.escape(variable) + r'\.add_parser\(\s*\n?\s*"([a-z][a-z_-]*)"'
+    pattern = r"(?<![A-Za-z0-9_])" + re.escape(variable) + r'\.add_parser\(\s*\n?\s*"([a-z][a-z_-]*)"'
     return sorted(set(re.findall(pattern, source)))
 
 

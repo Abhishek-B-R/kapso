@@ -33,6 +33,8 @@ Kapso(
 
 | Method | Returns | What it does |
 |--------|---------|--------------|
+| [`load_harness()`](#load-harness) | `Harness` | Load the domain layer the verbs run with |
+| [`harness`](#load-harness) | `Harness \| None` | The loaded harness |
 | [`build()`](#build) | `Solution` | Run an experiment campaign that meets a brief |
 | [`research()`](#research) | `ResearchFindings` | Deep web research on an objective |
 | [`learn()`](#learn) | `LessonResult` | Mine one finished campaign into the lesson bank |
@@ -42,6 +44,31 @@ Kapso(
 | [`memory`](#memory) | `MemoryStatus` | What this agent knows right now |
 | [`Kapso.status()`](#status) | `OperationStatusView` | Read any operation's status file |
 | [`close()`](#close) | `None` | Release knowledge-search network clients |
+
+## load_harness
+
+Loads a [harness](/docs/harnesses): the domain's pages, skills, tool
+servers, delegates and hooks, staged into every session of the verbs that
+follow.
+
+```python
+load_harness(ref: str) -> Harness
+```
+
+| Argument | What it does |
+|----------|--------------|
+| `ref` | A bundled name (`trading`), a directory (`./harnesses/trading`, read from the working directory), or a git reference (`git+https://github.com/acme/harnesses@v3#trading`, `acme/harnesses@v3#trading`) |
+
+```python
+harness = kapso.load_harness("../harnesses/trading")
+harness.name, harness.version, harness.hash, harness.source   # the identity every record carries
+harness.missing                                               # what this machine lacks, [] when nothing
+kapso.harness                                                 # the same object, or None
+```
+
+It resolves the reference, fetching a git one into the store, runs `check` and raises `HarnessError` on a failure, hashes the directory, and reads what this machine lacks into `missing` without raising. A second call replaces the first: one object, one harness. Nothing starts here. The forms, the checks and the handle are in the [harness reference](/docs/reference/harness).
+
+`build()` uses the loaded harness over the brief's `Harness` line, and refuses before any session while a need of the build's modules is unmet. `deploy()` and `learn()` take the harness from the solution's record when none is loaded; a loaded one of the same name is used instead, another version included; another name is refused.
 
 ## build
 
@@ -162,7 +189,9 @@ read back by `Solution.open(path)`.
 | `requests` | `list[dict]` | What you must answer when `stopped_reason` is `waiting_for_user`; empty otherwise |
 | `feedback` | `str \| None` | The last judgment, in full |
 | `evaluator` | `EvaluatorRef \| None` | `version`, `evaluator_id`, `provenance` of the evaluator the score was measured under; `None` when none was registered |
-| `harness`, `experience` | | The harness and the experience sources the build ran with, as those features ship |
+| `harness` | `HarnessRef \| None` | `name`, `version`, `hash`, `source` of the harness the build ran with; `None` without one |
+| `verification` | `dict \| None` | The harness's verdict on the delivered candidate: `verdict`, `summary`, `findings`; `None` when no verification ran |
+| `experience` | | The experience sources the build ran with, as that feature ships |
 | `rejected_candidates` | `int` | Candidates rejected for touching the evaluator |
 | `callback_metrics`, `callback_primary_metric` | `dict`, `str \| None` | Your own `iteration_evaluator`'s numbers for the delivered candidate |
 | `knowledge_index`, `experience_head` | `str \| None` | The knowledge index and the lesson-bank commit the build drew on |
@@ -255,6 +284,8 @@ learn(
 lesson = kapso.learn(solution)
 print(lesson.explain())
 ```
+
+On a campaign built with a harness, the learning module's pages join the mining and update crews' prompts, and the trajectory manifest records the build's harness and, when it differs, the one the lesson ran with.
 
 ### LessonResult
 
@@ -353,7 +384,7 @@ result = deployed.run({"data_path": "./test.csv"})
 deployed.stop()
 ```
 
-`AUTO` picks a strategy for you. See [Deployment strategies](/docs/deployment/strategies).
+`AUTO` picks a strategy for you. See [Deployment strategies](/docs/deployment/strategies). On a solution built with a harness, the selector and the adapter carry its deployment module: the pages in their prompts, its skills, servers and hooks beside them (see [Use a harness](/docs/harnesses/use#deploy-and-learn)).
 
 ## index_kg
 

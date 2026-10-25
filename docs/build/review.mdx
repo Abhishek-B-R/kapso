@@ -36,7 +36,9 @@ and names `kapso watch`.
 | `requests` | What you must answer, when `stopped_reason` is `waiting_for_user` |
 | `feedback` | The last judgment, in full |
 | `evaluator` | The evaluator version the score was measured under; `None` unless the evaluation maintainer is configured (see [Evaluation](/docs/build/evaluation#versioned-the-registry)) |
-| `rejected_candidates` | Candidates rejected for touching the evaluator |
+| `harness` | The [harness](/docs/harnesses) the build ran with: `name`, `version`, `hash`, `source`; `None` without one |
+| `verification` | The harness's verdict on the delivered candidate: `verdict`, `summary`, `findings`; `None` when no verification ran |
+| `rejected_candidates` | Candidates rejected for touching the evaluator, or voided by the harness's verification |
 | `callback_metrics`, `callback_primary_metric` | Your own evaluator's numbers, when you passed an `iteration_evaluator` |
 | `knowledge_index`, `experience_head` | The knowledge index and the lesson-bank commit this build drew on |
 
@@ -56,6 +58,10 @@ Cost:          $1.934
 Feedback:
 The AUC of 0.861 on the held-out rows clears the 0.85 target …
 ```
+
+A build on a harness adds two rows before the feedback: `Harness:` with
+the name, version and hash, and `Verified:` with the verdict and its
+summary.
 
 ## Three ways a build ends
 

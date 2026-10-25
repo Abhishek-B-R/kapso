@@ -1,0 +1,148 @@
+---
+title: "Harness reference: the manifest, the checks, the staged files, the records"
+sidebarTitle: "Harness"
+description: "Every form a harness reference takes, every field of harness.yaml, every rule kapso harness check enforces, what the engine stages per host and per module, the verdict file, and the harness fields in every record."
+keywords: ["harness.yaml", "kapso harness check", "harness reference", "mcp.json", "hook.json", "verdict.json", "kapso_task.md", "KAPSO_HARNESS_ROOT"]
+---
+
+The grammar and the contracts of the harness package, in one place. [Use a harness](/docs/harnesses/use) and [Write a harness](/docs/harnesses/write) say when each matters.
+
+## The reference
+
+A harness is named by one string, on `kapso build --harness`, `kapso deploy --harness`, the brief's `Harness` line, `kapso.load_harness()` and every `kapso harness` subcommand:
+
+| Form | Example | Resolution |
+|---|---|---|
+| bundled name | `trading` | `[a-z0-9][a-z0-9-]*` naming a harness that ships inside the package |
+| directory | `./harness/trading`, `~/harnesses/trading`, `/srv/harnesses/trading` | used in place; a relative path is read from the directory the command runs in |
+| git URL | `git+https://github.com/acme/harnesses@v3#trading`, `git+ssh://git@github.com/acme/harnesses@main`, `git@github.com:acme/harnesses@v3#trading` | the repository at the revision, the subdirectory inside it |
+| GitHub shorthand | `acme/harnesses@v3#trading` | `https://github.com/acme/harnesses`; `@rev` or `#subdirectory` or both, at least one |
+
+A git reference is cloned once into `<harness.store>/<host>-<owner>-<repo>@<rev>/` with a `source.json` beside the clone; a branch or `HEAD` moves on `kapso harness update`, a tag or a commit never does. A string that matches no form, or a directory that does not exist, raises `HarnessReferenceError` listing the forms.
+
+## harness.yaml
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `schema_version` | `1` | yes | the manifest's schema |
+| `name` | `[a-z0-9][a-z0-9-]*` | yes | the harness's name, recorded with every run |
+| `version` | string | yes | bumped when behaviour changes, recorded with every run |
+| `description` | string | yes | one sentence |
+| `environment.python` | path | no | a requirements file, relative to the harness |
+| `environment.commands` | list of strings | no | programs that must be on PATH |
+| `environment.gpu` | bool | no | an NVIDIA GPU is needed |
+| `modules.<module>.skills` | list of names | no | directories under `skills/` |
+| `modules.<module>.mcp_servers` | list of names | no | keys in `mcp.json` |
+| `modules.<module>.agents` | list of names | no | files under `agents/` without `.md` |
+| `modules.<module>.hooks` | list of names | no | directories under `hooks/` |
+
+The modules are `setup`, `ideation`, `implementation`, `verification`, `feedback`, `learning` and `deployment`; `build` runs the first five, `deploy` the last, `learn` the sixth. An unknown key anywhere is a failure. Lists are complete; nothing is inherited between modules.
+
+## Files
+
+| File | Contract |
+|---|---|
+| `instructions/guardrails.md` | reaches every session; the only page the starter writes |
+| `instructions/<module>.md` | reaches that module's sessions after the guardrails; a module with a page or any attachment has content |
+| `skills/<name>/SKILL.md` | front matter `name` (the directory's name) and `description`; scripts beside it |
+| `agents/<name>.md` | front matter `name` (the file's name) and `description`, then the delegate's instructions |
+| `mcp.json` | `{"mcpServers": {<name>: ...}}`; a stdio server has `command`, `args`, `env`, `cwd`, a streamable-http server `type` (`streamable-http` or `http`), `url`, `headers`; names match `[A-Za-z0-9_-]+`, `gated-knowledge` is reserved |
+| `hooks/<name>/hook.json` | `{"hooks": {<event>: [{"matcher": ..., "hooks": [{"type": "command", "command": ..., "timeout": ...}]}]}}`; the events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact` |
+| `requirements.txt` | the file `environment.python` names |
+
+`${PLUGIN_ROOT}` in a server's or a hook's command or arguments is the harness directory, expanded at staging; a path under it must exist. An `env` or `headers` value that is a `${NAME}` reference is read from the environment or `.env` beside the run; a literal where a reference is expected, or a value that looks like a credential, is a failure.
+
+## check
+
+`kapso harness check <ref>` and `load_harness()` run the same checks. The report prints a summary line, `check ok (7 skills, 2 agents, 2 servers, 6 hooks)` or `check failed (...)`, then one line per finding: `fail`, `warn` or `needs`.
+
+Failures, each with the file and, when it has one, the line:
+
+- an unsupported `schema_version`; a missing `name`, `version` or `description`; a name that does not match the form; an unknown module or field
+- a listed skill, agent, server or hook that does not exist; a skill or agent without front matter, with a `name` other than its directory's or file's, or without a description
+- `mcp.json` that is not `{"mcpServers": {...}}`; a server with neither `command` nor `url`, with an unknown key, a wrong type, a bad URL or a bad name; an `env` or `headers` literal, or a credential-shaped value
+- `hook.json` that is not `{"hooks": {...}}`; an unknown event; an entry, matcher or command of the wrong shape; a command with no program; a `${PLUGIN_ROOT}` path that does not exist
+- `environment.python` naming a file that does not exist; no page at all
+
+Warnings: a skill, agent, server or hook directory no module lists; a skill its module's page never mentions; a page over `harness.page_warning_lines` lines; a long opaque value in a server's `env` or `headers`.
+
+Needs, each tagged with the modules that need it: a program a hook or a server runs, or `environment.commands` names, that is not on PATH; a requirements pin that is not installed or too old, with the `pip install` line; a `${NAME}` reference that is set nowhere, tagged with the modules that mount the server; a GPU. `check` exits 1 on a failure and 0 otherwise; a need never fails `check` or `add`.
+
+## Staging
+
+Each session of a module gets, in its own directory:
+
+| | Claude Code | Codex |
+|---|---|---|
+| skills | `.claude/skills/<name>/` | `.agents/skills/<name>/` |
+| hooks, merged in manifest order | `.claude/harness-hooks.json`, passed as `--settings` | `.codex/hooks.json`, with `--dangerously-bypass-hook-trust` |
+| delegates | `.claude/harness-agents.json`, passed as `--agents`; invoked through the `Agent` tool | `.codex/harness-agents/<name>.toml`, passed as `agents.<name>` roles |
+| servers | merged with the engine's gates, `${PLUGIN_ROOT}` expanded, `cwd` the session directory | the same, with the variables the server names forwarded by name and `default_tools_approval_mode = "approve"` |
+| environment | `KAPSO_HARNESS_ROOT` = the harness directory | the same |
+| the task statement and `prepared/` | a copy of `kapso_task.md` and a symlink to `prepared/` in a session directory that is not the campaign root | the same |
+
+The prompt carries the guidance block: a `## Domain guidance (harness <name> <version>)` heading, `guardrails.md` whole, the module's page whole, then `### Paths` with the task statement's path and each prepared resource's. Learning crews get the pages only.
+
+Staging is idempotent and refuses a path the campaign's repository tracks, by name. The harness is hashed again at each staging; a hash other than the launch's fails the session naming both. The campaign's repository ignores `.claude/`, `.agents/`, `.codex/`, `kapso_task.md` and `prepared`.
+
+Per session, under `.kapso/sessions/<session>/`: `harness.json`, the record (`module`, `host`, `harness` identity, `session_dir`, `pages`, `skills`, `mcp_servers`, `agents`, `hooks`, `prepared`), and `stream.jsonl`, the host's event stream. Session names: `harness_setup`; `ideation/iter<n>/lens_planner`, `ideation/iter<n>/<cli>_<model>`, `ideation/iter<n>/selector`; `<branch>` for an implementation; `verification/<branch>`; `feedback/<branch>`.
+
+## The task statement
+
+`kapso_task.md` at the campaign root, composed by the engine and never by a session, with the sections `Brief` (the brief's text, whole), `Budget` (`minutes`, `experiments`, `usd`, `reserve_minutes`, each as set or `the config's`), `Evaluation`, `Data`, `Domain statement` and `Prepared resources`. The setup session writes the domain statement to `.kapso/harness_setup/statement.md` and resources under `prepared/<name>/`; the engine composes the statement again after it, verifies that `kapso_evaluation/` and `kapso_datasets/` are unchanged, and records `harness_setup` (`done`, `prepared`, `cost_usd`) in the checkpoint. The session's timeout is `harness.setup_minutes`, clamped by the budget.
+
+## Verification
+
+For each attempt with a score, when the harness has verification content, under `.kapso/verification/<branch>/`: `diff.patch` against the campaign's main branch, `evaluation_output.txt`, and `verdict.json` written by the session, which runs in a detached worktree at the attempt's commit with a timeout of `harness.verification_minutes`.
+
+```json
+{"verdict": "valid", "summary": "one paragraph", "findings": []}
+{"verdict": "void", "summary": "one paragraph", "findings": [{"rule": "the rule broken", "evidence": "file:line, tool output, or a delegate's words"}]}
+```
+
+`verdict` is `valid` or `void`; `summary` is a non-empty string; `findings` is a list of `{rule, evidence}`, at least one on a void. Anything else raises `HarnessError` naming the file. A session that writes no file runs once more; then the attempt is recorded `{"verdict": "unverified", ...}`. `SearchNode.verification` holds the verdict; a void clears the score after the judge, counts as rejected, and the attempt is neither a parent nor delivered; an unverified attempt keeps its score and may be a parent but is never delivered. The judge's prompt renders the verdict beside the evaluation.
+
+## Records
+
+| Record | Fields |
+|---|---|
+| `.kapso/launch.json` | `harness`: `{name, version, hash, source}` or `null` |
+| `.kapso/status.json` | `harness`, the same; `harness_setup`: `{prepared: [...]}` once setup ran; `phases` include `harness_setup` and `verification` |
+| `.kapso/run_state.json` (schema 4) | `harness`; `harness_setup`: `{done, prepared, cost_usd}` or `null` |
+| `.kapso/solution.json` (schema 3) | `harness`; `verification`: the verdict on the delivered candidate or `null` |
+| `trajectory.yaml` (the store) | `harness`: the build's; `learning_harness`: the one `learn` ran with, when it differs |
+
+`hash` is the SHA-256 over every file of the harness directory, paths and bytes; it is not part of the config fingerprint a resume compares.
+
+## Config
+
+```yaml
+harness:
+  store: ~/.kapso/harnesses
+  page_warning_lines: 40
+  setup_minutes: 20
+  verification_minutes: 10
+  server_tool_timeout_seconds: 600
+```
+
+See [Configuration](/docs/reference/configuration#harness).
+
+## Python
+
+```python
+harness = kapso.load_harness("acme/harnesses@v3#trading")   # resolves, checks (raises on a failure), hashes
+kapso.harness                                               # the loaded Harness, or None
+harness.name, harness.version, harness.hash, harness.source # the identity every record carries
+harness.path                                                # the directory the engine stages from
+harness.manifest.module("implementation").skills            # the manifest, parsed
+harness.missing                                             # what this machine lacks: [] when nothing
+harness.missing_for(("deployment",))                        # the subset the named modules need
+harness.label()                                             # "trading 0.1.0 (3f9c1a2b7e40)"
+harness.has_content("setup")                                # whether the setup session runs
+```
+
+`load_harness` raises `HarnessReferenceError` on a reference of no form, `ManifestError` with the file and line on a manifest that does not parse, and `HarnessError` on a `check` failure. A verb raises `HarnessError` on an unmet need of its modules, on a resume with a harness that is not the launch's, and on a `deploy` or `learn` whose loaded harness has another name than the record's.
+
+Related pages: [What a harness is](/docs/harnesses) · [Use a harness](/docs/harnesses/use) · [Write a harness](/docs/harnesses/write) · [CLI reference](/docs/reference/cli#kapso-harness) · [Python API](/docs/reference/kapso-api#load-harness) · [Brief format](/docs/reference/brief-format)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

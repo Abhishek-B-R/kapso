@@ -1,0 +1,201 @@
+---
+title: "Write a harness"
+sidebarTitle: "Write a harness"
+description: "From the two-file starter kapso harness new writes to a harness with pages, skills, tool servers, delegates and hooks: what goes in each file, what check enforces, and how a session on either coding-agent CLI sees it."
+keywords: ["kapso harness new", "harness.yaml", "SKILL.md", "mcp.json", "hook.json", "delegates", "guardrails", "harness check"]
+---
+
+A harness is written once per domain and read by every session of every campaign in it. The smallest one is two files; the trading example has forty. Start small, run a build, read what the sessions did, and add what they lacked.
+
+## Start
+
+```bash
+kapso harness new trading
+```
+
+```text
+created /home/me/trading
+  harness.yaml                 name, version, description; the module lists to fill
+  instructions/guardrails.md   the rules every module's sessions read
+next: edit the two files, then  kapso harness check ./trading
+```
+
+The manifest names the harness and its version; the guardrails page holds the domain's standing rules and where to look. That already loads on a build: every session gets the page under its `Domain guidance` heading, nothing else changes.
+
+## The directory
+
+```text
+trading/
+├── harness.yaml          name, version, description, environment, modules
+├── instructions/
+│   ├── guardrails.md     every module: standing rules, where to look
+│   └── <module>.md       one module: setup, ideation, implementation, verification, feedback, deployment, learning
+├── skills/<name>/        SKILL.md with front matter; scripts beside it
+├── agents/<name>.md      a delegate: front matter, then its instructions
+├── mcp.json              tool servers by name, stdio or streamable-http
+├── servers/              the stdio servers' code, when the harness ships them
+├── hooks/<name>/         hook.json in the host's hooks format, with its script beside it
+└── requirements.txt      what the bundled tooling needs
+```
+
+Everything is defined once, under its kind, and listed per module in the manifest. A file that exists and is listed nowhere is a warning; a name listed and not defined is a failure.
+
+## harness.yaml
+
+```yaml
+schema_version: 1
+name: trading                       # [a-z0-9][a-z0-9-]*; the directory's name
+version: 0.1.0                      # bump when behaviour changes; recorded with every run
+description: Research, implement, verify and deploy systematic trading strategies.
+
+environment:                        # prerequisites of the machine; reported, never installed
+  python: requirements.txt          # a requirements file, checked against the engine's interpreter
+  commands: []                      # programs that must be on PATH
+  gpu: false
+
+modules:                            # any of the seven; a module left out still gets its pages
+  implementation:
+    skills: [backtesting, market-data, risk-limits, lookahead-scan]
+    mcp_servers: [market-data]
+    agents: [lookahead-auditor]
+    hooks: [session-brief, deny-web-fetch, protect-prepared, deny-snapshot, scan-writes, require-results]
+```
+
+`name`, `version` and `description` are required. Every module has the same four lists, and each list is complete: nothing is inherited between modules, so a hook wanted in six modules is listed in six modules. A skill name is a directory under `skills/`, an agent name a file under `agents/`, a server name a key in `mcp.json`, a hook name a directory under `hooks/`.
+
+## Pages
+
+`instructions/guardrails.md` reaches every session; `instructions/<module>.md` reaches that module's sessions, after it. Both go into the prompt whole, so they are short and dense: standing rules, the discipline of the domain, where to look. The config's `harness.page_warning_lines` (40) is where `check` starts warning. A page never holds a value that belongs to one task: the task statement carries the brief, and its values win.
+
+| Page | What it holds |
+|---|---|
+| `guardrails.md` | The rules that hold for every task in the domain, then the skills, servers and delegates a session should know exist |
+| `setup.md` | What to pin before the first experiment, and what the domain statement must record for this task |
+| `ideation.md` | The families of approaches, the axes worth exploring, what is known not to work |
+| `implementation.md` | The discipline every implementer keeps, the scripts to run before the evaluation, the files to leave behind |
+| `verification.md` | The list a verifier checks, with what: scripts, delegates, the evidence a finding needs |
+| `feedback.md` | What the judge weighs beside the score: the risk line, the rules it must see kept |
+| `deployment.md` | What a deployment of this domain's software needs |
+| `learning.md` | What is worth a lesson in this domain, and what is noise |
+
+A module with a page or any attachment has content. The setup session and the verification sessions run only when their module has content; the other modules always run.
+
+## Skills
+
+A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs beside it. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
+
+```markdown
+---
+name: lookahead-scan
+description: "Scan a strategy for look-ahead: centred windows, future shifts, whole-series statistics. Use when a signal is written or changed, before the backtest."
+---
+
+Run the scan on the attempt's diff; a hit is a finding with its file and line:
+
+    git diff main...HEAD | python3 $KAPSO_HARNESS_ROOT/skills/lookahead-scan/scripts/scan.py
+```
+
+`KAPSO_HARNESS_ROOT` is set in every staged session and names the harness directory, so a script is run where it lives. Name each skill on its module's page: `check` warns on one the page never mentions, since a session that is never told about a skill does not look for it.
+
+## Servers
+
+`mcp.json` holds the tool servers, by name, in the hosts' own format:
+
+```json
+{
+  "mcpServers": {
+    "market-data": {"command": "python3", "args": ["${PLUGIN_ROOT}/servers/market_data.py"]},
+    "broker": {"command": "python3", "args": ["${PLUGIN_ROOT}/servers/broker.py"], "env": {"BROKER_API_KEY": "${BROKER_API_KEY}"}},
+    "docs": {"type": "streamable-http", "url": "https://docs.example.com/mcp", "headers": {"Authorization": "Bearer ${DOCS_TOKEN}"}}
+  }
+}
+```
+
+A stdio server has `command`, `args`, `env` and `cwd`; a streamable-http server has `type`, `url` and `headers`. `${PLUGIN_ROOT}` is the harness directory, expanded at staging. A server runs with the session's directory as its working directory, with `KAPSO_HARNESS_ROOT` set, beside the engine's own gates; on Codex the engine forwards the variables the server names, which that host does not inherit. Names match `[A-Za-z0-9_-]+`; `gated-knowledge` is the engine's own server.
+
+A value that looks like a credential is a failure: write `"${NAME}"` and put the value in `.env` beside the run, or in the environment. `check` reports the variable as something the machine lacks, scoped to the modules that mount the server, and a build whose modules need it refuses before any session.
+
+## Delegates
+
+A delegate is a file under `agents/` with `name` and `description` in its front matter and its instructions in the body. A session hands it one piece of work and reads its report; on Claude Code it is a sub-agent, on Codex a role, and on both it gets the module's pages. The trading harness has two: an auditor the verifier asks about a suspect pattern, and a risk reviewer the judge asks about a drawdown.
+
+```markdown
+---
+name: lookahead-auditor
+description: Audits one attempt for look-ahead and reports each finding with its file, line and the bars it would read ahead.
+---
+
+You audit one attempt ...
+```
+
+## Hooks
+
+A hook is a directory under `hooks/` with a `hook.json` in Claude Code's hooks format and its script beside it. The engine merges every hook a module lists into one file per session, in manifest order, and hands it to the host: `--settings` on Claude Code, `.codex/hooks.json` on Codex. Both hosts run the script with the event on stdin and read its decision from stdout.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/deny-web-fetch/deny_web_fetch.py"}]}
+    ]
+  }
+}
+```
+
+```python
+event = json.load(sys.stdin)
+command = event.get("tool_input", {}).get("command", "")
+if not FETCHERS.search(command):
+    sys.exit(0)
+print(json.dumps({"hookSpecificOutput": {
+    "hookEventName": "PreToolUse", "permissionDecision": "deny",
+    "permissionDecisionReason": "Web fetches are off in this harness: all market data comes from the market-data server's pinned snapshot.",
+}}))
+```
+
+The events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact` and `PostCompact`. A command names `python3`, not `python`: a stock Ubuntu has only the former, and `check` reports a program that is not on PATH. What a script sees differs by host in three places:
+
+| | Claude Code | Codex |
+|---|---|---|
+| the shell tool | `Bash`, `tool_input.command` | `Bash`, `tool_input.command` |
+| the file tools | `Write`, `Edit`, `MultiEdit`; `tool_input.file_path` | `apply_patch`; `tool_input.command` is the patch, with `*** Add File:` and `*** Update File:` lines; a matcher `Edit\|Write\|MultiEdit` fires on it too |
+| a server's tool | `mcp__<server>__<tool>` | `mcp__<server>__<tool>` |
+
+A file hook reads both shapes, as the trading harness's `protect-prepared` and `scan-writes` do. A `Stop` hook sees `stop_hook_active` turn true after it blocked once, on both hosts.
+
+## Environment
+
+`environment.python` names a requirements file; `check` reads each pin against the engine's interpreter and reports what is missing or too old, with the `pip install` line. `environment.commands` are programs that must be on PATH, `environment.gpu` asks for an NVIDIA GPU. A program a hook or a server runs is checked without being listed. Nothing is installed by the engine: a need is reported by `check`, printed by `kapso harness list`, and refused by a verb whose modules need it.
+
+## Check, run, read
+
+```bash
+kapso harness check ./trading
+```
+
+`check` fails on what cannot load (an unknown module or field, a name that resolves to nothing, a page or skill without front matter, a malformed `mcp.json` or `hook.json`, a hook with an unknown event, a script that does not exist, a credential literal, a missing requirements file), warns on what should be looked at (a file no module lists, a skill its module's page never mentions, a long page, a long opaque value) and reports what the machine lacks. The [reference](/docs/reference/harness#check) lists every rule.
+
+Then run a task on it and read the campaign: `kapso_task.md`, each session's `harness.json` and `stream.jsonl`, the verdicts. A hook that never fired, a skill no session used, a page a session contradicted, a verdict without evidence: each is a sentence to add or a file to cut. The [trading example](/docs/harnesses/example-trading) is that loop, with a task tuned so the shipped strategy has room to improve.
+
+## Version and share
+
+Bump `version` when behaviour changes; the engine records name, version and a hash of the whole directory with every run, and a resume refuses content that is not the launch's. A harness in a git repository is named by reference, `acme/harnesses@v3#trading`, fetched into the store with `kapso harness add`, and read from there by every build that names it.
+
+## Never in a harness
+
+An evaluator, a dataset, a goal, a budget, a credential value, a model or runner choice for Kapso's own agents, an engine event, a memory of past tasks, or any field the engine would have to parse. Domain commands, API connections and model names inside domain content are fine.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Harness reference" icon="book" href="/docs/reference/harness">
+    Every form, rule, file and field
+  </Card>
+  <Card title="The trading example" icon="chart-line" href="/docs/harnesses/example-trading">
+    Forty files, and the run that improves them
+  </Card>
+</CardGroup>
+
+Related pages: [What a harness is](/docs/harnesses) · [Use a harness](/docs/harnesses/use) · [CLI reference](/docs/reference/cli#kapso-harness) · [Configuration](/docs/reference/configuration#harness)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

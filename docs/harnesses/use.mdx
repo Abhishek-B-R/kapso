@@ -1,0 +1,143 @@
+---
+title: "Use a harness on a build"
+sidebarTitle: "Use a harness"
+description: "Name a harness on kapso build or in the brief, check what this machine lacks, and read what the campaign recorded: the task statement, the staged sessions, the verdicts and the identity in every record."
+keywords: ["kapso build --harness", "kapso harness check", "kapso harness add", "task statement", "verification verdict", "prepared resources"]
+---
+
+A harness is named by a reference, checked before anything starts, and then every session of the campaign is staged from it. This page is the user's side; [Write a harness](/docs/harnesses/write) is the author's.
+
+## Name it
+
+Three ways, one build:
+
+```bash
+kapso build --harness ./harnesses/trading --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+```
+
+```text kapso-brief.md
+Harness      ../harnesses/trading
+```
+
+```python
+kapso = Kapso()
+kapso.load_harness("../harnesses/trading")
+solution = kapso.build(Brief.read("kapso-brief.md"), evaluation="evaluation", data="data", repo="repo", output="campaign")
+```
+
+`--harness` and `load_harness()` win over the brief's `Harness` line. A directory in the brief or on the flag is read from the directory the build runs in. A reference takes one of four forms:
+
+| Form | Example | What it is |
+|---|---|---|
+| a bundled name | `trading` | a harness that ships inside the package |
+| a directory | `./harnesses/trading` | used in place, never copied |
+| a git reference | `git+https://github.com/acme/harnesses@v3#trading` | a repository, a revision, a subdirectory |
+| GitHub shorthand | `acme/harnesses@v3#trading` | the same; `owner/repo` with `@rev` or `#subdirectory` |
+
+A git reference is fetched into the store (`harness.store` in the config, `~/.kapso/harnesses` by default) the first time it is named, and read from there after.
+
+## Check it first
+
+```bash
+kapso harness check ./harnesses/trading
+```
+
+```text
+check ok (7 skills, 2 agents, 2 servers, 6 hooks)
+name     trading 0.1.0
+```
+
+The report has three kinds of line. A `fail` line is a harness that cannot load: the author's problem, and `check` exits 1. A `warn` line is something the author should look at; the harness loads. A `needs` line is what this machine lacks, with the line that fixes it and the modules that need it:
+
+```text
+  needs  python: pyarrow>=15 (installed 14.0.2): pip install "pyarrow>=15"  [setup, ideation, implementation, verification, feedback, learning, deployment]
+  needs  BROKER_API_KEY (variable, for server broker): set it in the environment or in .env beside the run  [deployment]
+```
+
+Nothing is installed for you. A build refuses an unmet need of the modules it runs (setup, ideation, implementation, verification, feedback), before any session, naming each item and its fix; a need of another module is printed as advisory and the build goes on. `deploy` and `learn` check their own module the same way, at the call.
+
+The store's own commands:
+
+| Command | What it does |
+|---|---|
+| `kapso harness add <ref>` | Fetch a git reference into the store and check it; a directory is checked in place |
+| `kapso harness list` | The bundled and fetched harnesses, each with `ready`, what it needs, or `fails check` |
+| `kapso harness update <ref>` | Re-fetch a branch or `HEAD` reference; a tag or a commit never moves |
+| `kapso harness remove <ref>` | Delete one fetched clone; a directory is refused |
+
+## What the build does with it
+
+The launch prints the harness and what it adds:
+
+```text
+Harness: trading 0.1.0 (3f9c1a2b7e40) from /home/me/harnesses/trading
+  sessions added: harness setup, verification per attempt
+```
+
+1. **The task statement.** Kapso writes `kapso_task.md` at the campaign root: the brief whole, the budget, the evaluation and data references, the harness, the domain statement and the prepared resources. Every session is told to read it first, and its values win over any harness page.
+2. **The setup session**, once, before the first experiment, when the harness has a setup page or setup attachments. It runs at the campaign root with the setup module's skills, servers and hooks, writes the domain statement to `.kapso/harness_setup/statement.md` and leaves what every later session should find ready under `prepared/<name>/`. Kapso verifies afterwards that `kapso_evaluation/` and `kapso_datasets/` are byte for byte what they were; a change fails the build naming the harness. When the session needs something only you can provide, the campaign pauses on the [inbox](/docs/build/inbox) as any session does. The status file shows the phase `harness_setup`, and a resume never runs setup twice.
+3. **Every session is staged.** Its prompt carries a `## Domain guidance (harness trading 0.1.0)` block: `guardrails.md`, then the module's page, whole, then the paths of the task statement and the prepared resources. Beside the session, in the host's own format: skills, the merged hooks file, the delegates, and the servers mounted with the engine's own gates. The staging is written to `.kapso/sessions/<session>/harness.json` and the host's event stream to `stream.jsonl` beside it.
+4. **Verification per attempt**, when the harness has verification content. Between the evaluation and the judge, Kapso writes the attempt's diff and evaluation output under `.kapso/verification/<branch>/`, checks the branch out in a worktree of its own, and runs one verification session there. The session writes `verdict.json`:
+
+   | Verdict | What the engine does |
+   |---|---|
+   | `valid` | The attempt is judged as usual; the summary reaches the judge and the solution record |
+   | `void` | The score is cleared, the attempt counts as rejected, it is never a parent and never delivered; the judge still reads the findings |
+   | `unverified` | No verdict after two sessions: the score stands and the attempt may be a parent, but it is never delivered |
+
+   A malformed verdict fails the build naming the file. The judge's prompt carries the verdict beside the evaluation; a judge saying `valid` cannot resurrect a void attempt.
+5. **The record.** The harness's name, version, content hash and source are in `.kapso/launch.json`, `status.json`, the checkpoint and `solution.json`, as one and the same identity; `solution.verification` is the verdict on the delivered candidate.
+
+## In the campaign directory
+
+| Path | What it is |
+|---|---|
+| `kapso_task.md` | The task statement every session read |
+| `prepared/<name>/` | What the setup session pinned; read-only after it returns, mounted at the same relative path in every session |
+| `.kapso/harness_setup/statement.md` | The setup session's domain statement |
+| `.kapso/sessions/<session>/harness.json` | What the session was staged with: module, host, pages, skills, servers, delegates, hooks, prepared resources |
+| `.kapso/sessions/<session>/stream.jsonl` | The host's event stream, where a hook's decision and a delegate's report are |
+| `.kapso/verification/<branch>/` | `diff.patch`, `evaluation_output.txt` and `verdict.json` of each verified attempt |
+| `.kapso/solution.json` | `harness` and `verification` beside the delivered candidate |
+
+Sessions are named by module: `harness_setup`; `ideation/iter<n>/<member>`; `<branch>` for an implementation; `verification/<branch>`; `feedback/<branch>`.
+
+```python
+solution = Solution.open("campaign")
+solution.harness          # HarnessRef(name="trading", version="0.1.0", hash="3f9c…", source="/home/me/harnesses/trading")
+solution.verification     # {"verdict": "valid", "summary": "…", "findings": []} or None
+print(solution.explain()) # two more rows: Harness: and Verified:
+```
+
+The staged files never reach a candidate branch: `.claude/`, `.agents/`, `.codex/`, `kapso_task.md` and `prepared` are ignored in the campaign's repository, and a starting repository that tracks one of those paths is refused by name.
+
+## Resume
+
+A resume runs with the launch's harness, by content hash. Three refusals, each with its way out:
+
+| The campaign | Now | The message says |
+|---|---|---|
+| was launched with a harness | that harness has changed (a page edited, a version bumped) | both hashes, and how to get the recorded content back: `git checkout` in a directory, `kapso harness remove` then `add` for a git reference, or a new campaign |
+| was launched with a harness | none is loaded | the harness it needs: pass `--harness <source>` or load it |
+| was launched without one | a harness is loaded | a resume cannot add one; start a new campaign |
+
+A directory harness is hashed again at every session, so an edit under a running campaign fails the next session, naming both hashes.
+
+## Deploy and learn
+
+`kapso deploy campaign` and `kapso.learn(solution)` take the harness from the campaign's record and resolve its source again; the deployment module is staged into the selector's and the adapter's sessions, and the learning module's pages join the crews' prompts. A loaded harness of the same name is used instead, another version included, and both identities are printed when they differ; a different name is refused, as is a recorded source that is gone. `kapso deploy --harness <ref>` loads one for that call. The trajectory manifest a `learn` writes carries the build's harness and, when it differs, the learning one.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Write a harness" icon="pen" href="/docs/harnesses/write">
+    The author's side
+  </Card>
+  <Card title="Harness reference" icon="book" href="/docs/reference/harness">
+    Every form, rule, file and field
+  </Card>
+</CardGroup>
+
+Related pages: [What a harness is](/docs/harnesses) · [The trading example](/docs/harnesses/example-trading) · [Run and watch](/docs/build/run-and-watch) · [Review the solution](/docs/build/review) · [CLI reference](/docs/reference/cli#kapso-harness)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).
