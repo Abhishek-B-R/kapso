@@ -261,6 +261,7 @@ def test_an_env_reference_is_a_prerequisite_of_the_modules_that_mount_the_server
     assert not [row for row in check(harness, dotenv_path=str(dotenv)).missing if row.label.startswith("BROKER_API_KEY")]
 
 
+@pytest.mark.requirements_check
 def test_requirements_are_checked_against_python3_on_path(harness, monkeypatch):
     monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: sys.executable if name == "python3" else "/usr/bin/" + name)
     requirements = harness / "requirements.txt"

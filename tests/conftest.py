@@ -27,6 +27,21 @@ def pytest_configure(config):
         "markers",
         "integration: needs external infrastructure such as Weaviate or Neo4j",
     )
+    config.addinivalue_line(
+        "markers",
+        "requirements_check: the harness requirements check runs for real against python3 on PATH",
+    )
+
+
+@pytest.fixture(autouse=True)
+def harness_requirements_are_not_the_machines(request, monkeypatch):
+    """A harness's Python requirements are checked against `python3` on
+    PATH, which the test machine need not satisfy (the trading example
+    wants mcp, pandas and pyarrow); a test about anything else loads the
+    example without that machine-dependent need. A test about the check
+    itself carries the `requirements_check` marker and gets the real one."""
+    if request.node.get_closest_marker("requirements_check") is None:
+        monkeypatch.setattr("kapso.harness.check._Checker.requirements", lambda self, file: None)
 
 
 def pytest_collection_modifyitems(config, items):
