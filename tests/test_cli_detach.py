@@ -134,9 +134,11 @@ def test_build_detach_validates_the_harness_before_it_forks(tmp_path, monkeypatc
     harness = tmp_path / "harness"
     _shutil.copytree(Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading", harness)
     manifest = harness / "harness.yaml"
+    # No requirements file: that check asks python3 in a subprocess, and
+    # this test's Popen stub stands in for every process.
     manifest.write_text(manifest.read_text().replace(
         "environment:\n  python: requirements.txt\n",
-        "environment:\n  python: requirements.txt\n  commands: [kapso-test-missing-tool]\n",
+        "environment:\n  commands: [kapso-test-missing-tool]\n",
     ))
     brief = tmp_path / "kapso-brief.md"
     brief.write_text(f"Objective    Raise the Sharpe above 1\nHarness      {harness}\n")

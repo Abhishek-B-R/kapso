@@ -15,6 +15,7 @@ import re
 import sys
 import threading
 import time
+import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -770,18 +771,22 @@ class OrchestratorAgent:
         mcp_tools: List[str] = []
         inbox_agent_settings: Dict[str, Any] = {}
         if inbox_on:
+            # The inbox id doubles as the host's session id, which Claude
+            # Code requires to be a UUID; the setup session is found again
+            # by its node id, not by this value.
+            inbox_session_id = str(uuid.uuid4())
             mcp_servers, mcp_tools = get_mcp_config(
                 gates=["inbox"],
                 include_base_tools=False,
                 gate_failure_policy=strategy.gate_failure_policy,
                 inbox={
                     "KAPSO_INBOX_PATH": str(inbox["path"]),
-                    "KAPSO_SESSION_ID": HARNESS_SETUP_SESSION,
+                    "KAPSO_SESSION_ID": inbox_session_id,
                     "KAPSO_NODE_ID": str(HARNESS_SETUP_NODE),
                 },
             )
             inbox_agent_settings = {
-                "session_id": HARNESS_SETUP_SESSION,
+                "session_id": inbox_session_id,
                 "inbox_path": str(inbox["path"]),
                 "inbox_stop_grace_seconds": float(inbox["stop_grace_seconds"]),
             }
@@ -846,7 +851,7 @@ class OrchestratorAgent:
         if inbox_on:
             asked = [
                 request for request in open_requests(load_requests(inbox["path"]))
-                if request.session == HARNESS_SETUP_SESSION
+                if request.node == HARNESS_SETUP_NODE
             ]
             if asked:
                 self._setup_requests = asked

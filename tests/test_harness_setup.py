@@ -9,6 +9,7 @@ next run finish setup."""
 
 import json
 import shutil
+import uuid
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
@@ -174,7 +175,11 @@ def test_a_session_that_asks_pauses_the_campaign_and_the_reply_lets_it_finish(mo
     def ask_once(workspace_dir: Path, prompt: str) -> None:
         answered = [r for r in load_requests(inbox_path).values() if r.reply]
         if not answered:
-            file_requests(inbox_path, node=-1, session="harness_setup", entries=[ENTRY])
+            # The gate files under the id the session was given, which the
+            # host also receives as its session id: Claude Code wants a UUID.
+            session = FakeSetupAgent.calls[-1]["config"].agent_specific["session_id"]
+            assert str(uuid.UUID(session)) == session
+            file_requests(inbox_path, node=-1, session=session, entries=[ENTRY])
             return
         prepare_market_data(workspace_dir, prompt)
 

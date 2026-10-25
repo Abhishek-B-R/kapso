@@ -866,12 +866,55 @@ Two decisions taken while building are in `DECISIONS.md` under
 and the harness's servers and hooks never run there), and a staging that
 names no directory raises instead of writing into the working directory.
 
+Two more fixes came out of the first proof launches, before any
+session ran to the end: Claude Code's `--session-id` must be a UUID, and
+the setup session had passed its name (`harness_setup`) as the inbox id
+that doubles as it, so both machines' first builds died in the setup
+session with `Invalid session ID. Must be a valid UUID.`; the id is now
+minted as a UUID and the setup session's requests are found by their node
+id. And `--detach` printed Python's `ResourceWarning: subprocess N is
+still running` after a successful launch, the `Popen` object being let go
+while its child runs; the launch now drops it under a warnings filter.
+
 The trading example's data was tuned to a trend weight of 0.35: the
 shipped 20/100 cross scores 0.1384 out of sample (the brief's baseline,
 pinned by `tests/test_examples_trading.py` on every machine), a 10/50
 cross about 0.92, a 20-day momentum sign about 2.8, a volatility-targeted
 momentum about 2.2, buy-and-hold negative; the target of 1.0 is
 reachable and the baseline is not already there.
+
+## Findings for later packages
+
+- **A build without `OPENAI_API_KEY` crashes at the orchestrator's
+  construction** (WP4, WP6). `OrchestratorAgent.__init__` calls
+  `_create_knowledge_search`, whose `kg_graph_search` backend builds an
+  OpenAI embedder at construction, with the knowledge graph disabled and
+  after the preflight passed with one advisory; `kapso doctor build` does
+  not list the variable. Seen on the development box when the local smoke
+  ran without it; the fresh machines carry the key, so the proof runs did
+  not. The embedder belongs behind the knowledge-graph switch, or the
+  preflight names the variable. Pre-existing, not a harness path.
+- **A crashed detached build leaves `status.json` in its last state**
+  (WP6). Both machines' first builds died in the setup session; `kapso
+  watch` showed `RUNNING ♥ 25s ago ⚠ DEAD (pid gone)` with the phase
+  `harness_setup`, and the error was only in `campaign.log`. The entry
+  point should write `state: failed` with the error on an unhandled
+  exception, as it does for a failure it catches.
+- **The host's session id is minted by the callers** (WP6). The inbox id
+  doubles as Claude Code's `--session-id`, which must be a UUID, and is
+  minted in two places (`implementation.py` and the orchestrator's setup
+  session). The adapter could mint it and hand it to the inbox gate, so a
+  new session kind cannot repeat this package's mistake.
+- **The traceback as the user's error message** (WP6, WP7). A
+  `HarnessError` or `BriefError` prints a full traceback in the terminal
+  and the detached log. An excepthook that prints the message alone for
+  the engine's own error classes, keeping the traceback in the log, is the
+  fix; the harness messages were written to be read on their own.
+- **Learning attachments** (WP3). Only the learning module's pages reach
+  the crews (`pages_block`); its skills, servers and hooks are not staged,
+  because the crews' sessions are WP3's to shape.
+- **`strict_mcp_config` and the `.claude_mcp` cleanup race**, pre-existing,
+  noted in change 9 and left alone.
 
 ## Risks
 
