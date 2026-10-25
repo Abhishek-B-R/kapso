@@ -71,7 +71,6 @@ from kapso.core.config import (
     load_mode_config,
 )
 from kapso.experience import (
-    SCOPE_HARNESS,
     ExperienceSource,
     parse_experience_reference,
     resolve_source,
@@ -349,16 +348,16 @@ class Kapso:
         behaviour: nothing served."""
         return list(self._experience)
 
-    def load_experience(self, ref: str, *, scope: str = SCOPE_HARNESS) -> ExperienceSource:
-        """Resolve `mine`, `leeroopedia`, a bank path, a bank git reference
-        or an index name; confirm it exists and is readable; pin it (a
-        bank at its head, `mine` after a pull from its remote; an index at
-        its id); append it to the object's sources, replacing an earlier
-        load of the same reference. `scope` is `harness` (the cards
-        learned under the loaded harness, `mine` only) or `all`. Nothing
+    def load_experience(self, ref: str) -> ExperienceSource:
+        """Resolve `mine` (or `mine:all`, every card you measured whatever
+        the harness), `leeroopedia`, a bank path, a bank git reference or
+        an index name; confirm it exists and is readable; pin it as it is
+        on disk (a bank at its head, an index at its id; loading never
+        pulls, `update_experience` does); append it to the object's
+        sources, replacing an earlier load of the same reference. Nothing
         is served until a verb runs."""
         reference = parse_experience_reference(ref, indexes_root=Path(self._experience_settings["indexes"]))
-        source = resolve_source(reference, settings=self._experience_settings, scope=scope)
+        source = resolve_source(reference, settings=self._experience_settings)
         self._experience = [s for s in self._experience if s.reference != source.reference] + [source]
         print(f"Experience: {source.label()}")
         return source
@@ -366,8 +365,9 @@ class Kapso:
     def share_experience(self, url: str) -> None:
         """Attach `url` as your bank's remote and push the bank there; a
         bank that does not exist yet is created first. learn() pushes
-        there from then on, and `mine` pulls from there before it is
-        served. Credentials are git's own."""
+        there from then on, `update_experience` pulls from there, and the
+        intro says "measured by you and your team". Credentials are git's
+        own."""
         home = Path(self._experience_settings["bank_home"]).expanduser()
         if not home.exists():
             init_bank(str(home))

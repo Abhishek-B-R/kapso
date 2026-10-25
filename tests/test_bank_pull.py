@@ -7,10 +7,13 @@
 
 import json
 
+import pytest
+
 from kapso.gated_mcp.presets import resolve_gates
 from kapso.learning.bank import Bank
 from kapso.learning.retriever import (
     append_pull_event,
+    exposure_ladder,
     render_cards,
     render_index,
     render_sources_cards,
@@ -18,14 +21,14 @@ from kapso.learning.retriever import (
 )
 from tests.test_bank_retriever import build_bank, card_text
 
-TASK = {"family": "entity_binary_classification", "dataset": "rel-hm"}
+TASK = {"harness": "trading"}
 
 
 def make_pull_bank(tmp_path):
     root = build_bank(tmp_path, {
         "strong-card": card_text("strong-card", score=0.8),
         "weak-card": card_text("weak-card", score=0.4),
-        "avito-card": card_text("avito-card", scope=["dataset:rel-avito"]),
+        "avito-card": card_text("avito-card", scope=["harness:other"]),
         "retired-state-card": card_text("retired-state-card", state="retired"),
         "decoy-card": card_text("decoy-card", score=0.9),
         "tension-a": card_text("tension-a", contradicts=("tension-b",)),
@@ -35,13 +38,16 @@ def make_pull_bank(tmp_path):
     return Bank(str(root))
 
 
-def test_index_is_the_whole_bank_no_filtering(tmp_path):
+def test_index_lists_the_whole_bank_at_every_scope_and_filters_for_mine(tmp_path):
     bank = make_pull_bank(tmp_path)
     result = render_index(bank, TASK)
     names = [row["card"] for row in result["listed"]]
-    # no scope filtering: the out-of-scope card is LISTED (2026-08-23
-    # amendment — scope is displayed information, never a gate)
+    # every scope (a bank you read, `mine:all`): the out-of-scope card is
+    # LISTED; your own bank at its default scope leaves it out
     assert "avito-card" in names
+    assert "avito-card" not in [
+        row["card"] for row in render_index(bank, TASK, scope="harness")["listed"]
+    ]
     # quarantine alone stays frame-side
     assert "retired-state-card" not in names
     assert "decoy-card" not in names
@@ -81,6 +87,36 @@ def test_pull_events_append_as_jsonl(tmp_path):
     rows = [json.loads(line) for line in log.read_text().splitlines()]
     assert [row["tool"] for row in rows] == ["bank_index", "bank_get_card"]
     assert all("ts" in row for row in rows)
+
+
+def test_the_exposure_ladder_is_read_back_per_source(tmp_path):
+    # The learning side credits a usage claim to the source a card was
+    # served from: the ladder is {card: {source: highest level}}, and a
+    # malformed log line raises — the log is evidence, not a hint.
+    log = tmp_path / "serving-pull.jsonl"
+    append_pull_event(str(log), {"tool": "bank_index", "listed": [
+        {"card": "a-card", "source": "mine", "exposure": "indexed"},
+        {"card": "a-card", "source": "acme/kapso-bank", "exposure": "indexed"},
+        {"card": "b-card", "source": "mine", "exposure": "indexed"},
+    ]})
+    append_pull_event(str(log), {"tool": "bank_get_card", "served": [
+        {"card": "a-card", "source": "acme/kapso-bank", "exposure": "read"},
+    ]})
+    append_pull_event(str(log), {"tool": "bank_get_card_with_evidence", "served": [
+        {"card": "a-card", "source": "acme/kapso-bank", "exposure": "evidence-read"},
+        {"card": "b-card", "source": "mine", "exposure": "read"},
+    ]})
+    append_pull_event(str(log), {"tool": "bank_get_card", "served": [
+        {"card": "b-card", "source": "mine", "exposure": "read"},   # a lower rung never lowers the ladder
+    ]})
+    assert exposure_ladder(log) == {
+        "a-card": {"mine": "indexed", "acme/kapso-bank": "evidence-read"},
+        "b-card": {"mine": "read"},
+    }
+    with open(log, "a") as handle:
+        handle.write("not json\n")
+    with pytest.raises(json.JSONDecodeError):
+        exposure_ladder(log)
 
 
 def test_bank_gate_resolves_only_with_campaign_env():

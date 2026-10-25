@@ -20,12 +20,13 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from kapso.experience.sources import PROVENANCE_MINE, SCOPE_ALL, ExperienceError, ExperienceSource
+from kapso.experience.reference import MINE
+from kapso.experience.sources import SCOPE_ALL, ExperienceError, ExperienceSource
+from kapso.harness.manifest import RESERVED_HARNESS_NAME as NO_HARNESS
 from kapso.learning.bank import Bank
 from kapso.learning.retriever import BANK_TOOLS_TEXT
 
 HARNESS_COORDINATE = "harness"
-NO_HARNESS = "none"
 INDEX_RECORD = "index.json"
 _UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
 
@@ -165,9 +166,9 @@ def source_lines(sources: List[ExperienceSource], counts: Dict[str, int], task_c
             cards = counts.get(source.reference, 0)
             noun = f"{cards} card{'s' if cards != 1 else ''}"
             pinned = f"at head `{(source.head or '')[:12]}`, pinned for this campaign"
-            if source.provenance == PROVENANCE_MINE:
+            if source.reference == MINE:
                 where = "every scope" if source.scope == SCOPE_ALL else under
-                lines.append(f"{noun} measured by you, {where}, from your bank {pinned}")
+                lines.append(f"{noun} {source.provenance}, {where}, from your bank {pinned}")
             else:
                 lines.append(f"{noun} from `{source.reference}`, {source.provenance}, every scope, {pinned}")
         elif source.kind == "hosted":

@@ -38,7 +38,15 @@ except ImportError:
     Tool = None
     TextContent = None
 
+from kapso.experience.reference import MINE
 from kapso.gated_mcp.gates.base import ToolGate, GateConfig
+from kapso.learning.bank import Bank
+from kapso.learning.retriever import (
+    append_pull_event,
+    probe_offers,
+    render_sources_cards,
+    render_sources_index,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +62,8 @@ class BankGate(ToolGate):
         self._banks: Optional[List[Tuple[Dict[str, Any], Any]]] = None
         self._offers: Optional[Dict[str, Dict[str, str]]] = None
 
-    def _get_banks(self) -> List[Tuple[Dict[str, Any], Any]]:
+    def _get_banks(self) -> List[Tuple[Dict[str, Any], Bank]]:
         if self._banks is None:
-            from kapso.learning.bank import Bank
             entries = json.loads(os.environ["KAPSO_BANKS"])
             self._banks = [(entry, Bank(entry["dir"])) for entry in entries]
         return self._banks
@@ -65,12 +72,14 @@ class BankGate(ToolGate):
         return {"harness": os.environ["KAPSO_TASK_HARNESS"]}
 
     def _probe_offers(self) -> Dict[str, Dict[str, str]]:
+        """Probe offers ride your own bank alone: a probe is a measurement
+        you pay for whose evidence lands in a bank you can write."""
         if self._offers is None:
-            from kapso.learning.retriever import probe_offers
             budget = int(os.environ["KAPSO_PROBE_BUDGET"])
             self._offers = {
                 entry["reference"]: probe_offers(bank, self._task_coords(), budget)
                 for entry, bank in self._get_banks()
+                if entry["reference"] == MINE
             }
         return self._offers
 
@@ -151,11 +160,6 @@ class BankGate(ToolGate):
     ) -> Optional[List["TextContent"]]:
         if not HAS_MCP:
             return None
-        from kapso.learning.retriever import (
-            append_pull_event,
-            render_sources_cards,
-            render_sources_index,
-        )
         banks = self._get_banks()
         coords = self._task_coords()
         log_path = os.environ["KAPSO_SERVING_PULL_LOG"]

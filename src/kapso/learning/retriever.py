@@ -5,9 +5,11 @@
 # card content is selected or injected by the frame. Selection belongs to
 # the reading agent: `render_index` returns the WHOLE BANK as book-index
 # lines (name + hero + score + applies-when), and the agent opens cards
-# with `render_cards` at two depths (body / body+evidence). Nothing is
-# scope-filtered on either surface — scope is displayed information and
-# relevance judgment belongs to the reader; only quarantine is law
+# with `render_cards` at two depths (body / body+evidence). The one
+# filter on either surface is the scope rule (wp3-experience.md): your
+# own bank at its default scope serves the cards whose scope covers the
+# task's harness coordinate, `mine:all` and every bank you read serve
+# everything; relevance judgment belongs to the reader; quarantine is law
 # (decoys and retired states, frame-side, silent). Rank in the index is
 # plain reliability order — no discounts, no k caps, no ranking cut. Everything here is a pure function of (task, bank
 # checkout, bank_head): no agent, no clock, no randomness — the hindcast
@@ -24,6 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from kapso.experience.reference import SCOPE_ALL
 from kapso.learning.bank import Bank, Card
 from kapso.learning.bank_invariants import usage_claims_serving
 
@@ -134,22 +137,26 @@ def _index_row(card: Card) -> Dict[str, Any]:
 
 
 def render_index(
-    bank: Bank, task_coords: Dict[str, str], section: Optional[str] = None
+    bank: Bank, task_coords: Dict[str, str], section: Optional[str] = None, scope: str = SCOPE_ALL,
 ) -> Dict[str, Any]:
-    """bank_index: the WHOLE BANK as book-index lines — no filtering.
+    """bank_index: the bank as book-index lines.
 
     One line-group per card — `[card:name] score X` / hero one-liner /
     `applies-when:` (the card's authored scope_conditions, when present) —
     reliability-ordered within `## Insights` / `## Procedures` sections,
-    closing with the gaps footer. Nothing is pre-selected or scoped away
-    for the reader: scope is displayed information (the applies-when
-    line), and relevance judgment belongs to the calling agent, scanning
-    with its own plan in mind. Only quarantine stays frame-side
-    (servable() excludes decoys and retired states, silently). The gaps
-    footer still reports scope coverage for THIS task — informational,
-    never a filter."""
+    closing with the gaps footer. Nothing is pre-selected for the reader
+    beyond the scope rule (docs/plans/redesign/wp3-experience.md): under
+    `scope="harness"` (`mine` at its default) only the cards whose scope
+    covers the task's coordinate are listed; under `scope="all"` (`mine:all`,
+    every bank you read) the whole bank is. Relevance judgment belongs to
+    the calling agent, scanning the applies-when lines with its own plan in
+    mind. Quarantine stays frame-side under every scope (servable()
+    excludes decoys and retired states, silently). The gaps footer reports
+    scope coverage for THIS task."""
     listed_cards = list(bank.servable())
     gaps = _gaps([c for c in listed_cards if c.eligible_for(task_coords)])
+    if scope != SCOPE_ALL:
+        listed_cards = [c for c in listed_cards if c.eligible_for(task_coords)]
     if section:
         if section not in ("insights", "procedures"):
             raise ValueError(f"unknown index section: {section}")
@@ -304,12 +311,14 @@ def render_cards(
     card_names: List[str],
     with_evidence: bool,
     offers: Dict[str, str],
+    scope: str = SCOPE_ALL,
 ) -> Dict[str, Any]:
     """bank_get_card / bank_get_card_with_evidence: full cards on request.
 
-    Anything the index shows can be opened — scope is the reader's
-    judgment, never a gate (a visible-but-unreadable card would be
-    incoherent). Quarantine stays law: decoys refuse as unknown, and
+    Anything the index shows can be opened: the scope rule that filters
+    the index filters the reads the same way (a card outside the task's
+    coordinate refuses by name under `scope="harness"`, and names the
+    lift). Quarantine stays law: decoys refuse as unknown, and
     non-servable states refuse by name. The co-serving guard names
     contradicts pairs inside one returned set."""
     exposure = "evidence-read" if with_evidence else "read"
@@ -326,6 +335,14 @@ def render_cards(
             refused.append(
                 {"card": name, "reason": f"not servable (state={card.state})"}
             )
+        elif scope != SCOPE_ALL and not card.eligible_for(task_coords):
+            refused.append({
+                "card": name,
+                "reason": (
+                    f"out of scope under harness:{task_coords.get('harness')} "
+                    f"(scope {card.scope!r}; `mine:all` serves every card you measured)"
+                ),
+            })
         else:
             got.append(card)
     tensions = _tension_pairs(got)
@@ -370,7 +387,7 @@ def render_sources_index(
     listed: List[Dict[str, Any]] = []
     gaps: List[str] = []
     for entry, bank in banks:
-        result = render_index(bank, task_coords, section)
+        result = render_index(bank, task_coords, section, entry["scope"])
         if len(banks) > 1:
             texts.append(f"# {entry['reference']} ({entry['provenance']})\n\n{result['text']}")
         else:
@@ -415,7 +432,9 @@ def render_sources_cards(
         names = by_source.get(entry["reference"])
         if not names:
             continue
-        result = render_cards(bank, task_coords, names, with_evidence, offers_by_source.get(entry["reference"], {}))
+        result = render_cards(
+            bank, task_coords, names, with_evidence, offers_by_source.get(entry["reference"], {}), entry["scope"],
+        )
         texts.append(result["text"])
         served.extend({**row, "source": entry["reference"]} for row in result["served"])
         refused.extend(result["refused"])
@@ -518,3 +537,30 @@ def append_pull_event(log_path: str, event: Dict[str, Any]) -> None:
     }
     with open(path, "a") as handle:
         handle.write(json.dumps(stamped) + "\n")
+
+
+EXPOSURE_LEVELS = ("indexed", "read", "evidence-read")
+
+
+def exposure_ladder(log_path) -> Dict[str, Dict[str, str]]:
+    """The pull log read back: for every card name, the highest exposure
+    each loaded source gave it — `{card: {source: level}}`, the shape the
+    evidence check credits usage claims against (a cited name belongs to
+    the source it was read from). A malformed line raises; the log is
+    evidence, not a hint."""
+    ladder: Dict[str, Dict[str, str]] = {}
+
+    def raise_to(card: str, source: str, level: str) -> None:
+        current = ladder.setdefault(card, {}).get(source)
+        if current is None or EXPOSURE_LEVELS.index(level) > EXPOSURE_LEVELS.index(current):
+            ladder[card][source] = level
+
+    for number, line in enumerate(Path(log_path).read_text().splitlines(), start=1):
+        if not line.strip():
+            raise ValueError(f"{log_path}:{number}: an empty line in the pull log")
+        event = json.loads(line)
+        for row in event.get("listed", []):
+            raise_to(row["card"], row["source"], "indexed")
+        for row in event.get("served", []):
+            raise_to(row["card"], row["source"], row["exposure"])
+    return ladder

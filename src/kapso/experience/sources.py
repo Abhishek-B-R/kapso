@@ -12,16 +12,23 @@ from typing import Any, Callable, Dict, Optional
 
 from dotenv import dotenv_values, find_dotenv
 
-from kapso.experience.reference import HOSTED, MINE, ExperienceReference, ExperienceReferenceError
+from kapso.experience.reference import (
+    HOSTED,
+    MINE,
+    SCOPE_ALL,
+    SCOPE_HARNESS,
+    SCOPES,
+    ExperienceReference,
+    ExperienceReferenceError,
+)
 from kapso.experience.store import ExperienceStore
 from kapso.handles import ExperienceRef
 
 PROVENANCE_MINE = "measured by you"
+PROVENANCE_TEAM = "measured by you and your team"     # `mine` with a remote attached
 PROVENANCE_BANK = "measured by others"
 PROVENANCE_REPORTED = "reported by others"
-SCOPE_HARNESS = "harness"
-SCOPE_ALL = "all"
-SCOPES = (SCOPE_HARNESS, SCOPE_ALL)
+YOURS = (PROVENANCE_MINE, PROVENANCE_TEAM)
 HOSTED_KEY = "LEEROOPEDIA_API_KEY"
 _CARD_DIRS = ("insights/", "procedures/")
 
@@ -43,7 +50,10 @@ class ExperienceSource:
     cards: Optional[int] = None
 
     def ref(self) -> ExperienceRef:
-        return ExperienceRef(reference=self.reference, kind=self.kind, resolved=self.resolved, head=self.head, provenance=self.provenance)
+        return ExperienceRef(
+            reference=self.reference, kind=self.kind, resolved=self.resolved, head=self.head,
+            provenance=self.provenance, scope=self.scope,
+        )
 
     def label(self) -> str:
         if self.kind == "bank":
@@ -64,14 +74,13 @@ def resolve_source(
     reference: ExperienceReference,
     *,
     settings: Dict[str, Any],
-    scope: str = SCOPE_HARNESS,
     dotenv_path: Optional[str] = None,
 ) -> ExperienceSource:
-    """The source a reference names, pinned: `mine` pulled from its remote
-    and at its head, a bank you read at its clone's head, the hosted gate
-    with its key present, an index at its id."""
-    if scope not in SCOPES:
-        raise ExperienceError(f"scope must be one of {', '.join(SCOPES)}, not {scope!r}")
+    """The source a reference names, pinned as it is on disk: `mine` at
+    its home's head (`mine:all` lifting the scope rule), a bank you read
+    at its clone's head, the hosted gate with its key present, an index
+    at its id. Loading never touches the network beyond a first fetch of
+    a bank you read; `update` is the network step."""
     store = ExperienceStore(settings["banks"], settings["indexes"])
     if reference.kind == MINE:
         home = Path(settings["bank_home"]).expanduser()
@@ -81,11 +90,11 @@ def resolve_source(
                 "and a first learn() creates it too"
             )
         require_bank(home, reference.raw)
-        pull_home(home)
         head = bank_head(home)
         return ExperienceSource(
-            reference=reference.raw, kind="bank", resolved=str(home), head=head, provenance=PROVENANCE_MINE,
-            scope=scope, path=home, cards=count_cards(home, head),
+            reference=MINE, kind="bank", resolved=str(home), head=head,
+            provenance=PROVENANCE_TEAM if has_origin(home) else PROVENANCE_MINE,
+            scope=reference.scope, path=home, cards=count_cards(home, head),
         )
     if reference.kind == "path":
         require_bank(reference.path, reference.raw)
@@ -152,10 +161,18 @@ def bank_head(home: Path) -> str:
     ).stdout.strip()
 
 
+def has_origin(home: Path) -> bool:
+    """Whether `mine` is shared: a remote named origin is attached."""
+    origin = subprocess.run(
+        ["git", "-C", str(home), "remote", "get-url", "origin"], capture_output=True, text=True,
+    )
+    return origin.returncode == 0
+
+
 def pull_home(home: Path) -> None:
-    """`mine` with a remote attached pulls before it is pinned, so the
-    team's lessons are served; a history that does not fast-forward is
-    an error in git's words."""
+    """`kapso experience update`: `mine` with a remote attached takes the
+    remote's main, so the team's lessons are served next; a history that
+    does not fast-forward is an error in git's words."""
     origin = subprocess.run(
         ["git", "-C", str(home), "remote", "get-url", "origin"], capture_output=True, text=True,
     )

@@ -69,11 +69,11 @@ def make_serve_scenario(tmp_path):
         "id": "b8-serving",
         "machinery": "serve",
         "description": "serving relevance on a known-truth bank",
-        "task": {"family": "entity_binary_classification", "dataset": "rel-hm"},
+        "task": {"harness": "trading"},
     }))
     (scenario_dir / "truth.md").write_text(
-        "the index lists the WHOLE bank (both cards; scope is displayed\n"
-        "information, never a filter); gaps report scope coverage.\n"
+        "the index lists every card the scope rule allows (both cards at\n"
+        "every scope); gaps report scope coverage.\n"
     )
     (scenario_dir / "rubric.md").write_text(
         "1. Is every served card semantically relevant?\n"
@@ -81,7 +81,7 @@ def make_serve_scenario(tmp_path):
     )
     build_bank(scenario_dir / "fixture", {
         "relevant-card": card_text("relevant-card"),
-        "avito-card": card_text("avito-card", scope=["dataset:rel-avito"]),
+        "avito-card": card_text("avito-card", scope=["harness:other"]),
     })
     return scenario_dir
 

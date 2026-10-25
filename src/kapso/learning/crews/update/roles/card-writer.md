@@ -62,21 +62,24 @@ WRITING — the rules that bind every edit:
 - Scope is a serving contract, not a description (crew_v1 exam finding: an
   out-of-scope-mechanism card served into tasks it cannot help is charged
   as serving NOISE). Choose `scope` coordinates no broader than where the
-  MECHANISM binds — a mechanism tied to one task family gets
-  `[family:<x>]`, never `domain`; `domain` is earned by evidence from ≥2
-  families or a mechanism argument that plainly spans them. And
-  `scope_conditions` states WHEN the mechanism applies, precisely enough
-  that a retriever miss is a boundary fact, not a vague hedge.
+  MECHANISM binds — a mechanism tied to one harness (the domain a
+  campaign ran under: its manifest `harness.name`, or `none` when it ran
+  without one) gets `[harness:<name>]`, never `domain`; `domain` is
+  earned by evidence from ≥2 harnesses or a mechanism argument that
+  plainly spans them. And `scope_conditions` states WHEN the mechanism
+  applies, precisely enough that a retriever miss is a boundary fact,
+  not a vague hedge.
   ELIGIBILITY IS THE TEST: a card founded on a trajectory MUST be
-  eligible for that trajectory's own task coordinates (its manifest
-  `family` / `dataset`). Coordinates are matched literally — `domain`
-  covers everything, `family:<x>` matches only that exact family string,
-  and an invented family nobody serves on matches nothing. Read the
-  coordinates off the trajectory instead of inventing a taxonomy: a
+  eligible for that trajectory's own coordinate (`harness:<its manifest
+  harness.name>`, or `harness:none`). Coordinates are matched literally —
+  `domain` covers everything, `harness:<name>` matches only that exact
+  name, and an invented name nobody builds under matches nothing. Read
+  the coordinate off the trajectory instead of inventing a taxonomy: a
   lesson whose card cannot be served back to the campaign that produced
   it is a card the bank can never use (found live 2026-08-24: seven
   cards scoped to invented families left the next campaign's index
-  empty).
+  empty). `family:` and `dataset:` coordinates are retired and match
+  nothing.
   `scope_conditions` is REQUIRED on every card you author or rewrite — it
   is user-facing: serving renders it as the index's `applies-when` line,
   the one line an agent scans against its own plan to decide whether to
@@ -158,7 +161,10 @@ WRITING — the rules that bind every edit:
   `refute` territory — route it to the ledger honestly.
 - RESERVED WORDS in `usage`: "served", "cited", and "probe" claim THIS
   CARD's participation in that campaign, and the frame checks the claim
-  against the serving record. Describing anything else — a report citing
+  against the campaign's pull log, which names the bank every served
+  card came from: a card read from a colleague's bank is not this card,
+  and a name the campaign read from both banks cannot be claimed by
+  citation alone. Describing anything else — a report citing
   its sources, serving-section commentary — use other words ("the report
   points at", "the serving section notes"). A card the campaign never saw
   states it as such ("never served; observed independently").

@@ -31,7 +31,7 @@ from kapso.learning.bank_invariants import (
 )
 from kapso.learning.graders.hindcast import HindcastReport
 from kapso.learning.refs import extract_refs
-from kapso.learning.retriever import compile_probe_queue
+from kapso.learning.retriever import compile_probe_queue, exposure_ladder
 from kapso.learning.trajectory_store import TrajectoryStore
 
 CREW_DIR = Path(__file__).parent / "crews" / "update"
@@ -603,20 +603,22 @@ cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec \\
     def _check_evidence(
         self, before: Bank, after: Bank, batch: List[Dict[str, str]]
     ) -> List[str]:
-        serving_records: Dict[str, Dict[str, Any]] = {}
+        # Exposure is the campaign's own pull log, archived in its bundle
+        # (the hindcast's serving record is availability, not exposure);
+        # a campaign that ran unserved has none, so a usage claim on it
+        # is a finding.
+        exposures: Dict[str, Dict[str, Dict[str, str]]] = {}
         for item in batch:
-            record_path = Path(item["hindcast_report"]).parent / "serving-record.yaml"
-            if record_path.is_file():
-                serving_records[item["trajectory"]] = yaml.safe_load(
-                    record_path.read_text()
-                )
+            log_path = self.store.local / item["trajectory"] / ".kapso" / "serving" / "serving-pull.jsonl"
+            if log_path.is_file():
+                exposures[item["trajectory"]] = exposure_ladder(log_path)
         findings: List[str] = []
         for name, card in after.cards.items():
             previous = before.cards.get(name)
             new_entries = card.evidence[len(previous.evidence) if previous else 0:]
             if new_entries:
                 findings += evidence_admission_findings(
-                    card, new_entries, self.store, serving_records
+                    card, new_entries, self.store, exposures
                 )
         return findings
 

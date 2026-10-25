@@ -429,8 +429,6 @@ def save_trajectory(
         "harness": harness,
         "learning_harness": learning_harness,
         "contract": contract,
-        "dataset": report.get("dataset"),
-        "family": report.get("family"),
         "outcome": _outcome_from_report(report),
         "inventory": _inventory_of(staged_dir),
     }

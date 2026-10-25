@@ -34,6 +34,7 @@ from kapso.learning.graders.scorecard import (
 )
 from kapso.learning.graders.split import held_out_ids
 from kapso.learning.retriever import compile_intro, render_index
+from kapso.learning.serving_launch import task_coordinates
 from kapso.learning.trajectory_store import TrajectoryStore
 
 CREW_DIR = Path(__file__).parent.parent / "crews" / "grading"
@@ -114,9 +115,9 @@ class GradingFrame:
             )
         bundle_dir = self.store.resolve(trajectory_id)
         bank = Bank(bank_dir)
-        task_coords = {
-            "family": manifest.get("family"), "dataset": manifest.get("dataset")
-        }
+        # The trajectory's coordinate is the harness it ran under (`none`
+        # without one), what the experience package scopes lessons by.
+        task_coords = task_coordinates((manifest.get("harness") or {}).get("name"))
 
         slot = run_dir / "hindcast" / trajectory_id.replace("/", "--")
         slot.mkdir(parents=True, exist_ok=True)

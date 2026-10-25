@@ -15,7 +15,9 @@ Live serving artifacts, when the campaign ran served (inside the bundle):
 — the pull log is the exposure ladder's source: `indexed` (bank_index
 listed it) → `read` (bank_get_card) → `evidence-read`
 (bank_get_card_with_evidence) → `cited` ([card:<name>] in specs or living
-docs).
+docs). Every row names its `source`, the bank the card came from: `mine`
+is the bank being learned into; a card read from another bank is that
+bank's card, not a card of this bank with the same name.
 Learn-set mined views (read-only, for source searches): {{learn_set_dir}}
 Write EXACTLY ONE file: {{report_path}}
 

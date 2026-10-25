@@ -77,7 +77,6 @@ def test_save_load_roundtrip(tmp_path):
     assert manifest["task"] == "rel-amazon/user-churn"
     assert manifest["created"] == "2026-01-01T00:00:00Z"
     assert manifest["contract"] == "strict"
-    assert manifest["family"] == "entity_binary_classification"
     assert manifest["outcome"] == {
         "selected_run": "run_0001",
         "val": {"roc_auc": 0.7136},

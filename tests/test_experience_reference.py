@@ -82,6 +82,9 @@ def test_what_matches_nothing_lists_the_forms_and_the_add_line(tmp_path):
     assert "  mine " in message and "  leeroopedia " in message
     with pytest.raises(ExperienceReferenceError, match="not a reserved name, a git reference or an index name"):
         parse_experience_reference("Some Bank", indexes_root=indexes, cwd=tmp_path)
+    # written as a path, it is a path: a missing one is never read as a git reference
+    with pytest.raises(ExperienceReferenceError, match="a reference written as a path must exist"):
+        parse_experience_reference("./ghost/bank@v2", indexes_root=indexes, cwd=tmp_path)
 
 
 # ------------------------------------------------------------ the sources
@@ -94,10 +97,11 @@ def test_mine_is_pinned_at_its_head_with_its_cards_and_your_provenance(tmp_path)
     assert len(source.head) == 40
     assert source.ref().head == source.head and source.ref().kind == "bank"
     assert source.label() == f"mine at {source.head[:12]}, 3 cards, measured by you"
-    every = resolve_source(parse_experience_reference("mine", indexes_root=settings["indexes"]), settings=settings, scope="all")
-    assert every.scope == "all" and every.label().endswith(", every scope")
-    with pytest.raises(ExperienceError, match="scope must be one of harness, all"):
-        resolve_source(parse_experience_reference("mine", indexes_root=settings["indexes"]), settings=settings, scope="mine")
+    every = resolve_source(parse_experience_reference("mine:all", indexes_root=settings["indexes"]), settings=settings)
+    assert every.reference == "mine" and every.scope == "all" and every.label().endswith(", every scope")
+    assert every.ref().scope == "all"
+    with pytest.raises(ExperienceReferenceError, match="`:all` is for `mine` alone"):
+        parse_experience_reference("acme/kapso-bank:all", indexes_root=settings["indexes"])
 
 
 def test_mine_that_does_not_exist_names_the_add_line(tmp_path):
@@ -106,9 +110,10 @@ def test_mine_that_does_not_exist_names_the_add_line(tmp_path):
         resolve_source(parse_experience_reference("mine", indexes_root=settings["indexes"]), settings=settings)
 
 
-def test_mine_with_a_remote_pulls_before_it_is_pinned(tmp_path):
+def test_mine_with_a_remote_is_your_teams_too_and_loading_never_pulls(tmp_path):
     settings = settings_for(tmp_path)
     home = bank_home(tmp_path, cards=1)
+    local = git(home, "rev-parse", "main")
     # The team's copy moves ahead; mine has it as origin.
     remote = tmp_path / "team.git"
     git(tmp_path, "clone", "-q", "--bare", str(home), str(remote))
@@ -121,8 +126,10 @@ def test_mine_with_a_remote_pulls_before_it_is_pinned(tmp_path):
     ahead = git(work, "rev-parse", "main")
     git(home, "remote", "add", "origin", str(remote))
 
+    # pinned as it is on disk: the team's commit waits for `update`
     source = resolve_source(parse_experience_reference("mine", indexes_root=settings["indexes"]), settings=settings)
-    assert source.head == ahead and source.cards == 2
+    assert source.head == local != ahead and source.cards == 1
+    assert source.provenance == "measured by you and your team"
 
 
 def test_a_bank_by_path_is_read_in_place_with_every_scope(tmp_path):

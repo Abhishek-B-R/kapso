@@ -25,7 +25,7 @@ def test_sources_are_kept_in_load_order_and_a_reload_replaces(tmp_path, capsys):
     kapso.load_experience(str(team))
     assert [s.reference for s in kapso.experience] == ["mine", str(team)]
 
-    again = kapso.load_experience("mine", scope="all")
+    again = kapso.load_experience("mine:all")
     assert [s.reference for s in kapso.experience] == [str(team), "mine"]
     assert kapso.experience[-1].scope == "all" and again.head == mine.head
     assert kapso.experience is not kapso._experience   # a copy, not the object's list

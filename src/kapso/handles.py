@@ -502,6 +502,7 @@ class ExperienceRef:
     resolved: str
     head: Optional[str]
     provenance: str
+    scope: str          # "harness" or "all": what of the source the campaign was served
 
 
 _RECORD = Path(".kapso") / "solution.json"
