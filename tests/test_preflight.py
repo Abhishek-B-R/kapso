@@ -411,11 +411,9 @@ def test_settings_fall_back_to_the_packaged_defaults(packaged):
     assert partial["live_model_probe"] is True
 
 
-def test_live_probe_runs_only_when_configured(packaged, monkeypatch):
-    monkeypatch.setattr(preflight.shutil, "which", lambda name, *a, **k: f"/b/{name}")
-    monkeypatch.setattr(preflight, "claude_logged_in", lambda: True)
-    monkeypatch.setattr(preflight, "codex_authenticated", lambda: True)
-    monkeypatch.setattr(preflight, "port_open", lambda *a, **k: True)
+def test_live_probe_runs_only_when_configured(packaged, full_machine, monkeypatch):
+    # the full machine, so the static tier passes everywhere (the index's
+    # embeddings key included: a runner without one failed here)
     probed = []
 
     def fake_probe(cli, model):
