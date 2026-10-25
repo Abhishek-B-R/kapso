@@ -61,7 +61,7 @@ modules:                            # any of the seven; a module left out still 
     hooks: [session-brief, deny-web-fetch, protect-prepared, deny-snapshot, scan-writes, require-results]
 ```
 
-`name`, `version` and `description` are required. Every module has the same four lists, and each list is complete: nothing is inherited between modules, so a hook wanted in six modules is listed in six modules. A skill name is a directory under `skills/`, an agent name a file under `agents/`, a server name a key in `mcp.json`, a hook name a directory under `hooks/`.
+`name`, `version` and `description` are required; the directory may be named anything, `name` is what the engine records. Every module has the same four lists, and each list is complete: nothing is inherited between modules, so a hook wanted in six modules is listed in six modules. A list left out is empty, and a module left out gets its pages and nothing else. A skill name is a directory under `skills/`, an agent name a file under `agents/`, a server name a key in `mcp.json`, a hook name a directory under `hooks/`.
 
 ## Pages
 
