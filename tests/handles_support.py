@@ -81,7 +81,6 @@ def facade() -> Kapso:
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
     kapso._config = {}
     kapso._bank_home = None
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
     kapso._experience = []

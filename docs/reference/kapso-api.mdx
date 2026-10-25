@@ -37,14 +37,12 @@ Kapso(
 | [`harness`](#load-harness) | `Harness \| None` | The loaded harness |
 | [`load_experience()`](#load-experience) | `ExperienceSource` | Load a source a build is served: your bank, the hosted gate, a bank you read, an index |
 | [`experience`](#load-experience) | `list[ExperienceSource]` | The loaded sources, in load order |
+| [`add_experience()`](#add-experience) | `str` | Make a source that must exist before it is loaded: your bank, the hosted gate's key check, a corpus ingested into an index |
 | [`share_experience()`](#load-experience) | `None` | Attach a git remote to your bank and push it |
 | [`build()`](#build) | `Solution` | Run an experiment campaign that meets a brief |
-| [`research()`](#research) | `ResearchFindings` | Deep web research on an objective |
 | [`learn()`](#learn) | `LessonResult` | Mine one finished campaign into the lesson bank |
-| [`learn_knowledge()`](#learn-knowledge) | `PipelineResult` | Fold outside sources into the knowledge graph |
 | [`deploy()`](#deploy) | `Software` | Turn a solution into running software |
-| [`index_kg()`](#index-kg) | `str` | Index a corpus and write a `.index` file |
-| [`memory`](#memory) | `MemoryStatus` | What this agent knows right now |
+| [`memory`](#memory) | `MemoryStatus` | Your own bank right now |
 | [`Kapso.status()`](#status) | `OperationStatusView` | Read any operation's status file |
 | [`close()`](#close) | `None` | Release knowledge-search network clients |
 
@@ -80,14 +78,13 @@ bank (the one `learn()` writes), the hosted Leeroopedia gate, a bank you
 read, or a corpus ingested under a name. See [Experience](/docs/experience).
 
 ```python
-load_experience(ref: str, *, scope: str = "harness") -> ExperienceSource
+load_experience(ref: str) -> ExperienceSource
 share_experience(url: str) -> None
 ```
 
 | Argument | What it does |
 |----------|--------------|
-| `ref` | `mine` (your bank), `leeroopedia` (the hosted gate, its key in `.env`), a bank home by path (`./bank.git`), a bank repository by git reference (`acme/kapso-bank`, `acme/kapso-bank@v2`, `git+https://…@main`), or the name of an ingested index (`org-x`) |
-| `scope` | `harness`: `mine` serves the cards learned under the loaded harness; `all`: every card. A bank you read serves what it holds either way |
+| `ref` | `mine` (your bank, the cards whose scope covers the loaded harness) or `mine:all` (every card you measured); `leeroopedia` (the hosted gate, its key in `.env`); a bank home by path (`./bank.git`, which must exist); a bank repository by git reference (`acme/kapso-bank`, `acme/kapso-bank@v2`, `git+https://…@main`); or the name of an ingested index (`org-x`). A bank you read, the hosted gate and an index serve everything they hold |
 
 ```python
 source = kapso.load_experience("mine")
@@ -96,7 +93,30 @@ kapso.experience                                               # the loaded sour
 kapso.share_experience("https://github.com/acme/kapso-bank.git")
 ```
 
-Loading resolves the reference, confirms the source exists and is readable (a bank's format, the hosted gate's key, an index's record), pins it (`mine` after a pull from its remote, at its head; a bank you read at its clone's head; an index at its id), prints one line and appends it to the object's sources; a reference loaded again replaces its entry. Loading never ingests and never creates: a source that does not exist is refused with the `kapso experience add` line that makes it. `share_experience` attaches a git remote to your bank and pushes it, creating the bank first when there is none; `learn()` pushes there from then on and `mine` pulls from there before it is served.
+Loading resolves the reference, confirms the source exists and is readable (a bank's format, the hosted gate's key, an index's record), pins it as it is on disk (a bank at its head, an index at its id; loading never pulls), prints one line and appends it to the object's sources; a reference loaded again replaces its entry. Loading never ingests and never creates: a source that does not exist is refused with the `kapso experience add` line that makes it. `share_experience` attaches a git remote to your bank and pushes it, creating the bank first when there is none; `learn()` pushes there from then on, and the intro says the cards are measured by you and your team.
+
+## add_experience
+
+Makes a source that must exist before it can be loaded, and returns its reference.
+
+```python
+add_experience(ref: str | None = None, *, repo: str | None = None, research: str | None = None, name: str | None = None) -> str
+```
+
+| Argument | What it does |
+|----------|--------------|
+| `ref` | `mine` creates your bank, empty (a first `learn()` does too); `leeroopedia` checks the hosted gate's key is present |
+| `repo` | A repository URL to ingest into a new index named `name` |
+| `research` | A question to research on the web; the findings are ingested into a new index named `name` |
+| `name` | The index's name: letters, digits and dashes; `mine` and `leeroopedia` are reserved |
+
+Exactly one of `ref`, `repo` and `research` is given. Ingesting runs the knowledge pipeline into the experience home (`experience.indexes` in the config): the pages under `<name>/wiki/`, the index's own namespace in the graph stores, and `index.json`, the record that pins the index at its id and names what it was made from. An index is never written again after this: a name that exists is refused (remove it first). The stores and the embeddings key are checked before any work (`kapso doctor experience`); the operation writes a status file you can `kapso watch`.
+
+```python
+kapso.add_experience(repo="https://github.com/org/x", name="org-x")
+kapso.add_experience(research="QLoRA memory optimizations", name="qlora")
+kapso.load_experience("org-x")        # a build then mounts the search gates over it
+```
 
 ## build
 
@@ -242,44 +262,6 @@ Kapso.reply(campaign: str, request_id: int, note: str = "", *, allow_secret: boo
 
 `inbox` returns the open requests, oldest first, each with `id`, `key`, `hit`, `tried`, `fix` and `next_steps`. `inbox_ideas` returns one line per node of the campaign, the idea a request was made for, keyed by node id; `kapso inbox` prints it as the `for` row. `reply` records the note and, once every request of the node that asked is answered, resumes the campaign in this process and returns its result. It returns `None` when another request of that node is still open, or when the campaign was started with an `iteration_evaluator`: the callback lives in your script, so call `build()` again there with `resume=True`. It raises while a live process holds the campaign, and raises on a note shaped like a credential unless `allow_secret=True`: replies are plain text handed to the coder, so a value belongs in the `.env` the request's `fix` names.
 
-## research
-
-```python
-research(
-    objective: str,
-    *,
-    mode: ResearchMode | list[ResearchMode] = ["idea", "implementation"],
-    depth: ResearchDepth = "deep",
-) -> ResearchFindings
-```
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `objective` | What to research | required |
-| `mode` | `"idea"`, `"implementation"` or `"study"`, or a list of them | `["idea", "implementation"]` |
-| `depth` | `"light"` or `"deep"` | `"deep"` |
-
-`mode` and `depth` are keyword-only.
-
-```python
-findings = kapso.research(
-    "QLoRA fine-tuning memory optimizations",
-    mode=["idea", "implementation"],
-    depth="deep",
-)
-```
-
-### ResearchFindings
-
-| Attribute | Type | What it holds |
-|-----------|------|---------------|
-| `query` | `str` | The objective you gave it |
-| `ideas` | `list[Source.Idea]` | Approaches found |
-| `implementations` | `list[Source.Implementation]` | Implementation references, with code |
-| `report` | `Source.ResearchReport \| None` | Present when `mode` included `"study"` |
-| `to_string()` | `str` | Findings as text, ready to pass as `build(..., context=[...])` |
-| `to_dict()` | `dict` | The same as plain data |
-
 ## learn
 
 Learns from one finished campaign: import it, mine it, grade the bank against it, then fold the result in as evidence-priced cards.
@@ -325,64 +307,6 @@ On a campaign built with a harness, the learning module's pages join the mining 
 | `admitted` | `bool` | Whether the lesson was admitted to the bank |
 | `explain()` | `str` | The above as readable text |
 
-## learn_knowledge
-
-Folds outside sources into the knowledge graph. This is the other memory: `learn()` mines your own campaigns, `learn_knowledge()` imports other people's work.
-
-```python
-learn_knowledge(
-    *sources: Source.Repo | Source.Solution | Source.Idea
-            | Source.Implementation | Source.ResearchReport | ResearchFindings,
-    wiki_dir: str = "data/wikis",
-    skip_merge: bool = False,
-    kg_index: str | None = None,
-    github_org: str | None = None,
-    is_private: bool | None = None,
-    on_status = None,
-) -> PipelineResult
-```
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `*sources` | One or more sources. A `ResearchFindings` can be passed directly | required |
-| `wiki_dir` | Where extracted wiki pages are written | `"data/wikis"` |
-| `skip_merge` | Extract pages without merging them into the graph | `False` |
-| `kg_index` | Index to merge into | from the constructor |
-| `github_org` | Organisation to publish the extracted workflows' repositories to; passing it turns publishing on for this call (`learner.ingestor.publish_workflows` otherwise) | `None` |
-| `is_private` | Whether those repositories are private; passing it turns publishing on too | from config |
-
-A run that stops keeps its clone and finished phases under `<wiki_dir>/_staging/<repo>/<branch>`; calling `learn_knowledge()` again with the same source continues from the first unfinished phase.
-
-```python
-kapso.learn_knowledge(
-    Source.Repo("https://github.com/huggingface/trl"),
-    findings,
-    wiki_dir="data/wikis",
-)
-```
-
-### Source variants
-
-| Variant | Takes |
-|---------|-------|
-| `Source.Repo(url, branch=None)` | A repository URL; its default branch unless `branch` names one |
-| `Source.Solution(obj)` | A `Solution` |
-| `Source.Idea(query, source, content)` | A research idea |
-| `Source.Implementation(query, source, content)` | An implementation reference |
-| `Source.ResearchReport(...)` | A study-mode research report |
-
-### PipelineResult
-
-| Attribute | Type | What it holds |
-|-----------|------|---------------|
-| `sources_processed` | `int` | How many sources were read |
-| `total_pages_extracted` | `int` | Wiki pages produced |
-| `extracted_pages` | `list[WikiPage]` | The pages themselves |
-| `merge_result` | `MergeResult \| None` | What the merge changed |
-| `errors` | `list[str]` | Anything that failed |
-| `created` / `edited` | `int` | Counts of pages the merge created and edited |
-| `success` | `bool` | No errors, or pages were still extracted despite them |
-
 ## deploy
 
 ```python
@@ -411,40 +335,9 @@ deployed.stop()
 
 `AUTO` picks a strategy for you. See [Deployment strategies](/docs/deployment/strategies). On a solution built with a harness, the selector and the adapter carry its deployment module: the pages in their prompts, its skills, servers and hooks beside them (see [Use a harness](/docs/harnesses/use#deploy-and-learn)).
 
-## index_kg
-
-Indexes a corpus and returns the path of the `.index` file it wrote.
-
-```python
-index_kg(
-    wiki_dir: str | None = None,
-    data_path: str | None = None,
-    save_to: str = None,
-    search_type: str | None = None,
-    force: bool = False,
-) -> str
-```
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `wiki_dir` | Wiki directory to index | `None` |
-| `data_path` | JSON data file to index, as an alternative to `wiki_dir` | `None` |
-| `save_to` | Where to write the `.index` file | required in practice |
-| `search_type` | `kg_graph_search` or `kg_llm_navigation` | from config |
-| `force` | Clear existing data before indexing | `False` |
-
-```python
-index_path = kapso.index_kg(
-    wiki_dir="data/wikis",
-    save_to="data/indexes/finetuning.index",
-)
-
-kapso = Kapso(kg_index=index_path)
-```
-
 ## memory
 
-A property, not a method. Reports what this agent knows across both stores.
+A property, not a method. Reports your own bank right now; what a build is served is `kapso.experience`.
 
 ```python
 status = kapso.memory
@@ -453,9 +346,9 @@ print(status.explain())
 
 | Attribute | Type | What it holds |
 |-----------|------|---------------|
-| `knowledge_index` | `str \| None` | The loaded `.index`, if any |
-| `knowledge_enabled` | `bool` | Whether knowledge search is on |
+| `bank_path` | `str \| None` | Your bank's home |
 | `bank_head` | `str \| None` | Current lesson-bank commit |
+| `bank_active_cards` | `int \| None` | Cards in the bank |
 | `store_trajectories` | `int \| None` | Trajectories in the store |
 | `explain()` | `str` | The above as readable text |
 

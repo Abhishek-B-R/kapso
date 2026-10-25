@@ -30,6 +30,7 @@ from kapso.experience.sources import (
     hosted_key_present,
     resolve_source,
 )
+from kapso.experience.ingest import IngestError
 from kapso.experience.store import ExperienceStore, IndexRecord
 
 __all__ = [
@@ -50,6 +51,7 @@ __all__ = [
     "ExperienceSource",
     "ExperienceStore",
     "IndexRecord",
+    "IngestError",
     "bank_head",
     "count_cards",
     "hosted_key_missing",

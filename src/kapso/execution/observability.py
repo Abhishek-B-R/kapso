@@ -339,7 +339,7 @@ class LessonStatus(OperationStatus):
 
 
 class KnowledgeStatus(OperationStatus):
-    OPERATION = "learn_knowledge"
+    OPERATION = "experience"
     PHASES = ("ingest", "merge")
     # payload: sources{done,total}, current_source, pages_extracted
 
@@ -677,7 +677,7 @@ class OperationStatusView:
                 if d.get("repair_round"):
                     head_line += f"      repair round {d['repair_round']}"
                 lines.append(head_line)
-        elif self.operation == "learn_knowledge":
+        elif self.operation == "experience":
             sources = d.get("sources") or {}
             if sources:
                 lines.append(

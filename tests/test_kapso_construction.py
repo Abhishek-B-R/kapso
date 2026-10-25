@@ -8,7 +8,8 @@ from kapso import Kapso
 
 def test_a_constructed_kapso_has_every_lazy_attribute():
     kapso = Kapso()
-    assert kapso._web_researcher is None
+    # the null search until a build loads an index: no backend, no key
+    assert not kapso.knowledge_search.is_enabled()
     assert kapso.harness is None and kapso._harness is None
     assert isinstance(kapso._harness_settings, dict) and "store" in kapso._harness_settings
     assert kapso.experience == [] and "banks" in kapso._experience_settings

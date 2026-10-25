@@ -66,13 +66,10 @@ class LessonResult:
 
 @dataclass
 class MemoryStatus:
-    """What the agent knows right now, across both memory stores
-    (design §8.2): knowledge (imported — KG) and experience (earned —
-    the bank)."""
+    """Your own bank right now: its head, its active cards, the
+    trajectories in the store. What a build is served is
+    `Kapso.experience`, the loaded sources."""
 
-    knowledge_index: Optional[str]
-    knowledge_backend: Optional[str]
-    knowledge_enabled: bool
     bank_path: Optional[str]
     bank_head: Optional[str]
     bank_active_cards: Optional[int]
@@ -80,13 +77,6 @@ class MemoryStatus:
 
     def explain(self) -> str:
         lines = ["Memory:"]
-        if self.knowledge_enabled:
-            lines.append(
-                f"  knowledge:  {self.knowledge_index or '(backends)'} "
-                f"({self.knowledge_backend}) — enabled"
-            )
-        else:
-            lines.append("  knowledge:  disabled")
         if self.bank_path and self.bank_head:
             lines.append(
                 f"  experience: {self.bank_path} @ {self.bank_head[:9]} — "

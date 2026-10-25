@@ -41,7 +41,7 @@ def _subparsers():
 
 def test_every_subcommand_and_flag_is_accounted_for():
     assert _subparsers() == {
-        "add": {"ref", "config"},
+        "add": {"ref", "repo", "research", "name", "config"},
         "list": {"config"},
         "share": {"url", "config"},
     }
@@ -68,6 +68,33 @@ def test_add_leeroopedia_is_the_keys_presence(settings, monkeypatch, capsys):
     assert "an index is ingested with --repo <url> --name <n>" in capsys.readouterr().out
 
 
+def test_add_ingests_a_repository_or_a_question_through_the_facade(settings, monkeypatch, capsys):
+    calls = []
+
+    class FakeKapso:
+        def __init__(self, config=None):
+            calls.append(("init", config))
+
+        def add_experience(self, **kwargs):
+            calls.append(("add", kwargs))
+            return kwargs["name"]
+
+    monkeypatch.setattr(experience_cli, "Kapso", FakeKapso)
+    _run(monkeypatch, "add", "--repo", "https://github.com/org/x", "--name", "org-x")
+    assert calls == [("init", None), ("add", {"repo": "https://github.com/org/x", "research": None, "name": "org-x"})]
+    calls.clear()
+    _run(monkeypatch, "add", "--research", "QLoRA memory", "--name", "qlora", "--config", "c.yaml")
+    assert calls == [("init", "c.yaml"), ("add", {"repo": None, "research": "QLoRA memory", "name": "qlora"})]
+    # exactly one of the three, and an index needs its name
+    for argv in (["add"], ["add", "mine", "--repo", "u"], ["add", "--repo", "u", "--research", "q"]):
+        with pytest.raises(SystemExit):
+            _run(monkeypatch, *argv)
+        assert "exactly one of" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        _run(monkeypatch, "add", "--repo", "https://github.com/org/x")
+    assert "an index needs a name: --name <n>" in capsys.readouterr().out
+
+
 def test_list_has_an_empty_state_and_the_rows(settings, monkeypatch, capsys, tmp_path):
     _run(monkeypatch, "list")
     out = capsys.readouterr().out
@@ -89,6 +116,7 @@ def test_share_attaches_a_remote_and_pushes(settings, monkeypatch, capsys, tmp_p
     home = Path(settings["bank_home"])
     out = capsys.readouterr().out
     assert f"created your bank at {home}" in out and f"shares to {remote}" in out
+    assert "measured by you and your team" in out
     assert bank_origin(home) == str(remote)
     assert git(remote, "rev-parse", "main") == git(home, "rev-parse", "main")
     _run(monkeypatch, "list")

@@ -304,7 +304,7 @@ index needs: WP4 and later decide their fate).
    `tests/test_bank_pull.py`, `tests/test_update_frame.py`,
    `tests/test_mining_frame.py`, `tests/test_grading_frame.py`,
    `tests/test_bank_invariants.py` on the coordinate and on a duplicate
-   name across two sources.
+   name across two sources. Built at `ccd529d4`.
 6. `build()`: the sources from the object, else the brief's `Experience`
    line; the gates per source in ideation and implementation; the records
    in `launch.json`, `status.json`, the checkpoint (schema 5) and
@@ -318,7 +318,7 @@ index needs: WP4 and later decide their fate).
    `learn()` runs. Tests `tests/test_experience_records.py` (the real
    writers, the sessions stubbed; a served build seeded from a
    repository; the attribution round trip) and the learn test with two
-   distinct banks.
+   distinct banks. Built at `993fdb60`.
 7. `add_experience(ref=, repo=, research=, name=)`: `mine` creates the
    bank; a repository or a question ingests into the index home under
    `name`, each index in its own backend namespace named in `index.json`
@@ -380,7 +380,8 @@ index needs: WP4 and later decide their fate).
     into no other session. Tests render the two prompts with the intro
     and assert its absence from the judge, setup, verification and
     maintainer prompts; the mounted-gate assertion extended to two banks
-    and to an index; the judge's gate list never holds `bank`.
+    and to an index; the judge's gate list never holds `bank`. Built at
+    `e4eb0712`.
 15. `kapso experience update [ref]` and `remove <ref>`, with
     `Kapso.update_experience` and `remove_experience`: `update` pulls
     `mine` fast-forward from its origin and re-fetches a bank you read at

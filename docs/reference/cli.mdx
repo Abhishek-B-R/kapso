@@ -125,36 +125,19 @@ What a build is served that was measured before: your own bank (the one `learn()
 
 | Subcommand | What it does |
 |------------|--------------|
-| `add` | `add mine` creates your bank, empty; `add leeroopedia` checks the gate's key is in `.env` |
-| `list` | `mine` with its head, card count and remote; the hosted gate's key state; the banks you read; the indexes |
-| `share` | Attach a git remote to your bank and push it; `learn()` pushes there from then on and `mine` pulls from there before it is served |
+| `add` | `add mine` creates your bank, empty; `add leeroopedia` checks the gate's key is in `.env`; `add --repo <url> --name <n>` ingests a repository into the index `<n>`; `add --research "<question>" --name <n>` researches the web and ingests the findings. Exactly one of the three; an index name that exists is refused |
+| `list` | `mine` with its head, card count and remote; the hosted gate's key state; the banks you read; the indexes with their id, page count and origin |
+| `share` | Attach a git remote to your bank and push it; `learn()` pushes there from then on |
 
 Every subcommand takes `--config` for the config whose `experience` block names the homes.
 
 ```bash
 kapso experience add mine
 kapso experience add leeroopedia
+kapso experience add --repo https://github.com/org/x --name org-x
+kapso experience add --research "QLoRA memory optimizations" --name qlora
 kapso experience list
 kapso experience share https://github.com/acme/kapso-bank.git
-```
-
-## kapso research
-
-Runs deep web research and writes structured findings.
-
-| Flag | What it does | Default |
-|------|--------------|---------|
-| `--objective` | Research objective | — |
-| `--objective-file` | File containing the objective. Mutually exclusive with `--objective` | — |
-| `--mode` | `idea`, `implementation` or `study`. Repeat the flag for more than one | `idea` and `implementation` |
-| `--depth` | `light` or `deep` | `deep` |
-| `-o`, `--output` | Output file for results, as JSON | — |
-
-```bash
-kapso research --objective "How to optimize transformers?"
-kapso research --objective "LLM fine-tuning" --mode idea
-kapso research --objective "RAG implementation" --mode idea --mode implementation
-kapso research --objective-file topic.txt --mode study --depth deep
 ```
 
 ## kapso learn
@@ -308,28 +291,6 @@ kapso deploy ../churn-build
 kapso deploy ../churn-build --strategy docker
 kapso deploy ../churn-build --env API_KEY=xxx --interactive
 ```
-
-## kapso index_kg
-
-Indexes a corpus into the knowledge graph and writes a `.index` file that campaigns load with `--kg-index`.
-
-| Flag | What it does | Default |
-|------|--------------|---------|
-| `--save-to` | Path to write the `.index` file. **Required** | — |
-| `--wiki-dir` | Wiki directory to index. Mutually exclusive with `--data-path` | — |
-| `--data-path` | JSON data file to index | — |
-| `--search-type` | `kg_graph_search` or `kg_llm_navigation` | from config |
-| `--force` | Clear existing data before indexing | off |
-
-```bash
-kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
-kapso index_kg --data-path ./data/kg_data.json --save-to ./data/indexes/kaggle.index
-kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index --force
-```
-
-<Note>
-  Indexing needs Weaviate and Neo4j running. See [Optional: knowledge-graph backends](/docs/installation#optional-knowledge-graph-backends).
-</Note>
 
 ## kapso watch
 

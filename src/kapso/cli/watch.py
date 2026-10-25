@@ -1,4 +1,4 @@
-"""`kapso watch`: one watch command for build / learn / learn_knowledge
+"""`kapso watch`: one watch command for build / learn / experience
 status files (observability design §3). Pure reader — never writes."""
 
 import argparse
@@ -18,7 +18,7 @@ _WATCH_FALLBACK_SECONDS = 5
 
 
 def cmd_watch(args) -> None:
-    """One watch command for build / learn / learn_knowledge status files
+    """One watch command for build / learn / experience status files
     (observability design §3). Pure reader — never writes.
 
     A campaign that has not written its status yet (the seconds between
@@ -58,7 +58,7 @@ def cmd_watch(args) -> None:
 def add_parser(subparsers):
     watch_parser = subparsers.add_parser(
         "watch",
-        help="Watch a running build / learn / learn_knowledge operation",
+        help="Watch a running build / learn / experience operation",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

@@ -542,7 +542,6 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
     # new Kapso instance attributes must be added here too).
     kapso._config = {}
     kapso._bank_home = None
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
     kapso._experience = []

@@ -587,6 +587,11 @@ class KGGraphSearch(KnowledgeSearch):
         self.neo4j_user = self.params["neo4j_user"]
         self.embedding_model = self.params.get("embedding_model")
         self.weaviate_collection = self.params.get("weaviate_collection")
+        # The index's namespace in Neo4j (its id): every node and query of
+        # this backend carries it, so two indexes holding a page of the
+        # same id never share a node or an edge (the Weaviate side is the
+        # collection, one per index).
+        self.corpus = self.params["corpus"]
         self.include_connected_pages = self.params.get("include_connected_pages", True)
         self.use_llm_reranker = self.params.get("use_llm_reranker", True)
         
@@ -768,6 +773,9 @@ class KGGraphSearch(KnowledgeSearch):
             session.run(
                 "CREATE INDEX page_type IF NOT EXISTS FOR (p:WikiPage) ON (p.page_type)"
             )
+            session.run(
+                "CREATE INDEX page_corpus IF NOT EXISTS FOR (p:WikiPage) ON (p.corpus)"
+            )
             logger.debug("Created Neo4j indexes")
         except Exception as e:
             logger.warning(f"Could not create indexes: {e}")
@@ -775,13 +783,14 @@ class KGGraphSearch(KnowledgeSearch):
     def _create_neo4j_node(self, session, page: WikiPage) -> None:
         """Create a WikiPage node in Neo4j."""
         query = """
-            MERGE (p:WikiPage {id: $id})
+            MERGE (p:WikiPage {id: $id, corpus: $corpus})
             SET p.page_type = $page_type,
                 p.domains = $domains
         """
         session.run(
             query,
             id=page.id,
+            corpus=self.corpus,
             page_type=page.page_type,
             domains=page.domains,
         )
@@ -822,29 +831,30 @@ class KGGraphSearch(KnowledgeSearch):
             if is_heuristic_backlink:
                 # Create REVERSE edge: target → USES_HEURISTIC → source (this heuristic)
                 query = f"""
-                MERGE (target:WikiPage {{id: $target_id}})
+                MERGE (target:WikiPage {{id: $target_id, corpus: $corpus}})
                     ON CREATE SET target.page_type = $target_type
                     WITH target
-                    MATCH (source:WikiPage {{id: $source_id}})
+                    MATCH (source:WikiPage {{id: $source_id, corpus: $corpus}})
                     MERGE (target)-[r:{neo4j_rel_type}]->(source)
                 """
                 logger.debug(f"Creating reverse heuristic edge: {target_page_id} → {page.id}")
             else:
                 # Normal edge: source → target
                 query = f"""
-                    MERGE (target:WikiPage {{id: $target_id}})
+                    MERGE (target:WikiPage {{id: $target_id, corpus: $corpus}})
                     ON CREATE SET target.page_type = $target_type
                     WITH target
-                    MATCH (source:WikiPage {{id: $source_id}})
+                    MATCH (source:WikiPage {{id: $source_id, corpus: $corpus}})
                     MERGE (source)-[r:{neo4j_rel_type}]->(target)
                 """
-            
+
             try:
                 session.run(
                     query,
                     source_id=page.id,
                     target_id=target_page_id,
                     target_type=target_type,
+                    corpus=self.corpus,
                 )
             except Exception as e:
                 logger.warning(f"Failed to create edge {page.id} -> {target_page_id}: {e}")
@@ -1289,11 +1299,11 @@ Only include pages that would actually help answer the query.
             with self._neo4j_driver.session() as session:
                 # Get outgoing connections
                 outgoing_query = """
-                    MATCH (p:WikiPage {id: $page_id})-[r]->(target:WikiPage)
+                    MATCH (p:WikiPage {id: $page_id, corpus: $corpus})-[r]->(target:WikiPage {corpus: $corpus})
                     RETURN target.id AS id,
                            target.page_type AS type, type(r) AS edge_type
                 """
-                result = session.run(outgoing_query, page_id=page_id)
+                result = session.run(outgoing_query, page_id=page_id, corpus=self.corpus)
                 for record in result:
                     connected.append({
                         "id": record["id"],
@@ -1304,11 +1314,11 @@ Only include pages that would actually help answer the query.
                 
                 # Get incoming connections
                 incoming_query = """
-                    MATCH (source:WikiPage)-[r]->(p:WikiPage {id: $page_id})
+                    MATCH (source:WikiPage {corpus: $corpus})-[r]->(p:WikiPage {id: $page_id, corpus: $corpus})
                     RETURN source.id AS id,
                            source.page_type AS type, type(r) AS edge_type
                 """
-                result = session.run(incoming_query, page_id=page_id)
+                result = session.run(incoming_query, page_id=page_id, corpus=self.corpus)
                 for record in result:
                     connected.append({
                         "id": record["id"],
@@ -1697,8 +1707,9 @@ Only include pages that would actually help answer the query.
             try:
                 with self._neo4j_driver.session() as session:
                     result = session.run(
-                        "MATCH (p:WikiPage {id: $id}) RETURN p LIMIT 1",
+                        "MATCH (p:WikiPage {id: $id, corpus: $corpus}) RETURN p LIMIT 1",
                         id=page_id,
+                        corpus=self.corpus,
                     )
                     if result.single():
                         return True
@@ -1970,8 +1981,9 @@ Only include pages that would actually help answer the query.
         with self._neo4j_driver.session() as session:
             # Check if page exists
             check_result = session.run(
-                "MATCH (p:WikiPage {id: $id}) RETURN p",
+                "MATCH (p:WikiPage {id: $id, corpus: $corpus}) RETURN p",
                 id=page_id,
+                corpus=self.corpus,
             )
             if not check_result.single():
                 return False
@@ -1984,8 +1996,9 @@ Only include pages that would actually help answer the query.
             
             if neo4j_updates:
                 session.run(
-                    "MATCH (p:WikiPage {id: $id}) SET p += $updates",
+                    "MATCH (p:WikiPage {id: $id, corpus: $corpus}) SET p += $updates",
                     id=page_id,
+                    corpus=self.corpus,
                     updates=neo4j_updates,
                 )
             
@@ -1993,8 +2006,9 @@ Only include pages that would actually help answer the query.
             if rebuild_edges and "outgoing_links" in updates:
                 # Delete existing outgoing edges
                 session.run(
-                    "MATCH (p:WikiPage {id: $id})-[r]->() DELETE r",
+                    "MATCH (p:WikiPage {id: $id, corpus: $corpus})-[r]->() DELETE r",
                     id=page_id,
+                    corpus=self.corpus,
                 )
                 
                 # Create new edges (with normalized IDs)
@@ -2057,6 +2071,7 @@ Only include pages that would actually help answer the query.
             "neo4j_uri": self.neo4j_uri,
             "neo4j_user": self.neo4j_user,
             "weaviate_collection": self.weaviate_collection,
+            "corpus": self.corpus,
             "embedding_provider": self.params["embedding_provider"],
             "embedding_model": self.embedding_model,
         }
@@ -2124,8 +2139,8 @@ Only include pages that would actually help answer the query.
         if self._neo4j_driver:
             try:
                 with self._neo4j_driver.session() as session:
-                    session.run("MATCH (n:WikiPage) DETACH DELETE n")
-                logger.info("Cleared Neo4j WikiPage nodes")
+                    session.run("MATCH (n:WikiPage {corpus: $corpus}) DETACH DELETE n", corpus=self.corpus)
+                logger.info(f"Cleared Neo4j WikiPage nodes of corpus {self.corpus}")
             except Exception as e:
                 logger.warning(f"Could not clear Neo4j: {e}")
         

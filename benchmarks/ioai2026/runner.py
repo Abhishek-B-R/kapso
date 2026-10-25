@@ -708,7 +708,6 @@ def main():
         config_path=config_path,
         mode=args.mode,
         coding_agent=args.coding_agent,
-        is_kg_active=False,
         workspace_dir=os.path.join(task_dir, "kapso_campaign"),
         # The statement plus the one fact the feedback judge needs: this goal
         # has no "fully achieved" — the radar rehearsal's judges voted stop at

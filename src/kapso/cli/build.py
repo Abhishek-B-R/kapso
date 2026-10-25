@@ -78,7 +78,7 @@ def cmd_build(args) -> None:
         )
         return
 
-    kapso = Kapso(config=args.config, kg_index=args.kg_index)
+    kapso = Kapso(config=args.config)
     _load_harness_or_exit(kapso, args, brief)
     solution = kapso.build(
         brief,
@@ -214,5 +214,4 @@ Examples:
         "--config", type=str, default=None,
         help="Config path (default: packaged config.yaml)",
     )
-    build_parser.add_argument("--kg-index", type=str, help="Path to a knowledge index file")
     return cmd_build

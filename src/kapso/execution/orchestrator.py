@@ -47,7 +47,7 @@ from kapso.gated_mcp.presets import get_mcp_config, knowledge_tools_block
 from kapso.harness.load import HarnessError
 from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE
 from kapso.harness.task_statement import prepared_names, setup_statement_path, write_task_statement
-from kapso.core.cli_inference import CliInference, resolve_inference_config
+from kapso.core.cli_inference import CliInference
 from kapso.core.config import load_mode_config
 from kapso.execution.search_strategies.base import ExperimentResult, SearchNode
 from kapso.execution.memories.experiment_memory import ExperimentHistoryStore
@@ -178,7 +178,6 @@ class OrchestratorAgent:
         config_path: Path to benchmark-specific config.yaml file
         mode: Configuration mode to use (if None, uses default_mode from config)
         coding_agent: Coding agent to use (overrides config if specified)
-        is_kg_active: Whether to use the knowledge graph
         goal: The goal text of the build (the rendered brief)
         iteration_evaluator: Optional observational callback for each finalized
             candidate Git ref
@@ -191,7 +190,6 @@ class OrchestratorAgent:
         config_path: Optional[str] = None,
         mode: Optional[str] = None,
         coding_agent: Optional[str] = None,
-        is_kg_active: bool = False,
         knowledge_search: Optional[KnowledgeSearch] = None,
         workspace_dir: Optional[str] = None,
         resume: bool = False,
@@ -460,15 +458,16 @@ class OrchestratorAgent:
         # Create knowledge search backend (or use provided instance).
         # This allows Kapso.build() to inject a concrete backend (e.g., kg_graph_search)
         # without relying on config defaults (which may point to a different backend).
-        if knowledge_search is not None:
-            self.knowledge_search = knowledge_search
-            self._owns_knowledge_search = False
-        else:
-            self.knowledge_search = self._create_knowledge_search(
-                is_kg_active=is_kg_active,
-            )
-            # We created it inside the orchestrator → we should close it.
-            self._owns_knowledge_search = True
+        # The search over a loaded index comes from the facade, connected
+        # from the index's record; nothing loaded is the null search. The
+        # orchestrator builds no backend of its own: a config's
+        # `knowledge_search` block is the index's parameters, not a switch
+        # (the WP2 finding: a build with nothing loaded died here for a
+        # missing embedding key).
+        self.knowledge_search = (
+            knowledge_search if knowledge_search is not None else KnowledgeSearchFactory.create_null()
+        )
+        self._owns_knowledge_search = False
     
     def _create_feedback_generator(
         self,
@@ -609,51 +608,6 @@ class OrchestratorAgent:
         # branch here resolved eleven mode-level tree-search knobs that no
         # config ever defined — stale-code audit 2026-08-26, R1.)
         return "generic", dict(self._strategy_params_overrides)
-
-    def _create_knowledge_search(
-        self,
-        is_kg_active: bool,
-    ) -> KnowledgeSearch:
-        """
-        Create knowledge search backend from config.
-        
-        Args:
-            is_kg_active: Whether to enable knowledge graph
-            
-        Returns:
-            Configured KnowledgeSearch instance
-        """
-        mode_config = self.mode_config
-        
-        # Check for knowledge_search config (new format)
-        ks_config = mode_config.get('knowledge_search', {})
-        
-        if ks_config:
-            resolved_config = dict(ks_config)
-            resolved_params = dict(resolved_config.get("params") or {})
-            resolved_params.setdefault("models", mode_config.get("models"))
-            resolved_params.setdefault("retry", mode_config.get("retry"))
-            resolved_params.setdefault(
-                "inference", resolve_inference_config(self.config_path)
-            )
-            resolved_config["params"] = resolved_params
-            return KnowledgeSearchFactory.create_from_config(resolved_config)
-        
-        # No knowledge_search block: the caller's is_kg_active decides.
-        # (The knowledge_retriever / use_knowledge_graph legacy config
-        # shapes died here — stale-code audit 2026-08-26, R3: no config
-        # anywhere defined either.)
-        if is_kg_active:
-            return KnowledgeSearchFactory.create(
-                search_type="kg_llm_navigation",
-                params={
-                    "models": mode_config.get("models"),
-                    "retry": mode_config.get("retry"),
-                },
-            )
-        
-        # Default: disabled
-        return KnowledgeSearchFactory.create_null()
 
     def _live_phase_costs(self) -> Dict[str, float]:
         """Attributed agent spend from nodes created in this process slice."""

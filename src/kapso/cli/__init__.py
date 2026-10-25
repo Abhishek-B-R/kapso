@@ -8,10 +8,9 @@
 #
 # Usage:
 #     kapso build --brief kapso-brief.md --output ../campaign --detach
-#     kapso research --objective "How to optimize transformers?"
+#     kapso experience add --repo https://github.com/org/x --name org-x
 #     kapso learn import --subset docs/plans/learning/d1-subset.yaml
 #     kapso deploy ../campaign
-#     kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
 
 import argparse
 import sys
@@ -22,12 +21,12 @@ from dotenv import find_dotenv, load_dotenv
 # README tells users to create next to their project was never read.
 load_dotenv(find_dotenv(usecwd=True))
 
-from kapso.cli import bank, build, deploy, doctor, experience, harness, inbox, index_kg, learn, research, watch
+from kapso.cli import bank, build, deploy, doctor, experience, harness, inbox, learn, watch
 from kapso.cli.common import list_agents
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 # The verbs, in the order `kapso --help` lists them.
-VERB_MODULES = (build, harness, experience, research, learn, deploy, index_kg, watch, inbox, bank, doctor)
+VERB_MODULES = (build, harness, experience, learn, deploy, watch, inbox, bank, doctor)
 
 
 def main():
@@ -41,11 +40,9 @@ Commands:
   build      Build software that meets a brief, by experiment
   harness    Author, check and fetch harnesses: the domain layer a build loads
   experience What a build is served that was measured before: your bank, the hosted gate, ingested corpora
-  research   Web research for objectives
   learn      Trajectory learning (store, mining, updating, grading)
   deploy     Deploy solutions as running software
-  index_kg   Index knowledge graph from wiki or JSON data
-  watch      Watch a running build / learn / learn_knowledge operation
+  watch      Watch a running build / learn / experience operation
   inbox      What a build is waiting on you for, and how to answer it
   doctor     Check this machine is ready to run Kapso
 
@@ -53,17 +50,14 @@ Examples:
   # Build a solution
   kapso build --brief kapso-brief.md --output ../campaign --detach
 
-  # Research a topic
-  kapso research --objective "How to optimize transformers?"
+  # Ingest a repository into an index a build can load
+  kapso experience add --repo https://github.com/org/x --name org-x
 
   # Learn from a repository
   kapso learn import --subset docs/plans/learning/d1-subset.yaml
 
   # Deploy a solution
   kapso deploy ../campaign --strategy local
-
-  # Index knowledge graph
-  kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
 """
     )
 

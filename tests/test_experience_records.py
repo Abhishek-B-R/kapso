@@ -131,7 +131,7 @@ def _campaign(tmp_path, monkeypatch, experience):
         experience=experience,
     ))
     write_launch_record(workspace, {
-        "config_path": None, "kg_index": None, "mode": None, "coding_agent": None,
+        "config_path": None, "mode": None, "coding_agent": None,
         "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": None,
         "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
         "data_dir": None, "additional_context": "", "context": None, "harness": None,

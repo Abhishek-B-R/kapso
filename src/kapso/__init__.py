@@ -3,10 +3,11 @@
 # Long-running agents that optimize AI and Data systems, and learn from every experience.
 #
 # Usage:
-#     from src import Kapso, Source, DeployStrategy
-#     
+#     from kapso import Kapso, DeployStrategy
+#
 #     kapso = Kapso()
-#     kapso.learn_knowledge(Source.Repo("https://github.com/user/repo"), wiki_dir="data/wikis")
+#     kapso.add_experience(repo="https://github.com/user/repo", name="user-repo")
+#     kapso.load_experience("user-repo")
 #     solution = kapso.build("Create a triage agent")
 #     software = solution.deploy()
 #     result = software.run({"symptoms": "headache"})

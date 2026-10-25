@@ -424,8 +424,8 @@ RESUME_FROM_RECORD = (
 # The launch settings the checkpoint fingerprints. Changing one is refused
 # by the checkpoint with a fingerprint mismatch that names nothing; naming
 # the setting here is what the person needs.
-FINGERPRINTED_LAUNCH_KEYS = ("mode", "coding_agent", "eval_dir", "kg_index", "config_path", "experience")
-_PATH_LAUNCH_KEYS = ("eval_dir", "kg_index", "config_path")
+FINGERPRINTED_LAUNCH_KEYS = ("mode", "coding_agent", "eval_dir", "config_path", "experience")
+_PATH_LAUNCH_KEYS = ("eval_dir", "config_path")
 # The loaded experience is campaign identity by its references and scopes;
 # the heads are re-pinned from the record, so a bank that moved since the
 # launch is not a change (docs/plans/redesign/wp3-experience.md).

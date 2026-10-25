@@ -160,9 +160,10 @@ class KnowledgeMerger:
         
         Args:
             index_builder: Builds the search index of a wiki that has none,
-                called as `index_builder(wiki_dir=..., save_to=...)`;
-                `Kapso.index_kg` is the one learn_knowledge() passes. Without
-                it, a merge into a wiki with no index fails.
+                called as `index_builder(wiki_dir=..., save_to=...)`; the
+                experience package's ingestion passes the one that writes
+                the index's record. Without it, a merge into a wiki with no
+                index fails.
             agent_config: Configuration of the merge session's agent. Supports:
                 - cli: The coding agent that runs the session (claude_code,
                   or vertex_claude_code for a Vertex AI open model)
@@ -176,7 +177,7 @@ class KnowledgeMerger:
                 - auth_mode: Claude authentication mode (auto, oauth, or api_key)
                 - model: Model ID override
             Keys not given come from the packaged config (the single source of
-            these defaults); learn_knowledge() passes the live config's block.
+            these defaults); add_experience() passes the live config's block.
         """
         self._agent_config = {**learner_defaults("merger"), **(agent_config or {})}
         self._index_builder = index_builder
@@ -314,8 +315,8 @@ class KnowledgeMerger:
         if self._index_builder is None:
             raise RuntimeError(
                 f"{wiki_dir} has no index and this merger has no index_builder to "
-                "create one: pass index_builder=Kapso().index_kg (learn_knowledge "
-                "does), or index the wiki first and pass its .index as kg_index_path"
+                "create one: pass index_builder= (add_experience does), or index "
+                "the wiki first and pass its record as kg_index_path"
             )
         index_path = wiki_dir / ".index"
         self._index_builder(wiki_dir=str(wiki_dir), save_to=str(index_path))

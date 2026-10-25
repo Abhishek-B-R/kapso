@@ -17,7 +17,7 @@ from kapso.handles import Brief, Budget
 FACADE_KWARGS = {"evaluation", "data", "repo", "output", "resume", "mode", "coding_agent"}
 BUDGET_FIELDS = {"budget_minutes": "minutes", "budget_experiments": "experiments",
                  "budget_usd": "usd", "budget_reserve_minutes": "reserve_minutes"}
-CONSTRUCTOR = {"config", "kg_index"}
+CONSTRUCTOR = {"config"}
 BRIEF = {"goal", "goal_file", "brief"}
 DETACH = {"detach", "log"}
 
@@ -55,9 +55,9 @@ def test_every_flag_reaches_where_it_belongs(monkeypatch):
         monkeypatch, "--goal", "g", "--evaluation", "ev", "--data", "da", "--repo", "re",
         "--output", "out", "--budget-experiments", "3", "--budget-minutes", "30", "--budget-usd", "5",
         "--budget-reserve-minutes", "2", "--resume", "--mode", "MINIMAL", "--coding-agent", "codex",
-        "--config", "c.yaml", "--kg-index", "k.index",
+        "--config", "c.yaml",
     )
-    assert constructor.call_args.kwargs == {"config": "c.yaml", "kg_index": "k.index"}
+    assert constructor.call_args.kwargs == {"config": "c.yaml"}
     args, kwargs = facade.build.call_args
     assert args == ("g",)
     assert kwargs == {

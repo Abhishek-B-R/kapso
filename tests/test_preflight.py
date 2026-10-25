@@ -86,36 +86,28 @@ def test_all_codex_build_never_asks_for_claude(packaged, full_machine):
     assert "claude authenticated" not in found
 
 
-def test_research_needs_one_cli_and_learn_needs_both(packaged, full_machine):
+def test_research_needs_codex_only_when_asked_and_learn_needs_both_clis(packaged, full_machine):
     """Not a coincidence worth losing: the grading crew is deliberately
     cross-model (report_writer on codex, verifier on claude), so `learn`
-    genuinely needs both CLIs while `research` needs only codex."""
-    research = labels(requirements_for("research", packaged))
-    assert "codex CLI" in research
-    assert "claude CLI" not in research
+    genuinely needs both CLIs; ingesting a corpus asks for the web-search
+    session's CLI only when a question is researched."""
+    researched = labels(requirements_for("experience", packaged, research=True))
+    assert "codex CLI" in researched
+    assert "codex CLI" not in labels(requirements_for("experience", packaged))
 
     learn = labels(requirements_for("learn", packaged))
     assert "codex CLI" in learn and "claude CLI" in learn
 
 
-def test_skip_merge_drops_the_merger_and_both_kg_stores(packaged, full_machine):
-    """`skip_merge=True` stops after page extraction — demanding Neo4j for
-    a run that never writes to it is exactly the false requirement a
-    config-blind checker produces."""
-    merging = labels(requirements_for("learn_knowledge", packaged, skip_merge=False))
-    assert "Weaviate (localhost:8080)" in merging
-    assert "Neo4j (localhost:7687)" in merging
-    assert "OPENAI_API_KEY (embeddings: https://api.openai.com/v1)" in merging
-
-    extract_only = labels(
-        requirements_for("learn_knowledge", packaged, skip_merge=True)
-    )
-    assert "Weaviate (localhost:8080)" not in extract_only
-    assert "Neo4j (localhost:7687)" not in extract_only
-    assert (
-        "OPENAI_API_KEY (embeddings: https://api.openai.com/v1)"
-        not in extract_only
-    )
+def test_ingesting_a_corpus_needs_the_stores_and_the_embeddings_key(packaged, full_machine):
+    """An index is written into both graph stores and embeds every page:
+    the stores and the key are requirements of `add_experience`, and of
+    nothing else a machine without an index runs."""
+    ingesting = labels(requirements_for("experience", packaged))
+    assert "Weaviate (localhost:8080)" in ingesting
+    assert "Neo4j (localhost:7687)" in ingesting
+    assert "OPENAI_API_KEY (embeddings: https://api.openai.com/v1)" in ingesting
+    assert "Weaviate (localhost:8080)" not in labels(requirements_for("learn", packaged))
 
 
 def test_kg_store_rows_name_the_configured_endpoints(packaged, full_machine):
@@ -127,7 +119,7 @@ def test_kg_store_rows_name_the_configured_endpoints(packaged, full_machine):
         "weaviate_url": "http://localhost:18080",
         "neo4j_uri": "bolt://localhost:17687",
     }
-    merging = labels(requirements_for("learn_knowledge", config, skip_merge=False))
+    merging = labels(requirements_for("experience", config))
     assert "Weaviate (localhost:18080)" in merging
     assert "Neo4j (localhost:17687)" in merging
     assert "Weaviate (localhost:8080)" not in merging
@@ -145,13 +137,14 @@ def test_codify_target_decides_whether_gcloud_is_required(packaged, full_machine
 
 
 def test_kg_rows_appear_only_when_an_index_is_connected(packaged, full_machine):
-    """Knowledge search is opt-in via Kapso(kg_index=...); a campaign
-    without one must not be blocked on stores it never opens."""
+    """The stores are a build's requirement exactly when an index is
+    loaded; a campaign without one must not be blocked on stores it never
+    opens."""
     without = labels(requirements_for("build", packaged))
     assert "Neo4j (localhost:7687)" not in without
 
     with_index = labels(
-        requirements_for("build", packaged, kg_index="data/indexes/ml.index")
+        requirements_for("build", packaged, index="org-x")
     )
     assert "Neo4j (localhost:7687)" in with_index
     assert (
@@ -389,11 +382,11 @@ def test_configured_bank_home_follows_the_given_config():
 def test_run_preflight_raises_with_the_report_as_its_message(packaged, monkeypatch):
     monkeypatch.setattr(preflight.shutil, "which", lambda name, *a, **k: None)
     with pytest.raises(PreflightError) as excinfo:
-        preflight.run_preflight("research", packaged)
+        preflight.run_preflight("experience", packaged, research=True)
     message = str(excinfo.value)
-    assert "kapso research — preflight failed" in message
+    assert "kapso experience — preflight failed" in message
     assert "npm install -g @openai/codex" in message
-    assert "kapso doctor research" in message
+    assert "kapso doctor experience" in message
 
 
 def test_disabling_preflight_skips_every_probe(packaged, monkeypatch):
@@ -431,13 +424,13 @@ def test_live_probe_runs_only_when_configured(packaged, monkeypatch):
 
     monkeypatch.setattr(preflight, "probe_model_access", fake_probe)
 
-    preflight.run_preflight("research", packaged)
+    preflight.run_preflight("experience", packaged, research=True)
     assert probed == []
 
     config = copy.deepcopy(packaged)
     config["preflight"] = {"enabled": True, "live_model_probe": True}
-    preflight.run_preflight("research", config)
-    assert probed == [("codex", "gpt-5.6-sol")]
+    preflight.run_preflight("experience", config, research=True)
+    assert ("codex", "gpt-5.6-sol") in probed
 
 
 def test_live_probe_surfaces_the_clis_own_cap_message(packaged, monkeypatch):
@@ -449,9 +442,8 @@ def test_live_probe_surfaces_the_clis_own_cap_message(packaged, monkeypatch):
         preflight, "probe_model_access",
         lambda cli, model: (False, "You've reached your Fable 5 limit"),
     )
-    rows = preflight.live_model_requirements("research", packaged)
-    assert len(rows) == 1
-    assert rows[0].ok is False
+    rows = preflight.live_model_requirements("experience", packaged, research=True)
+    assert rows and all(row.ok is False for row in rows)
     assert rows[0].detail == "You've reached your Fable 5 limit"
     assert "Choosing models" in rows[0].fix
 
@@ -601,7 +593,7 @@ def test_build_checks_api_inference_role_key(
         for r in requirements_for(
             "build",
             packaged,
-            kg_index="my-index",
+            index="my-index",
         )
     }
     assert not found["RERANK_KEY (https://api.openai.com/v1)"].ok
@@ -642,7 +634,7 @@ def test_preflight_uses_embedding_endpoint_from_config(packaged, full_machine):
     packaged["modes"][mode]["knowledge_search"]["params"] = {
         "embedding_base_url": "https://embeddings.test/v1",
     }
-    rows = requirements_for("build", packaged, kg_index="my-index")
+    rows = requirements_for("build", packaged, index="my-index")
     assert any(row.label ==
                "OPENAI_API_KEY (embeddings: https://embeddings.test/v1)"
                for row in rows)
@@ -675,7 +667,6 @@ def test_python_build_override_fails_before_workspace(
 ):
     kapso = object.__new__(Kapso)
     kapso._config = packaged
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
     kapso._experience = []
@@ -691,7 +682,7 @@ def test_python_build_override_fails_before_workspace(
 
 @pytest.mark.parametrize("verb,branch", [
     ("build", "search_strategy.params"),
-    ("learn_knowledge", "learner.ingestor"),
+    ("experience", "learner.ingestor"),
     ("learn", "mining"),
 ])
 def test_other_non_inference_sessions_are_rejected(

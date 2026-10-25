@@ -310,7 +310,6 @@ def test_memory_status_shapes(tmp_path):
     kapso = Kapso(config=config_path)
     status = kapso.memory
     assert isinstance(status, MemoryStatus)
-    assert status.knowledge_enabled is False
     assert status.bank_head is None
     assert "not initialized" in status.explain()
 
@@ -402,33 +401,6 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
     assert [json.loads(line)["goal"] for line in registry] == ["test goal"] * 2
 
 
-def test_learn_knowledge_flattens_research_output(tmp_path, monkeypatch):
-    # Regression (E2E 2026-08-24): research(mode="idea") returns a LIST of
-    # typed sources; passing it directly (the advertised contract) must
-    # reach the pipeline flattened — never as one 'list'-typed source.
-    config_path = facade_config(tmp_path)
-    kapso = Kapso(config=config_path)
-    captured = {}
-
-    class FakePipeline:
-        def __init__(self, **kwargs):
-            pass
-
-        def run(self, *sources, skip_merge=False, status=None):
-            captured["sources"] = sources
-            return SimpleNamespace(
-                sources_processed=len(sources), total_pages_extracted=1,
-                created=1, edited=0, errors=[],
-            )
-
-    monkeypatch.setattr("kapso.kapso.KnowledgePipeline", FakePipeline)
-    idea_a, idea_b = object(), object()
-    kapso.learn_knowledge([idea_a, idea_b], skip_merge=True)
-    assert captured["sources"] == (idea_a, idea_b)
-    with pytest.raises(ValueError, match="empty source lists"):
-        kapso.learn_knowledge([], skip_merge=True)
-
-
 def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
     # Regression (E2E review 2026-08-24, blocker 1): the injected intro
     # instructs sessions to call bank_index / bank_get_card /
@@ -461,61 +433,3 @@ def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
         kapso.build("test goal", output=str(tmp_path / "out3"))
 
 
-def test_learn_knowledge_records_the_index_it_wrote(tmp_path, monkeypatch):
-    # Regression (E2E review 2026-08-24): kg_index provenance was None on
-    # every learn_knowledge -> build sequence because the facade never
-    # recorded the index the merge wrote.
-    config_path = facade_config(tmp_path)
-    kapso = Kapso(config=config_path)
-    wiki_dir = tmp_path / "wikis"
-    wiki_dir.mkdir()
-    (wiki_dir / ".index").write_text('{"page_count": 3}')
-
-    wiring = {}
-
-    class FakePipeline:
-        def __init__(self, **kwargs):
-            wiring.update(kwargs)
-
-        def run(self, *sources, skip_merge=False, status=None):
-            return SimpleNamespace(
-                sources_processed=1, total_pages_extracted=3,
-                created=3, edited=0, errors=[],
-            )
-
-    monkeypatch.setattr("kapso.kapso.KnowledgePipeline", FakePipeline)
-    monkeypatch.setattr(
-        "kapso.kapso.KnowledgeSearchFactory",
-        SimpleNamespace(create=lambda **kw: SimpleNamespace(
-            is_enabled=lambda: True), create_null=lambda: None),
-    )
-    # The preflight probes a real embeddings key and the knowledge stores'
-    # ports; it has its own suite (test_preflight), this test is about the
-    # index the merge records.
-    monkeypatch.setattr("kapso.kapso.run_preflight", lambda *a, **k: None)
-    kapso.learn_knowledge(object(), wiki_dir=str(wiki_dir))
-    # The merge builds a missing index through the facade, which owns the
-    # config that names the search backends.
-    assert wiring["index_builder"] == kapso.index_kg
-    assert kapso._kg_index_path == str(wiki_dir / ".index")
-    assert kapso.memory.knowledge_index == str(wiki_dir / ".index")
-
-
-def test_index_kg_rejects_a_call_without_a_save_path(tmp_path):
-    kapso = Kapso(config=facade_config(tmp_path))
-    with pytest.raises(ValueError, match="save_to is required"):
-        kapso.index_kg(wiki_dir=str(tmp_path))
-
-
-def test_index_kg_rejects_a_call_without_any_data(tmp_path):
-    kapso = Kapso(config=facade_config(tmp_path))
-    with pytest.raises(ValueError, match="Must provide either"):
-        kapso.index_kg(save_to=str(tmp_path / "test.index"))
-
-
-def test_missing_kg_index_file_raises_at_construction(tmp_path):
-    with pytest.raises(FileNotFoundError, match="Index file not found"):
-        Kapso(
-            config=facade_config(tmp_path),
-            kg_index=str(tmp_path / "missing.index"),
-        )

@@ -235,7 +235,7 @@ def test_launch_mismatches_name_fingerprinted_changes_and_ignore_respelled_paths
     (tmp_path / "eval").mkdir()
     record = {
         "mode": "MINIMAL", "coding_agent": None, "eval_dir": str(tmp_path / "eval"),
-        "kg_index": None, "config_path": "/x/config.yaml", "time_budget_minutes": 60.0,
+        "config_path": "/x/config.yaml", "time_budget_minutes": 60.0,
     }
     respelled = {**record, "eval_dir": str(tmp_path / "sub" / ".." / "eval"), "time_budget_minutes": 120.0}
     assert launch_mismatches(record, respelled) == {}

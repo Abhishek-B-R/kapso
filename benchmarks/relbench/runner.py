@@ -174,7 +174,6 @@ def solve_task(args) -> dict:
         config_path=config_path,
         mode=mode,
         coding_agent=args.coding_agent,
-        is_kg_active=not args.no_kg,
         workspace_dir=args.workspace,
         resume=args.resume,
         initial_repo=initial_repo,

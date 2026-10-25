@@ -62,7 +62,6 @@ def _facade() -> Kapso:
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
     kapso._config = {}
     kapso._bank_home = None
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
     kapso._experience = []
@@ -146,7 +145,7 @@ def test_the_launch_record_keeps_every_path_absolute(tmp_path, monkeypatch):
     assert record["eval_dir"] == str((tmp_path / "eval").resolve())
     assert record["data_dir"] == str((tmp_path / "data").resolve())
     assert record["output_path"] == str(workspace.resolve())
-    assert record["config_path"] is None and record["kg_index"] is None
+    assert record["config_path"] is None
 
 
 def test_resume_and_reply_load_the_campaigns_dotenv(tmp_path, monkeypatch):
@@ -161,7 +160,7 @@ def test_resume_and_reply_load_the_campaigns_dotenv(tmp_path, monkeypatch):
     # A reply, before the agent is even constructed (its knowledge index
     # may need a key), and a resume, before preflight.
     _status(workspace, "done")
-    monkeypatch.setattr(Kapso, "__init__", lambda self, config=None, kg_index=None, bank=None: None)
+    monkeypatch.setattr(Kapso, "__init__", lambda self, config=None, bank=None: None)
     monkeypatch.setattr(Kapso, "build", lambda self, **kwargs: None)
     Kapso.reply(str(workspace), 1, "added the key")
     assert loaded == [str(dotenv)]
@@ -206,7 +205,7 @@ def _paused_campaign(tmp_path, *, requests=1, resumable=True, completed=2, max_i
         strategy_state={"node_history": [node.to_dict()]}, last_stop="waiting_for_user",
     ))
     write_launch_record(workspace, {
-        "config_path": None, "kg_index": None, "mode": "GENERIC", "coding_agent": "codex",
+        "config_path": None, "mode": "GENERIC", "coding_agent": "codex",
         "output_path": str(workspace), "max_iterations": max_iterations, "time_budget_minutes": 90,
         "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": "./eval",
         "data_dir": None, "additional_context": "", "context": None,
@@ -262,11 +261,11 @@ def test_reply_resumes_with_the_launch_arguments(tmp_path, monkeypatch):
     captured: Dict[str, Any] = {}
     sentinel = object()
 
-    monkeypatch.setattr(Kapso, "__init__", lambda self, config=None, kg_index=None, bank=None: captured.update(init=(config, kg_index)))
+    monkeypatch.setattr(Kapso, "__init__", lambda self, config=None, bank=None: captured.update(init=(config,)))
     monkeypatch.setattr(Kapso, "build", lambda self, **kwargs: captured.update(kwargs) or sentinel)
 
     assert Kapso.reply(str(workspace), 1, "added the key") is sentinel
-    assert captured["init"] == (None, None)
+    assert captured["init"] == (None,)
     # The reply names only what differs from the launch — the remaining
     # iterations — and resumes; build(resume=True) takes the goal from the
     # checkpoint and every other argument from the launch record itself.

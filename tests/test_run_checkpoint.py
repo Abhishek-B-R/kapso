@@ -719,7 +719,6 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     # Mirror __init__-set attributes the build path reads (stub gotcha).
     kapso._config = {}
     kapso._bank_home = None
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
     kapso._experience = []
@@ -755,7 +754,7 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     eval_dir.mkdir()
     (eval_dir / "evaluate.py").write_text("print('accuracy: 0.9')\n")
     write_launch_record(workspace, {
-        "config_path": None, "kg_index": None, "mode": "MINIMAL",
+        "config_path": None, "mode": "MINIMAL",
         "coding_agent": None, "output_path": str(workspace),
         "max_iterations": 3, "time_budget_minutes": 60.0, "cost_budget": None,
         "finalization_reserve_minutes": None, "eval_dir": str(eval_dir),
@@ -815,7 +814,6 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
     kapso._config = {}
     kapso._bank_home = None
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
     kapso._experience = []

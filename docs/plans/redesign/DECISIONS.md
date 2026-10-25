@@ -117,6 +117,30 @@ list` mark a bank whose cards carry the retired coordinate; that needs
 every card parsed on every `list` and keeps the old grammar alive in code
 (rule 7). `list` is silent; a pre-release bank is re-learned.
 
+**An index owns its namespace in both graph stores: a Weaviate collection
+named after it and a Neo4j `corpus` property every node and query carry.**
+The reviewers showed that two indexes holding a page of the same id
+shared one Neo4j node, so adding a corpus changed what an earlier index's
+"connected pages" returned. The graph backend now takes `corpus` as a
+required parameter (the index's id), writes it on every node, matches on
+it in every query and clears only its own nodes; the collection name is
+`Kapso<Name><id>`, so a name removed and added again never meets its old
+pages. The record's `backend_refs` carries both, which is how a loaded
+index connects. Alternative rejected: one label per index, which needs
+dynamic Cypher and gives nothing a property does not.
+
+**`kapso learn <campaign>` is the verb's form; the learning system's own
+commands move under `kapso learn dev`.** WP2 handed `kapso learn
+<campaign> [--harness]` to this package. argparse cannot give one verb a
+positional campaign beside nine subcommands (`import`, `mine`, `grade`,
+`update`, `develop`, `codify`, `ingest`, `gauntlet`, `behave`): the
+positional swallows the subcommand's name, or the subcommand parser
+refuses the path. Those nine are the development regime's tools, for
+people working on the learning system, so they live under `kapso learn
+dev <command>` with the same flags, and the engineer's form is the plain
+one. Alternative rejected: a subcommand named `campaign`, which is not
+what the onboarding grammar and the docs promise.
+
 ## 2026-10-25, WP2 (taken while building)
 
 **A harness's Python requirements are checked against `python3` on PATH,
