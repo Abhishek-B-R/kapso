@@ -39,13 +39,13 @@ def test_a_delivered_build_reads_back_with_its_candidate_score_and_diff(tmp_path
     assert reopened == solution
     explained = reopened.explain()
     for line in (
-        "Solution for:  Raise AUC above 0.85",
-        f"Candidate:     generic_exp_2 @ {winner}",
-        "Score:         0.9",
-        "Goal achieved: True",
-        "Stopped:       goal_achieved",
-        "Experiments:   1 this run, 1 in all",
-        "Cost:          $1.250",
+        "Solution for:    Raise AUC above 0.85",
+        f"Candidate:       generic_exp_2 @ {winner}",
+        "Score:           0.9",
+        "Goal achieved:   True",
+        "Stopped:         goal_achieved",
+        "Experiments:     1 this run, 1 in all",
+        "Cost:            $1.250",
         "Feedback:\nAUC 0.9 beats the target",
     ):
         assert line in explained
@@ -73,7 +73,7 @@ def test_a_build_with_no_successful_candidate_has_no_branch_and_an_empty_diff(tm
 
     assert (solution.branch, solution.commit, solution.score) == (None, None, None)
     assert solution.diff() == ""
-    assert "Candidate:     none succeeded" in solution.explain()
+    assert "Candidate:       none succeeded" in solution.explain()
     assert Solution.open(workspace) == solution
 
 
@@ -90,7 +90,7 @@ def test_the_registered_evaluator_is_recorded(tmp_path, monkeypatch):
 
     assert solution.evaluator == EvaluatorRef(version=1, evaluator_id="eval-1", provenance="provided")
     assert Solution.open(workspace).evaluator == solution.evaluator
-    assert "Score:         0.8 (evaluator v1, provided)" in solution.explain()
+    assert "Score:           0.8 (evaluator v1, provided)" in solution.explain()
 
 
 def test_open_before_the_build_returned_names_watch(tmp_path):

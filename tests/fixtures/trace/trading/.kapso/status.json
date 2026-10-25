@@ -1,0 +1,60 @@
+{
+ "operation": "build",
+ "phases": [
+  "setup",
+  "harness_setup",
+  "lens_planning",
+  "ideation",
+  "implementation",
+  "evaluation",
+  "verification",
+  "feedback"
+ ],
+ "state": "done",
+ "pid": 8880,
+ "started_at": "2026-10-25T18:22:35+00:00",
+ "heartbeat_at": "2026-10-25T19:06:04+00:00",
+ "phase": "verification",
+ "phase_started_at": "2026-10-25T19:03:41+00:00",
+ "recent": [
+  "18:25 iteration 1 started (budget 8%)",
+  "18:56 node 0 completed score=None; knowledge: bank 2 (bank_index, bank_get_card); experiment_history 1 (get_top_experiments)",
+  "18:56 iteration 2 started (budget 84%)",
+  "19:06 node 1 completed score=None; knowledge: experiment_history 1 (get_top_experiments); bank 1 (bank_index)"
+ ],
+ "harness": {
+  "name": "trading",
+  "version": "0.1.0",
+  "hash": "83b6c0b60d6ac724613c469bc1315d5cba32420bdf705d8f4c2c04c73d834f2b",
+  "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+ },
+ "experience": [
+  {
+   "reference": "mine",
+   "kind": "bank",
+   "resolved": "/home/ubuntu/.kapso/bank.git",
+   "head": "a9ddad3d302dcaa258cca1d213f33bd5bd0600f0",
+   "provenance": "measured by you",
+   "scope": "harness"
+  }
+ ],
+ "heartbeat_seconds": 60.0,
+ "harness_setup": {
+  "prepared": [
+   "market-data"
+  ]
+ },
+ "budget": {
+  "elapsed_min": 43.5,
+  "total_min": 40.0
+ },
+ "iteration": 2,
+ "last": {
+  "score": null,
+  "node": 1
+ },
+ "best": null,
+ "finished_at": "2026-10-25T19:06:04+00:00",
+ "stopped_reason": "budget_exhausted",
+ "stop_detail": "time_budget"
+}

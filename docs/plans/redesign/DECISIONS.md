@@ -6,6 +6,66 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-25, WP6 (taken while building)
+
+**The trace's JSON carries six keys the plan did not list.** `sessions`
+(top level): the session records that belong to no attempt, the harness
+setup and a node still in flight, which the attempts' `sessions` cannot
+hold and the failures section must still see. `branch`: the branch the
+view was narrowed to, so `TraceView(data)` renders the narrowed text
+again from the data alone. `header.status`: the status file's state,
+phase and error, so a partial trace says why it is partial (running at a
+phase, failed with its error, no status yet, or a record older than the
+checkpoint). `attempts[].evaluation.output`: the evaluator's output, the
+evidence of a rejection and of a crashed evaluator (S5's injection).
+`lessons[].kind`: a hosted source renders differently from a bank (its
+reads are not logged per card). `attempts[].cost_usd` and
+`duration_seconds`: the node's own figures, "what it cost" per attempt.
+Alternative rejected: deriving each from the text's sections at the
+reader's end, which WP7's skills would have to repeat. Shows in
+`kapso.execution.trace` and `tests/test_trace.py`; WP7 reads the keys as
+pinned there.
+
+**The attempts come from the checkpoint's node history, not the
+experiment history store.** The checkpoint's node carries the
+verification, the load-bearing cards, the phase telemetry, the parent
+branch and the evaluation output; the store (`experiment_history.json`)
+is the gate's ranked view with fewer fields. A session's attempt is
+found by the label grammar the staging uses (the branch for the
+implementation, `verification/<branch>`, `feedback/<branch>`,
+`ideation/iter<n>` for the n-th node), so no record has to name its
+node. `complete` is decided by content, the record's `experiments_total`
+against the checkpoint's `completed_iterations` with the status `done`,
+not by file times, which an archive or a copy does not keep.
+
+**The fixture generator reconstructs what the archives predate.** The
+three archived proof runs were recorded before the run entries, the pull
+log's session key and the current record schemas existed. The committed
+generator (`tests/fixtures/trace/build_fixture.py`) rebuilds the session
+records by splitting each Claude Code stream at its `result` events (a
+trailing slice without one is a killed invocation, its error the
+adapter's deadline text), times each run from the node's start and its
+phases' durations, stamps each pull event with the session whose window
+holds its time, lifts the records to the current schemas, blanks the
+checkpoint's `code_diff` and `agent_output` (the trace reads neither; the
+fixtures stay under a megabyte) and rebases the campaign's own path to
+`/campaign`. It is deterministic and the test proves it reproduces the
+committed fixtures when the archives are on the machine. Alternative
+rejected: hand-written fixtures, which could not carry a real delegate
+report, a real void verdict or a real resumed session.
+
+**A session staged again keeps its runs.** Re-staging the same label (a
+phase re-run after a crash, a resume) used to rewrite the record with
+`runs: []`, losing the entry the failed invocation had written in its
+`finally`. The staging now keeps the entries already in the record at
+that path, so the trace shows how the first invocation ended and that a
+second one followed. Shows in `kapso.harness.staging.existing_runs`.
+
+**The summary's label column is seventeen wide.** `Sessions failed:` is
+the longest label; every pinned row in the docs and the tests moved two
+columns. A shorter label (`Failures:`) would have read as failed
+experiments.
+
 ## 2026-10-25, WP6 (planned; taken while revising the sub-plan after review)
 
 **Every session has a record, and the adapters write its runs.** The

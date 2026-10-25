@@ -45,6 +45,8 @@ RETIRED = re.compile(
 ALLOWED_PATHS = (
     "benchmarks/relbench/data/learning_behavior/",
     "tests/test_bank_retriever.py",
+    # The trace fixtures' generator reads the archives' old record name.
+    "tests/fixtures/trace/build_fixture.py",
 )
 
 

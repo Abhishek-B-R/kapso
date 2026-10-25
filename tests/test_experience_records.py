@@ -52,7 +52,7 @@ def test_the_solution_record_carries_each_source_with_its_scope(tmp_path):
     solution = make_solution(tmp_path, experience=[MINE, TEAM])
     solution.save()
     data = json.loads(solution.record_path.read_text())
-    assert data["schema_version"] == 4
+    assert data["schema_version"] == 5
     assert [(s["reference"], s["head"], s["scope"]) for s in data["experience"]] == [
         ("mine", "a" * 40, "harness"), ("acme/kapso-bank", "b" * 40, "all"),
     ]
@@ -60,8 +60,8 @@ def test_the_solution_record_carries_each_source_with_its_scope(tmp_path):
     reopened = Solution.open(str(tmp_path))
     assert reopened.experience == [MINE, TEAM]
     text = reopened.explain()
-    assert f"Experience:    mine at {'a' * 12}, measured by you" in text
-    assert f"Experience:    acme/kapso-bank at {'b' * 12}, measured by others (every scope)" in text
+    assert f"Experience:      mine at {'a' * 12}, measured by you" in text
+    assert f"Experience:      acme/kapso-bank at {'b' * 12}, measured by others (every scope)" in text
 
 
 def test_the_checkpoint_carries_the_sources_and_requires_the_field(tmp_path):

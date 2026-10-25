@@ -187,7 +187,7 @@ def test_reply_prints_the_campaign_summary(tmp_path, monkeypatch, capsys):
     _capture_reply(monkeypatch, make_solution(workspace, "Improve support", stopped_reason="max_iterations", cost_usd=2.5))
     _run(monkeypatch, "inbox", "reply", "1", "added the key")
     out = capsys.readouterr().out
-    assert "COMPLETED" in out and "Stopped:       max_iterations" in out and "Cost:          $2.500" in out
+    assert "COMPLETED" in out and "Stopped:         max_iterations" in out and "Cost:            $2.500" in out
 
 
 def test_the_summary_says_waiting_on_you_when_the_campaign_asked_again(tmp_path, capsys):

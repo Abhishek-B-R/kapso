@@ -172,7 +172,7 @@ def test_a_valid_verdict_reaches_the_judge_and_the_record(strategy, tmp_path, ha
     assert "Verdict: valid" in judged["verification"] and "no look-ahead; costs charged on turnover" in judged["verification"]
     assert node.phase_telemetry["verification"]["cost_usd"] == 0.1
     solution = make_solution(tmp_path / "campaign", verification=node.verification)
-    assert "Verified:      valid — no look-ahead; costs charged on turnover" in solution.explain()
+    assert "Verified:        valid — no look-ahead; costs charged on turnover" in solution.explain()
     solution.save()
     assert Solution.open(tmp_path / "campaign").verification == node.verification
 

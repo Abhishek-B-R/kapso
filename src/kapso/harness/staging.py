@@ -41,6 +41,8 @@ PREPARED_DIR = "prepared"
 # host's event stream.
 SESSION_RECORD_FILE = "session.json"
 STREAM_FILE = "stream.jsonl"
+# Where a campaign's session records live, under the campaign directory.
+SESSIONS_DIR = Path(".kapso") / "sessions"
 CLAUDE_HOST = "claude_code"
 CODEX_HOST = "codex"
 HOST_OF_AGENT = {
@@ -139,11 +141,21 @@ def _record_without_harness(
         "hooks": [],
         "prepared": [],
         "stream": staged.agent_specific["stream_artifact_path"],
-        "runs": [],
+        "runs": existing_runs(record_dir / SESSION_RECORD_FILE),
     }
     staged.record_path = record_dir / SESSION_RECORD_FILE
     write_whole(staged.record_path, json.dumps(staged.record, indent=2) + "\n")
     return staged
+
+
+def existing_runs(record_path: Path) -> list:
+    """The run entries a record at this path already holds: a session
+    staged again under the same label (a phase re-run after a crash or a
+    resume) keeps the invocations before it, so the record says how the
+    first one ended."""
+    if not record_path.is_file():
+        return []
+    return list(json.loads(record_path.read_text(encoding="utf-8"))["runs"])
 
 
 def stage_harness(
@@ -163,7 +175,7 @@ def stage_harness(
     staged and the record is written all the same."""
     session_dir = Path(session_dir)
     campaign_dir = Path(campaign_dir)
-    records = Path(records_dir) if records_dir is not None else campaign_dir / ".kapso" / "sessions"
+    records = Path(records_dir) if records_dir is not None else campaign_dir / SESSIONS_DIR
     if harness is None:
         return _record_without_harness(module, host, session_dir, session_id, records)
     if module not in MODULES:
@@ -366,8 +378,9 @@ class _Stager:
             "hooks": list(self.attachments.hooks),
             "prepared": list(self.prepared),
             "stream": self.staged.agent_specific["stream_artifact_path"],
-            # The host invocations the adapter appends, one entry each.
-            "runs": [],
+            # The host invocations the adapter appends, one entry each; a
+            # session staged again keeps the entries already there.
+            "runs": existing_runs(self.session_record_dir() / SESSION_RECORD_FILE),
         }
         self.staged.record_path = self.session_record_dir() / SESSION_RECORD_FILE
         write_whole(self.staged.record_path, json.dumps(self.staged.record, indent=2) + "\n")

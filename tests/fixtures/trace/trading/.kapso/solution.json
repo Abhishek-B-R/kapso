@@ -1,0 +1,72 @@
+{
+  "schema_version": 5,
+  "brief": {
+    "objective": "Raise the strategy's out-of-sample Sharpe above 1.0 on the 2024\nwindow without breaking the signal contract: strategy.py keeps\na signal(bars) function that returns the position to hold per\nbar, in [-1, 1], from that bar and the ones before it.",
+    "measured_by": "kapso_evaluation/evaluate.py: the annualised Sharpe of the\nequal-weight portfolio over 2024 after 5 basis points per unit\nof turnover, with the risk line (max drawdown, annual turnover)\nprinted beside it",
+    "baseline": "0.14 (the shipped 20/100 moving-average cross; max drawdown\n0.11, annual turnover 3.5)",
+    "target": "1.0",
+    "rules": [
+      "a signal at bar t uses only bars at or before t; the position decided at t earns from t+1",
+      "the 2024 bars are read by the evaluation alone; develop on 2021 to 2023",
+      "every price comes from the pinned snapshot the setup session builds; no live fetches",
+      "the evaluator is never modified"
+    ],
+    "budget": {
+      "minutes": 75.0,
+      "experiments": 2,
+      "usd": null,
+      "reserve_minutes": null
+    },
+    "harness": "../harnesses/trading",
+    "experience": []
+  },
+  "branch": null,
+  "commit": null,
+  "base_commit": "e3e87372b5c98e317d33a9da8f55902a04064c2a",
+  "score": null,
+  "goal_achieved": false,
+  "stopped_reason": "budget_exhausted",
+  "stop_detail": "time_budget",
+  "experiments": 2,
+  "experiments_total": 2,
+  "cost_usd": 13.1687975,
+  "requests": [],
+  "feedback": "Feedback generation failed: the required tags were missing after a retry.\n\nRaw output:\nI can't produce those tags \u2014 there's nothing in my context to fill them in from.\n\nThis is the first turn of this conversation. I have no previous response, and no iteration, attempt, or rubric was included in the message I received. Emitting `<score>` and `<evaluation_valid>` for an iteration I never saw would just be invented numbers, which is worse than useless for a grading pipeline.\n\nWhat does exist on disk, if you want to point me at the right thing:\n\n- `.kapso/sessions/feedback/generic_exp_0/stream.jsonl` and `.../generic_exp_1/stream.jsonl` \u2014 the only files mentioning `cards_load_bearing`, so presumably prior feedback-session transcripts that contain the tag contract\n- `.kapso/verification/generic_exp_0/` and `generic_exp_1/` \u2014 evaluated attempts\n- `kapso_task.md`, `kapso_evaluation/`, `strategy.py`\n\nTell me which iteration to evaluate (e.g. `generic_exp_1`) and I'll read the attempt, its evaluation output, and the task limits, then return the five tags. If the grader is supposed to be feeding me the iteration inline and it arrived empty, that's likely the actual bug \u2014 the prompt reached me with only the system context attached.",
+  "evaluator": null,
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "83b6c0b60d6ac724613c469bc1315d5cba32420bdf705d8f4c2c04c73d834f2b",
+    "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+  },
+  "experience": [
+    {
+      "reference": "mine",
+      "kind": "bank",
+      "resolved": "/home/ubuntu/.kapso/bank.git",
+      "head": "a9ddad3d302dcaa258cca1d213f33bd5bd0600f0",
+      "provenance": "measured by you",
+      "scope": "harness"
+    }
+  ],
+  "verification": null,
+  "rejected_candidates": 1,
+  "callback_metrics": {},
+  "callback_primary_metric": null,
+  "session_failures": [
+    {
+      "label": "generic_exp_1",
+      "module": "implementation",
+      "host": "claude_code",
+      "exit": "timeout",
+      "error": "Claude Code CLI exceeded its 182.63159913599975s deadline and was terminated"
+    },
+    {
+      "label": "verification/generic_exp_1",
+      "module": "verification",
+      "host": "claude_code",
+      "exit": "timeout",
+      "error": "Claude Code CLI exceeded its deadline and was terminated"
+    }
+  ]
+}

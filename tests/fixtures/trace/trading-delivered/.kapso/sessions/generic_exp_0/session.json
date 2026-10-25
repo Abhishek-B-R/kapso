@@ -1,0 +1,148 @@
+{
+  "module": "implementation",
+  "host": "claude_code",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "141a562fbace83553a2635f4ff7da69f4a8466438ed31324e7a21471db860d48",
+    "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+  },
+  "session_dir": "/campaign/sessions/generic_exp_0",
+  "pages": [
+    "guardrails.md",
+    "implementation.md"
+  ],
+  "skills": [
+    "backtesting",
+    "market-data",
+    "risk-limits",
+    "lookahead-scan"
+  ],
+  "mcp_servers": [
+    "market-data"
+  ],
+  "agents": [
+    "lookahead-auditor"
+  ],
+  "hooks": [
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared",
+    "deny-snapshot",
+    "scan-writes",
+    "require-results"
+  ],
+  "prepared": [
+    "market-data"
+  ],
+  "stream": "/campaign/.kapso/sessions/generic_exp_0/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-25T11:24:44+00:00",
+      "ended": "2026-10-25T11:29:17+00:00",
+      "duration_seconds": 273.396,
+      "model": "claude-opus-5",
+      "cli_session_id": "21e7de82-632b-42b8-9461-9e7d89b19782",
+      "exit": "success",
+      "error": null,
+      "cost_usd": 3.10454,
+      "cost_cumulative": 3.1045400000000005,
+      "turns": 26,
+      "usage": null,
+      "tools": {
+        "Bash": 39,
+        "Write": 1,
+        "Agent": 1,
+        "Read": 2,
+        "Skill": 1,
+        "ListAgents": 1
+      },
+      "gates": {},
+      "hooks": [
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": "context",
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        }
+      ],
+      "delegates": [
+        {
+          "name": "lookahead-auditor",
+          "tool_use_id": "toolu_015xhLbnHAXF3YrE3XMhsn3Y",
+          "background": true,
+          "status": "completed",
+          "summary": "## Outcome: PASS\n\n`signal()` in `strategy.py` is a pure function of its argument with zero file I/O, and every statistic it computes is bit-exactly causal. I tried to break the frame-length-invariance claim three different ways and could not move a single value. The headline numbers (dev Sharpe 2.18 > OOS Sharpe 1.93) point away from leakage, not toward it.\n\n### What I verified, and how\n\n**1. Strict causality, per-bar (the decisive test).** Rather than only truncating, I perturbed *exactly one* bar and asked which output rows moved. Script at `/tmp/audit_la/probe2.py`:\n\n```\nperturb row 200: earliest changed output row = 200  (must be >= 200)  n_changed=580\nperturb row 450: earliest changed output row = 450  (must be >= 450)  n_changed=330\nperturb row 600: earliest changed output row = 600  (must be >= 600)  n_changed=180\n```\n\nThe earliest affected output row equals the perturbed row every time \u2014 never `t-1`. This simultaneously proves (a) no value from `t+k` reaches bar `t`, and (b) bar `t` *is* used at `t`, i.e. there is no second shift inside the strategy (correct, since `evaluate.py:73` owns the lag).\n\n**2. Frame-length invariance / whole-sample contamination.** `/tmp/audit_la/probe.py`, all three instruments:\n- truncation at 120/300/500/700 rows vs the same dates in the full frame: `max|diff| = 0.000e+00`\n- replacing *every* row after index k with a randomly rescaled (\u00d73, random-walk) series: `max|diff| on rows 0..k = 0.000e+00` for k = 150/400/650\n- appending a synthetic 250-bar \"2024\" tail exactly as `evaluate.py:97` concatenates: `max|diff| on the dev rows = 0.000e+00`\n\nZero, not \"small\" \u2014 which is what you must see, since `ewm` is a forward recursion and `rolling` is trailing. All `min_periods` are fixed integer constants (`fast`, `slow`, `FC_VOL_MIN=20`, `VOL_MIN=20`, default `=window` for `rolling(BRK_W)`/`rolling(CLS_W)`); none is derived from `len(bars)`, so a 2021-only call and a 2021\u20132024 call cannot diverge on shared dates.\n\n**3. The specific operators you flagged.** None can propagate backwards:\n- `.replace(0.0, np.nan)` (lines 42, 50, 56, 65, 73) and `.fillna(0.0)` (67\u201369, 76) are element-wise \u2014 `fillna` with a *scalar*, not `method=\"bfill\"`, so no neighbour value moves at all.\n- `.clip(upper=LEV_CAP)` / `.clip(-1.0, 1.0)` are element-wise against constants, not against any series statistic.\n- `channel.ewm(span=BRK_SMOOTH, min_periods=1).mean()` (line 52) runs over a series whose first `BRK_W-1` entries are NaN; pandas' default `ignore_na=False` reweights but never pulls a later observation earlier. Confirmed by the k=150 perturbation above.\n- `pd.concat(forecasts, axis=1).mean(axis=1)` (line 44) is a row-wise mean across the two EWMAC pairs at the *same* timestamp \u2014 a cross-*feature*, not cross-*time*, reduction. When the (8,32) leg is still cold the mean uses the warm leg alone: a shorter warm-up, not look-ahead.\n\n**4. Row alignment of `pd.Series(position.to_numpy(dtype=float), index=bars.index)` (line 77).** Preserved. I also probed the two ways it could theoretically break under `pd.concat(axis=1)` inside `_trend` \u2014 a descending (non-monotonic) index and a fully duplicated index \u2014 and neither reorders rows in pandas 3.1 (`max|diff| = 0.000e+00`; duplicate index returns length 780). In any case the evaluator passes a clean ascending `RangeIndex` (`read_bars` \u2192 `reset_index(drop=True)`, then `concat(..., ignore_index=True)`), so the path is not reachable in scoring.\n\n**5. No read of the sealed path.** I did not open, glob or stat it. `strategy.py` imports only `numpy` and `pandas` and contains no `open`/`Path`/`read_csv`/`glob`/`subprocess` (AST dump of its call set: only `ewm`, `rolling`, `diff`, `replace`, `fillna`, `clip`, `concat`, `Series`, `to_numpy`, `log`, `tanh`, `sqrt`, `std`, `min`, `max`, `mean`). Importing it pulls in no local module (only pandas' own transitive deps). The only reference to `private_dir.txt` anywhere in attempt code is inside `evaluate.py` itself. Every attempt-side `read_csv` resolves to `kapso_datasets/bars/*.csv` or `results/*.csv`.\n\n**6. `profile_inputs.py` is genuinely disconnected** \u2014 verified independently, not taken on your word: `grep -rn \"profile_inputs|check_baseline\" --include=*.py .` returns nothing, so no module imports it; and `strategy.py`'s AST shows only `numpy`/`pandas` imports. Its two `shift(-1)` uses (lines 37, 47 of `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/output_data_generic_exp_0/profile_inputs.py`) compute next-day ICs on **dev bars only** (`kapso_datasets/bars`, 2021\u20132023). That is legitimate development-window research, and it is dead code at scoring time.\n\n**7. The evaluator is untouched.** `git diff HEAD --exit-code -- kapso_evaluation/evaluate.py` is clean; sha256 `d196555d53052d165cd72bf6896a0482dab409b565ce7a9b9fe615dae4ea0ee0` matches `git show HEAD:kapso_evaluation/evaluate.py`.\n\n**8. \"Too good to be true\" check \u2014 it isn't.** Dev `2021-07-01..2023-12-29`: sharpe 2.18, max_dd 0.0188, turnover 8.5, per-year 2.92 / 3.01 / 0.91. OOS 2024: sharpe 1.93, max_dd 0.0117, turnover 8.4. OOS is *below* dev and sits inside the dev per-year range, with turnover matching to one decimal \u2014 the honest-overfit signature, the opposite of leakage (leakage usually makes OOS meet or beat dev). The eye-catching 1.17% drawdown is a scaling artifact, not a red flag: measured OOS portfolio vol is 2.63% annualised on 5.09% annual return (mean `|pos|` 0.196, max 0.635), so a ~1% peak-to-trough is exactly the right order of magnitude.\n\n**9. No tuning against the score.** mtimes give a clean chronology: `strategy.py` 11:26:11 \u2192 `contract_check.py` 11:27:36 \u2192 evaluator outputs 11:27:49 \u2192 `risk_line.py` 11:28:18. `strategy.py` was never touched after the scored run, and there is one `result.json`. Supporting evidence that the OOS length was not peeked: `kapso_evaluation/eval_profile.md` was written at 11:25:56 (before the run) and records \"~250 bars, **ASSUMED, unknowable by design**\" \u2014 the true answer turned out to be 262.\n\n### Two advisory findings (neither is leakage)\n\n- **Protected-directory hygiene, not leakage.** `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/kapso_evaluation/eval_profile.md` is a *new file added under* `kapso_evaluation/`. `evaluate.py` is byte-identical, but the brief says \"a candidate that modifies anything under `kapso_evaluation/` is rejected\" (task statement line 32) and the domain statement repeats it (line 87). Its content is harmless (dev-window facts plus a reading of the evaluator), but I would relocate it to `output_data_generic_exp_0/` so a mechanical \"did anything under `kapso_evaluation/` change\" check cannot void the attempt. Flagging because the cost of being wrong here is the whole attempt.\n- **`risk_line.py` reads the evaluator's own OOS outputs** (`results/equity_curve.csv`, `results/trades.csv`, `kapso_evaluation/result.json`) and prints per-quarter Sharpe and monthly returns for 2024. This is sanctioned \u2014 the risk line is required and those files are the evaluator's sanctioned output channel \u2014 and the chronology above shows it was written *after* the single scored run with no subsequent strategy edit. Worth stating explicitly in the attempt notes, since the file does put 2024 per-quarter detail into session context; with `experiments=2` remaining, experiment 2 must come from the pre-registered PLAN.md fallback (line 22-23) and not from those quarterly numbers.\n\n### Files\n\n- `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/strategy.py` \u2014 the audited signal; clean\n- `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/dev_backtest.py` \u2014 dev harness; mirrors the evaluator's lag and cost model, reads dev bars only\n- `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/contract_check.py` \u2014 the attempt's own invariance/contract stress test; its claims reproduce\n- `/tmp/audit_la/probe.py`, `/tmp/audit_la/probe2.py` \u2014 my independent probes, rerunnable",
+          "usage": {
+            "total_tokens": 49189,
+            "tool_uses": 17,
+            "duration_ms": 163706
+          },
+          "report": "## Outcome: PASS\n\n`signal()` in `strategy.py` is a pure function of its argument with zero file I/O, and every statistic it computes is bit-exactly causal. I tried to break the frame-length-invariance claim three different ways and could not move a single value. The headline numbers (dev Sharpe 2.18 > OOS Sharpe 1.93) point away from leakage, not toward it.\n\n### What I verified, and how\n\n**1. Strict causality, per-bar (the decisive test).** Rather than only truncating, I perturbed *exactly one* bar and asked which output rows moved. Script at `/tmp/audit_la/probe2.py`:\n\n```\nperturb row 200: earliest changed output row = 200  (must be >= 200)  n_changed=580\nperturb row 450: earliest changed output row = 450  (must be >= 450)  n_changed=330\nperturb row 600: earliest changed output row = 600  (must be >= 600)  n_changed=180\n```\n\nThe earliest affected output row equals the perturbed row every time \u2014 never `t-1`. This simultaneously proves (a) no value from `t+k` reaches bar `t`, and (b) bar `t` *is* used at `t`, i.e. there is no second shift inside the strategy (correct, since `evaluate.py:73` owns the lag).\n\n**2. Frame-length invariance / whole-sample contamination.** `/tmp/audit_la/probe.py`, all three instruments:\n- truncation at 120/300/500/700 rows vs the same dates in the full frame: `max|diff| = 0.000e+00`\n- replacing *every* row after index k with a randomly rescaled (\u00d73, random-walk) series: `max|diff| on rows 0..k = 0.000e+00` for k = 150/400/650\n- appending a synthetic 250-bar \"2024\" tail exactly as `evaluate.py:97` concatenates: `max|diff| on the dev rows = 0.000e+00`\n\nZero, not \"small\" \u2014 which is what you must see, since `ewm` is a forward recursion and `rolling` is trailing. All `min_periods` are fixed integer constants (`fast`, `slow`, `FC_VOL_MIN=20`, `VOL_MIN=20`, default `=window` for `rolling(BRK_W)`/`rolling(CLS_W)`); none is derived from `len(bars)`, so a 2021-only call and a 2021\u20132024 call cannot diverge on shared dates.\n\n**3. The specific operators you flagged.** None can propagate backwards:\n- `.replace(0.0, np.nan)` (lines 42, 50, 56, 65, 73) and `.fillna(0.0)` (67\u201369, 76) are element-wise \u2014 `fillna` with a *scalar*, not `method=\"bfill\"`, so no neighbour value moves at all.\n- `.clip(upper=LEV_CAP)` / `.clip(-1.0, 1.0)` are element-wise against constants, not against any series statistic.\n- `channel.ewm(span=BRK_SMOOTH, min_periods=1).mean()` (line 52) runs over a series whose first `BRK_W-1` entries are NaN; pandas' default `ignore_na=False` reweights but never pulls a later observation earlier. Confirmed by the k=150 perturbation above.\n- `pd.concat(forecasts, axis=1).mean(axis=1)` (line 44) is a row-wise mean across the two EWMAC pairs at the *same* timestamp \u2014 a cross-*feature*, not cross-*time*, reduction. When the (8,32) leg is still cold the mean uses the warm leg alone: a shorter warm-up, not look-ahead.\n\n**4. Row alignment of `pd.Series(position.to_numpy(dtype=float), index=bars.index)` (line 77).** Preserved. I also probed the two ways it could theoretically break under `pd.concat(axis=1)` inside `_trend` \u2014 a descending (non-monotonic) index and a fully duplicated index \u2014 and neither reorders rows in pandas 3.1 (`max|diff| = 0.000e+00`; duplicate index returns length 780). In any case the evaluator passes a clean ascending `RangeIndex` (`read_bars` \u2192 `reset_index(drop=True)`, then `concat(..., ignore_index=True)`), so the path is not reachable in scoring.\n\n**5. No read of the sealed path.** I did not open, glob or stat it. `strategy.py` imports only `numpy` and `pandas` and contains no `open`/`Path`/`read_csv`/`glob`/`subprocess` (AST dump of its call set: only `ewm`, `rolling`, `diff`, `replace`, `fillna`, `clip`, `concat`, `Series`, `to_numpy`, `log`, `tanh`, `sqrt`, `std`, `min`, `max`, `mean`). Importing it pulls in no local module (only pandas' own transitive deps). The only reference to `private_dir.txt` anywhere in attempt code is inside `evaluate.py` itself. Every attempt-side `read_csv` resolves to `kapso_datasets/bars/*.csv` or `results/*.csv`.\n\n**6. `profile_inputs.py` is genuinely disconnected** \u2014 verified independently, not taken on your word: `grep -rn \"profile_inputs|check_baseline\" --include=*.py .` returns nothing, so no module imports it; and `strategy.py`'s AST shows only `numpy`/`pandas` imports. Its two `shift(-1)` uses (lines 37, 47 of `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/output_data_generic_exp_0/profile_inputs.py`) compute next-day ICs on **dev bars only** (`kapso_datasets/bars`, 2021\u20132023). That is legitimate development-window research, and it is dead code at scoring time.\n\n**7. The evaluator is untouched.** `git diff HEAD --exit-code -- kapso_evaluation/evaluate.py` is clean; sha256 `d196555d53052d165cd72bf6896a0482dab409b565ce7a9b9fe615dae4ea0ee0` matches `git show HEAD:kapso_evaluation/evaluate.py`.\n\n**8. \"Too good to be true\" check \u2014 it isn't.** Dev `2021-07-01..2023-12-29`: sharpe 2.18, max_dd 0.0188, turnover 8.5, per-year 2.92 / 3.01 / 0.91. OOS 2024: sharpe 1.93, max_dd 0.0117, turnover 8.4. OOS is *below* dev and sits inside the dev per-year range, with turnover matching to one decimal \u2014 the honest-overfit signature, the opposite of leakage (leakage usually makes OOS meet or beat dev). The eye-catching 1.17% drawdown is a scaling artifact, not a red flag: measured OOS portfolio vol is 2.63% annualised on 5.09% annual return (mean `|pos|` 0.196, max 0.635), so a ~1% peak-to-trough is exactly the right order of magnitude.\n\n**9. No tuning against the score.** mtimes give a clean chronology: `strategy.py` 11:26:11 \u2192 `contract_check.py` 11:27:36 \u2192 evaluator outputs 11:27:49 \u2192 `risk_line.py` 11:28:18. `strategy.py` was never touched after the scored run, and there is one `result.json`. Supporting evidence that the OOS length was not peeked: `kapso_evaluation/eval_profile.md` was written at 11:25:56 (before the run) and records \"~250 bars, **ASSUMED, unknowable by design**\" \u2014 the true answer turned out to be 262.\n\n### Two advisory findings (neither is leakage)\n\n- **Protected-directory hygiene, not leakage.** `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/kapso_evaluation/eval_profile.md` is a *new file added under* `kapso_evaluation/`. `evaluate.py` is byte-identical, but the brief says \"a candidate that modifies anything under `kapso_evaluation/` is rejected\" (task statement line 32) and the domain statement repeats it (line 87). Its content is harmless (dev-window facts plus a reading of the evaluator), but I would relocate it to `output_data_generic_exp_0/` so a mechanical \"did anything under `kapso_evaluation/` change\" check cannot void the attempt. Flagging because the cost of being wrong here is the whole attempt.\n- **`risk_line.py` reads the evaluator's own OOS outputs** (`results/equity_curve.csv`, `results/trades.csv`, `kapso_evaluation/result.json`) and prints per-quarter Sharpe and monthly returns for 2024. This is sanctioned \u2014 the risk line is required and those files are the evaluator's sanctioned output channel \u2014 and the chronology above shows it was written *after* the single scored run with no subsequent strategy edit. Worth stating explicitly in the attempt notes, since the file does put 2024 per-quarter detail into session context; with `experiments=2` remaining, experiment 2 must come from the pre-registered PLAN.md fallback (line 22-23) and not from those quarterly numbers.\n\n### Files\n\n- `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/strategy.py` \u2014 the audited signal; clean\n- `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/dev_backtest.py` \u2014 dev harness; mirrors the evaluator's lag and cost model, reads dev bars only\n- `/home/ubuntu/fixture/examples/trading/campaign/sessions/generic_exp_0/contract_check.py` \u2014 the attempt's own invariance/contract stress test; its claims reproduce\n- `/tmp/audit_la/probe.py`, `/tmp/audit_la/probe2.py` \u2014 my independent probes, rerunnable"
+        }
+      ],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": "The target is cleared with margin: **OOS 2024 Sharpe 1.93** against a 1.0 target and a 0.14 baseline.\n\n`sharpe 1.93 | max_dd 1.2% | gross 0.20 | turnover 8.4x | worst_month -0.9%` over 262 days.\n\nDev (2021-07-01\u21922023-12-29) scored 2.18, so the dev\u2192OOS give-back is 11% \u2014 comfortably inside the ~1.0 Sharpe standard error at this sample length, and OOS landing *below* dev is the honest-overfit signature rather than a leakage one. Per-quarter slices show the edge is concentrated: Q1 \u22120.45, Q2 +0.03, Q3 +3.53, Q4 +3.91. The losses sit entirely in the choppy H1 tape the design was pre-registered as losing in, so this is one trend regime's worth of edge, not four independent quarters.\n\nTwo things worth flagging. First, I did not spend experiment 2 \u2014 the solution reserved it only for a 0.6\u20131.0 landing, and no horizon was re-tuned against the OOS score. Second, I corrected a hygiene mistake of my own: I had initially written `eval_profile.md` *inside* the protected `kapso_evaluation/` directory, which the brief says voids a candidate outright. It is now at the repo root, and that directory holds only the unmodified `evaluate.py` (sha256 verified identical), `private_dir.txt` (never opened), and the evaluator's own `result.json`.\n\n<code_changes_summary>\nReplaced the shipped 20/100 long-only moving-average cross in `strategy.py` with a fast/medium time-series-momentum forecast: a vol-normalised, tanh-squashed ensemble of three trend estimators \u2014 EWMAC crossover pairs (4,16)+(8,32), a 20-day Donchian channel position, and a 20-day mean of intrabar close-location \u2014 blended 0.45/0.20/0.35, then scaled to a 0.12 annualised risk target by trailing EWM realised volatility (leverage capped at 3.0) and clipped to [-1, 1]. Every statistic is `ewm` or trailing `rolling`, every denominator has zeros replaced by NaN before dividing, and the strategy adds no shift because the evaluator owns the one-bar lag. Added supporting development tooling outside the protected directory: `dev_backtest.py` (mirrors the evaluator's lag, cost model and aggregation, scored on 2021-07-01\u21922023-12-29), `contract_check.py` (edge-case stress on synthetic tails plus a frame-length-invariance proof), `risk_line.py` (the standard risk line from the evaluator's own outputs), `eval_profile.md` (measurement and input profile with coverage axes), and `PLAN.md`. The evaluator was never modified and `kapso_evaluation/private_dir.txt` was never opened.\n</code_changes_summary>\n\n<evaluation_script_path>\nkapso_evaluation/evaluate.py\n</evaluation_script_path>\n\n<evaluation_output>\ninstruments: ALPHA, BETA, GAMMA\ndays: 262\nmax_drawdown: 0.0117\nturnover: 8.4\nsharpe: 1.9336\n\n(exit code 0)\n\nFull risk line, per the risk-limits skill definitions:\nOOS 2024 (262 days)\nsharpe 1.93 | max_dd 1.2% | gross 0.20 | turnover 8.4x | worst_month -0.9%\nposition limit respected (dev max|position| 0.721, OOS max|position| 0.635)\n\nSlice aggregates over the evaluator's own OOS outputs:\nper-quarter portfolio sharpe: 2024Q1 -0.45 (n=65) | Q2 +0.03 (n=65) | Q3 +3.53 (n=66) | Q4 +3.91 (n=66)\nper-instrument exposure: ALPHA mean|pos| 0.190 turnover 9.0 | BETA 0.151 / 5.8 | GAMMA 0.247 / 10.4\n\nDevelopment window 2021-07-01..2023-12-29 (dev_backtest.py), for visible degradation:\nsharpe: 2.1817\nmax_drawdown: 0.0188\nturnover: 8.5\nmax_abs_position: 0.721\nper-year sharpe: 2021H2=2.92  2022=3.01  2023=0.91\nper-instrument sharpe/vol: ALPHA=1.66/0.048  BETA=1.26/0.047  GAMMA=0.87/0.043\nbaseline 20/100 cross on the same dev window: sharpe 0.4831, max_dd 0.1622, turnover 3.6\n\nCost sensitivity (dev): 5bp 2.182 | 10bp 2.025 | 20bp 1.712 | 40bp 1.086\nContract stress: 15/15 synthetic-tail cases PASS; frame-length invariance max_abs_diff 0.00e+00\nLook-ahead scan on the signal path: zero findings. lookahead-auditor delegate: PASS\n</evaluation_output>\n\n<score>\n1.9336\n</score>\n\n<technical_difficulties>\nFour real problems, all resolved:\n\n1. **`python3 -I` broke numpy/pandas imports.** The environment guidance recommends `-I` for scripts reading untrusted downloaded data, so I ran my first recon script that way and got `ModuleNotFoundError: No module named 'numpy'`. Root cause: `mcp<2`, numpy and pandas are installed in the **user site-packages** on this machine (per the domain statement, the setup session installed `mcp<2` there to fix the market-data server), and `-I` implies `-s`, which suppresses user site. Fix: drop `-I` for scripts I wrote myself against repo-local CSVs \u2014 the isolation flag is for untrusted downloads, which these are not. Anyone running Python here that needs numpy must not use `-I` or `-s`.\n\n2. **I wrote a file into the protected evaluator directory.** The recon instructions name `kapso_evaluation/eval_profile.md` as the profile's path, but the brief and domain statement both say a candidate that modifies *anything* under `kapso_evaluation/` is rejected. I followed the recon path first and the lookahead-auditor caught the conflict. Fix: relocated to the repo root (`eval_profile.md`); `kapso_evaluation/` now holds only `evaluate.py` (sha256 `d196555d...ea0ee0`, verified identical to the baseline commit), `private_dir.txt`, and `result.json` \u2014 the latter being a runtime output the evaluator writes itself and the problem statement explicitly permits. Next implementor: the brief's rule wins over the generic recon path; put the profile outside that directory from the start.\n\n3. **The look-ahead scanner is path-agnostic and flagged my recon script.** `scan.py` reported 2 findings \u2014 both `shift(-1)` in `profile_inputs.py`, used to compute next-day information coefficients during recon. Moving the file to `output_data_generic_exp_0/` did **not** silence it; the scanner reads added lines regardless of path. Resolution: scoped the clean scan to the signal path (`git diff --cached -- strategy.py dev_backtest.py` \u2192 zero findings) and wrote the justification in `changes.log`, which is what the domain statement asks for (a fix *or* a sentence saying why it is safe). The auditor independently confirmed the file is dead code at scoring time via `grep` for importers plus an AST dump of `strategy.py`'s imports.\n\n4. **My own frame-length-invariance test was weaker than I realised.** I tested truncation only (2021-only call vs full frame), which catches whole-sample statistics but would *not* catch an accidental extra `shift(-1)` of one bar, since both frames would shift identically. The auditor's single-bar perturbation probe is the test that covers both directions: perturbing row N changed the output starting at exactly row N, never N-1. Worth reusing \u2014 truncation alone is not sufficient evidence of causality.\n\nOne non-issue worth recording so it is not mistaken for a problem later: the OOS `max_drawdown` of 1.2% looks implausibly small, but it is a scaling artifact of vol targeting at `TARGET_VOL=0.12` with mean `|position|` 0.196 \u2014 measured OOS portfolio vol is ~2.6% annualised. Since uniform leverage is Sharpe-neutral under this cost model, `TARGET_VOL` is a drawdown dial only and does not flatter the score.\n</technical_difficulties>"
+    },
+    {
+      "started": "2026-10-25T11:29:17+00:00",
+      "ended": "2026-10-25T11:30:40+00:00",
+      "duration_seconds": 82.628,
+      "model": "claude-opus-5",
+      "cli_session_id": "21e7de82-632b-42b8-9461-9e7d89b19782",
+      "exit": "success",
+      "error": null,
+      "cost_usd": 0.0,
+      "cost_cumulative": 3.1045400000000005,
+      "turns": 5,
+      "usage": null,
+      "tools": {},
+      "gates": {},
+      "hooks": [],
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": null
+    },
+    {
+      "started": "2026-10-25T11:30:40+00:00",
+      "ended": "2026-10-25T11:30:48+00:00",
+      "duration_seconds": 8.75,
+      "model": "claude-opus-5",
+      "cli_session_id": "21e7de82-632b-42b8-9461-9e7d89b19782",
+      "exit": "success",
+      "error": null,
+      "cost_usd": 0.083845,
+      "cost_cumulative": 3.1883845000000006,
+      "turns": 1,
+      "usage": null,
+      "tools": {},
+      "gates": {},
+      "hooks": [],
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [
+        "PLAN.md",
+        "changes.log",
+        "contract_check.py",
+        "dev_backtest.py",
+        "eval_profile.md",
+        "kapso_evaluation/result.json",
+        "output_data_generic_exp_0/check_baseline.py",
+        "output_data_generic_exp_0/cost_stress.py",
+        "output_data_generic_exp_0/cost_stress.txt",
+        "output_data_generic_exp_0/eval_stdout.txt",
+        "output_data_generic_exp_0/profile_inputs.py",
+        "output_data_generic_exp_0/risk_line.txt",
+        "results/equity_curve.csv",
+        "results/trades.csv",
+        "risk_line.py",
+        "strategy.py"
+      ],
+      "last_message": "That was the dead-man's alarm I'd left running while waiting on the auditor, not new work. Its only job was to guarantee I couldn't be stranded in silence; the auditor had already reported, so there's nothing to consume from it.\n\nAll background work is now in a recorded state: the lookahead-auditor's report was read, acted on (the protected-directory fix) and committed; both alarm timers were deliberate waiting devices with no output to harvest. The working tree is clean at `7413059`, and the final results were already delivered above \u2014 OOS 2024 Sharpe **1.9336**, max drawdown 0.0117, turnover 8.4. No further action needed."
+    }
+  ]
+}

@@ -510,9 +510,29 @@ class ExperienceRef:
 EXPERIENCE_RECORD_FIELDS = ("reference", "kind", "resolved", "head", "provenance", "scope")
 
 
-_RECORD = Path(".kapso") / "solution.json"
-_RECORD_SCHEMA = 4
-_LABEL = 15   # the column explain()'s values start at: the longest label, "Goal achieved:", and a space
+SOLUTION_RECORD = Path(".kapso") / "solution.json"
+SOLUTION_SCHEMA = 5
+_LABEL = 17   # the column explain()'s values start at: the longest label, "Sessions failed:", and a space
+# A failed session's error on the summary line is its first line, clipped
+# for display; the record keeps the whole text.
+_ERROR_HEADLINE = 80
+
+
+def _failed_sessions_line(failures: List[Dict[str, Any]]) -> str:
+    """`implementation on codex ×2 (Quota exceeded …)`: each kind of
+    session that failed, how many times, and the last error's first
+    line."""
+    kinds: Dict[tuple, List[Dict[str, Any]]] = {}
+    for failure in failures:
+        kinds.setdefault((failure["module"], failure["host"]), []).append(failure)
+    parts = []
+    for (module, host), group in kinds.items():
+        error = (group[-1]["error"] or "").strip().splitlines()
+        headline = error[0] if error else group[-1]["exit"]
+        if len(headline) > _ERROR_HEADLINE:
+            headline = headline[: _ERROR_HEADLINE - 1] + "…"
+        parts.append(f"{module} on {host} ×{len(group)} ({headline})")
+    return "; ".join(parts)
 
 
 @dataclass
@@ -544,14 +564,17 @@ class Solution:
     rejected_candidates: int      # candidates rejected for touching the evaluator
     callback_metrics: Dict[str, float]      # the caller's own iteration_evaluator, delivered candidate
     callback_primary_metric: Optional[str]
+    # The sessions' run entries that ended error, timeout or refused:
+    # {label, module, host, exit, error} each (kapso.execution.trace).
+    session_failures: List[Dict[str, Any]]
 
     @property
     def record_path(self) -> Path:
-        return self.campaign / _RECORD
+        return self.campaign / SOLUTION_RECORD
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "schema_version": _RECORD_SCHEMA,
+            "schema_version": SOLUTION_SCHEMA,
             "brief": self.brief.to_dict(),
             "branch": self.branch,
             "commit": self.commit,
@@ -597,6 +620,7 @@ class Solution:
             "rejected_candidates": self.rejected_candidates,
             "callback_metrics": dict(self.callback_metrics),
             "callback_primary_metric": self.callback_primary_metric,
+            "session_failures": [dict(failure) for failure in self.session_failures],
         }
 
     def save(self) -> Path:
@@ -613,7 +637,7 @@ class Solution:
         """The solution a build wrote in `path`. A campaign that has not
         returned yet has no solution: follow it with `kapso watch`."""
         campaign = Path(path).expanduser().resolve()
-        record = campaign / _RECORD
+        record = campaign / SOLUTION_RECORD
         if not record.is_file():
             if (campaign / ".kapso").is_dir():
                 raise FileNotFoundError(
@@ -624,9 +648,9 @@ class Solution:
                 )
             raise FileNotFoundError(f"{campaign} is not a campaign directory")
         data = json.loads(record.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or data.get("schema_version") != _RECORD_SCHEMA:
+        if not isinstance(data, dict) or data.get("schema_version") != SOLUTION_SCHEMA:
             raise ValueError(
-                f"{record}: not a solution record of schema {_RECORD_SCHEMA}"
+                f"{record}: not a solution record of schema {SOLUTION_SCHEMA}"
             )
         evaluator = data["evaluator"]
         harness = data["harness"]
@@ -652,6 +676,7 @@ class Solution:
             rejected_candidates=data["rejected_candidates"],
             callback_metrics=dict(data["callback_metrics"]),
             callback_primary_metric=data["callback_primary_metric"],
+            session_failures=[dict(failure) for failure in data["session_failures"]],
         )
 
     def diff(self) -> str:
@@ -696,6 +721,8 @@ class Solution:
         if self.rejected_candidates:
             experiments += f", {self.rejected_candidates} rejected"
         row("Experiments", experiments)
+        if self.session_failures:
+            row("Sessions failed", _failed_sessions_line(self.session_failures))
         row("Cost", f"${self.cost_usd:.3f}")
         if self.callback_primary_metric:
             row(

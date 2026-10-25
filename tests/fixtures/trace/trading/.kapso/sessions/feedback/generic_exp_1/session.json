@@ -1,0 +1,87 @@
+{
+  "module": "feedback",
+  "host": "claude_code",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "83b6c0b60d6ac724613c469bc1315d5cba32420bdf705d8f4c2c04c73d834f2b",
+    "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+  },
+  "session_dir": "/campaign",
+  "pages": [
+    "guardrails.md",
+    "feedback.md"
+  ],
+  "skills": [
+    "risk-limits"
+  ],
+  "mcp_servers": [],
+  "agents": [
+    "risk-reviewer"
+  ],
+  "hooks": [
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared"
+  ],
+  "prepared": [
+    "market-data"
+  ],
+  "stream": "/campaign/.kapso/sessions/feedback/generic_exp_1/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-25T19:03:37+00:00",
+      "ended": "2026-10-25T19:03:59+00:00",
+      "duration_seconds": 21.096,
+      "model": "claude-opus-5",
+      "cli_session_id": "ecdb09ab-f9b3-41a4-be7c-627d151a290f",
+      "exit": "success",
+      "error": null,
+      "cost_usd": 0.118551,
+      "cost_cumulative": 0.11855099999999999,
+      "turns": 3,
+      "usage": null,
+      "tools": {
+        "Bash": 10,
+        "Agent": 1
+      },
+      "gates": {},
+      "hooks": [
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": "context",
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        },
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": "context",
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        }
+      ],
+      "delegates": [
+        {
+          "name": "risk-reviewer",
+          "tool_use_id": "toolu_012Pve3MxgqJeeNtFoNG6x3k",
+          "background": true,
+          "status": "started",
+          "summary": null,
+          "usage": {
+            "total_tokens": 17128,
+            "tool_uses": 4,
+            "duration_ms": 11113
+          },
+          "report": null
+        }
+      ],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": "I can't produce those tags \u2014 there's nothing in my context to fill them in from.\n\nThis is the first turn of this conversation. I have no previous response, and no iteration, attempt, or rubric was included in the message I received. Emitting `<score>` and `<evaluation_valid>` for an iteration I never saw would just be invented numbers, which is worse than useless for a grading pipeline.\n\nWhat does exist on disk, if you want to point me at the right thing:\n\n- `.kapso/sessions/feedback/generic_exp_0/stream.jsonl` and `.../generic_exp_1/stream.jsonl` \u2014 the only files mentioning `cards_load_bearing`, so presumably prior feedback-session transcripts that contain the tag contract\n- `.kapso/verification/generic_exp_0/` and `generic_exp_1/` \u2014 evaluated attempts\n- `kapso_task.md`, `kapso_evaluation/`, `strategy.py`\n\nTell me which iteration to evaluate (e.g. `generic_exp_1`) and I'll read the attempt, its evaluation output, and the task limits, then return the five tags. If the grader is supposed to be feeding me the iteration inline and it arrived empty, that's likely the actual bug \u2014 the prompt reached me with only the system context attached."
+    }
+  ]
+}

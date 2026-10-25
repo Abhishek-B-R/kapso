@@ -1,0 +1,283 @@
+"""The trace fixtures, rebuilt from archived campaigns (docs/plans/
+redesign/wp6-observability.md, change 11).
+
+    python tests/fixtures/trace/build_fixture.py build <archive.tgz> <fixture-dir>
+    python tests/fixtures/trace/build_fixture.py render <fixture-dir>
+
+`build` keeps the campaign's records (the status, the launch record, the
+checkpoint, the experiment history, the solution record, the serving
+record, the pull log, each verification's verdict and evaluation output),
+rebuilds every session record with its run entries by running the
+transcript digests over the archived streams, and drops the streams, the
+diffs, the bank clones and the caches. The archives predate three things
+the engine writes now, which the build reconstructs from the record
+itself, deterministically: the run entries (one per invocation, a Claude
+Code stream split at its `result` events, a trailing slice without one
+being a killed invocation; the times from the node's start and its
+phases' durations), the pull log's `session` key (the event's time
+against the same windows) and the current schemas (the solution record's
+`session_failures`, the checkpoint's `experience`, a node's fields the
+dataclass has gained). The checkpoint's `code_diff` and `agent_output`
+are blanked, the trace reads neither. Paths under the campaign's own
+directory are rebased to `/campaign`.
+
+`render` writes `<fixture-dir>/trace.txt`, the golden `kapso trace`
+output, with the fixture's absolute path written as `<campaign>`.
+Byte-for-byte: the same archive gives the same fixture.
+"""
+import json
+import re
+import shutil
+import sys
+import tarfile
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import yaml
+
+from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_SUCCESS, EXIT_TIMEOUT, append_run, run_entry
+from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, digest_claude
+from kapso.execution.run_checkpoint import RunCheckpoint
+from kapso.execution.search_strategies.base import SearchNode
+from kapso.execution.trace import FEEDBACK, IDEATION, IMPLEMENTATION, VERIFICATION, failed_runs, read_trace
+from kapso.handles import SOLUTION_RECORD, SOLUTION_SCHEMA, Solution
+from kapso.harness.staging import SESSION_RECORD_FILE, SESSIONS_DIR, STREAM_FILE
+from kapso.learning.serving_launch import PULL_LOG_FILE, SERVING_DIR, SERVING_RECORD_FILE
+
+REBASED_ROOT = "/campaign"
+GOLDEN = "trace.txt"
+CAMPAIGN_PLACEHOLDER = "<campaign>"
+# The record WP2 and WP3 wrote per session, before it was named for the
+# session (wp6-observability.md, change 1).
+OLD_RECORD_FILE = "harness.json"
+EVENT_HEAD = "{"
+RESULT_EVENT = "result"
+PHASES = (IDEATION, IMPLEMENTATION, VERIFICATION, FEEDBACK)
+SETUP_LABEL = "harness_setup"
+SETUP_MODULE = "setup"
+IMPLEMENTATION_FAILED = "Implementation failed: "
+DEADLINE_ERROR = "Claude Code CLI exceeded its deadline and was terminated"
+DIFF_FILE = re.compile(r"^diff --git a/(.+?) b/", re.MULTILINE)
+KEPT_RECORDS = ("status.json", "launch.json", "experiment_history.json")
+VERIFICATION_KEPT = ("verdict.json", "evaluation_output.txt")
+
+
+def build(archive: Path, fixture: Path) -> None:
+    if fixture.exists():
+        shutil.rmtree(fixture)
+    with tempfile.TemporaryDirectory() as scratch:
+        with tarfile.open(archive) as tar:
+            tar.extractall(scratch, filter="data")
+        campaign = Path(scratch) / "campaign"
+        _build_from(campaign, fixture)
+
+
+def _build_from(campaign: Path, fixture: Path) -> None:
+    kapso = campaign / ".kapso"
+    out = fixture / ".kapso"
+    out.mkdir(parents=True)
+    launch = json.loads((kapso / "launch.json").read_text(encoding="utf-8"))
+    root = launch["output_path"]
+    rebase = lambda text: text.replace(root, REBASED_ROOT)
+    for name in KEPT_RECORDS:
+        (out / name).write_text(rebase((kapso / name).read_text(encoding="utf-8")), encoding="utf-8")
+    status = json.loads((kapso / "status.json").read_text(encoding="utf-8"))
+    checkpoint = json.loads((kapso / "run_state.json").read_text(encoding="utf-8"))
+    nodes = checkpoint["strategy_state"]["node_history"]
+    windows = _windows(status, checkpoint, nodes)
+
+    # The sessions: the record (or one made for a session the archive
+    # recorded only as a stream), then the run entries from the stream.
+    sessions_in = kapso / SESSIONS_DIR.name
+    for stream in sorted(sessions_in.rglob(STREAM_FILE)):
+        label = stream.parent.relative_to(sessions_in).as_posix()
+        record_file = next((stream.parent / name for name in (SESSION_RECORD_FILE, OLD_RECORD_FILE) if (stream.parent / name).is_file()), None)
+        record = json.loads(record_file.read_text(encoding="utf-8")) if record_file else _record_for(label, root)
+        record = {key: value for key, value in record.items() if key != "runs"}
+        # WP2's records named no stream; the path is where the staging puts it.
+        record["stream"] = rebase(record.get("stream") or f"{root}/{SESSIONS_DIR.as_posix()}/{label}/{STREAM_FILE}")
+        record["session_dir"] = rebase(record["session_dir"])
+        record["runs"] = []
+        record_path = fixture / SESSIONS_DIR / label / SESSION_RECORD_FILE
+        record_path.parent.mkdir(parents=True)
+        record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        node = next((n for n in nodes if n["branch_name"] == label), None)
+        for entry in _run_entries(stream, label, windows[label], node):
+            append_run(record_path, entry)
+
+    # The serving record and the pull log, each event stamped with the
+    # session whose window holds its time.
+    serving_in = kapso / SERVING_DIR.name
+    if (serving_in / SERVING_RECORD_FILE).is_file():
+        (out / SERVING_DIR.name).mkdir()
+        (out / SERVING_DIR.name / SERVING_RECORD_FILE).write_text(
+            rebase((serving_in / SERVING_RECORD_FILE).read_text(encoding="utf-8")), encoding="utf-8",
+        )
+        if (serving_in / PULL_LOG_FILE).is_file():
+            stamped = []
+            for line in (serving_in / PULL_LOG_FILE).read_text(encoding="utf-8").splitlines():
+                event = json.loads(line)
+                session = _session_at(datetime.fromisoformat(event["ts"]), windows)
+                stamped.append(json.dumps({"ts": event["ts"], "tool": event["tool"], "session": session, **event}))
+            (out / SERVING_DIR.name / PULL_LOG_FILE).write_text("\n".join(stamped) + "\n", encoding="utf-8")
+
+    # Each verification's verdict and evaluation output.
+    for directory in sorted((kapso / "verification").glob("*")) if (kapso / "verification").is_dir() else []:
+        for name in VERIFICATION_KEPT:
+            if (directory / name).is_file():
+                (out / "verification" / directory.name).mkdir(parents=True, exist_ok=True)
+                (out / "verification" / directory.name / name).write_text(
+                    rebase((directory / name).read_text(encoding="utf-8")), encoding="utf-8",
+                )
+
+    # The checkpoint at the current schema, the bulk fields blanked.
+    defaults = SearchNode(node_id=0).to_dict()
+    checkpoint["schema_version"] = RunCheckpoint.SCHEMA_VERSION
+    checkpoint.setdefault("experience", [])
+    checkpoint["strategy_state"]["node_history"] = [
+        {**defaults, **node, "code_diff": "", "agent_output": ""} for node in nodes
+    ]
+    RunCheckpoint.from_dict(checkpoint)
+    (out / "run_state.json").write_text(rebase(json.dumps(checkpoint, indent=2) + "\n"), encoding="utf-8")
+
+    # The solution record at the current schema, its failed sessions from
+    # the records just rebuilt.
+    solution = json.loads((kapso / "solution.json").read_text(encoding="utf-8"))
+    solution = {key: value for key, value in solution.items() if key not in ("knowledge_index", "experience_head", "session_failures")}
+    solution["schema_version"] = SOLUTION_SCHEMA
+    solution["session_failures"] = failed_runs(fixture)
+    (fixture / SOLUTION_RECORD).write_text(rebase(json.dumps(solution, indent=2) + "\n"), encoding="utf-8")
+    Solution.open(fixture)
+
+
+def _record_for(label: str, root: str) -> dict:
+    """A record for a session the archive kept only as a stream (a build
+    without a harness wrote none): nothing staged, the module from the
+    label's grammar."""
+    head = label.partition("/")[0]
+    module = {IDEATION: IDEATION, VERIFICATION: VERIFICATION, FEEDBACK: FEEDBACK, SETUP_LABEL: SETUP_MODULE}.get(head, IMPLEMENTATION)
+    return {
+        "module": module, "host": CLAUDE_HOST, "harness": None, "session_dir": root,
+        "pages": [], "skills": [], "mcp_servers": [], "agents": [], "hooks": [], "prepared": [],
+        "stream": f"{root}/.kapso/sessions/{label}/{STREAM_FILE}",
+    }
+
+
+def _windows(status: dict, checkpoint: dict, nodes: list) -> dict:
+    """When each session ran: the node's start and its phases' durations,
+    in the order the phases run; the harness setup from the campaign's
+    start."""
+    windows = {}
+    setup = checkpoint.get("harness_setup") or {}
+    if setup.get("duration_seconds") is not None:
+        start = datetime.fromisoformat(status["started_at"])
+        windows[SETUP_LABEL] = (start, start + timedelta(seconds=setup["duration_seconds"]))
+    for number, node in enumerate(nodes, start=1):
+        clock = datetime.fromisoformat(node["started_at"])
+        for phase in PHASES:
+            telemetry = node["phase_telemetry"].get(phase)
+            if telemetry is None:
+                continue
+            end = clock + timedelta(seconds=telemetry["duration_seconds"])
+            label = {
+                IDEATION: f"{IDEATION}/iter{number}",
+                IMPLEMENTATION: node["branch_name"],
+                VERIFICATION: f"{VERIFICATION}/{node['branch_name']}",
+                FEEDBACK: f"{FEEDBACK}/{node['branch_name']}",
+            }[phase]
+            windows[label] = (clock, end)
+            clock = end
+    return _Windows(windows)
+
+
+class _Windows(dict):
+    """Lookup by a session's label: an ideation member's label
+    (`ideation/iter1/claude_code`) falls under its iteration's window."""
+
+    def __missing__(self, label: str):
+        head, _, rest = label.partition("/")
+        if head == IDEATION:
+            iteration = rest.partition("/")[0]
+            return self[f"{IDEATION}/{iteration}"]
+        raise KeyError(label)
+
+
+def _session_at(moment: datetime, windows: dict) -> str:
+    for label, (start, end) in windows.items():
+        if start <= moment <= end:
+            return label
+    raise ValueError(f"no session window holds {moment.isoformat()}")
+
+
+def _run_entries(stream: Path, label: str, window: tuple, node: dict | None) -> list:
+    """One entry per invocation in a Claude Code stream: a slice ends at
+    its `result` event; a trailing slice without one was killed at its
+    deadline. The implementation's last successful invocation changed the
+    files the node's diff names."""
+    lines = stream.read_text(encoding="utf-8").splitlines(keepends=True)
+    slices, current = [], []
+    for line in lines:
+        current.append(line)
+        event = json.loads(line) if line.startswith(EVENT_HEAD) else {}
+        if event.get("type") == RESULT_EVENT:
+            slices.append((current, event))
+            current = []
+    if any(line.strip() for line in current):
+        slices.append((current, None))
+    entries = []
+    clock = window[0]
+    session_id = model = None
+    for number, (slice_lines, result) in enumerate(slices, start=1):
+        digest = digest_claude(slice_lines)
+        # A resumed turn has no init event; the result event names the
+        # session, and a killed slice continues the one before it.
+        session_id = digest["cli_session_id"] or (result or {}).get("session_id") or session_id
+        model = digest["model"] or model
+        if result is None:
+            exit, error = EXIT_TIMEOUT, _deadline_error(node)
+        elif result.get("is_error"):
+            exit, error = EXIT_ERROR, (digest["errors"][-1] if digest["errors"] else str(result.get("result")))
+        else:
+            exit, error = EXIT_SUCCESS, None
+        duration = (
+            digest["duration_ms"] / 1000.0 if digest["duration_ms"] is not None
+            else (window[1] - window[0]).total_seconds() if len(slices) == 1 else 0.0
+        )
+        ended = clock + timedelta(seconds=duration)
+        files = DIFF_FILE.findall(node["code_diff"]) if (
+            node is not None and exit == EXIT_SUCCESS and number == len(slices)
+        ) else []
+        entries.append(run_entry(
+            digest, model=digest["model"] or model, cli_session_id=session_id, exit=exit, error=error,
+            files_changed=sorted(set(files)), started=clock.isoformat(timespec="seconds"),
+            ended=ended.isoformat(timespec="seconds"), duration_seconds=round(duration, 3),
+        ))
+        clock = ended
+    return entries
+
+
+def _deadline_error(node: dict | None) -> str:
+    """The adapter's words when the deadline killed the invocation: the
+    node's evaluation output starts with them for an implementation."""
+    if node is not None and node["evaluation_output"].startswith(IMPLEMENTATION_FAILED):
+        return node["evaluation_output"].splitlines()[0][len(IMPLEMENTATION_FAILED):]
+    return DEADLINE_ERROR
+
+
+def render(fixture: Path) -> None:
+    text = read_trace(fixture).explain().replace(str(fixture.resolve()), CAMPAIGN_PLACEHOLDER)
+    (fixture / GOLDEN).write_text(text + "\n", encoding="utf-8")
+
+
+def main(argv: list) -> None:
+    if argv[:1] == ["build"] and len(argv) == 3:
+        build(Path(argv[1]), Path(argv[2]))
+    elif argv[:1] == ["render"] and len(argv) == 2:
+        render(Path(argv[1]))
+    else:
+        raise SystemExit(__doc__)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

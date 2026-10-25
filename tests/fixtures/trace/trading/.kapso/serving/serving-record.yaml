@@ -1,0 +1,10 @@
+task:
+  harness: trading
+sources:
+- reference: mine
+  kind: bank
+  resolved: /home/ubuntu/.kapso/bank.git
+  head: a9ddad3d302dcaa258cca1d213f33bd5bd0600f0
+  provenance: measured by you
+  scope: harness
+  cards: 15

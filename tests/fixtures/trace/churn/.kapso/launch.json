@@ -1,0 +1,46 @@
+{
+  "additional_context": "",
+  "brief": {
+    "baseline": "0.797 (the shipped logistic regression, bootstrap SE 0.010)",
+    "budget": {
+      "experiments": 3,
+      "minutes": 45.0,
+      "reserve_minutes": null,
+      "usd": null
+    },
+    "experience": [],
+    "harness": null,
+    "measured_by": "kapso_evaluation/evaluate.py, ROC AUC on the held-out rows",
+    "objective": "Raise the churn model's out-of-sample ROC AUC above 0.85\nwithout changing the prediction contract: predict.py keeps\nwriting id,churn_probability for every holdout id.",
+    "rules": [
+      "the evaluator is never modified",
+      "no fitting on the holdout rows; the labels are not in the workspace"
+    ],
+    "target": "0.85"
+  },
+  "coding_agent": null,
+  "config_path": null,
+  "context": null,
+  "cost_budget": null,
+  "data_dir": "/home/ubuntu/fixture/examples/churn-first-build/data",
+  "dotenv_path": "",
+  "eval_dir": "/home/ubuntu/fixture/examples/churn-first-build/evaluation",
+  "experience": [
+    {
+      "head": "a9ddad3d302dcaa258cca1d213f33bd5bd0600f0",
+      "kind": "bank",
+      "provenance": "measured by you",
+      "reference": "mine",
+      "resolved": "/home/ubuntu/.kapso/bank.git",
+      "scope": "harness"
+    }
+  ],
+  "finalization_reserve_minutes": null,
+  "harness": null,
+  "max_iterations": 1,
+  "mode": null,
+  "output_path": "/campaign",
+  "resumable_from_inbox": true,
+  "schema_version": 1,
+  "time_budget_minutes": 15.0
+}

@@ -17,6 +17,8 @@ from kapso.execution.experiment_workspace.experiment_workspace import Experiment
 from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
 from kapso.execution.coding_agents.adapters.codex_agent import CodexCodingAgent
 from kapso.execution.coding_agents.base import CodingAgentConfig
+from kapso.execution.coding_agents.session_record import EXIT_ERROR, append_run, run_entry
+from kapso.execution.coding_agents.transcripts import digest_claude
 from kapso.harness import (
     GUIDANCE_HEADING,
     HARNESS_ROOT_VARIABLE,
@@ -210,6 +212,24 @@ def test_no_harness_stages_nothing_and_keeps_the_record(tmp_path):
         records_dir=tmp_path / "run" / ".kapso" / "sessions",
     )
     assert elsewhere.record_path == tmp_path / "run" / ".kapso" / "sessions" / "lead" / "session.json"
+
+
+def test_a_session_staged_again_keeps_the_runs_already_recorded(harness, tmp_path):
+    """A phase re-run after a crash, or a resume, stages the same label
+    again: the record keeps the invocation that failed, so the trace shows
+    how the first one ended (wp6-observability.md, change 11)."""
+    failed = run_entry(
+        digest_claude([]), model="claude-opus-5", cli_session_id="s1", exit=EXIT_ERROR, error="Quota exceeded",
+        files_changed=[], started="2026-10-25T10:00:00+00:00", ended="2026-10-25T10:00:30+00:00", duration_seconds=30.0,
+    )
+    for loaded in (None, harness):
+        campaign = tmp_path / ("bare" if loaded is None else "with")
+        git_workspace(campaign)
+        first = stage_harness(loaded, "implementation", session_dir=campaign, campaign_dir=campaign, session_id="generic_exp_0", host="claude_code")
+        append_run(first.record_path, failed)
+        again = stage_harness(loaded, "implementation", session_dir=campaign, campaign_dir=campaign, session_id="generic_exp_0", host="claude_code")
+        record = json.loads(again.record_path.read_text())
+        assert [run["exit"] for run in record["runs"]] == [EXIT_ERROR] and record["runs"][0]["error"] == "Quota exceeded"
 
 
 def test_every_host_stages_into_the_directories_a_harvest_leaves_out(harness, tmp_path):

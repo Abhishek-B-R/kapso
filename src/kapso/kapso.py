@@ -49,6 +49,7 @@ from kapso.execution.observability import (
     knowledge_summary,
     platform_cost_summary,
 )
+from kapso.execution.trace import TraceView, failed_runs, read_trace
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.evaluation_maintainer.registry import EvaluationRegistry
 from kapso.execution.iteration_evaluator import IterationEvaluator
@@ -268,6 +269,9 @@ def _deliver(orchestrator, solve_result, *, brief: Brief, harness: Optional[Harn
         callback_primary_metric=getattr(
             solve_result.best_experiment, "primary_metric", None
         ),
+        # The sessions' runs that ended error, timeout or refused, from
+        # their records (every adapter's `finally` has run by now).
+        session_failures=failed_runs(campaign),
     )
     solution.save()
     return solution
@@ -614,6 +618,16 @@ class Kapso:
         needs no constructed agent. `view.explain()` renders the same
         screen `kapso watch` shows."""
         return OperationStatusView(path)
+
+    @staticmethod
+    def trace(path: str) -> TraceView:
+        """The campaign's record read after the fact: the attempts with
+        their sessions and run entries, the lessons served and used, what
+        was voided or rejected and on what evidence, the sessions that
+        failed, the delivered candidate. `view.explain()` is the text
+        `kapso trace` prints, `view.data` what `--json` prints; a campaign
+        still running renders partial. A pure reader."""
+        return read_trace(path)
 
     def _status_heartbeat_seconds(self) -> Optional[float]:
         """The status daemons' beat, from the resolved mode config's
