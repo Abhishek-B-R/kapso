@@ -10,6 +10,7 @@
 
 import os
 import shutil
+import sys
 import time
 import uuid
 import logging
@@ -593,13 +594,21 @@ class SearchStrategy(ABC):
         # constructs (None: today's generic behaviour).
         self.harness = config.harness
 
-        # Setup kapso directories (eval_dir -> kapso_evaluation/, data_dir -> kapso_datasets/)
-        if not import_from_checkpoint:
-            self._setup_kapso_directories(config.eval_dir, config.data_dir)
+        # The status is born: from here on a failure of the strategy's own
+        # setup is published as the campaign's, the exception propagating
+        # (wp6-observability.md, change 6).
+        try:
+            # Setup kapso directories (eval_dir -> kapso_evaluation/, data_dir -> kapso_datasets/)
+            if not import_from_checkpoint:
+                self._setup_kapso_directories(config.eval_dir, config.data_dir)
 
-        # Ensure baseline RepoMemory exists in the workspace repo.
-        if not import_from_checkpoint:
-            self._initialize_repo_memory()
+            # Ensure baseline RepoMemory exists in the workspace repo.
+            if not import_from_checkpoint:
+                self._initialize_repo_memory()
+        finally:
+            in_flight = sys.exc_info()[1]
+            if in_flight is not None and not self.operation_status.terminal:
+                self.operation_status.failed(in_flight)
 
     # =========================================================================
     # Directory Setup

@@ -356,12 +356,15 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
             )
 
         def solve(self, **kwargs):
-            return SimpleNamespace(
+            result = SimpleNamespace(
                 final_feedback=None, iterations_run=0,
                 cumulative_iterations=0, total_cost=0.0,
                 stopped_reason="max_iterations", stop_detail=None,
                 best_experiment=None, platform_budget=None, requests=[],
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            kwargs["finish"](result)
+            return result
 
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", FakeOrchestrator)
     monkeypatch.chdir(tmp_path)

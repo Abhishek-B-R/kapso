@@ -1156,6 +1156,14 @@ class OrchestratorAgent:
         """The durable clock: prior slices plus the live one."""
         return self.budget_ledger.elapsed_seconds()
 
+    def _goal_already_achieved(self) -> bool:
+        """Whether the campaign already stopped on its goal: the latest
+        node voted stop and the handler honours the vote. True only on a
+        resume whose delivery never completed (the checkpoint stays
+        `running` until it does)."""
+        history = self.search_strategy.get_experiment_history()
+        return bool(history) and bool(history[-1].should_stop) and bool(self.problem_handler.honor_agent_stop)
+
     def _save_run_checkpoint(
         self, *, status: str, last_stop: Optional[str] = None
     ) -> None:
@@ -1461,9 +1469,15 @@ class OrchestratorAgent:
         cost_budget: Optional[float] = None,
         finalization_reserve_minutes: Optional[float] = None,
         on_status: Optional[Callable[[Dict[str, Any]], None]] = None,
+        finish: Optional[Callable[["SolveResult"], None]] = None,
     ) -> SolveResult:
         """
-        Run the main experimentation loop.
+        Run the main experimentation loop. `finish`, when given, runs
+        inside the protected region after the search and before the
+        terminal publish: the caller's delivery (the checkout and the
+        record), so a watcher that sees `done` finds the record, and a
+        delivery that raises is published as the campaign's failure with
+        a checkpoint a resume can finish from.
         
         In the new design:
         1. Developer agent implements solution and runs evaluation
@@ -1526,103 +1540,108 @@ class OrchestratorAgent:
                 finalization_reserve_seconds=budget_spec.finalization_reserve_seconds,
                 min_agent_timeout_seconds=budget_spec.min_agent_timeout_seconds,
             ))
-        self._run_harness_setup()
-        # The maintainer's setup transaction runs inside the budgeted clock,
-        # before iteration 1; on resume it validates registry consistency.
-        # Not while the setup session's question stands: the campaign
-        # pauses before spending the maintainer's session on an input the
-        # person has not given.
-        if not self._setup_requests:
-            self._ensure_evaluation_registered()
-            if pinned_data is not None and _directory_manifest(campaign / "kapso_datasets") != pinned_data:
-                raise HarnessError(
-                    "the evaluation maintainer's setup session changed kapso_datasets/, the campaign's "
-                    "pinned data, with the harness's setup module staged; a session prepares resources "
-                    f"under {PREPARED_DIR}/ and leaves the data alone"
-                )
-
-        # The fidelity policy: deterministic profile grants over measured
-        # evaluation timing. Enabled by mode (or auto-affordability); the
-        # escrowed reserve becomes the committed-run slot when active.
-        fidelity_policy: Optional[FidelityPolicy] = None
-        fidelity_active = False
-        if (
-            self.fidelity_spec.mode != "off"
-            and self.evaluation_maintainer is not None
-        ):
-            fidelity_policy = FidelityPolicy(
-                spec=self.fidelity_spec,
-                strategy=self.search_strategy,
-                maintainer=self.evaluation_maintainer,
-            )
-            # Auto mode prices a full run from restored history: a fresh
-            # campaign is conservatively tiered; every resume re-prices.
-            fidelity_active = fidelity_policy.enabled(
-                budget_spec.time_budget_seconds,
-                self.search_strategy.get_experiment_history(),
-                self._probe_estimate_seconds(budget_spec),
-            )
-        self._fidelity_active = fidelity_active
-        # Replay a pending transition or anchor restored scores on the
-        # current registry head before any selection happens.
-        self._reconcile_evaluator_state()
-        reserve_run_pending = False
-        insured_logged = False
-
-        stopped_reason = "max_iterations"  # default
-        self._platform_budget_exhausted = False
-        stop_detail: Optional[str] = None
-        iterations_run = 0
-
-        # Bootstrap checkpoint: registration and reconciliation are paid,
-        # durable work — a crash at any later point must resume instead of
-        # restarting the campaign (and re-buying the maintainer setup).
-        self._save_run_checkpoint(status="running")
-        heartbeat_seconds = self._status_heartbeat_seconds()
-
-        # Observability (design §1/§2): the status file lives with the
-        # campaign's artifacts. The strategy constructor opened it at
-        # workspace setup (phase `setup`, state `starting`); the loop adopts
-        # it here — the caller's hook, the budget view, and from now on the
-        # checkpoint-heartbeat daemon below beats it too. A strategy built
-        # outside the base constructor (a test double) gets one now.
-        self._status_budget_total_min = (
-            round(budget_spec.time_budget_seconds / 60, 1)
-            if budget_spec.time_budget_seconds is not None else None
-        )
-        # A new slice on a finished status (solve() called again on the
-        # same orchestrator) opens a fresh file, as every slice always did.
-        status = getattr(self.search_strategy, "operation_status", None)
-        if status is None or status.terminal:
-            status = BuildStatus(
-                Path(self.search_strategy.workspace.workspace_dir)
-                / ".kapso" / "status.json",
-                heartbeat_seconds=heartbeat_seconds,
-                harness=self.harness.ref_dict() if self.harness is not None else None,
-                experience=self.experience,
-            )
-        status.observe(on_status)
-        status.update(
-            heartbeat_seconds=heartbeat_seconds,
-            budget=self._status_budget_view(),
-            **self._status_platform_budget_payload(),
-        )
-        self.operation_status = status
-        self.search_strategy.operation_status = status
-        print(f"status: {self.operation_status.path}")
-
-        if heartbeat_seconds and self.checkpoint_store is not None:
-            threading.Thread(
-                target=self._run_checkpoint_heartbeat,
-                args=(float(heartbeat_seconds),),
-                name="run-checkpoint-heartbeat",
-                daemon=True,
-            ).start()
-
-        # Get problem context once (experiment history is accessed via MCP)
-        problem = self.problem_handler.get_problem_context()
-
+        # The protected region starts here: from the harness setup on, an
+        # exception in flight is published as the campaign's failure in
+        # the `finally` below (wp6-observability.md, change 6), and the
+        # delivery the caller hands in as `finish` runs inside it too.
+        result: Optional[SolveResult] = None
         try:
+            self._run_harness_setup()
+            # The maintainer's setup transaction runs inside the budgeted clock,
+            # before iteration 1; on resume it validates registry consistency.
+            # Not while the setup session's question stands: the campaign
+            # pauses before spending the maintainer's session on an input the
+            # person has not given.
+            if not self._setup_requests:
+                self._ensure_evaluation_registered()
+                if pinned_data is not None and _directory_manifest(campaign / "kapso_datasets") != pinned_data:
+                    raise HarnessError(
+                        "the evaluation maintainer's setup session changed kapso_datasets/, the campaign's "
+                        "pinned data, with the harness's setup module staged; a session prepares resources "
+                        f"under {PREPARED_DIR}/ and leaves the data alone"
+                    )
+
+            # The fidelity policy: deterministic profile grants over measured
+            # evaluation timing. Enabled by mode (or auto-affordability); the
+            # escrowed reserve becomes the committed-run slot when active.
+            fidelity_policy: Optional[FidelityPolicy] = None
+            fidelity_active = False
+            if (
+                self.fidelity_spec.mode != "off"
+                and self.evaluation_maintainer is not None
+            ):
+                fidelity_policy = FidelityPolicy(
+                    spec=self.fidelity_spec,
+                    strategy=self.search_strategy,
+                    maintainer=self.evaluation_maintainer,
+                )
+                # Auto mode prices a full run from restored history: a fresh
+                # campaign is conservatively tiered; every resume re-prices.
+                fidelity_active = fidelity_policy.enabled(
+                    budget_spec.time_budget_seconds,
+                    self.search_strategy.get_experiment_history(),
+                    self._probe_estimate_seconds(budget_spec),
+                )
+            self._fidelity_active = fidelity_active
+            # Replay a pending transition or anchor restored scores on the
+            # current registry head before any selection happens.
+            self._reconcile_evaluator_state()
+            reserve_run_pending = False
+            insured_logged = False
+
+            stopped_reason = "max_iterations"  # default
+            self._platform_budget_exhausted = False
+            stop_detail: Optional[str] = None
+            iterations_run = 0
+
+            # Bootstrap checkpoint: registration and reconciliation are paid,
+            # durable work — a crash at any later point must resume instead of
+            # restarting the campaign (and re-buying the maintainer setup).
+            self._save_run_checkpoint(status="running")
+            heartbeat_seconds = self._status_heartbeat_seconds()
+
+            # Observability (design §1/§2): the status file lives with the
+            # campaign's artifacts. The strategy constructor opened it at
+            # workspace setup (phase `setup`, state `starting`); the loop adopts
+            # it here — the caller's hook, the budget view, and from now on the
+            # checkpoint-heartbeat daemon below beats it too. A strategy built
+            # outside the base constructor (a test double) gets one now.
+            self._status_budget_total_min = (
+                round(budget_spec.time_budget_seconds / 60, 1)
+                if budget_spec.time_budget_seconds is not None else None
+            )
+            # A new slice on a finished status (solve() called again on the
+            # same orchestrator) opens a fresh file, as every slice always did.
+            status = getattr(self.search_strategy, "operation_status", None)
+            if status is None or status.terminal:
+                status = BuildStatus(
+                    Path(self.search_strategy.workspace.workspace_dir)
+                    / ".kapso" / "status.json",
+                    heartbeat_seconds=heartbeat_seconds,
+                    harness=self.harness.ref_dict() if self.harness is not None else None,
+                    experience=self.experience,
+                )
+            status.observe(on_status)
+            status.update(
+                heartbeat_seconds=heartbeat_seconds,
+                budget=self._status_budget_view(),
+                **self._status_platform_budget_payload(),
+            )
+            self.operation_status = status
+            self.search_strategy.operation_status = status
+            print(f"status: {self.operation_status.path}")
+
+            if heartbeat_seconds and self.checkpoint_store is not None:
+                threading.Thread(
+                    target=self._run_checkpoint_heartbeat,
+                    args=(float(heartbeat_seconds),),
+                    name="run-checkpoint-heartbeat",
+                    daemon=True,
+                ).start()
+
+            # Get problem context once (experiment history is accessed via MCP)
+            problem = self.problem_handler.get_problem_context()
+
             for i in range(experiment_max_iter):
                 # A node waiting for the person means no new work: the
                 # campaign pauses until the reply is in (design v4 §4.3).
@@ -1630,6 +1649,12 @@ class OrchestratorAgent:
                 if waiting:
                     self._pause_for_user(waiting)
                     stopped_reason = "waiting_for_user"
+                    break
+                if self._goal_already_achieved():
+                    # A resume of a campaign that stopped on its goal but
+                    # never delivered: nothing to search, the delivery is
+                    # what is left.
+                    stopped_reason = "goal_achieved"
                     break
 
                 # The platform budget is read from history before the
@@ -1975,8 +2000,9 @@ class OrchestratorAgent:
                     node.should_stop
                     and self.problem_handler.honor_agent_stop
                 )
+                # `completed` is saved after the delivery, below.
                 self._save_run_checkpoint(
-                    status="completed" if stopping else "running",
+                    status="running",
                     last_stop=stop_detail if budget_exhausted else None,
                 )
 
@@ -2055,6 +2081,26 @@ class OrchestratorAgent:
             if stopped_reason == "max_iterations":
                 # Persist even a zero-iteration slice so it can be resumed.
                 self._save_run_checkpoint(status="running")
+            result = SolveResult(
+                best_experiment=self.search_strategy.get_deliverable_experiment(),
+                final_feedback=self.last_feedback_result,
+                stopped_reason=stopped_reason,
+                iterations_run=iterations_run,
+                total_cost=self.get_cumulative_cost(),
+                cumulative_iterations=self.completed_iterations,
+                stop_detail=stop_detail,
+                requests=(
+                    list(self._waiting_payload)
+                    if stopped_reason == "waiting_for_user" else []
+                ),
+                platform_budget=self._platform_budget_view(),
+            )
+            if finish is not None:
+                finish(result)
+            if stopped_reason == "goal_achieved":
+                # Completed only once delivered: a delivery that raised
+                # leaves a checkpoint a resume can finish from.
+                self._save_run_checkpoint(status="completed")
         finally:
             self._heartbeat_stop.set()
             # Terminal status without an except: sys.exc_info() inside a
@@ -2062,12 +2108,17 @@ class OrchestratorAgent:
             # closes on both paths and the error still propagates
             # unhandled (Rule 2).
             in_flight = sys.exc_info()[1]
-            if in_flight is not None:
-                self.operation_status.failed(
+            # Before the loop adopted the status (an exception in the
+            # harness setup), the strategy's own is the campaign's.
+            status = self.operation_status or getattr(self.search_strategy, "operation_status", None)
+            if status is None or status.terminal:
+                pass
+            elif in_flight is not None:
+                status.failed(
                     in_flight, budget=self._status_budget_view()
                 )
             else:
-                self.operation_status.done(
+                status.done(
                     stopped_reason=stopped_reason,
                     stop_detail=stop_detail,
                     budget=self._status_budget_view(),
@@ -2086,17 +2137,4 @@ class OrchestratorAgent:
                 except Exception:
                     pass
 
-        return SolveResult(
-            best_experiment=self.search_strategy.get_deliverable_experiment(),
-            final_feedback=self.last_feedback_result,
-            stopped_reason=stopped_reason,
-            iterations_run=iterations_run,
-            total_cost=self.get_cumulative_cost(),
-            cumulative_iterations=self.completed_iterations,
-            stop_detail=stop_detail,
-            requests=(
-                list(self._waiting_payload)
-                if stopped_reason == "waiting_for_user" else []
-            ),
-            platform_budget=self._platform_budget_view(),
-        )
+        return result

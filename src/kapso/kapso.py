@@ -31,7 +31,7 @@ import git
 import yaml
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Load environment variables from .env file (if present)
 from dotenv import find_dotenv, load_dotenv
@@ -207,6 +207,71 @@ def _memory_overrides(serving_plan: Optional[Dict[str, Any]]) -> Optional[Dict[s
     if serving_plan["kg_index_path"]:
         overrides["kg_index_path"] = serving_plan["kg_index_path"]
     return overrides
+
+def _deliver(orchestrator, solve_result, *, brief: Brief, harness: Optional[Harness], experience) -> Solution:
+    """The delivery, run inside the orchestrator's protected region: the
+    strategy checks the workspace out at the delivered candidate's branch
+    (None when nothing succeeded), the registry head says which evaluator
+    measured it, and the record is written."""
+    strategy = orchestrator.search_strategy
+    campaign = Path(strategy.workspace.workspace_dir).resolve()
+    best_branch = strategy.checkout_to_best_experiment_branch()
+    head = EvaluationRegistry(str(campaign)).head()
+    # The judge's words on the delivered candidate; with nothing
+    # delivered, the last judgment says why (the third proof run
+    # delivered node 0 and reported node 1's failed judgment).
+    delivered = strategy.get_deliverable_experiment()
+    feedback = (
+        delivered.feedback if delivered is not None
+        else solve_result.final_feedback.feedback
+        if solve_result.final_feedback else None
+    )
+    solution = Solution(
+        brief=brief,
+        campaign=campaign,
+        branch=best_branch,
+        commit=_git_rev(campaign, "HEAD") if best_branch else None,
+        base_commit=_git_rev(campaign, "main"),
+        score=strategy.get_deliverable_score(),
+        goal_achieved=bool(
+            solve_result.final_feedback and solve_result.final_feedback.stop
+        ),
+        stopped_reason=solve_result.stopped_reason,
+        stop_detail=solve_result.stop_detail,
+        experiments=solve_result.iterations_run,
+        experiments_total=solve_result.cumulative_iterations,
+        cost_usd=float(solve_result.total_cost),
+        # The inbox: what the person must answer when the campaign
+        # paused for them (empty otherwise).
+        requests=list(solve_result.requests),
+        feedback=feedback,
+        evaluator=(
+            EvaluatorRef(
+                version=head.version,
+                evaluator_id=head.evaluator_id,
+                provenance=head.provenance,
+            )
+            if head else None
+        ),
+        harness=harness.ref() if harness is not None else None,
+        # What the campaign was served (wp3-experience.md): the loaded
+        # sources, each at its pinned head and scope.
+        experience=[source.ref() for source in experience],
+        verification=delivered.verification if delivered is not None else None,
+        rejected_candidates=sum(
+            not node.evaluation_valid
+            for node in strategy.get_experiment_history()
+        ),
+        callback_metrics=dict(
+            getattr(solve_result.best_experiment, "metrics", {}) or {}
+        ),
+        callback_primary_metric=getattr(
+            solve_result.best_experiment, "primary_metric", None
+        ),
+    )
+    solution.save()
+    return solution
+
 
 class Kapso:
     """
@@ -1350,133 +1415,98 @@ class Kapso:
         # ideation and implementation prompts read at session time
         # (`handler.additional_context` is frozen at construction and
         # never was a seam).
-        if serving_plan is not None:
-            serving = stage_serving(serving_plan, self._experience)
-            # Fail loud rather than lie: the intro instructs sessions to
-            # call the three bank tools, so the gate that provides them
-            # must have resolved. A silently-unmounted gate produced an
-            # intro advertising tools no session had (E2E review
-            # 2026-08-24, blocker 1).
-            mounted = orchestrator.search_strategy.ideation_gates
-            if serving_plan["banks"] and "bank" not in mounted:
-                raise RuntimeError(
-                    "serving staged but the 'bank' gate is not mounted in "
-                    f"ideation gates {mounted} — the intro would advertise "
-                    "tools the sessions do not have"
-                )
-            for line in serving["lines"]:
-                print(f"  Experience: {line}")
-            print(f"  Gates mounted: {mounted}")
+        # From the orchestrator's construction to `solve()`, a failure (the
+        # serving's staging, the launch record) is published as the
+        # campaign's through the status the strategy opened, the exception
+        # propagating (wp6-observability.md, change 6).
+        try:
+            if serving_plan is not None:
+                serving = stage_serving(serving_plan, self._experience)
+                # Fail loud rather than lie: the intro instructs sessions to
+                # call the three bank tools, so the gate that provides them
+                # must have resolved. A silently-unmounted gate produced an
+                # intro advertising tools no session had (E2E review
+                # 2026-08-24, blocker 1).
+                mounted = orchestrator.search_strategy.ideation_gates
+                if serving_plan["banks"] and "bank" not in mounted:
+                    raise RuntimeError(
+                        "serving staged but the 'bank' gate is not mounted in "
+                        f"ideation gates {mounted} — the intro would advertise "
+                        "tools the sessions do not have"
+                    )
+                for line in serving["lines"]:
+                    print(f"  Experience: {line}")
+                print(f"  Gates mounted: {mounted}")
 
-        # On a fresh campaign, record the launch so a resume (`kapso build
-        # --resume`, `kapso inbox reply`) continues with the launch's own
-        # brief and flags without the person retyping anything; with the
-        # inbox on (docs/research/evolve-hub-design.md v4), also register
-        # the campaign so `kapso inbox` can list it.
-        inbox_block = (
-            load_mode_config(self.config_path, mode).get("inbox") or {}
-        )
-        if not resume:
-            workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
-            write_launch_record(workspace_dir, {
-                "brief": brief.to_dict(),
-                "harness": harness.ref_dict() if harness is not None else None,
-                "experience": [vars(source.ref()) for source in self._experience],
-                "config_path": _absolute(self._launch_config_path()),
-                "mode": mode,
-                "coding_agent": coding_agent,
-                "output_path": str(Path(workspace_dir).resolve()),
-                "max_iterations": max_iterations,
-                "time_budget_minutes": time_budget_minutes,
-                "cost_budget": cost_budget,
-                "finalization_reserve_minutes": finalization_reserve_minutes,
-                "eval_dir": _absolute(eval_dir),
-                "data_dir": _absolute(data_dir),
-                "additional_context": additional_context,
-                "context": (
-                    list(context)
-                    if context and all(isinstance(item, str) for item in context)
-                    else None
-                ),
-                "resumable_from_inbox": (
-                    iteration_evaluator is None
-                    and all(isinstance(item, str) for item in (context or []))
-                ),
-                "dotenv_path": find_dotenv(usecwd=True),
-            })
-            if inbox_block.get("enabled"):
-                register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
+            # On a fresh campaign, record the launch so a resume (`kapso build
+            # --resume`, `kapso inbox reply`) continues with the launch's own
+            # brief and flags without the person retyping anything; with the
+            # inbox on (docs/research/evolve-hub-design.md v4), also register
+            # the campaign so `kapso inbox` can list it.
+            inbox_block = (
+                load_mode_config(self.config_path, mode).get("inbox") or {}
+            )
+            if not resume:
+                workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
+                write_launch_record(workspace_dir, {
+                    "brief": brief.to_dict(),
+                    "harness": harness.ref_dict() if harness is not None else None,
+                    "experience": [vars(source.ref()) for source in self._experience],
+                    "config_path": _absolute(self._launch_config_path()),
+                    "mode": mode,
+                    "coding_agent": coding_agent,
+                    "output_path": str(Path(workspace_dir).resolve()),
+                    "max_iterations": max_iterations,
+                    "time_budget_minutes": time_budget_minutes,
+                    "cost_budget": cost_budget,
+                    "finalization_reserve_minutes": finalization_reserve_minutes,
+                    "eval_dir": _absolute(eval_dir),
+                    "data_dir": _absolute(data_dir),
+                    "additional_context": additional_context,
+                    "context": (
+                        list(context)
+                        if context and all(isinstance(item, str) for item in context)
+                        else None
+                    ),
+                    "resumable_from_inbox": (
+                        iteration_evaluator is None
+                        and all(isinstance(item, str) for item in (context or []))
+                    ),
+                    "dotenv_path": find_dotenv(usecwd=True),
+                })
+                if inbox_block.get("enabled"):
+                    register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
+        finally:
+            in_flight = sys.exc_info()[1]
+            if in_flight is not None:
+                # The strategy's status (a test double may have none).
+                status = getattr(orchestrator.search_strategy, "operation_status", None)
+                if status is not None and not status.terminal:
+                    status.failed(in_flight)
+
+        # The delivery runs inside the orchestrator's protected region,
+        # after the search and before the terminal publish: a watcher that
+        # sees `done` finds the record, and a checkout that raises is
+        # published as the campaign's failure, with no record and a
+        # checkpoint a resume can finish from (wp6-observability.md).
+        delivered: List[Tuple[Solution, Any]] = []
+
+        def finish(solve_result) -> None:
+            solution = _deliver(orchestrator, solve_result, brief=brief, harness=harness, experience=self._experience)
+            delivered.append((solution, solve_result))
 
         # Run experimentation
         print("Running experiments...")
-        solve_result = orchestrator.solve(
+        orchestrator.solve(
             experiment_max_iter=max_iterations,
             time_budget_minutes=time_budget_minutes,
             cost_budget=cost_budget,
             finalization_reserve_minutes=finalization_reserve_minutes,
             on_status=on_status,
+            finish=finish,
         )
-
-        # The deliverable: the strategy checks the workspace out at the
-        # delivered candidate's branch (None when nothing succeeded), and
-        # the registry head says which evaluator measured it.
+        [(solution, solve_result)] = delivered
         strategy = orchestrator.search_strategy
-        campaign = Path(strategy.workspace.workspace_dir).resolve()
-        best_branch = strategy.checkout_to_best_experiment_branch()
-        head = EvaluationRegistry(str(campaign)).head()
-        # The judge's words on the delivered candidate; with nothing
-        # delivered, the last judgment says why (the third proof run
-        # delivered node 0 and reported node 1's failed judgment).
-        delivered = strategy.get_deliverable_experiment()
-        feedback = (
-            delivered.feedback if delivered is not None
-            else solve_result.final_feedback.feedback
-            if solve_result.final_feedback else None
-        )
-        solution = Solution(
-            brief=brief,
-            campaign=campaign,
-            branch=best_branch,
-            commit=_git_rev(campaign, "HEAD") if best_branch else None,
-            base_commit=_git_rev(campaign, "main"),
-            score=strategy.get_deliverable_score(),
-            goal_achieved=bool(
-                solve_result.final_feedback and solve_result.final_feedback.stop
-            ),
-            stopped_reason=solve_result.stopped_reason,
-            stop_detail=solve_result.stop_detail,
-            experiments=solve_result.iterations_run,
-            experiments_total=solve_result.cumulative_iterations,
-            cost_usd=float(solve_result.total_cost),
-            # The inbox: what the person must answer when the campaign
-            # paused for them (empty otherwise).
-            requests=list(solve_result.requests),
-            feedback=feedback,
-            evaluator=(
-                EvaluatorRef(
-                    version=head.version,
-                    evaluator_id=head.evaluator_id,
-                    provenance=head.provenance,
-                )
-                if head else None
-            ),
-            harness=harness.ref() if harness is not None else None,
-            # What the campaign was served (wp3-experience.md): the loaded
-            # sources, each at its pinned head and scope.
-            experience=[source.ref() for source in self._experience],
-            verification=delivered.verification if delivered is not None else None,
-            rejected_candidates=sum(
-                not node.evaluation_valid
-                for node in strategy.get_experiment_history()
-            ),
-            callback_metrics=dict(
-                getattr(solve_result.best_experiment, "metrics", {}) or {}
-            ),
-            callback_primary_metric=getattr(
-                solve_result.best_experiment, "primary_metric", None
-            ),
-        )
-        solution.save()
 
         print(f"\n{'='*60}")
         print("Build complete")

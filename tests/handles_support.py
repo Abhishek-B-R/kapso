@@ -159,13 +159,16 @@ def fake_orchestrator(
             )
 
         def solve(self, experiment_max_iter, time_budget_minutes=None, cost_budget=None,
-                  finalization_reserve_minutes=None, on_status=None):
+                  finalization_reserve_minutes=None, on_status=None, finish=None):
             captured["solve"] = {
                 "experiment_max_iter": experiment_max_iter,
                 "time_budget_minutes": time_budget_minutes,
                 "cost_budget": cost_budget,
                 "finalization_reserve_minutes": finalization_reserve_minutes,
             }
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
             return result
 
     inbox = (

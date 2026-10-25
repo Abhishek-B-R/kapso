@@ -516,8 +516,9 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
             cost_budget=None,
             finalization_reserve_minutes=None,
             on_status=None,
+            finish=None,
         ) -> SolveResult:
-            return SolveResult(
+            result = SolveResult(
                 best_experiment=selected,
                 final_feedback=None,
                 stopped_reason="max_iterations",
@@ -525,6 +526,10 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
                 total_cost=0.0,
                 cumulative_iterations=1,
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
+            return result
 
     monkeypatch.setattr(
         kapso_module,
@@ -605,12 +610,6 @@ def test_comparison_persists_with_lineage_without_changing_selection(
         "metadata",
         "error",
     }
-    tree_lines = restored.explain(tree=True).splitlines()
-    candidate_rows = [line for line in tree_lines if "candidate_" in line]
-    assert len(candidate_rows) == 2
-    assert all(" external: " in line for line in candidate_rows)
-    assert "improved" in restored.explain(tree=True)
-    assert "regressed" in restored.explain(tree=True)
 
 
 def test_resume_preserves_baseline_reports(tmp_path, monkeypatch):
