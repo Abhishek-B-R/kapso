@@ -36,7 +36,7 @@ _PROBE_ROW_PATTERN = re.compile(r"^\d+\. \[card:([a-z0-9][a-z0-9-]*)\] \(([^)]*)
 # what the bank is, the three tools in reading order, and the arbitrate
 # line. No census, no card content, no citation instruction — the citation
 # convention lives in the module prompts.
-INTRO_TEXT = """## Knowledge bank (measured practice from past campaigns)
+BANK_INTRO_HEAD = """## Knowledge bank (measured practice from past campaigns)
 
 A bank of evidence-priced cards distilled from earlier campaigns on this
 benchmark: insights (mechanisms that paid or failed, with the conditions
@@ -44,8 +44,9 @@ they hold under) and procedures (runnable harnesses — their code ships with
 the card). Every card carries a reliability score and the evidence behind
 it. It complements the practice notes above; where they disagree, let your
 own measurements arbitrate.
+"""
 
-Three tools, in reading order:
+BANK_TOOLS_TEXT = """Three tools, in reading order:
 - bank_index() — the whole bank as one index page: card name, one-liner,
   score, and when it applies. Cheap; call it whenever your next decision
   might have been faced before.
@@ -54,6 +55,11 @@ Three tools, in reading order:
 - bank_get_card_with_evidence(cards) — the card plus its reliability and
   evidence trail, for due diligence before you stake real budget on its
   advice."""
+
+# The one-bank intro the graders' hindcast and the behaviour scenarios
+# serve; a campaign's intro is compiled from its sources
+# (kapso.learning.serving_launch.compile_sources_intro).
+INTRO_TEXT = BANK_INTRO_HEAD + "\n" + BANK_TOOLS_TEXT
 
 # Probe offers ride card reads (§3.2), never the index or the intro. The
 # cost clause is the wave-A lesson: a probe protocol silently adopted as
@@ -349,6 +355,75 @@ def render_cards(
         "refused": refused,
         "tensions": [list(pair) for pair in tensions],
     }
+
+
+# --------------------------------------------------------------- sources
+
+def render_sources_index(
+    banks: List[Tuple[Dict[str, Any], Bank]], task_coords: Dict[str, str], section: Optional[str] = None,
+) -> Dict[str, Any]:
+    """`bank_index` over every loaded bank: each bank's index under a
+    heading naming the source and whose measurement it is; one bank reads
+    as the plain index. `banks` pairs a serving entry (reference,
+    provenance, head, scope) with its pinned checkout."""
+    texts: List[str] = []
+    listed: List[Dict[str, Any]] = []
+    gaps: List[str] = []
+    for entry, bank in banks:
+        result = render_index(bank, task_coords, section)
+        if len(banks) > 1:
+            texts.append(f"# {entry['reference']} ({entry['provenance']})\n\n{result['text']}")
+        else:
+            texts.append(result["text"])
+        listed.extend({**row, "source": entry["reference"]} for row in result["listed"])
+        gaps.extend(result["gaps"])
+    return {"text": "\n\n".join(texts), "listed": listed, "gaps": gaps, "listed_count": len(listed)}
+
+
+def render_sources_cards(
+    banks: List[Tuple[Dict[str, Any], Bank]],
+    task_coords: Dict[str, str],
+    card_names: List[str],
+    with_evidence: bool,
+    offers_by_source: Dict[str, Dict[str, str]],
+    source: Optional[str] = None,
+) -> Dict[str, Any]:
+    """`bank_get_card` over every loaded bank: a name is read from the
+    named source, else from the first loaded bank that holds it; the
+    served rows carry the source. Quarantine and state refusals are each
+    bank's own (render_cards)."""
+    chosen = [pair for pair in banks if source is None or pair[0]["reference"] == source]
+    if source is not None and not chosen:
+        return {
+            "text": f"nothing served: no loaded source named {source}",
+            "served": [], "tensions": [],
+            "refused": [{"card": name, "reason": f"no loaded source named {source}"} for name in card_names],
+        }
+    by_source: Dict[str, List[str]] = {}
+    unknown: List[str] = []
+    for name in card_names:
+        holder = next((entry["reference"] for entry, bank in chosen if name in bank.cards), None)
+        if holder is None:
+            unknown.append(name)
+        else:
+            by_source.setdefault(holder, []).append(name)
+    texts: List[str] = []
+    served: List[Dict[str, Any]] = []
+    refused: List[Dict[str, str]] = []
+    tensions: List[List[str]] = []
+    for entry, bank in chosen:
+        names = by_source.get(entry["reference"])
+        if not names:
+            continue
+        result = render_cards(bank, task_coords, names, with_evidence, offers_by_source.get(entry["reference"], {}))
+        texts.append(result["text"])
+        served.extend({**row, "source": entry["reference"]} for row in result["served"])
+        refused.extend(result["refused"])
+        tensions.extend(result["tensions"])
+    for name in unknown:
+        refused.append({"card": name, "reason": "no such card"})
+        texts.append(f"*not served:* {name} — no such card")
+    return {"text": "\n\n".join(texts) if texts else "nothing served", "served": served, "refused": refused, "tensions": tensions}
 
 
 # ----------------------------------------------------------- probe queue

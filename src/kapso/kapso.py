@@ -113,6 +113,7 @@ from kapso.learning.mining import MiningFrame
 from kapso.learning.serving_launch import (
     plan_campaign_serving,
     stage_serving,
+    task_coordinates,
 )
 from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
 from kapso.learning.bank_remote import bank_origin, connect_bank
@@ -194,19 +195,22 @@ def _memory_overrides(
     serving_plan: Optional[Dict[str, Any]],
     kg_index_path: Optional[str],
 ) -> Optional[Dict[str, Any]]:
-    """Per-campaign strategy params carrying BOTH memory stores.
-
-    The strategy mounts the gates that follow from these: a staged bank
-    pulls in the `bank` gate, a staged knowledge index pulls in the
-    wiki-search gates. Neither is an independent config choice — the
-    injected intro tells sessions those tools exist (E2E review
-    2026-08-24: they did not).
+    """Per-campaign strategy params carrying what the loaded sources
+    mount: a staged bank pulls in the `bank` gate, an index the
+    wiki-search gates over it, the hosted source the `leeroopedia`
+    server. None is an independent config choice — the injected intro
+    tells sessions those tools exist (E2E review 2026-08-24: they did
+    not). `kg_index_path` is the object's own index until the experience
+    package retires it.
     """
     overrides: Dict[str, Any] = {}
-    if serving_plan:
+    if serving_plan and serving_plan["bank_serving"]:
         overrides["bank_serving"] = serving_plan["bank_serving"]
-    if kg_index_path:
-        overrides["kg_index_path"] = kg_index_path
+    if serving_plan and serving_plan["hosted"]:
+        overrides["hosted"] = True
+    index_path = (serving_plan or {}).get("kg_index_path") or kg_index_path
+    if index_path:
+        overrides["kg_index_path"] = index_path
     return overrides or None
 
 class Kapso:
@@ -869,10 +873,6 @@ class Kapso:
             bank_head=bank_head,
             bank_active_cards=active_cards,
             store_trajectories=store_count,
-            serving_enabled=bool(
-                ((self._config.get("learning") or {}).get("serving") or {})
-                .get("enabled")
-            ),
         )
 
     # =========================================================================
@@ -1062,21 +1062,6 @@ class Kapso:
             report_path = campaign_dir / "final_report.json"
             if not report_path.is_file():
                 report: Dict[str, Any] = {"generated_by": "Kapso.learn"}
-                # The manifest reads family/dataset from here, and the
-                # update crew scopes cards by them. Recording the coords
-                # the campaign was SERVED on keeps the cards a lesson
-                # mints eligible for the very task that produced them
-                # (E2E review 2026-08-24: cards were scoped to invented
-                # families and matched nothing).
-                served_record = (
-                    campaign_dir / ".kapso" / "serving" / "serving-record.yaml"
-                )
-                if served_record.is_file():
-                    served_task = yaml.safe_load(
-                        served_record.read_text()
-                    ).get("task") or {}
-                    report["family"] = served_task.get("family")
-                    report["dataset"] = served_task.get("dataset")
                 if isinstance(source, Solution):
                     report.update({
                         "goal": source.brief.objective,
@@ -1135,11 +1120,11 @@ class Kapso:
             serving_record = (
                 campaign_dir / ".kapso" / "serving" / "serving-record.yaml"
             )
-            served_head: Optional[str] = None
+            # The sources the campaign was served, each at its pinned
+            # head: the launcher wrote them; sessions never stamp anything.
+            experience: Optional[List[Dict[str, Any]]] = None
             if serving_record.is_file():
-                served_head = yaml.safe_load(
-                    serving_record.read_text()
-                )["bank_head"]
+                experience = yaml.safe_load(serving_record.read_text())["sources"]
             save_trajectory(
                 store,
                 trajectory_id,
@@ -1154,7 +1139,7 @@ class Kapso:
                 # campaign evidence: the working tree, living documents,
                 # run manifests and logs are.
                 work_dir_exclude=(".git",),
-                bank_head=served_head,
+                experience=experience,
                 # The build's harness, what lessons are scoped by; and the
                 # one that did the learning when it is another version.
                 harness=vars(record.harness) if record is not None and record.harness else None,
@@ -1323,13 +1308,12 @@ class Kapso:
         iteration_evaluator: Optional[IterationEvaluator] = None,
         iteration_evaluator_failure_policy: str = "record",
         # Engine knobs that later packages retire: the harness package
-        # takes over context and additional_context, the experience
-        # package serving_scope, the config package mode.
+        # takes over context and additional_context, the config package
+        # mode.
         mode: Optional[str] = None,
         coding_agent: Optional[str] = None,
         context: Optional[List[Any]] = None,
         additional_context: str = "",
-        serving_scope: Optional[Dict[str, str]] = None,
     ) -> Solution:
         """Build software that meets the brief, by experiment: propose a
         candidate, implement it on its own branch, measure it, keep the
@@ -1443,7 +1427,6 @@ class Kapso:
                     "data_dir": data_dir,
                     "additional_context": additional_context,
                     "context": context,
-                    "serving_scope": serving_scope,
                     "max_iterations": max_iterations,
                     "time_budget_minutes": time_budget_minutes,
                     "cost_budget": cost_budget,
@@ -1470,7 +1453,6 @@ class Kapso:
                 data_dir = arguments["data_dir"]
                 additional_context = arguments["additional_context"] or ""
                 context = arguments["context"]
-                serving_scope = arguments["serving_scope"]
                 max_iterations = arguments["max_iterations"]
                 time_budget_minutes = arguments["time_budget_minutes"]
                 cost_budget = arguments["cost_budget"]
@@ -1536,42 +1518,6 @@ class Kapso:
         items_context = "\n\n".join(context_parts).strip()
         combined_context = "\n\n".join([c for c in [user_context, items_context] if c])
 
-        # Experience serving (learn-api-design.md §4), two-phase: the
-        # PLAN (deterministic env + head, no filesystem writes) happens
-        # before orchestrator construction so bank_serving can be
-        # fingerprinted into the strategy params; the STAGE (bank clone,
-        # intro, launch record) happens after construction, once the
-        # workspace exists — a seeded workspace must be EMPTY at
-        # construction, so nothing may touch it earlier. Serving off, or
-        # no bank -> byte-identical to the pre-serving path.
-        serving_plan = None
-        serving = None
-        serving_coords = None
-        if (
-            ((self._config.get("learning") or {}).get("serving") or {})
-            .get("enabled")
-            and self._bank_home is not None
-            and self._bank_home.exists()
-        ):
-            output_path = output_path or _absolute(os.path.join(
-                "tmp", "search_strategy_workspace", uuid.uuid4().hex
-            ))
-            serving_config = dict(self._config)
-            serving_config["learning"] = dict(self._config["learning"])
-            serving_config["learning"]["bank"] = {
-                **self._config["learning"]["bank"],
-                "local_path": str(self._bank_home),
-            }
-            serving_coords = serving_scope or {
-                "family": (
-                    mode or self._config.get("default_mode", "GENERIC")
-                ).lower()
-            }
-            serving_plan = plan_campaign_serving(
-                serving_config, serving_coords, output_path
-            )
-            self._serving_config = serving_config
-
         # The harness: the loaded one wins over the brief's line (as call
         # arguments win for budgets); a resume with none loaded takes the
         # launch record's source first (absolute, resolvable from any
@@ -1614,6 +1560,28 @@ class Kapso:
             for line in advisory_lines(harness, BUILD_MODULES):
                 print(line)
 
+        # Experience serving (docs/plans/redesign/wp3-experience.md): what
+        # is loaded is what is served, in two phases. The PLAN (the gate
+        # environment, the heads; no filesystem writes) happens before
+        # orchestrator construction so the gates it mounts can be
+        # fingerprinted into the strategy params; the STAGE (one clone per
+        # bank, the intro, the serving record) after, once the workspace
+        # exists — a seeded workspace must be EMPTY at construction, so
+        # nothing may touch it earlier. Nothing loaded -> nothing served,
+        # nothing staged.
+        serving_plan = None
+        serving = None
+        if self._experience:
+            output_path = output_path or _absolute(os.path.join(
+                "tmp", "search_strategy_workspace", uuid.uuid4().hex
+            ))
+            serving_plan = plan_campaign_serving(
+                self._experience,
+                task_coordinates(harness.name if harness is not None else None),
+                output_path,
+                self._experience_settings["probe_budget"],
+            )
+
         # Create problem handler with all options
         handler = GenericProblemHandler(
             problem_description=problem,
@@ -1654,16 +1622,14 @@ class Kapso:
         # note above), and inject the intro into the problem context —
         # the handler reads additional_context lazily at solve time.
         if serving_plan is not None:
-            serving = stage_serving(
-                self._serving_config, serving_coords, serving_plan
-            )
+            serving = stage_serving(serving_plan, self._experience)
             # Fail loud rather than lie: the intro instructs sessions to
             # call the three bank tools, so the gate that provides them
             # must have resolved. A silently-unmounted gate produced an
             # intro advertising tools no session had (E2E review
             # 2026-08-24, blocker 1).
             mounted = orchestrator.search_strategy.ideation_gates
-            if "bank" not in mounted:
+            if serving_plan["banks"] and "bank" not in mounted:
                 raise RuntimeError(
                     "serving staged but the 'bank' gate is not mounted in "
                     f"ideation gates {mounted} — the intro would advertise "
@@ -1672,8 +1638,9 @@ class Kapso:
             handler.additional_context = "\n\n".join(
                 [c for c in [handler.additional_context, serving["intro"]] if c]
             )
-            print(f"  Knowledge bank: serving at head {serving['bank_head']}")
-            print(f"  Bank tools mounted in gates: {mounted}")
+            for line in serving["lines"]:
+                print(f"  Experience: {line}")
+            print(f"  Gates mounted: {mounted}")
 
         # On a fresh campaign, record the launch so a resume (`kapso build
         # --resume`, `kapso inbox reply`) continues with the launch's own
@@ -1705,7 +1672,6 @@ class Kapso:
                     if context and all(isinstance(item, str) for item in context)
                     else None
                 ),
-                "serving_scope": serving_scope,
                 "resumable_from_inbox": (
                     iteration_evaluator is None
                     and all(isinstance(item, str) for item in (context or []))
@@ -1784,7 +1750,9 @@ class Kapso:
             # Memory provenance (design §8.2): the exact stores this
             # solution drew on.
             knowledge_index=self._kg_index_path,
-            experience_head=serving["bank_head"] if serving else None,
+            experience_head=next(
+                (s.head for s in self._experience if s.kind == "bank"), None
+            ) if serving else None,
         )
         solution.save()
 

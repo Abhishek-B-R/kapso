@@ -121,7 +121,6 @@ build(
     coding_agent: str | None = None,
     context: list | None = None,
     additional_context: str = "",
-    serving_scope: dict | None = None,
 ) -> Solution
 ```
 
@@ -141,7 +140,6 @@ build(
 | `coding_agent` | Override the coding agent. In mode `GENERIC` the implementation and verification sessions run on the strategy parameter `implementation_cli` (`claude_code` unless a config sets it), which this argument does not change | from config |
 | `context` | Extra context passed to the campaign, such as research findings | `None` |
 | `additional_context` | Free text appended to the campaign context | `""` |
-| `serving_scope` | Restrict which banked lessons are served | `None` |
 
 ```python
 solution = kapso.build(

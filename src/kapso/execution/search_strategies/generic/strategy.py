@@ -220,8 +220,8 @@ class GenericSearch(SearchStrategy):
           Under `best`, before any validly evaluated node exists, the latest
           committed non-error, non-tampered node is used so in-progress work
           continues in place; `main` only when no committed work exists.
-        - ideation_gates: MCP gates for ideation (default: ["research", "experiment_history", "repo_memory", "leeroopedia"])
-        - implementation_gates: MCP gates for implementation (default: ["research", "repo_memory", "leeroopedia"])
+        - ideation_gates: MCP gates for ideation (default: ["research", "experiment_history", "repo_memory"])
+        - implementation_gates: MCP gates for implementation (default: ["research", "repo_memory"])
         - implementation_web: Live-web access in implementation sessions —
           claude WebSearch/WebFetch and codex --search (default: True).
           Independent of the ideation `web_search` knob.
@@ -350,8 +350,8 @@ class GenericSearch(SearchStrategy):
             self.ideation_ensemble,
             self.ideation_selector,
         )
-        # Include experiment_history, repo_memory, and leeroopedia gates by default for ideation
-        self.ideation_gates = self.params.get("ideation_gates", ["research", "experiment_history", "repo_memory", "leeroopedia"])
+        # Include experiment_history and repo_memory by default for ideation; the hosted source mounts leeroopedia below
+        self.ideation_gates = self.params.get("ideation_gates", ["research", "experiment_history", "repo_memory"])
         
         # Config params for implementation
         self.implementation_model = self.params.get(
@@ -394,7 +394,7 @@ class GenericSearch(SearchStrategy):
             )
         self.implementation_timeout = self.params.get("implementation_timeout")
         self.gate_failure_policy = self.params.get("gate_failure_policy", "warn")
-        self.implementation_gates = self.params.get("implementation_gates", ["research", "repo_memory", "leeroopedia"])
+        self.implementation_gates = self.params.get("implementation_gates", ["research", "repo_memory"])
         # The campaign inbox (docs/research/evolve-hub-design.md v4): with
         # it on, implementation sessions get the request_from_user gate and
         # a session that asks is stopped; the campaign pauses until the
@@ -424,6 +424,12 @@ class GenericSearch(SearchStrategy):
                 for gate in ("idea", "code"):
                     if gate not in gates:
                         gates.append(gate)
+        # And for the hosted source: loading it is what mounts its server
+        # (docs/plans/redesign/wp3-experience.md); no config list names it.
+        if self.params.get("hosted"):
+            for gates in (self.ideation_gates, self.implementation_gates):
+                if "leeroopedia" not in gates:
+                    gates.append("leeroopedia")
         self.parent_policy = parent_policy
         
         # Experiment history path (set by orchestrator)

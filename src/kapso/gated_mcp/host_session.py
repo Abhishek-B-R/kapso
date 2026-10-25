@@ -3,20 +3,22 @@
 #
 # A campaign session gets its gate configuration built per session by
 # get_mcp_config(): the interpreter running Kapso, the campaign's paths, the
-# pinned bank. A host's MCP file is static and read at session start, so it
-# can name neither. This entry point is what it names instead: a console
-# script (`kapso-mcp`, on the interpreter Kapso is installed in) that derives
-# the same configuration from where the session runs and from the config,
-# stages bank serving for the session, and serves the bundled gates on stdio.
+# loaded experience. A host's MCP file is static and read at session start,
+# so it can name none of these. This entry point is what it names instead:
+# a console script (`kapso-mcp`, on the interpreter Kapso is installed in)
+# that derives the same configuration from where the session runs and from
+# what `--experience` loads, stages the serving for the session, and serves
+# the bundled gates on stdio.
 #
-#   claude mcp add kapso -- kapso-mcp
-#   codex mcp add kapso -- kapso-mcp
+#   claude mcp add kapso -- kapso-mcp --experience mine
+#   codex mcp add kapso -- kapso-mcp --experience mine,org-x
 #
-# What rides by default: web research (the codex CLI), the repository's own
-# memory when a campaign has built one, the experiment history when the
-# session runs inside a campaign directory, and the lesson bank when serving
-# is on. Knowledge-graph search joins with --kg-index. Each gate left out is
-# named on stderr with the reason; stdout is the MCP transport.
+# What rides by what the directory holds: web research (the codex CLI), the
+# repository's own memory when a campaign has built one, the experiment
+# history when the session runs inside a campaign directory. What rides by
+# what is loaded (docs/plans/redesign/wp3-experience.md): the bank gate over
+# every loaded bank, the search gates over a loaded index. Each gate left
+# out is named on stderr with the reason; stdout is the MCP transport.
 
 import argparse
 import asyncio
@@ -29,18 +31,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_config, load_mode_config
+from kapso.core.config import PLATFORM_CONFIG_PATH, load_experience_defaults, load_mode_config
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.experience.reference import parse_experience_reference
+from kapso.experience.sources import ExperienceSource, resolve_source
 from kapso.gated_mcp.presets import GATES
 from kapso.gated_mcp.server import run_server
-from kapso.learning.serving_launch import plan_serving, stage_serving
+from kapso.learning.serving_launch import plan_serving, stage_serving, task_coordinates
 
 # The gates a host session gets without being asked. `idea` and `code`
-# join when an index is named; `kg` carries the write tools and `inbox` is
+# join when an index is loaded; `kg` carries the write tools and `inbox` is
 # campaign-only, so neither is ever a host default.
 DEFAULT_GATES = ("research", "repo_memory", "experiment_history", "bank")
 INDEX_GATES = ("idea", "code")
 EXPERIMENT_HISTORY_NAME = "experiment_history.json"
+LOAD_HINT = "kapso-mcp --experience"
 
 
 @dataclass
@@ -73,22 +78,34 @@ def campaign_directory(start: Path) -> Optional[Path]:
     return None
 
 
+def load_sources(text: Optional[str], settings: Dict[str, Any]) -> List[ExperienceSource]:
+    """The sources `--experience` names, comma-separated, each resolved
+    as `build` resolves them: a bad reference or a missing source stops
+    the server with the line that would make it."""
+    sources: List[ExperienceSource] = []
+    for raw in [part.strip() for part in (text or "").split(",") if part.strip()]:
+        reference = parse_experience_reference(raw, indexes_root=Path(settings["indexes"]))
+        sources.append(resolve_source(reference, settings=settings))
+    return sources
+
+
 def prepare_host_gates(
     *,
     root: Path,
     requested: Sequence[str],
-    config: Dict[str, Any],
     mode_config: Dict[str, Any],
-    kg_index: Optional[str],
-    family: str,
+    sources: Sequence[ExperienceSource],
     session_dir: Path,
+    probe_budget: int,
 ) -> HostGates:
     """Decide which of the requested gates this session can have, and
-    build the environment the bundled server resolves them from. Bank
-    serving is staged into `session_dir` here (a pinned clone, the
-    serving record, the pull log). Request order is kept, duplicates
-    dropped; an unknown gate or a campaign-only one is a configuration
-    error, never silently skipped."""
+    build the environment the bundled server resolves them from. The
+    loaded banks are staged into `session_dir` here (one pinned clone
+    each, the serving record, the pull log) when the bank gate is among
+    the requested; a host session has no harness, so its coordinate is
+    `none`. Request order is kept, duplicates dropped; an unknown gate or
+    a campaign-only one is a configuration error, never silently skipped."""
+    plan = plan_serving(list(sources), task_coordinates(None), session_dir, probe_budget)
     env: Dict[str, str] = {}
     enabled: List[str] = []
     notes: List[str] = []
@@ -133,27 +150,21 @@ def prepare_host_gates(
             if embedding:
                 env["EXPERIMENT_EMBEDDING_MODEL"] = str(embedding)
         elif gate == "bank":
-            learning = config["learning"]
-            if not learning["serving"]["enabled"]:
-                notes.append(
-                    "bank: off (learning.serving.enabled is false in the config)"
-                )
+            if plan is None or not plan["banks"]:
+                notes.append(f"bank: off (no bank loaded; {LOAD_HINT} mine)")
                 continue
-            home = Path(learning["bank"]["local_path"]).expanduser()
-            if not home.exists():
-                notes.append(
-                    f"bank: off (no bank home at {home}; a learn() creates one)"
-                )
-                continue
-            plan = plan_serving(config, {"family": family}, session_dir)
-            staged = stage_serving(config, {"family": family}, plan)
-            env.update(staged["bank_serving"])
+            env.update(stage_serving(plan, list(sources))["bank_serving"])
         elif gate in INDEX_GATES or gate == "kg":
-            if not kg_index:
-                notes.append(f"{gate}: off (no --kg-index)")
+            if plan is None or not plan["kg_index_path"]:
+                notes.append(f"{gate}: off (no index loaded; {LOAD_HINT} <name>)")
                 continue
-            env["KG_INDEX_PATH"] = str(Path(kg_index).expanduser().resolve())
+            env["KG_INDEX_PATH"] = plan["kg_index_path"]
         enabled.append(gate)
+    if plan is not None and plan["hosted"]:
+        notes.append(
+            "leeroopedia: a hosted server, not a bundled gate — add it to the "
+            "host as an HTTP MCP server with your key on the URL"
+        )
     return HostGates(enabled=enabled, env=env, notes=notes)
 
 
@@ -163,8 +174,8 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         description=(
             "Serve Kapso's knowledge and experience tools to the coding-agent "
             "session this runs in (stdio MCP). Add it to a host with "
-            "`claude mcp add kapso -- kapso-mcp` or "
-            "`codex mcp add kapso -- kapso-mcp`."
+            "`claude mcp add kapso -- kapso-mcp --experience mine` or "
+            "`codex mcp add kapso -- kapso-mcp --experience mine`."
         ),
     )
     parser.add_argument(
@@ -176,16 +187,12 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="The directory the session works in (default: the current directory)",
     )
     parser.add_argument(
-        "--gates", type=str, default=",".join(DEFAULT_GATES),
-        help=f"Comma-separated gates to serve (default: {','.join(DEFAULT_GATES)})",
-    )
-    parser.add_argument(
-        "--kg-index", type=str, default=None,
-        help="A .index file; adds the idea and code search gates",
-    )
-    parser.add_argument(
-        "--family", type=str, default=None,
-        help="The task family the bank serves for (default: the config's default_mode, lowercased)",
+        "--experience", type=str, default=None,
+        help=(
+            "Comma-separated sources to serve: mine, a bank path or git reference, "
+            "an index name (see `kapso experience list`). Nothing loaded serves "
+            "no bank and no index"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -193,29 +200,22 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = _parse_args(argv)
     config_path = args.config or str(PLATFORM_CONFIG_PATH)
-    config = load_config(config_path)
-    # A user config without a learning block inherits the packaged one,
-    # as the facade does (Rule 1: one canonical home for the defaults).
-    if "learning" not in config:
-        config["learning"] = load_config(str(PLATFORM_CONFIG_PATH))["learning"]
+    settings = load_experience_defaults(config_path)
     mode_config = load_mode_config(config_path)
     root = Path(args.root).expanduser().resolve() if args.root else Path.cwd()
-    requested = [gate.strip() for gate in args.gates.split(",") if gate.strip()]
-    if args.kg_index:
+    sources = load_sources(args.experience, settings)
+    requested = list(DEFAULT_GATES)
+    if any(source.kind == "index" for source in sources):
         requested.extend(INDEX_GATES)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    session_dir = (
-        Path(config["learning"]["serving"]["session_root"]).expanduser()
-        / f"{stamp}-{os.getpid()}"
-    )
+    session_dir = Path(settings["session_root"]).expanduser() / f"{stamp}-{os.getpid()}"
     gates = prepare_host_gates(
         root=root,
         requested=requested,
-        config=config,
         mode_config=mode_config,
-        kg_index=args.kg_index,
-        family=args.family or str(config.get("default_mode", "GENERIC")).lower(),
+        sources=sources,
         session_dir=session_dir,
+        probe_budget=settings["probe_budget"],
     )
     for note in gates.notes:
         print(f"kapso-mcp: {note}", file=sys.stderr)

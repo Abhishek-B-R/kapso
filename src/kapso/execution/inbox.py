@@ -418,7 +418,7 @@ def read_launch_record(workspace_dir: str | Path) -> Optional[Dict[str, Any]]:
 # does not fingerprint budgets).
 RESUME_FROM_RECORD = (
     "mode", "coding_agent", "eval_dir", "data_dir", "additional_context",
-    "context", "serving_scope", "max_iterations", "time_budget_minutes",
+    "context", "max_iterations", "time_budget_minutes",
     "cost_budget", "finalization_reserve_minutes",
 )
 # The launch settings the checkpoint fingerprints. Changing one is refused

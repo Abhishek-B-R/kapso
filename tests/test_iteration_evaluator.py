@@ -545,6 +545,7 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
     kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
     solution = kapso.build(
         "Improve support",
         output=str(workspace),

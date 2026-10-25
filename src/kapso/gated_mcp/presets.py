@@ -222,17 +222,15 @@ GATES: Dict[str, GateDefinition] = {
         tools=["bank_index", "bank_get_card", "bank_get_card_with_evidence"],
         default_params={},
         required_env=[
-            "KAPSO_BANK_DIR",
-            "KAPSO_BANK_HEAD",
+            "KAPSO_BANKS",
             "KAPSO_SERVING_PULL_LOG",
-            "KAPSO_TASK_FAMILY",
+            "KAPSO_TASK_HARNESS",
             "KAPSO_PROBE_BUDGET",
         ],
         injected_env=[
-            "KAPSO_BANK_DIR",
-            "KAPSO_BANK_HEAD",
+            "KAPSO_BANKS",
             "KAPSO_SERVING_PULL_LOG",
-            "KAPSO_TASK_FAMILY",
+            "KAPSO_TASK_HARNESS",
             "KAPSO_PROBE_BUDGET",
         ],
     ),
@@ -510,10 +508,9 @@ def get_mcp_config(
         include_base_tools: Include Read, Write, Bash in allowed_tools (default True)
         gate_failure_policy: Missing-capability policy: skip, warn, or error.
         bank_serving: Campaign parameters for the "bank" gate, keyed by its
-                      KAPSO_* env names (KAPSO_BANK_DIR, KAPSO_BANK_HEAD,
-                      KAPSO_SERVING_PULL_LOG, KAPSO_TASK_FAMILY,
-                      KAPSO_PROBE_BUDGET, optional KAPSO_TASK_DATASET).
-                      Required for the gate to resolve.
+                      KAPSO_* env names (KAPSO_BANKS, KAPSO_SERVING_PULL_LOG,
+                      KAPSO_TASK_HARNESS, KAPSO_PROBE_BUDGET). Required for
+                      the gate to resolve.
         inbox: Campaign parameters for the "inbox" gate, keyed by its KAPSO_*
                env names (KAPSO_INBOX_PATH, KAPSO_SESSION_ID, KAPSO_NODE_ID).
                Required for the gate to resolve.
@@ -587,9 +584,7 @@ def get_mcp_config(
         ]
     if "repo_memory" in internal_gates and effective_env.get("REPO_MEMORY_ROOT"):
         mcp_env["REPO_MEMORY_ROOT"] = effective_env["REPO_MEMORY_ROOT"]
-    if "bank" in internal_gates and effective_env.get("KAPSO_TASK_DATASET"):
-        mcp_env["KAPSO_TASK_DATASET"] = effective_env["KAPSO_TASK_DATASET"]
-    
+
     # Build MCP servers config (gated-knowledge for internal gates)
     mcp_servers: Dict[str, Any] = {}
     if internal_gates:

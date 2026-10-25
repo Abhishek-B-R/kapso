@@ -388,7 +388,7 @@ def save_trajectory(
     work_dir_exclude: tuple = (),
     contract: str = "strict",
     kapso_commit: Optional[str] = None,
-    bank_head: Optional[str] = None,
+    experience: Optional[List[Dict[str, Any]]] = None,
     upload: Optional[bool] = None,
     harness: Optional[Dict[str, str]] = None,
     learning_harness: Optional[Dict[str, str]] = None,
@@ -421,9 +421,11 @@ def save_trajectory(
         "task": parts["task"].replace("--", "/"),
         "created": _created_from_stamp(parts["stamp"]),
         "kapso_commit": kapso_commit,
-        "bank_head": bank_head,
-        # The harness the build ran with (what the experience package scopes
-        # lessons by), and the one that did the learning when it differs.
+        # The experience the build was served (the serving record's
+        # sources, each with its pinned head), and the harness it ran with
+        # (what the experience package scopes lessons by), and the one
+        # that did the learning when it differs.
+        "experience": experience,
         "harness": harness,
         "learning_harness": learning_harness,
         "contract": contract,

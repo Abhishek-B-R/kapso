@@ -13,6 +13,8 @@ from kapso.learning.retriever import (
     append_pull_event,
     render_cards,
     render_index,
+    render_sources_cards,
+    render_sources_index,
 )
 from tests.test_bank_retriever import build_bank, card_text
 
@@ -85,13 +87,72 @@ def test_bank_gate_resolves_only_with_campaign_env():
     resolution = resolve_gates(["bank"], policy="skip", env={})
     assert resolution.enabled_gates == ()
     missing = resolution.diagnostics[0].missing_env
-    assert "KAPSO_BANK_DIR" in missing and "KAPSO_SERVING_PULL_LOG" in missing
-    assert "KAPSO_PROBE_BUDGET" in missing
+    assert "KAPSO_BANKS" in missing and "KAPSO_SERVING_PULL_LOG" in missing
+    assert "KAPSO_TASK_HARNESS" in missing and "KAPSO_PROBE_BUDGET" in missing
     resolution = resolve_gates(["bank"], policy="skip", env={
-        "KAPSO_BANK_DIR": "/tmp/bank",
-        "KAPSO_BANK_HEAD": "abc",
+        "KAPSO_BANKS": "[]",
         "KAPSO_SERVING_PULL_LOG": "/tmp/pull.jsonl",
-        "KAPSO_TASK_FAMILY": "entity_binary_classification",
+        "KAPSO_TASK_HARNESS": "none",
         "KAPSO_PROBE_BUDGET": "1",
     })
     assert resolution.enabled_gates == ("bank",)
+
+
+# ------------------------------------------------------ several banks
+
+
+def make_two_banks(tmp_path):
+    """Two loaded banks sharing one card name, the first with a decoy."""
+    first_root = build_bank(tmp_path / "first", {
+        "shared-card": card_text("shared-card", score=0.8),
+        "only-first": card_text("only-first"),
+        "decoy-card": card_text("decoy-card", score=0.9),
+    })
+    (first_root / ".decoys.yaml").write_text("- decoy-card\n")
+    second_root = build_bank(tmp_path / "second", {
+        "shared-card": card_text("shared-card", score=0.5),
+        "only-second": card_text("only-second"),
+    })
+    return [
+        ({"reference": "mine", "head": "aaa", "dir": str(first_root),
+          "provenance": "measured by you", "scope": "harness"}, Bank(str(first_root))),
+        ({"reference": "acme/kapso-bank", "head": "bbb", "dir": str(second_root),
+          "provenance": "measured by others", "scope": "all"}, Bank(str(second_root))),
+    ]
+
+
+def test_sources_index_groups_by_source_and_one_bank_reads_plain(tmp_path):
+    banks = make_two_banks(tmp_path)
+    result = render_sources_index(banks, TASK)
+    text = result["text"]
+    assert text.index("# mine (measured by you)") < text.index("# acme/kapso-bank (measured by others)")
+    rows = [(row["card"], row["source"]) for row in result["listed"]]
+    assert ("shared-card", "mine") in rows and ("shared-card", "acme/kapso-bank") in rows
+    assert ("only-second", "acme/kapso-bank") in rows
+    # quarantine stays each bank's own
+    assert ("decoy-card", "mine") not in rows
+    assert result["listed_count"] == len(rows) == 4
+    # one bank reads as the plain index: no source heading
+    alone = render_sources_index(banks[:1], TASK)
+    assert alone["text"] == render_index(banks[0][1], TASK)["text"]
+    assert [row["source"] for row in alone["listed"]] == ["mine", "mine"]
+
+
+def test_sources_cards_read_from_the_holder_or_the_named_source(tmp_path):
+    banks = make_two_banks(tmp_path)
+    # a name held by both reads from the first loaded bank unless a source is named
+    first = render_sources_cards(banks, TASK, ["shared-card", "only-second"], False, {})
+    assert [(row["card"], row["source"]) for row in first["served"]] == [
+        ("shared-card", "mine"), ("only-second", "acme/kapso-bank"),
+    ]
+    named = render_sources_cards(banks, TASK, ["shared-card"], False, {}, source="acme/kapso-bank")
+    assert [(row["card"], row["source"]) for row in named["served"]] == [("shared-card", "acme/kapso-bank")]
+    # quarantine and unknown names refuse as one bank does; a source
+    # nobody loaded refuses everything by name
+    refused = render_sources_cards(banks, TASK, ["decoy-card", "no-such-card"], False, {})
+    assert {r["card"]: r["reason"] for r in refused["refused"]} == {
+        "decoy-card": "no such card", "no-such-card": "no such card",
+    }
+    nobody = render_sources_cards(banks, TASK, ["shared-card"], False, {}, source="ghost")
+    assert nobody["served"] == []
+    assert nobody["refused"] == [{"card": "shared-card", "reason": "no loaded source named ghost"}]

@@ -384,10 +384,9 @@ def test_planner_session_mounts_bank_gate_when_serving(tmp_path, fake_planner):
     # (asserted by the existing initial-plan test via bank_serving=None).
     strategy = make_stub(tmp_path)
     strategy.bank_serving = {
-        "KAPSO_BANK_DIR": str(tmp_path),
-        "KAPSO_BANK_HEAD": "abc",
+        "KAPSO_BANKS": '[{"reference": "mine", "head": "abc", "dir": "' + str(tmp_path) + '", "provenance": "measured by you", "scope": "harness"}]',
         "KAPSO_SERVING_PULL_LOG": str(tmp_path / "pull.jsonl"),
-        "KAPSO_TASK_FAMILY": "entity_binary_classification",
+        "KAPSO_TASK_HARNESS": "none",
         "KAPSO_PROBE_BUDGET": "1",
     }
     fake_planner.outputs = [

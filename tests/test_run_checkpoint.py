@@ -722,6 +722,7 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
     result = kapso.build(
         "Improve support",
         output=str(workspace),
@@ -759,7 +760,7 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
         "max_iterations": 3, "time_budget_minutes": 60.0, "cost_budget": None,
         "finalization_reserve_minutes": None, "eval_dir": str(eval_dir),
         "data_dir": None, "additional_context": "", "context": None,
-        "serving_scope": None, "resumable_from_inbox": True, "dotenv_path": "",
+        "resumable_from_inbox": True, "dotenv_path": "",
     })
     captured: Dict[str, Any] = {}
 
@@ -817,6 +818,7 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
 
     kapso.build(output=str(workspace), resume=True)
     assert captured["goal"] == Brief(objective="Raise accuracy above 0.85").render()

@@ -77,7 +77,6 @@ class MemoryStatus:
     bank_head: Optional[str]
     bank_active_cards: Optional[int]
     store_trajectories: Optional[int]
-    serving_enabled: bool
 
     def explain(self) -> str:
         lines = ["Memory:"]
@@ -92,14 +91,10 @@ class MemoryStatus:
             lines.append(
                 f"  experience: {self.bank_path} @ {self.bank_head[:9]} — "
                 f"{self.bank_active_cards} active cards, "
-                f"{self.store_trajectories} trajectories in store, "
-                f"serving: {'enabled' if self.serving_enabled else 'disabled'}"
+                f"{self.store_trajectories} trajectories in store"
             )
         elif self.bank_path:
-            lines.append(
-                f"  experience: {self.bank_path} (bank not initialized), "
-                f"serving: {'enabled' if self.serving_enabled else 'disabled'}"
-            )
+            lines.append(f"  experience: {self.bank_path} (bank not initialized)")
         else:
             lines.append("  experience: no bank configured")
         return "\n".join(lines)

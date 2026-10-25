@@ -1,6 +1,7 @@
 """`kapso-mcp`: the bundled gates served to a host session — the engineer's
 own coding-agent session — with the configuration derived from where the
-session runs, the way get_mcp_config() derives it for a campaign session.
+session runs and from what `--experience` loads, the way get_mcp_config()
+derives it for a campaign session.
 """
 
 import json
@@ -12,39 +13,57 @@ import pytest
 
 import kapso.gated_mcp.host_session as host_module
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.experience import (
+    ExperienceError,
+    ExperienceStore,
+    IndexRecord,
+    parse_experience_reference,
+    resolve_source,
+)
 from kapso.gated_mcp.host_session import (
     DEFAULT_GATES,
     INDEX_GATES,
     campaign_directory,
+    load_sources,
     prepare_host_gates,
     repository_root,
 )
 from kapso.gated_mcp.presets import resolve_gates
 from tests.test_bank_retriever import card_text
+from tests.test_experience_reference import settings_for
 from tests.test_update_frame import seed_bank_home
 
 
-def _config(tmp_path, serving=True):
-    return {
-        "default_mode": "GENERIC",
-        "learning": {
-            "serving": {"enabled": serving, "session_root": str(tmp_path / "sessions")},
-            "bank": {"local_path": str(tmp_path / "bank-home.git")},
-            "retriever": {"probe_budget": 1},
-        },
-    }
+def _settings(tmp_path):
+    settings = settings_for(tmp_path)
+    settings["bank_home"] = str(tmp_path / "bank-home.git")
+    return settings
 
 
-def _prepare(tmp_path, root, *, requested=DEFAULT_GATES, serving=False, kg_index=None,
-             mode_config=None):
+def _source(tmp_path, raw):
+    settings = _settings(tmp_path)
+    reference = parse_experience_reference(raw, indexes_root=Path(settings["indexes"]), cwd=tmp_path)
+    return resolve_source(reference, settings=settings)
+
+
+def _index(tmp_path, name):
+    settings = _settings(tmp_path)
+    store = ExperienceStore(settings["banks"], settings["indexes"])
+    store.write_index_record(IndexRecord(
+        name=name, id=f"id-{name}", created_at="2026-10-25T12:00:00+00:00", source="https://github.com/org/x",
+        search_backend="kg_graph_search", backend_refs={"collection": name}, page_count=3, path=store.index_dir(name),
+    ))
+    return _source(tmp_path, name)
+
+
+def _prepare(tmp_path, root, *, requested=DEFAULT_GATES, sources=(), mode_config=None):
     return prepare_host_gates(
         root=root,
         requested=list(requested),
-        config=_config(tmp_path, serving=serving),
         mode_config=mode_config or {"models": {"embedding": None}},
-        kg_index=kg_index,
-        family="generic",
+        sources=list(sources),
         session_dir=tmp_path / "sessions" / "s1",
+        probe_budget=1,
     )
 
 
@@ -113,51 +132,66 @@ def test_experiment_history_rides_inside_a_campaign_directory(tmp_path, codex_on
     }
 
 
-def test_the_bank_is_staged_for_the_session_when_serving_is_on(tmp_path, codex_on_path):
+def test_the_bank_is_staged_for_the_session_when_one_is_loaded(tmp_path, codex_on_path):
     seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
-    gates = _prepare(tmp_path, tmp_path, requested=["bank"], serving=True)
+    gates = _prepare(tmp_path, tmp_path, requested=["bank"], sources=[_source(tmp_path, "mine")])
     assert gates.enabled == ["bank"]
     env = gates.env
     session_dir = tmp_path / "sessions" / "s1"
-    assert Path(env["KAPSO_BANK_DIR"]) == session_dir / "bank"
-    assert (session_dir / "bank" / "insights" / "a-card.md").is_file()
+    [entry] = json.loads(env["KAPSO_BANKS"])
+    assert Path(entry["dir"]) == session_dir / "banks" / "mine"
+    assert (session_dir / "banks" / "mine" / "insights" / "a-card.md").is_file()
     assert (session_dir / "serving-record.yaml").is_file()
     assert env["KAPSO_SERVING_PULL_LOG"] == str(session_dir / "serving-pull.jsonl")
-    assert env["KAPSO_TASK_FAMILY"] == "generic" and env["KAPSO_PROBE_BUDGET"] == "1"
+    # a host session has no harness: its coordinate is `none`
+    assert env["KAPSO_TASK_HARNESS"] == "none" and env["KAPSO_PROBE_BUDGET"] == "1"
     head = subprocess.run(
-        ["git", "-C", env["KAPSO_BANK_DIR"], "rev-parse", "HEAD"],
+        ["git", "-C", entry["dir"], "rev-parse", "HEAD"],
         check=True, capture_output=True, text=True,
     ).stdout.strip()
-    assert env["KAPSO_BANK_HEAD"] == head
+    assert entry["head"] == head and entry["provenance"] == "measured by you"
     # The bundled server resolves every served gate from exactly this env.
     resolution = resolve_gates(gates.enabled, policy="error", env={**os.environ, **env})
     assert resolution.unavailable_gates == ()
 
 
-def test_the_bank_stays_off_while_serving_is_off_or_there_is_no_home(tmp_path, codex_on_path):
+def test_the_bank_stays_off_while_no_bank_is_loaded(tmp_path, codex_on_path):
     seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
-    off = _prepare(tmp_path, tmp_path, requested=["bank"], serving=False)
-    assert off.enabled == [] and "learning.serving.enabled" in off.notes[0]
-    no_home = prepare_host_gates(
-        root=tmp_path, requested=["bank"],
-        config={**_config(tmp_path, serving=True),
-                "learning": {**_config(tmp_path)["learning"],
-                             "serving": {"enabled": True, "session_root": str(tmp_path)},
-                             "bank": {"local_path": str(tmp_path / "absent.git")},
-                             "retriever": {"probe_budget": 1}}},
-        mode_config={}, kg_index=None, family="generic", session_dir=tmp_path / "s",
-    )
-    assert no_home.enabled == [] and "no bank home" in no_home.notes[0]
+    off = _prepare(tmp_path, tmp_path, requested=["bank"])
+    assert off.enabled == [] and off.notes == ["bank: off (no bank loaded; kapso-mcp --experience mine)"]
+    assert not (tmp_path / "sessions").exists()
 
 
 def test_an_index_adds_the_search_gates(tmp_path, codex_on_path):
-    index = tmp_path / "ml.index"
-    index.write_text("{}")
-    gates = _prepare(tmp_path, tmp_path, requested=list(INDEX_GATES), kg_index=str(index))
+    source = _index(tmp_path, "org-x")
+    gates = _prepare(tmp_path, tmp_path, requested=list(INDEX_GATES), sources=[source])
     assert gates.enabled == ["idea", "code"]
-    assert gates.env == {"KG_INDEX_PATH": str(index.resolve())}
+    assert gates.env == {"KG_INDEX_PATH": str(Path(_settings(tmp_path)["indexes"]) / "org-x" / "index.json")}
     without = _prepare(tmp_path, tmp_path, requested=list(INDEX_GATES))
-    assert without.enabled == [] and without.notes == ["idea: off (no --kg-index)", "code: off (no --kg-index)"]
+    assert without.enabled == [] and without.notes == [
+        "idea: off (no index loaded; kapso-mcp --experience <name>)",
+        "code: off (no index loaded; kapso-mcp --experience <name>)",
+    ]
+
+
+def test_the_hosted_source_is_a_reminder_not_a_gate(tmp_path, codex_on_path, monkeypatch):
+    monkeypatch.setenv("LEEROOPEDIA_API_KEY", "kpsk_test")
+    gates = _prepare(tmp_path, tmp_path, requested=["research"], sources=[_source(tmp_path, "leeroopedia")])
+    assert gates.enabled == ["research"] and gates.env == {}
+    assert gates.notes == [
+        "leeroopedia: a hosted server, not a bundled gate — add it to the host "
+        "as an HTTP MCP server with your key on the URL"
+    ]
+
+
+def test_load_sources_resolves_each_reference_and_refuses_a_missing_one(tmp_path):
+    seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
+    _index(tmp_path, "org-x")
+    sources = load_sources(" mine, org-x ", _settings(tmp_path))
+    assert [(s.reference, s.kind) for s in sources] == [("mine", "bank"), ("org-x", "index")]
+    assert load_sources(None, _settings(tmp_path)) == []
+    with pytest.raises(ExperienceError, match="kapso experience add mine"):
+        load_sources("mine", {**_settings(tmp_path), "bank_home": str(tmp_path / "absent.git")})
 
 
 def test_unknown_and_campaign_only_gates_are_configuration_errors(tmp_path, codex_on_path):
@@ -195,6 +229,6 @@ def test_main_serves_what_it_can_and_exits_when_nothing_is_left(tmp_path, monkey
 
     monkeypatch.setattr(host_module.shutil, "which", lambda name: None)
     with pytest.raises(SystemExit) as stop:
-        host_module.main(["--gates", "research"])
+        host_module.main([])
     assert stop.value.code == 1
     assert "nothing to serve here" in capsys.readouterr().err

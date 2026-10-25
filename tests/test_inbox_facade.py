@@ -65,6 +65,7 @@ def _facade() -> Kapso:
     kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
     return kapso
 
 
@@ -208,7 +209,7 @@ def _paused_campaign(tmp_path, *, requests=1, resumable=True, completed=2, max_i
         "config_path": None, "kg_index": None, "mode": "GENERIC", "coding_agent": "codex",
         "output_path": str(workspace), "max_iterations": max_iterations, "time_budget_minutes": 90,
         "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": "./eval",
-        "data_dir": None, "additional_context": "", "context": None, "serving_scope": None,
+        "data_dir": None, "additional_context": "", "context": None,
         "resumable_from_inbox": resumable, "dotenv_path": "",
     })
     return workspace

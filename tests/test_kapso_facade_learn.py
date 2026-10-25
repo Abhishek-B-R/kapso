@@ -46,7 +46,7 @@ def facade_config(tmp_path) -> str:
             "import_report_dir": str(tmp_path / "imports"),
             "status_dir": str(tmp_path / "status"),
             "harvest": {"enabled": True},
-            "serving": {"enabled": False},
+            "serving": {"session_root": str(tmp_path / "serving")},
             "bank": {"local_path": str(tmp_path / "bank-home.git")},
             "retriever": {"probe_budget": 1},
             "graders": {"run_root": str(tmp_path / "graders")},
@@ -321,13 +321,13 @@ def test_memory_status_shapes(tmp_path):
     assert "1 active cards" in status.explain()
 
 
-def test_build_serving_staging_and_disabled_byte_identity(
+def test_build_serving_staging_and_nothing_loaded_byte_identity(
     tmp_path, monkeypatch
 ):
-    # Regression (design §4): serving on + bank present -> the intro rides
-    # the problem context, bank_serving reaches the orchestrator, and the
-    # provenance stamp lands; serving off -> context byte-identical to the
-    # pre-serving facade and no override is passed.
+    # Regression (wp3-experience.md): `mine` loaded -> the intro rides the
+    # problem context, bank_serving reaches the orchestrator, and the
+    # record lands in the workspace; nothing loaded -> context
+    # byte-identical to the pre-serving facade and no override is passed.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
     _git_workspace(tmp_path / "ws")
@@ -367,25 +367,24 @@ def test_build_serving_staging_and_disabled_byte_identity(
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", FakeOrchestrator)
     monkeypatch.chdir(tmp_path)
 
-    # serving disabled: no intro, no override
+    # nothing loaded: no intro, no override
     kapso = Kapso(config=config_path)
     kapso.build("test goal", output=str(tmp_path / "out1"))
     off_context = captured["handler"].additional_context
-    assert "Knowledge bank" not in off_context
+    assert "Experience" not in off_context
     assert captured["kwargs"]["strategy_params_overrides"] is None
 
-    # serving enabled: intro + override + stamp
-    config = yaml.safe_load(Path(config_path).read_text())
-    config["learning"]["serving"]["enabled"] = True
-    Path(config_path).write_text(yaml.safe_dump(config))
+    # `mine` loaded: intro + override + the pinned head on the solution
     kapso = Kapso(config=config_path)
+    kapso.load_experience("mine")
     solution = kapso.build("test goal", output=str(tmp_path / "out2"))
     on_context = captured["handler"].additional_context
-    assert "## Knowledge bank" in on_context
+    assert "## Experience (measured before)" in on_context
+    assert "1 card measured by you, under no harness" in on_context
     assert "bank_index()" in on_context
     override = captured["kwargs"]["strategy_params_overrides"]
-    assert "KAPSO_BANK_DIR" in override["bank_serving"]
-    assert solution.experience_head is not None
+    assert "KAPSO_BANKS" in override["bank_serving"]
+    assert solution.experience_head == kapso.experience[0].head
     # the serving record landed inside the campaign workspace
     record = tmp_path / "out2" / ".kapso" / "serving" / "serving-record.yaml"
     assert record.is_file()
@@ -429,9 +428,6 @@ def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
     # must fail loud instead.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
-    config = yaml.safe_load(Path(config_path).read_text())
-    config["learning"]["serving"]["enabled"] = True
-    Path(config_path).write_text(yaml.safe_dump(config))
 
     class GatelessOrchestrator:
         def __init__(self, handler, **kwargs):
@@ -451,6 +447,7 @@ def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", GatelessOrchestrator)
     monkeypatch.chdir(tmp_path)
     kapso = Kapso(config=config_path)
+    kapso.load_experience("mine")
     with pytest.raises(RuntimeError, match="'bank' gate is not mounted"):
         kapso.build("test goal", output=str(tmp_path / "out3"))
 

@@ -699,16 +699,6 @@ def build_requirements(
             block.get("knowledge_search"),
         ))
 
-    serving = ((config.get("learning") or {}).get("serving") or {})
-    if serving.get("enabled") and bank_home is not None:
-        requirements.append(Requirement(
-            label=f"lesson bank at {bank_home}",
-            ok=Path(bank_home).exists(),
-            fix="run kapso.learn(...) once to create it, or "
-                "set learning.serving.enabled: false",
-            origin="learning.serving.enabled: true — campaigns are served bank cards",
-            required=False,
-        ))
     return requirements
 
 

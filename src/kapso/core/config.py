@@ -67,7 +67,9 @@ def load_experience_defaults(config_path: Optional[str] = None) -> Dict[str, Any
     user config's own keys over it, plus what the sources need from the
     other blocks: `bank_home` (`learning.bank.local_path`, where `mine`
     lives), `hosted` (`gates.leeroopedia`), `session_root`
-    (`learning.serving.session_root`)."""
+    (`learning.serving.session_root`, where a host session stages),
+    `probe_budget` (`learning.retriever.probe_budget`, the probe offers
+    riding card reads per campaign)."""
     platform_config = load_config(str(PLATFORM_CONFIG_PATH))
     if 'experience' not in platform_config:
         raise ValueError(
@@ -83,6 +85,7 @@ def load_experience_defaults(config_path: Optional[str] = None) -> Dict[str, Any
     settings = dict(merged['experience'])
     settings['bank_home'] = merged['learning']['bank']['local_path']
     settings['session_root'] = merged['learning']['serving']['session_root']
+    settings['probe_budget'] = merged['learning']['retriever']['probe_budget']
     settings['hosted'] = dict(merged['gates']['leeroopedia'])
     return settings
 

@@ -168,17 +168,17 @@ def _harvest_trajectory(ds: str, task: str, lane, workspace: str, log_path: Path
     for optional in ("table_information.md", "artifacts.json"):
         if (shared_cache / optional).is_file():
             living[optional] = str(shared_cache / optional)
-    # Serving stamp (§5.3): the retriever wrote the record at launch; the
-    # harvest carries its head into the manifest and the campaign meta —
-    # sessions never stamp anything.
-    bank_head = None
+    # Serving stamp (§5.3): the launcher wrote the record with the sources
+    # it served; the harvest carries them into the manifest and the
+    # campaign meta — sessions never stamp anything.
+    experience = None
     serving_record = work_dir / ".kapso" / "serving" / "serving-record.yaml"
     if serving_record.is_file():
-        bank_head = yaml.safe_load(serving_record.read_text())["bank_head"]
+        experience = yaml.safe_load(serving_record.read_text())["sources"]
         meta_path = work_dir / "campaign_meta.json"
         if meta_path.is_file():
             meta = json.loads(meta_path.read_text())
-            meta["bank_head"] = bank_head
+            meta["experience"] = experience
             meta_path.write_text(json.dumps(meta, indent=1))
     return harvest_campaign(
         TrajectoryStore.from_config(config),
@@ -189,7 +189,7 @@ def _harvest_trajectory(ds: str, task: str, lane, workspace: str, log_path: Path
         living_documents=living,
         work_dir_exclude=("shared_cache",),
         kapso_commit=kapso_commit,
-        bank_head=bank_head,
+        experience=experience,
     )
 
 

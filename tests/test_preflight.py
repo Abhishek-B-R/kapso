@@ -174,6 +174,16 @@ def test_gate_policy_decides_whether_a_missing_gate_blocks(
     packaged, full_machine, monkeypatch,
 ):
     monkeypatch.delenv("LEEROOPEDIA_API_KEY", raising=False)
+    # The packaged lists name no gate the user sets up (the hosted gate
+    # rides by loading, its key checked then); a config that names one
+    # in its lists is checked under its own policy.
+    assert not [
+        label for label in by_label(requirements_for("build", packaged))
+        if label.startswith("MCP gate")
+    ]
+    packaged = copy.deepcopy(packaged)
+    params = packaged["modes"]["GENERIC"]["search_strategy"]["params"]
+    params["ideation_gates"] = list(params["ideation_gates"]) + ["leeroopedia"]
 
     warn = by_label(requirements_for("build", packaged))
     assert warn["MCP gate 'leeroopedia'"].required is False
@@ -668,6 +678,7 @@ def test_python_build_override_fails_before_workspace(
     kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
     kapso._bank_home = None
     output = tmp_path / "campaign"
     with pytest.raises(PreflightError, match="inference-only"):

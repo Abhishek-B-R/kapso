@@ -31,11 +31,9 @@ def test_default_gates_include_research(tmp_path):
     with _patched_super_init(str(tmp_path)):
         strategy = GenericSearch(SimpleNamespace(params={}), str(tmp_path))
     assert strategy.ideation_gates == [
-        "research", "experiment_history", "repo_memory", "leeroopedia",
+        "research", "experiment_history", "repo_memory",
     ]
-    assert strategy.implementation_gates == [
-        "research", "repo_memory", "leeroopedia",
-    ]
+    assert strategy.implementation_gates == ["research", "repo_memory"]
 
 
 def test_staged_memory_stores_mount_their_own_gates(tmp_path):
@@ -46,14 +44,18 @@ def test_staged_memory_stores_mount_their_own_gates(tmp_path):
     # FOLLOWS the staged store instead of being an independent config
     # choice — the live run advertised bank tools no session had.
     params = {
-        "bank_serving": {"KAPSO_BANK_DIR": "/tmp/bank"},
+        "bank_serving": {"KAPSO_BANKS": "[]"},
         "kg_index_path": "/tmp/wikis/.index",
+        "hosted": True,
     }
     with _patched_super_init(str(tmp_path)):
         strategy = GenericSearch(SimpleNamespace(params=params), str(tmp_path))
     for gates in (strategy.ideation_gates, strategy.implementation_gates):
         assert "bank" in gates
         assert {"idea", "code"} <= set(gates)
+        # the hosted source mounts its server the same way: loading it
+        # is the switch, no config list names it (wp3-experience.md)
+        assert "leeroopedia" in gates
 
 
 def test_gates_unchanged_without_staged_stores(tmp_path):

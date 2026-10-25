@@ -201,7 +201,7 @@ def _launch_record(workspace, **values):
         "config_path": None, "kg_index": None, "mode": None, "coding_agent": None,
         "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": 60.0,
         "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
-        "data_dir": None, "additional_context": "", "context": None, "serving_scope": None,
+        "data_dir": None, "additional_context": "", "context": None,
         "resumable_from_inbox": True, "dotenv_path": "",
     }
     record.update(values)

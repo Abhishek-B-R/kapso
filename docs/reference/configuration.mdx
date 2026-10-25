@@ -342,7 +342,7 @@ learning:
 The store and the bank are Kapso's own state and live under `~/.kapso`, outside the project you run from, so a campaign's `--data-dir` and seed copy never pick them up.
 
 <Warning>
-  `learning.serving.enabled` ships as `false`. Until you turn it on, neither campaigns nor host sessions served by `kapso-mcp` read from the lesson bank, so banked lessons have no effect on `build()`.
+  There is no serving switch. A campaign or a host session reads from the bank exactly when the bank is loaded (`load_experience("mine")`, `kapso-mcp --experience mine`); banked lessons have no effect on a `build()` that loads nothing.
 </Warning>
 
 `update_crew.default_version` is the version [`learn()`](/docs/reference/kapso-api#learn) uses when you do not pass `learner_version`.
