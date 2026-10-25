@@ -5,7 +5,6 @@ loaded takes the record's list and re-pins each bank at the recorded
 head, refuses a changed list by name, a gone source by its own message
 and a re-ingested index; the judge's attribution rides the node."""
 
-import inspect
 import json
 import subprocess
 from pathlib import Path
@@ -25,12 +24,12 @@ from kapso.execution.run_checkpoint import (
     config_fingerprint,
 )
 from kapso.execution.search_strategies.base import SearchNode
-from kapso.execution.search_strategies.factory import SearchStrategyFactory
+from kapso.execution.search_strategies.generic.strategy import GenericSearch
 from kapso.experience import ExperienceError, ExperienceReferenceError, ExperienceStore, IndexRecord
 from kapso.handles import Brief, Budget, ExperienceRef, Solution
 from kapso.kapso import Kapso
-from tests.handles_support import facade, git_workspace, make_solution
-from tests.harness_support import ScoringFakeStrategy, patch_engine
+from tests.handles_support import facade, git_workspace, make_solution, solve_result
+from tests.harness_support import patch_engine, stub_solve
 from tests.test_bank_retriever import card_text
 from tests.test_experience_reference import settings_for
 from tests.test_inbox_cli import _paused_campaign
@@ -297,32 +296,26 @@ def test_a_resume_refuses_a_gone_source_and_a_re_ingested_index(tmp_path, monkey
 
 
 def test_the_real_orchestrator_hands_the_factory_the_sources_it_accepts(tmp_path, monkeypatch):
-    """The orchestrator's strategy creation against the factory's own
-    signature: every keyword it passes is one `create` takes, and the
-    loaded sources arrive as recorded. The facade tests above fake the
-    orchestrator and the harness tests fake this method, so nothing else
-    walks the seam; the proof run's first build died on it."""
-    real_create_strategy = OrchestratorAgent._create_search_strategy
-    real_create = SearchStrategyFactory.create
-    patch_engine(monkeypatch)
-    monkeypatch.setattr(OrchestratorAgent, "_create_search_strategy", real_create_strategy)
-    captured = {}
-
-    def create(**kwargs):
-        captured.update(kwargs)
-        strategy = ScoringFakeStrategy(kwargs["workspace_dir"], kwargs["harness"])
-        # the real strategy's rule: served banks mount the bank gate
-        strategy.ideation_gates = ["bank"] if kwargs["params"].get("bank_serving") else []
-        return strategy
-
-    monkeypatch.setattr(SearchStrategyFactory, "create", staticmethod(create))
+    """The facade, the orchestrator, the factory and the real strategy's
+    constructor, with no fake between them: the loaded sources arrive as
+    recorded (the status file names them, the strategy mounts the bank
+    gate for them) and every keyword the orchestrator passes is one the
+    factory takes. The facade tests above fake the orchestrator and the
+    harness tests fake the strategy, so nothing else walks the seam; the
+    proof run's first build died on it."""
+    strategies = patch_engine(monkeypatch, real_strategy=True)
+    stub_solve(monkeypatch, solve_result(stopped_reason="max_iterations"))
     home = seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
     workspace = tmp_path / "campaign"
     git_workspace(workspace)
     kapso = _kapso(tmp_path, home)
     kapso.load_experience("mine")
-    kapso.build("Improve support", output=str(workspace), budget=Budget(experiments=1))
+    solution = kapso.build("Improve support", output=str(workspace), budget=Budget(experiments=1))
 
-    inspect.signature(real_create).bind(**captured)
-    assert captured["experience"] == [vars(source.ref()) for source in kapso.experience]
-    assert captured["harness"] is None
+    [strategy] = strategies
+    recorded = [vars(source.ref()) for source in kapso.experience]
+    assert isinstance(strategy, GenericSearch) and strategy.harness is None
+    assert strategy.bank_serving is not None and "bank" in strategy.ideation_gates
+    status = json.loads((workspace / ".kapso" / "status.json").read_text())
+    assert status["experience"] == recorded
+    assert solution.experience == [source.ref() for source in kapso.experience] and solution.branch is None
