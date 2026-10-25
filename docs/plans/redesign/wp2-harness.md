@@ -818,6 +818,61 @@ loads, records, stages, sets up and verifies with.
 - Both reviewers' findings on this plan and on the pull request are
   answered below; the gate is green; the docs checks are green.
 
+## Built
+
+Branch `wp2-harness` off `redesign` at `aa62fdfe`, fourteen commits, each
+with its tests and the gate green at every one; at `42729205` the gate is
+1,469 passed, 27 skipped, 2 deselected, the docs coverage check covers 38
+commands and methods, the snippet check 6 quoted files, `mint validate`
+and `mint broken-links` pass.
+
+| Commit | What landed |
+|---|---|
+| `a1ee342c` | the manifest, read with its line numbers, and the content hash |
+| `b2b30df6` | `check`, with every rule, warning and prerequisite row |
+| `98bfdb1b` | the reference grammar and the store |
+| `a775d5e4` | the handle, `load_harness`, and the config block |
+| `bc75db09` | one identity in every record; prerequisites scoped per verb |
+| `0110f920` | staging a module into a session, per host |
+| `eb1cf618` | the task statement, and the guidance staged into every session |
+| `4e5c8c63` | the harness setup session |
+| `348f2bf6` | verification per attempt, and the verbs on a finished build (changes 11 and 12) |
+| `2fce1275` | a staging without a session directory is refused (a test had staged into the runner's cwd) |
+| `27c7e70a` | `kapso harness new`, `check`, `add`, `update`, `remove` and `list` |
+| `4e96c263` | the trading example, a task on the trading harness; `python3` in the harness's commands |
+| `4a931ea9` | the Harnesses pages and the harness reference |
+| `42729205` | requirements are checked against `python3` on PATH (DECISIONS, 2026-10-25) |
+
+The guidance block per module for the trading harness, measured by
+staging each module on Claude Code (`guardrails.md`, the module's page,
+the paths):
+
+| Module | Guidance | Skills | Servers | Delegates | Hooks |
+|---|---|---|---|---|---|
+| setup | 2,322 B | 1 | 1 | 0 | 3 |
+| ideation | 2,799 B | 2 | 0 | 0 | 3 |
+| implementation | 3,854 B | 4 | 1 | 1 | 6 |
+| verification | 3,444 B | 2 | 0 | 1 | 3 |
+| feedback | 2,642 B | 1 | 0 | 1 | 3 |
+| learning | 1,619 B | 0 | 0 | 0 | 0 |
+| deployment | 2,638 B | 2 | 2 | 0 | 4 |
+
+Under four kilobytes on the heaviest module: two whole pages cost less
+than one tool result, and the size rule in the guide holds for the example.
+
+Two decisions taken while building are in `DECISIONS.md` under
+2026-10-25: the requirements check moved from the engine's interpreter to
+`python3` on PATH (a `uv tool` install has no `pip` in the engine's venv,
+and the harness's servers and hooks never run there), and a staging that
+names no directory raises instead of writing into the working directory.
+
+The trading example's data was tuned to a trend weight of 0.35: the
+shipped 20/100 cross scores 0.1384 out of sample (the brief's baseline,
+pinned by `tests/test_examples_trading.py` on every machine), a 10/50
+cross about 0.92, a 20-day momentum sign about 2.8, a volatility-targeted
+momentum about 2.2, buy-and-hold negative; the target of 1.0 is
+reachable and the baseline is not already there.
+
 ## Risks
 
 | Risk | What is done |
