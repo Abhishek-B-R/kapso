@@ -67,6 +67,19 @@ def mcp_config_overrides(mcp_servers: Dict[str, Any]) -> List[str]:
             # approval" (exec never prompts); a knowledge gate is read-only
             # by nature, so its tools are pre-approved.
             overrides += ["-c", f'mcp_servers.{name}.default_tools_approval_mode="auto"']
+            # Headers: a literal goes as it is; a `${VAR}` reference is
+            # forwarded by name through env_http_headers (verified
+            # 2026-10-25: `headers` is not a codex key, these two are).
+            literal = {k: v for k, v in (spec.get("headers") or {}).items() if not _is_reference(v)}
+            referenced = {k: v[2:-1] for k, v in (spec.get("headers") or {}).items() if _is_reference(v)}
+            if literal:
+                body = ", ".join(f"{k} = {json.dumps(v)}" for k, v in literal.items())
+                overrides += ["-c", f"mcp_servers.{name}.http_headers={{{body}}}"]
+            if referenced:
+                body = ", ".join(f"{k} = {json.dumps(v)}" for k, v in referenced.items())
+                overrides += ["-c", f"mcp_servers.{name}.env_http_headers={{{body}}}"]
+            if spec.get("approval_mode"):
+                overrides += ["-c", f"mcp_servers.{name}.default_tools_approval_mode={json.dumps(spec['approval_mode'])}"]
             continue
         overrides += ["-c", f"mcp_servers.{name}.command={json.dumps(spec['command'])}"]
         args = spec.get("args") or []
@@ -80,6 +93,37 @@ def mcp_config_overrides(mcp_servers: Dict[str, Any]) -> List[str]:
         if env:
             body = ", ".join(f"{k} = {json.dumps(v)}" for k, v in env.items())
             overrides += ["-c", f"mcp_servers.{name}.env={{{body}}}"]
+        # A harness server (kapso.harness.staging): the variables it
+        # references are forwarded by name (a stdio server does not inherit
+        # the parent environment on codex, verified 2026-10-24), and its
+        # tools are pre-approved, which the exec policy otherwise refuses
+        # under a read-only or workspace-write sandbox.
+        env_vars = spec.get("env_vars") or []
+        if env_vars:
+            overrides += [
+                "-c",
+                f"mcp_servers.{name}.env_vars=[{', '.join(json.dumps(v) for v in env_vars)}]",
+            ]
+        if spec.get("approval_mode"):
+            overrides += ["-c", f"mcp_servers.{name}.default_tools_approval_mode={json.dumps(spec['approval_mode'])}"]
+    return overrides
+
+
+def _is_reference(value: Any) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}", value))
+
+
+def agent_role_overrides(agents: Dict[str, Dict[str, str]]) -> List[str]:
+    """A harness's delegates as codex agent roles: `agents.<name>` with a
+    description and a config file whose developer instructions are the
+    delegate's prompt (verified 2026-10-24: the model spawns the role by
+    name and the sub-agent events carry it)."""
+    overrides: List[str] = []
+    for name, spec in agents.items():
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            raise ValueError(f"agent role name not TOML-bare-key safe: {name!r}")
+        overrides += ["-c", f"agents.{name}.description={json.dumps(spec['description'])}"]
+        overrides += ["-c", f"agents.{name}.config_file={json.dumps(spec['config_file'])}"]
     return overrides
 
 
@@ -169,6 +213,13 @@ class CodexCodingAgent(CodingAgentInterface):
         self._mcp_overrides: List[str] = mcp_config_overrides(
             spec.get("mcp_servers") or {}
         )
+        # A harness's staged files (kapso.harness.staging): the session's
+        # .codex/hooks.json runs only with the trust bypass; extra writable
+        # directories (a verification session writes its verdict outside
+        # its worktree); the delegates as agent roles.
+        self._hooks_trust_bypass: bool = bool(spec.get("hooks_trust_bypass", False))
+        self._add_dirs: List[str] = [str(d) for d in (spec.get("add_dirs") or [])]
+        self._agent_overrides: List[str] = agent_role_overrides(spec.get("agents") or {})
         self._streaming: bool = bool(spec.get("streaming", False))
         self._env_strip: List[str] = list(spec.get("env_strip", []))
         self._env_overrides: Dict[str, str] = {
@@ -252,6 +303,11 @@ class CodexCodingAgent(CodingAgentInterface):
         if self._effort:
             cmd.extend(["-c", f'model_reasoning_effort="{self._effort}"'])
         cmd.extend(self._mcp_overrides)
+        cmd.extend(self._agent_overrides)
+        if self._hooks_trust_bypass:
+            cmd.append("--dangerously-bypass-hook-trust")
+        for directory in self._add_dirs:
+            cmd.extend(["--add-dir", directory])
         cmd.append("--json")
         return cmd
 

@@ -372,6 +372,16 @@ class ExperimentWorkspace:
             # Leeroopedia token); sessions used to commit it into experiment
             # branches.
             ".claude_mcp/",
+            # A harness's staged files (kapso.harness.staging): the skills,
+            # hooks and delegates each host discovers in its own directory,
+            # the task statement copied into every session, and the link to
+            # the campaign's prepared resources (no trailing slash: a symlink
+            # and a file must match too). Never branch content.
+            ".claude/",
+            ".agents/",
+            ".codex/",
+            "kapso_task.md",
+            "prepared",
             # Seeded repos may arrive with bytecode; once tracked it goes
             # stale on re-import and blocks every later branch checkout.
             "__pycache__/",

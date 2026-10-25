@@ -210,6 +210,12 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         # Optional reasoning-effort level forwarded to the CLI (--effort).
         self._effort: Optional[str] = config.agent_specific.get("effort")
 
+        # A harness's staged files (kapso.harness.staging): a settings file
+        # whose hooks the CLI runs (--settings) and the delegates it may
+        # ask by name (--agents), both written per session by the engine.
+        self._settings_path: Optional[str] = config.agent_specific.get("settings_path")
+        self._agents_path: Optional[str] = config.agent_specific.get("agents_path")
+
         # Env var names removed from the CLI child's environment (never from
         # this process). Used when the orchestrator legitimately holds a
         # credential the agent must not inherit — e.g. PostTrainBench strips
@@ -1222,7 +1228,12 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
             cmd.extend(["--mcp-config", str(self._mcp_config_path)])
         if self._strict_mcp_config:
             cmd.append("--strict-mcp-config")
-        
+        # The harness's hooks and delegates for this session.
+        if self._settings_path:
+            cmd.extend(["--settings", str(self._settings_path)])
+        if self._agents_path:
+            cmd.extend(["--agents", str(self._agents_path)])
+
         # Append system prompt if configured (e.g. workspace sandbox instructions)
         if self._append_system_prompt:
             cmd.extend(["--append-system-prompt", self._append_system_prompt])

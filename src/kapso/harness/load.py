@@ -36,6 +36,7 @@ class Harness:
     manifest: Manifest
     hash: str
     report: CheckReport
+    settings: Dict[str, Any]      # the config's `harness` block it was loaded with
 
     @property
     def name(self) -> str:
@@ -195,6 +196,7 @@ def load_directory(
         manifest=report.manifest,
         hash=harness_hash(path),
         report=report,
+        settings=dict(settings),
     )
 
 

@@ -35,6 +35,16 @@ from kapso.harness.reference import (
     HarnessReferenceError,
     parse_reference,
 )
+from kapso.harness.staging import (
+    GUIDANCE_HEADING,
+    HARNESS_ROOT_VARIABLE,
+    PREPARED_DIR,
+    TASK_STATEMENT_FILE,
+    StagedHarness,
+    host_for,
+    no_harness,
+    stage_harness,
+)
 from kapso.harness.store import FetchedHarness, HarnessStore
 
 __all__ = [
@@ -46,6 +56,11 @@ __all__ = [
     "MODULES",
     "CheckReport",
     "FetchedHarness",
+    "GUIDANCE_HEADING",
+    "HARNESS_ROOT_VARIABLE",
+    "PREPARED_DIR",
+    "TASK_STATEMENT_FILE",
+    "StagedHarness",
     "Finding",
     "Harness",
     "HarnessEnvironment",
@@ -60,14 +75,17 @@ __all__ = [
     "advisory_lines",
     "check_harness",
     "harness_hash",
+    "host_for",
     "inspect_manifest",
     "load_directory",
     "load_harness",
+    "no_harness",
     "parse_reference",
     "read_manifest",
     "reload_harness",
     "resume_refusal",
     "short",
+    "stage_harness",
     "unmet_message",
     "valid_name",
 ]
