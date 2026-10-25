@@ -167,8 +167,15 @@ class OrchestratorAgent:
         data_dir: Optional[str] = None,
         goal: Optional[str] = None,
         strategy_params_overrides: Optional[Dict[str, Any]] = None,
+        harness: Optional[Any] = None,
     ):
         self.problem_handler = problem_handler
+        # The loaded harness (kapso.harness.Harness) or None: threaded to the
+        # strategy and every session, written into the checkpoint and the
+        # status file, never part of the config fingerprint (its hash is
+        # its own check, with its own message, in the facade).
+        self.harness = harness
+        self._harness_setup: Optional[Dict[str, Any]] = None
         # The problem's scoring direction: the history store ranks by it and
         # the checkpoint records it for the MCP history process.
         self.maximize_scoring = getattr(problem_handler, "maximize_scoring", True)
@@ -293,6 +300,7 @@ class OrchestratorAgent:
                 cost_config=self.cost_config,
             )
             self._resume_checkpoint = checkpoint
+            self._harness_setup = checkpoint.harness_setup
             self.completed_iterations = checkpoint.completed_iterations
             self._prior_cost = float(checkpoint.cumulative_cost)
             self._prior_elapsed_seconds = float(checkpoint.elapsed_seconds)
@@ -525,6 +533,7 @@ class OrchestratorAgent:
             feedback_generator=self.feedback_generator,
             goal=self.goal,
             status_heartbeat_seconds=self._status_heartbeat_seconds(),
+            harness=self.harness,
         )
 
     def _status_heartbeat_seconds(self) -> Optional[float]:
@@ -1003,6 +1012,8 @@ class OrchestratorAgent:
             last_stop=last_stop,
             cost_config=self.cost_config,
             maximize_scoring=self.maximize_scoring,
+            harness=self.harness.ref_dict() if self.harness is not None else None,
+            harness_setup=self._harness_setup,
         )
         with self._checkpoint_lock:
             self.checkpoint_store.save(checkpoint)
@@ -1377,6 +1388,7 @@ class OrchestratorAgent:
                 Path(self.search_strategy.workspace.workspace_dir)
                 / ".kapso" / "status.json",
                 heartbeat_seconds=heartbeat_seconds,
+                harness=self.harness.ref_dict() if self.harness is not None else None,
             )
         status.observe(on_status)
         status.update(

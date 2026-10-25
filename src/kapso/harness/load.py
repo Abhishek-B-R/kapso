@@ -75,8 +75,82 @@ class Harness:
     def ref(self) -> HarnessRef:
         return HarnessRef(name=self.name, version=self.version, hash=self.hash, source=self.source)
 
+    def ref_dict(self) -> Dict[str, str]:
+        """The identity as the launch record, the status file and the
+        checkpoint write it."""
+        return {"name": self.name, "version": self.version, "hash": self.hash, "source": self.source}
+
     def label(self) -> str:
         return f"{self.name} {self.version} ({short(self.hash)})"
+
+    def has_content(self, module: str) -> bool:
+        """Whether a module has a page of its own or any attachment: what
+        decides that the engine runs the setup and verification sessions."""
+        page = self.path / "instructions" / f"{module}.md"
+        return page.is_file() or not self.manifest.module(module).empty()
+
+    def sessions_added(self) -> Tuple[str, ...]:
+        """The sessions a build runs because of this harness, for the
+        launch print."""
+        added = []
+        if self.has_content("setup"):
+            added.append("harness setup")
+        if self.has_content("verification"):
+            added.append("verification per attempt")
+        return tuple(added)
+
+    def restore_hint(self) -> str:
+        """How to get the recorded content back, by the reference's form."""
+        if self.reference.kind == "path":
+            return (
+                f"restore the recorded content (for instance `git checkout` in {self.path}) "
+                "or start a new campaign with a new --output"
+            )
+        if self.reference.kind == "git":
+            return (
+                f"re-fetch the recorded revision with `kapso harness remove {self.reference.raw}` "
+                f"then `kapso harness add {self.reference.raw}`, or start a new campaign"
+            )
+        return "reinstall the package version that shipped it, or start a new campaign"
+
+
+def unmet_message(harness: Harness, rows: List[HarnessRequirement], verb: str) -> str:
+    """Why a verb refuses: each unmet requirement of its modules, where it
+    is read from, and the line that fixes it."""
+    lines = [f"harness {harness.label()} cannot run a {verb} on this machine; it needs:"]
+    for row in rows:
+        lines.append(f"  - {row.label}: {row.fix}  [{', '.join(row.modules)}]")
+    lines.append("Fix these and run again; prerequisites are checked at every call.")
+    return "\n".join(lines)
+
+
+def advisory_lines(harness: Harness, modules: Tuple[str, ...]) -> List[str]:
+    """The unmet requirements a verb does not need, said but not refused."""
+    needed = {id(row) for row in harness.missing_for(modules)}
+    return [
+        f"  advisory: {row.label}: {row.fix}  [{', '.join(row.modules)}]"
+        for row in harness.missing if id(row) not in needed
+    ]
+
+
+def resume_refusal(recorded: Optional[Dict[str, str]], harness: Optional[Harness]) -> str:
+    """Why a resume is refused when the harness is not the launch's; the
+    message names both identities and the way out."""
+    if recorded is None:
+        return (
+            f"this campaign was launched without a harness; a resume cannot add "
+            f"{harness.label()} to it. Start a new campaign with --harness."
+        )
+    was = f"{recorded['name']} {recorded['version']} ({short(recorded['hash'])}) from {recorded['source']}"
+    if harness is None:
+        return (
+            f"this campaign was launched with harness {was}, which is not loaded now: "
+            f"pass --harness {recorded['source']} (or load it), or start a new campaign."
+        )
+    return (
+        f"the harness changed since launch: {was} recorded, {harness.label()} now; "
+        f"{harness.restore_hint()}."
+    )
 
 
 def load_harness(

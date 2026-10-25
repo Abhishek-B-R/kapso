@@ -125,3 +125,27 @@ def test_reply_detach_refuses_a_live_campaign(tmp_path, monkeypatch, popen, caps
     assert stop.value.code == 1
     assert "is running" in capsys.readouterr().out
     assert popen == []
+
+
+def test_build_detach_validates_the_harness_before_it_forks(tmp_path, monkeypatch, popen, capsys):
+    """A missing prerequisite of the build's own modules stops the parent
+    with the message, and no child is started to die in its log."""
+    import shutil as _shutil
+    harness = tmp_path / "harness"
+    _shutil.copytree(Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading", harness)
+    manifest = harness / "harness.yaml"
+    manifest.write_text(manifest.read_text().replace(
+        "environment:\n  python: requirements.txt\n",
+        "environment:\n  python: requirements.txt\n  commands: [kapso-test-missing-tool]\n",
+    ))
+    brief = tmp_path / "kapso-brief.md"
+    brief.write_text(f"Objective    Raise the Sharpe above 1\nHarness      {harness}\n")
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as caught:
+        _run(monkeypatch, "build", "--brief", str(brief), "--output", "campaign", "--detach")
+    assert caught.value.code == 1
+    assert popen == []
+    out = capsys.readouterr().out
+    assert "cannot run a build on this machine; it needs:" in out
+    assert "kapso-test-missing-tool (command): install kapso-test-missing-tool and put it on PATH" in out

@@ -42,8 +42,11 @@ def _run(monkeypatch, *argv):
     main()
 
 
+HARNESS = {"harness"}   # loaded on the facade before build(), never a build() keyword
+
+
 def test_every_flag_of_the_parser_is_accounted_for():
-    assert _parser_dests() == FACADE_KWARGS | set(BUDGET_FIELDS) | CONSTRUCTOR | BRIEF | DETACH
+    assert _parser_dests() == FACADE_KWARGS | set(BUDGET_FIELDS) | CONSTRUCTOR | BRIEF | DETACH | HARNESS
 
 
 def test_every_flag_reaches_where_it_belongs(monkeypatch):
@@ -136,3 +139,29 @@ def test_the_brief_forms_exclude_each_other(monkeypatch, capsys, tmp_path):
         _run(monkeypatch, "--goal", "g", "--brief", str(path))
     assert stop.value.code == 2
     assert "not allowed with" in capsys.readouterr().err
+
+
+def test_the_harness_flag_loads_before_the_build_and_wins_over_the_brief(monkeypatch, tmp_path):
+    path = tmp_path / "kapso-brief.md"
+    path.write_text("Objective    Raise AUC above 0.85\nHarness      ./harness/other\n")
+    constructor, facade = _mock_facade(monkeypatch)
+    facade.load_harness.return_value.missing_for.return_value = []
+    _run(monkeypatch, "--brief", str(path), "--harness", "./harness/trading", "--output", "out")
+    facade.load_harness.assert_called_once_with("./harness/trading")
+    assert facade.method_calls[0] == facade.load_harness.call_args_list[0]._replace() or facade.method_calls[0][0] == "load_harness"
+    assert facade.build.call_args.args == (Brief.read(path),)
+
+
+def test_the_briefs_harness_line_loads_when_no_flag_is_given(monkeypatch, tmp_path):
+    path = tmp_path / "kapso-brief.md"
+    path.write_text("Objective    Raise AUC above 0.85\nHarness      ./harness/trading\n")
+    _, facade = _mock_facade(monkeypatch)
+    facade.load_harness.return_value.missing_for.return_value = []
+    _run(monkeypatch, "--brief", str(path), "--output", "out")
+    facade.load_harness.assert_called_once_with("./harness/trading")
+
+
+def test_a_goal_sentence_loads_no_harness(monkeypatch):
+    _, facade = _mock_facade(monkeypatch)
+    _run(monkeypatch, "--goal", "g", "--output", "out")
+    facade.load_harness.assert_not_called()

@@ -115,6 +115,7 @@ class SearchStrategyFactory:
         feedback_generator: Optional["FeedbackGenerator"] = None,
         goal: str = "",
         status_heartbeat_seconds: Optional[float] = None,
+        harness: Optional[Any] = None,
     ) -> SearchStrategy:
         """
         Create a search strategy instance.
@@ -165,6 +166,7 @@ class SearchStrategyFactory:
             feedback_generator=feedback_generator,
             goal=goal,
             status_heartbeat_seconds=status_heartbeat_seconds,
+            harness=harness,
         )
         
         return cls._registry[strategy_type_lower](

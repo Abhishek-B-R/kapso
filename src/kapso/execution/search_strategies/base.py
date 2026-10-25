@@ -452,6 +452,11 @@ class SearchStrategyConfig:
     # outside the orchestrator gets, records no cadence: a watcher then
     # judges liveness by the pid alone.
     status_heartbeat_seconds: Optional[float] = None
+    # The loaded harness (kapso.harness.Harness), threaded from the
+    # orchestrator to every session the strategy constructs; None is
+    # today's generic behaviour. Typed loosely so this module does not
+    # import the harness package.
+    harness: Optional[Any] = None
 
 
 class SearchStrategy(ABC):
@@ -566,6 +571,9 @@ class SearchStrategy(ABC):
             heartbeat_seconds=config.status_heartbeat_seconds,
             daemon=config.status_heartbeat_seconds is not None,
             phase="setup",
+            # The harness identity, structured, from the first second; a
+            # watcher renders it in the header (WP6).
+            harness=config.harness.ref_dict() if config.harness is not None else None,
         )
 
         # Setup kapso directories (eval_dir -> kapso_evaluation/, data_dir -> kapso_datasets/)

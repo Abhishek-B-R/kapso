@@ -10,9 +10,12 @@ from kapso.harness.load import (
     LEARN_MODULES,
     Harness,
     HarnessError,
+    advisory_lines,
     load_directory,
     load_harness,
     reload_harness,
+    resume_refusal,
+    unmet_message,
 )
 from kapso.harness.manifest import (
     ATTACHMENT_KINDS,
@@ -54,6 +57,7 @@ __all__ = [
     "Manifest",
     "ManifestError",
     "ModuleAttachments",
+    "advisory_lines",
     "check_harness",
     "harness_hash",
     "inspect_manifest",
@@ -62,6 +66,8 @@ __all__ = [
     "parse_reference",
     "read_manifest",
     "reload_harness",
+    "resume_refusal",
     "short",
+    "unmet_message",
     "valid_name",
 ]

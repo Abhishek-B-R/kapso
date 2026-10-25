@@ -64,7 +64,16 @@ from kapso.core.cli_inference import resolve_inference_config
 from kapso.researcher import Researcher, ResearchDepth, ResearchMode
 from kapso.knowledge_base.types import ResearchFindings
 from kapso.core.config import load_config, load_deployment_defaults, load_harness_defaults, load_mode_config
-from kapso.harness import Harness, load_harness
+from kapso.harness import (
+    BUILD_MODULES,
+    Harness,
+    HarnessError,
+    advisory_lines,
+    load_harness,
+    reload_harness,
+    resume_refusal,
+    unmet_message,
+)
 from kapso.execution.inbox import (
     Request,
     idea_line,
@@ -1286,14 +1295,24 @@ class Kapso:
         if initial_repo is not None and not self._is_github_url(initial_repo) \
                 and not Path(initial_repo).is_dir():
             raise FileNotFoundError(f"repo directory not found: {initial_repo}")
+        checkpoint = None
+        record = None
         if resume:
             self._validate_resume_workspace(output_path)
+            # A resume without a checkpoint is refused by the orchestrator
+            # with its own message; here the checkpoint is read when it
+            # exists, for the brief and the harness comparison.
+            store = RunCheckpointStore(output_path)
+            checkpoint = store.load() if store.exists() else None
+            if brief is None:
+                if checkpoint is None:
+                    checkpoint = store.load()
             if brief is None:
                 # The checkpoint's goal is the brief as the launch rendered
                 # it, so the one grammar reads it back; it comes first so
                 # its budget takes part in the merge below.
                 brief = Brief.parse(
-                    RunCheckpointStore(output_path).load().goal,
+                    checkpoint.goal,
                     source=str(Path(output_path) / ".kapso" / "run_state.json"),
                 )
         spend = (budget or Budget()).merged_over(brief.budget)
@@ -1450,6 +1469,43 @@ class Kapso:
             )
             self._serving_config = serving_config
 
+        # The harness: the loaded one wins over the brief's line (as call
+        # arguments win for budgets); a resume with none loaded takes the
+        # launch record's source first (absolute, resolvable from any
+        # directory), then the brief's line. A resume compares the hash
+        # with the checkpoint's and refuses a changed harness by name.
+        harness = self._harness
+        if harness is None and record is not None and record.get("harness"):
+            harness = load_harness(record["harness"]["source"], settings=self._harness_settings)
+        if harness is None and brief.harness:
+            harness = load_harness(brief.harness, settings=self._harness_settings)
+        if checkpoint is not None:
+            recorded = checkpoint.harness
+            changed = (recorded is None) != (harness is None) or (
+                recorded is not None and recorded["hash"] != harness.hash
+            )
+            if changed:
+                raise RunCheckpointIncompatibleError(resume_refusal(recorded, harness))
+        if harness is not None:
+            if harness is self._harness:
+                # The directory as it is at the call, not at the load: an
+                # edit since changes the hash, a fix since clears a row.
+                # The object keeps the fresh handle.
+                harness = reload_harness(harness, settings=self._harness_settings)
+                self._harness = harness
+            unmet = harness.missing_for(BUILD_MODULES)
+            if unmet:
+                raise HarnessError(unmet_message(harness, unmet, "build"))
+            overrode = self._harness is not None and brief.harness and brief.harness != harness.source
+            print(
+                f"  Harness: {harness.label()} from {harness.source}"
+                + (f" (loaded; wins over the brief's line {brief.harness!r})" if overrode else "")
+            )
+            added = harness.sessions_added()
+            print(f"  Harness sessions: {'; '.join(added) if added else 'none (pages and attachments only)'}")
+            for line in advisory_lines(harness, BUILD_MODULES):
+                print(line)
+
         # Create problem handler with all options
         handler = GenericProblemHandler(
             problem_description=problem,
@@ -1472,6 +1528,7 @@ class Kapso:
             # .kapso/.
             workspace_dir=output_path,
             resume=resume,
+            harness=harness,
             iteration_evaluator=iteration_evaluator,
             iteration_evaluator_failure_policy=(
                 iteration_evaluator_failure_policy
@@ -1522,6 +1579,7 @@ class Kapso:
             workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
             write_launch_record(workspace_dir, {
                 "brief": brief.to_dict(),
+                "harness": harness.ref_dict() if harness is not None else None,
                 "config_path": _absolute(self._launch_config_path()),
                 "kg_index": _absolute(self._kg_index_path),
                 "mode": mode,
@@ -1602,7 +1660,7 @@ class Kapso:
                 )
                 if head else None
             ),
-            harness=None,
+            harness=harness.ref() if harness is not None else None,
             experience=[],
             rejected_candidates=sum(
                 not node.evaluation_valid

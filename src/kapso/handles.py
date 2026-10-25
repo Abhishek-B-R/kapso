@@ -700,7 +700,9 @@ class Solution:
                 f"{self.callback_metrics.get(self.callback_primary_metric)}",
             )
         if self.harness is not None:
-            row("Harness", f"{self.harness.name} {self.harness.version} ({self.harness.hash})")
+            # The hash's first twelve characters, as every print shows it;
+            # the record keeps the full hex.
+            row("Harness", f"{self.harness.name} {self.harness.version} ({self.harness.hash[:12]})")
         for source in self.experience:
             row("Experience", f"{source.reference} ({source.kind}, {source.resolved})")
         if self.knowledge_index:

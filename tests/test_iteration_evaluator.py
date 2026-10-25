@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterator, List, Optional
 import git
 import pytest
 
+from kapso.core.config import load_harness_defaults
 from kapso.execution.iteration_evaluator import (
     IterationEvaluationError,
     IterationEvaluationResult,
@@ -542,6 +543,8 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
     kapso._config = {}
     kapso._bank_home = None
     kapso._kg_index_path = None
+    kapso._harness = None
+    kapso._harness_settings = load_harness_defaults()
     solution = kapso.build(
         "Improve support",
         output=str(workspace),

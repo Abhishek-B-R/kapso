@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from kapso.core.config import load_harness_defaults
 import kapso.core.preflight as preflight
 from kapso.kapso import Kapso
 from kapso.core.config import load_config
@@ -665,6 +666,8 @@ def test_python_build_override_fails_before_workspace(
     kapso = object.__new__(Kapso)
     kapso._config = packaged
     kapso._kg_index_path = None
+    kapso._harness = None
+    kapso._harness_settings = load_harness_defaults()
     kapso._bank_home = None
     output = tmp_path / "campaign"
     with pytest.raises(PreflightError, match="inference-only"):
