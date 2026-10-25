@@ -332,7 +332,8 @@ index needs: WP4 and later decide their fate).
    no-key crash, which is there, not in the facade). Tests
    `tests/test_experience_add.py` with the provider calls stubbed and the
    real pipeline glue exercised, an orchestrator constructed with no
-   source and no embedding key, a reply from another directory.
+   source and no embedding key, a reply from another directory. Built at
+   `e0b8acff`.
 8. `share_experience(url)` and `kapso experience share`; `create_bank_repo`
    deleted (the repository is the person's to create with `gh`).
 9. `kapso experience add | list | share`, `add` with `ref` optional and
@@ -344,7 +345,8 @@ index needs: WP4 and later decide their fate).
    `tests/test_cli_experience.py` (every subcommand's flags, `add mine`
    creates the home, `list` has an empty state and the rows, `share`
    attaches a remote to a bare bank) and `tests/test_cli_learn.py` (the
-   campaign form).
+   campaign form). Built at `a7e8101c`; the learning system's tools moved
+   under `kapso learn dev` (the decision is in DECISIONS.md).
 10. `--experience` on `kapso build` (validated before `--detach` forks, as
     `--harness`), the brief's line, `kapso-mcp --experience` (built at
     `c670e1ed`) with `--harness` for the coordinate, the intro as the
@@ -352,12 +354,18 @@ index needs: WP4 and later decide their fate).
     loaded hosted settings threaded into the gate config. Tests in
     `tests/test_cli_build.py`, `tests/test_cli_detach.py`,
     `tests/test_host_session_server.py` (an MCP initialisation reading
-    the instructions).
+    the instructions). Built at `6d71ac58` (the host session) and
+    `65e6f300` (`--experience` on the build and the brief's line in
+    `build()`).
 11. The harness's learning module staged into the crews' lead sessions
     and their `codex exec` workers, with mining's `.claude` handling
     leaving the harvested inventory intact. Test in
     `tests/test_harness_deploy_learn.py` and the worker invocation's
-    configuration.
+    configuration. Built at `ed7f8261`: a harvest leaves the hosts'
+    staging directories out of a bundle, a mining run has its own
+    directory under `learning.mining.run_root`, and the guidance names
+    the task statement only when the campaign has one (the decisions
+    are in DECISIONS.md).
 12. Docs: `docs/experience/{index,use,add,share}.mdx`,
     `docs/reference/experience.mdx`, the `Experience` entries in the CLI,
     API, brief and configuration references, `docs/learning/bank.mdx` and
@@ -388,7 +396,7 @@ index needs: WP4 and later decide their fate).
     a moving reference (a pinned commit never moves; a campaign keeps its
     pin); `remove` deletes a clone or an index with its record and
     namespace. Tests in `tests/test_cli_experience.py` with local git
-    remotes.
+    remotes. Built at `e86110c7`.
 16. The drift test: `tests/test_no_retired_names.py` over `src`, `tests`,
     `skills`, `examples`, `benchmarks`, `moltbook_bot` and `docs` for the
     retired names (`serving.enabled`, `kapso bank`, `learn init-bank`,
