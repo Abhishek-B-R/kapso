@@ -17,7 +17,6 @@ import git
 from kapso.harness.manifest import MANIFEST_FILE, inspect_manifest
 from kapso.harness.reference import DEFAULT_REV, HarnessReference, HarnessReferenceError
 
-SOURCE_FILE = "source.json"
 _SHA = frozenset("0123456789abcdef")
 
 
@@ -38,8 +37,27 @@ class HarnessStore:
     def clone_dir(self, reference: HarnessReference) -> Path:
         return self.root / f"{reference.slug}@{reference.rev.replace('/', '-')}"
 
+    def record_path(self, reference: HarnessReference) -> Path:
+        """The fetch record, beside the clone and never inside it: a
+        harness at a repository's root is hashed over its own files alone."""
+        clone = self.clone_dir(reference)
+        return clone.with_name(clone.name + ".json")
+
     def is_fetched(self, reference: HarnessReference) -> bool:
-        return (self.clone_dir(reference) / SOURCE_FILE).is_file()
+        """Fetched, as this very reference: a clone directory two revisions
+        share by name (`release/2` and `release-2`) is refused for the
+        second rather than served as the first."""
+        record_file = self.record_path(reference)
+        if not record_file.is_file():
+            return False
+        record = json.loads(record_file.read_text(encoding="utf-8"))
+        if record["remote"] != reference.url or record["rev"] != reference.rev:
+            raise HarnessReferenceError(
+                f"{self.clone_dir(reference)} holds {record['remote']}@{record['rev']}, fetched for another "
+                f"reference that names the same directory; `kapso harness remove` it first, or name the "
+                f"revision another way"
+            )
+        return True
 
     def resolve(self, reference: HarnessReference) -> Path:
         """The directory a reference names; a git reference is fetched the
@@ -65,11 +83,13 @@ class HarnessStore:
         clone = self.clone_dir(reference)
         if clone.exists():
             shutil.rmtree(clone)
+        if self.record_path(reference).exists():
+            self.record_path(reference).unlink()
         clone.parent.mkdir(parents=True, exist_ok=True)
         repo = git.Repo.clone_from(reference.url, clone)
         if reference.rev != DEFAULT_REV:
             repo.git.checkout(reference.rev)
-        (clone / SOURCE_FILE).write_text(json.dumps({
+        self.record_path(reference).write_text(json.dumps({
             "remote": reference.url,
             "rev": reference.rev,
             "commit": repo.head.commit.hexsha,
@@ -83,11 +103,11 @@ class HarnessStore:
         clone = self.clone_dir(reference)
         if not self.is_fetched(reference):
             raise HarnessReferenceError(f"{reference.raw} was never fetched; `kapso harness add` it first")
-        before = json.loads((clone / SOURCE_FILE).read_text(encoding="utf-8"))["commit"]
+        before = json.loads(self.record_path(reference).read_text(encoding="utf-8"))["commit"]
         if self.rev_is_pinned(reference, clone):
             return before, before
         self.fetch(reference)
-        after = json.loads((clone / SOURCE_FILE).read_text(encoding="utf-8"))["commit"]
+        after = json.loads(self.record_path(reference).read_text(encoding="utf-8"))["commit"]
         return before, after
 
     def rev_is_pinned(self, reference: HarnessReference, clone: Path) -> bool:
@@ -111,6 +131,8 @@ class HarnessStore:
         if not clone.exists():
             raise HarnessReferenceError(f"nothing fetched for {reference.raw} (looked at {clone})")
         shutil.rmtree(clone)
+        if self.record_path(reference).exists():
+            self.record_path(reference).unlink()
         return clone
 
     def entries(self) -> List[FetchedHarness]:
@@ -118,8 +140,9 @@ class HarnessStore:
         found: List[FetchedHarness] = []
         if not self.root.is_dir():
             return found
-        for clone in sorted(p for p in self.root.iterdir() if (p / SOURCE_FILE).is_file()):
-            source = json.loads((clone / SOURCE_FILE).read_text(encoding="utf-8"))
+        for record_file in sorted(p for p in self.root.iterdir() if p.suffix == ".json" and p.with_suffix("").is_dir()):
+            clone = record_file.with_suffix("")
+            source = json.loads(record_file.read_text(encoding="utf-8"))
             for manifest_file in sorted(clone.rglob(MANIFEST_FILE)):
                 if ".git" in manifest_file.relative_to(clone).parts:
                     continue

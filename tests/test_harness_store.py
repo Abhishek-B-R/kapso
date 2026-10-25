@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from kapso.harness.reference import HarnessReference, HarnessReferenceError, parse_reference
-from kapso.harness.store import SOURCE_FILE, HarnessStore
+from kapso.harness.store import HarnessStore
 from tests.handles_support import git
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
@@ -102,13 +102,32 @@ def test_a_git_reference_is_fetched_once_into_the_store(tmp_path, remote):
     assert clone.name.startswith("local-") and clone.name.endswith("-acme-harnesses@v1")
     assert harness == clone / "harnesses" / "trading"
     assert (harness / "harness.yaml").is_file()
-    source = json.loads((harness.parent.parent / SOURCE_FILE).read_text())
+    source = json.loads(store.record_path(reference).read_text())
     assert source["rev"] == "v1" and len(source["commit"]) == 40 and source["remote"] == f"file://{remote}"
     # A second resolve uses the store: the clone's marker is untouched.
-    marker = harness.parent.parent / SOURCE_FILE
+    marker = store.record_path(reference)
     before = marker.stat().st_mtime_ns
     assert store.resolve(reference) == harness and marker.stat().st_mtime_ns == before
     assert store.is_fetched(reference)
+
+
+def test_the_fetch_record_sits_beside_the_clone_and_names_one_revision(tmp_path, remote):
+    """The record is not inside the clone (a harness at a repository's root
+    is hashed over its own files), and two revisions that sanitise to one
+    directory name are not served as each other."""
+    git(remote, "tag", "release/2", "v1")
+    git(remote, "tag", "release-2", "v1")
+    store = HarnessStore(tmp_path / "store")
+    first = reference_for(remote, "release/2")
+    store.resolve(first)
+    assert store.record_path(first).parent == store.root
+    assert not list(store.clone_dir(first).glob("*.json"))
+    assert json.loads(store.record_path(first).read_text())["rev"] == "release/2"
+    second = reference_for(remote, "release-2")
+    assert store.clone_dir(second) == store.clone_dir(first)
+    with pytest.raises(HarnessReferenceError, match="fetched for another reference that names the same directory"):
+        store.resolve(second)
+    assert [entry.reference for entry in store.entries()] == [f"file://{remote}@release/2#harnesses/trading"]
 
 
 def test_the_subdirectory_must_hold_a_manifest(tmp_path, remote):
@@ -124,7 +143,7 @@ def test_update_moves_a_branch_and_leaves_a_tag_alone(tmp_path, remote):
     branch = reference_for(remote, "main")
     store.resolve(tag)
     store.resolve(branch)
-    first = json.loads((store.clone_dir(branch) / SOURCE_FILE).read_text())["commit"]
+    first = json.loads(store.record_path(branch).read_text())["commit"]
 
     # The author bumps the version on main.
     work = tmp_path / "work"

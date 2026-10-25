@@ -44,7 +44,7 @@ def test_the_statement_holds_the_whole_brief_and_the_campaigns_facts(harness, tm
     text = path.read_text()
     assert path == campaign / "kapso_task.md"
     assert brief.render().strip() in text
-    assert "minutes=75.0 experiments=2 usd=the config’s reserve_minutes=the config’s" in text
+    assert "minutes=75.0 experiments=2 usd=none reserve_minutes=none" in text
     assert "Written by Kapso for harness trading 0.1.0" in text
     assert "`kapso_evaluation/`, provided by the person and protected" in text
     assert "`kapso_datasets/` at the campaign root, a copy of the data directory the build was given; read it there, never the original." in text

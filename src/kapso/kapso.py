@@ -955,8 +955,12 @@ class Kapso:
         # one, which must share its name) for a Solution; the loaded one, if
         # any, for a path or a trajectory id. Its learning pages join the
         # crews' prompts; the trajectory records which harness learned.
-        if isinstance(source, Solution):
-            learning_harness = self._harness_for(source, verb="learn")
+        # A campaign directory with a record is the same case as its Solution.
+        record = source if isinstance(source, Solution) else None
+        if record is None and isinstance(source, str) and (Path(source) / ".kapso" / "solution.json").is_file():
+            record = Solution.open(source)
+        if record is not None:
+            learning_harness = self._harness_for(record, verb="learn")
         elif self._harness is not None:
             learning_harness = reload_harness(self._harness, settings=self._harness_settings)
         else:
@@ -1101,12 +1105,12 @@ class Kapso:
                 bank_head=served_head,
                 # The build's harness, what lessons are scoped by; and the
                 # one that did the learning when it is another version.
-                harness=vars(source.harness) if isinstance(source, Solution) and source.harness else None,
+                harness=vars(record.harness) if record is not None and record.harness else None,
                 learning_harness=(
                     learning_harness.ref_dict()
                     if learning_harness is not None and (
-                        not isinstance(source, Solution) or source.harness is None
-                        or learning_harness.hash != source.harness.hash
+                        record is None or record.harness is None
+                        or learning_harness.hash != record.harness.hash
                     ) else None
                 ),
                 upload=None,

@@ -89,7 +89,7 @@ Per session, under `.kapso/sessions/<session>/`: `harness.json`, the record (`mo
 
 ## The task statement
 
-`kapso_task.md` at the campaign root, composed by the engine and never by a session, with the sections `Brief` (the brief's text, whole), `Budget` (`minutes`, `experiments`, `usd`, `reserve_minutes`, each as set or `the config's`), `Evaluation`, `Data`, `Domain statement` and `Prepared resources`. The setup session writes the domain statement to `.kapso/harness_setup/statement.md` and resources under `prepared/<name>/`; the engine composes the statement again after it, verifies that `kapso_evaluation/` and `kapso_datasets/` are unchanged, and records `harness_setup` (`done`, `prepared`, `cost_usd`) in the checkpoint. The session's timeout is `harness.setup_minutes`, clamped by the budget.
+`kapso_task.md` at the campaign root, composed by the engine and never by a session, with the sections `Brief` (the brief's text, whole), `Budget` (`minutes`, `experiments`, `usd`, `reserve_minutes`, as the campaign resolved them, `none` where no limit is set), `Evaluation`, `Data`, `Domain statement` and `Prepared resources`. The setup session writes the domain statement to `.kapso/harness_setup/statement.md` and resources under `prepared/<name>/`; the engine composes the statement again after it, verifies that `kapso_evaluation/` and `kapso_datasets/` are unchanged, and records `harness_setup` (`done`, `prepared`, `cost_usd`) in the checkpoint. The session's timeout is `harness.setup_minutes`, clamped by the budget.
 
 ## Verification
 

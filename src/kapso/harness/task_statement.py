@@ -42,7 +42,7 @@ def compose_task_statement(
     prepared: Sequence[str],
 ) -> str:
     budget_line = " ".join(
-        f"{key}={budget[key] if budget.get(key) is not None else 'the config’s'}" for key in _BUDGET_KEYS
+        f"{key}={budget[key] if budget.get(key) is not None else 'none'}" for key in _BUDGET_KEYS
     )
     evaluation = (
         "`kapso_evaluation/`, provided by the person and protected: a candidate that modifies it is rejected."

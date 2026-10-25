@@ -49,9 +49,19 @@ HTTP_TYPES = ("streamable-http", "http")
 # The interpreter a harness's own commands name: its servers, hooks and
 # scripts run on it, so its requirements are checked there.
 PYTHON_COMMAND = "python3"
-_INSTALLED_DISTRIBUTIONS = (
-    "import importlib.metadata, json; "
-    "print(json.dumps({d.metadata['Name']: d.version for d in importlib.metadata.distributions() if d.metadata['Name']}))"
+# What that interpreter has installed, and the marker environment a pin's
+# `; python_version < "3.12"` is read against: its own, not the engine's.
+_INTERPRETER_REPORT = (
+    "import importlib.metadata, json, os, platform, sys; "
+    "print(json.dumps({"
+    "'distributions': {d.metadata['Name']: d.version for d in importlib.metadata.distributions() if d.metadata['Name']}, "
+    "'environment': {"
+    "'implementation_name': sys.implementation.name, "
+    "'implementation_version': '{}.{}.{}'.format(*sys.implementation.version[:3]), "
+    "'os_name': os.name, 'platform_machine': platform.machine(), 'platform_release': platform.release(), "
+    "'platform_system': platform.system(), 'platform_version': platform.version(), "
+    "'python_full_version': platform.python_version(), 'platform_python_implementation': platform.python_implementation(), "
+    "'python_version': '.'.join(platform.python_version_tuple()[:2]), 'sys_platform': sys.platform}}))"
 )
 _SERVER_NAME = re.compile(r"[A-Za-z0-9_-]+$")
 _REFERENCE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
@@ -461,14 +471,15 @@ class _Checker:
                 fix=f"install {PYTHON_COMMAND} and put it on PATH", modules=MODULES,
             )
             return
-        listing = subprocess.run([interpreter, "-c", _INSTALLED_DISTRIBUTIONS], capture_output=True, text=True, check=True)
-        installed = {canonicalize_name(name): version for name, version in json.loads(listing.stdout).items()}
+        listing = subprocess.run([interpreter, "-c", _INTERPRETER_REPORT], capture_output=True, text=True, check=True)
+        report = json.loads(listing.stdout)
+        installed = {canonicalize_name(name): version for name, version in report["distributions"].items()}
         for raw in file.read_text(encoding="utf-8").splitlines():
             line = raw.split("#", 1)[0].strip()
             if not line or line.startswith("-"):
                 continue
             pin = Pin(line)
-            if pin.marker is not None and not pin.marker.evaluate():
+            if pin.marker is not None and not pin.marker.evaluate(environment=report["environment"]):
                 continue
             name = canonicalize_name(pin.name)
             fix = f"{PYTHON_COMMAND} -m pip install -r {file}"

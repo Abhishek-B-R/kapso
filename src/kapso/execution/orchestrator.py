@@ -1535,13 +1535,34 @@ class OrchestratorAgent:
         self.budget_ledger.start_clock()
         # With a harness, the task statement every session reads first is
         # written before any session runs (and again after harness setup).
+        # The effective budget, as resolved: what a session reading the
+        # statement must plan against.
         self._task_budget = dict(
-            experiments=experiment_max_iter, minutes=time_budget_minutes,
-            usd=cost_budget, reserve_minutes=finalization_reserve_minutes,
+            experiments=experiment_max_iter,
+            minutes=budget_spec.time_budget_seconds / 60.0 if budget_spec.time_budget_seconds is not None else None,
+            usd=budget_spec.cost_budget_usd,
+            reserve_minutes=budget_spec.finalization_reserve_seconds / 60.0,
         )
         self._write_task_statement(**self._task_budget)
         # The harness's own setup session, once, before the evaluation is
-        # registered: a domain statement and prepared resources.
+        # registered: a domain statement and prepared resources. The data
+        # copy is pinned across it and across the maintainer's session,
+        # which carries the harness's setup module too.
+        campaign = Path(self.search_strategy.workspace_dir)
+        pinned_data = _directory_manifest(campaign / "kapso_datasets") if self.harness is not None else None
+        if self.harness is not None:
+            # The setup session's clamp reads a budget view too: without one
+            # a one-minute campaign would start a twenty-minute session.
+            self.search_strategy.observe_budget(BudgetSnapshot(
+                iteration_index=0,
+                max_iterations=experiment_max_iter,
+                elapsed_seconds=self.get_elapsed_seconds(),
+                cost_usd=self.get_cumulative_cost(),
+                time_budget_seconds=budget_spec.time_budget_seconds,
+                cost_budget_usd=budget_spec.cost_budget_usd,
+                finalization_reserve_seconds=budget_spec.finalization_reserve_seconds,
+                min_agent_timeout_seconds=budget_spec.min_agent_timeout_seconds,
+            ))
         self._run_harness_setup()
         # The maintainer's setup transaction runs inside the budgeted clock,
         # before iteration 1; on resume it validates registry consistency.
@@ -1550,6 +1571,12 @@ class OrchestratorAgent:
         # person has not given.
         if not self._setup_requests:
             self._ensure_evaluation_registered()
+            if pinned_data is not None and _directory_manifest(campaign / "kapso_datasets") != pinned_data:
+                raise HarnessError(
+                    "the evaluation maintainer's setup session changed kapso_datasets/, the campaign's "
+                    "pinned data, with the harness's setup module staged; a session prepares resources "
+                    f"under {PREPARED_DIR}/ and leaves the data alone"
+                )
 
         # The fidelity policy: deterministic profile grants over measured
         # evaluation timing. Enabled by mode (or auto-affordability); the
