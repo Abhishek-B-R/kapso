@@ -1038,6 +1038,15 @@ harnesses are kept with the run records (`scripts/redesign/runs/wp2-s3/`).
   session on Claude Code under `--coding-agent codex`. The config without
   modes must make the one knob the flag sets the one the strategy reads,
   and the CLI reference must say what the flag does until then.
+- **A model the implementation CLI cannot serve is found at the first
+  session** (WP4, WP6). The config copy that set `implementation_cli:
+  codex` kept the default `implementation_model: claude-opus-5`, and the
+  campaign died in the setup session with Codex's "does not exist or you
+  do not have access to it"; the preflight passed. The deployment block
+  already says a Claude model on the codex CLI is refused by a ChatGPT
+  login; the preflight should pair every CLI with its model before a
+  session runs, and the config without modes should make the pair one
+  setting.
 - **A new file under `kapso_evaluation/` passes the integrity check**
   (WP6, evaluation governance). The second machine's implementer wrote
   `kapso_evaluation/eval_profile.md`; the check rejects a modified
