@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Optional, Sequence
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_experience_defaults, load_harness_defaults
 import kapso.kapso as kapso_module
 from kapso.execution.orchestrator import SolveResult
 from kapso.handles import Brief, Solution
@@ -86,6 +86,8 @@ def facade() -> Kapso:
     kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
+    kapso._experience_settings = load_experience_defaults()
     return kapso
 
 

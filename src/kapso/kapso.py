@@ -63,7 +63,19 @@ from kapso.knowledge_base.learners.defaults import learner_defaults
 from kapso.core.cli_inference import resolve_inference_config
 from kapso.researcher import Researcher, ResearchDepth, ResearchMode
 from kapso.knowledge_base.types import ResearchFindings
-from kapso.core.config import load_config, load_deployment_defaults, load_harness_defaults, load_mode_config
+from kapso.core.config import (
+    load_config,
+    load_deployment_defaults,
+    load_experience_defaults,
+    load_harness_defaults,
+    load_mode_config,
+)
+from kapso.experience import (
+    SCOPE_HARNESS,
+    ExperienceSource,
+    parse_experience_reference,
+    resolve_source,
+)
 from kapso.harness import (
     BUILD_MODULES,
     DEPLOY_MODULES,
@@ -280,6 +292,12 @@ class Kapso:
         self._bank_home: Optional[Path] = (
             Path(bank_path).expanduser() if bank_path else None
         )
+        # The experience homes; `mine` lives where the bank home is, which
+        # `bank=` may have moved.
+        self._experience_settings = load_experience_defaults(self.config_path)
+        if self._bank_home is not None:
+            self._experience_settings["bank_home"] = str(self._bank_home)
+        self._experience: List[ExperienceSource] = []
         
         # Initialize knowledge search
         if kg_index:
@@ -318,6 +336,28 @@ class Kapso:
         for row in self._harness.missing:
             print(f"  needs {row.label}: {row.fix}  [{', '.join(row.modules)}]")
         return self._harness
+
+    # --------------------------------------------------------- experience
+
+    @property
+    def experience(self) -> List[ExperienceSource]:
+        """The loaded sources, in load order; empty is today's generic
+        behaviour: nothing served."""
+        return list(self._experience)
+
+    def load_experience(self, ref: str, *, scope: str = SCOPE_HARNESS) -> ExperienceSource:
+        """Resolve `mine`, `leeroopedia`, a bank path, a bank git reference
+        or an index name; confirm it exists and is readable; pin it (a
+        bank at its head, `mine` after a pull from its remote; an index at
+        its id); append it to the object's sources, replacing an earlier
+        load of the same reference. `scope` is `harness` (the cards
+        learned under the loaded harness, `mine` only) or `all`. Nothing
+        is served until a verb runs."""
+        reference = parse_experience_reference(ref, indexes_root=Path(self._experience_settings["indexes"]))
+        source = resolve_source(reference, settings=self._experience_settings, scope=scope)
+        self._experience = [s for s in self._experience if s.reference != source.reference] + [source]
+        print(f"Experience: {source.label()}")
+        return source
 
     # =========================================================================
     # Knowledge Graph Indexing

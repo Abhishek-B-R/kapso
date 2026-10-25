@@ -11,3 +11,6 @@ def test_a_constructed_kapso_has_every_lazy_attribute():
     assert kapso._web_researcher is None
     assert kapso.harness is None and kapso._harness is None
     assert isinstance(kapso._harness_settings, dict) and "store" in kapso._harness_settings
+    assert kapso.experience == [] and "banks" in kapso._experience_settings
+    # `bank=` moves where `mine` lives.
+    assert Kapso(bank="/somewhere/else/bank.git")._experience_settings["bank_home"] == "/somewhere/else/bank.git"
