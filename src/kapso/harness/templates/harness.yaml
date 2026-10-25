@@ -1,0 +1,21 @@
+schema_version: 1
+name: {name}
+version: 0.1.0
+description: What this domain's work is, in one sentence (edit me).
+
+# The prerequisites a run needs on the machine; `kapso harness check` and
+# `kapso doctor` report what is missing, nothing is installed for you.
+# environment:
+#   python: requirements.txt
+#   commands: []
+#   gpu: false
+
+# What each module's sessions get. Any of the seven modules (setup, ideation,
+# implementation, verification, feedback, learning, deployment); a module
+# left out still gets its pages. Lists are complete: nothing is inherited.
+# modules:
+#   implementation:
+#     skills: []          # directories under skills/
+#     mcp_servers: []     # keys in mcp.json
+#     agents: []          # files under agents/
+#     hooks: []           # directories under hooks/, each with a hook.json

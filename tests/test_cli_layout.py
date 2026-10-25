@@ -12,7 +12,7 @@ import kapso.cli as cli
 from kapso.cli import main
 
 VERBS_IN_ORDER = [
-    "build", "research", "learn", "deploy", "index_kg", "watch", "inbox", "bank", "doctor",
+    "build", "harness", "research", "learn", "deploy", "index_kg", "watch", "inbox", "bank", "doctor",
 ]
 
 
