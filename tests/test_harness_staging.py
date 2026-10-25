@@ -251,7 +251,10 @@ def test_a_harness_changed_since_the_load_is_refused(harness, tmp_path):
         stage(harness, "implementation", "claude_code", tmp_path)
 
 
-def test_the_adapters_carry_the_staged_keys(harness, tmp_path):
+def test_the_adapters_carry_the_staged_keys(harness, tmp_path, monkeypatch):
+    # The adapters look for their CLIs at construction; the test machine
+    # need not have either, this test is about the commands they build.
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
     claude = stage(harness, "implementation", "claude_code", tmp_path)
     command = ClaudeCodeCodingAgent(CodingAgentConfig(
         agent_type="claude_code", model="m", debug_model="m",
