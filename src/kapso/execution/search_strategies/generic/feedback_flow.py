@@ -102,6 +102,10 @@ def generate_feedback(
         # ANDed in after the judge, so the judge's default cannot
         # resurrect it.
         node.feedback = feedback_result.feedback
+        # The judge's attribution stays on the node: the trajectory carries
+        # which served cards were load-bearing, so learning can settle a
+        # card's claim against what the campaign actually used.
+        node.cards_load_bearing = list(feedback_result.cards_load_bearing)
         node.evaluation_valid = (
             feedback_result.evaluation_valid and execution_valid and not is_void(verification)
         )

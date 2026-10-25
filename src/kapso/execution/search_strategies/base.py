@@ -88,6 +88,10 @@ class SearchNode:
     # own state beside the judge's validity; None when no harness
     # verification ran.
     verification: Optional[Dict[str, Any]] = None
+    # The served cards the judge found load-bearing for this result (the
+    # citation contract's attribution, kept on the node so the trajectory
+    # carries it); empty when none or when nothing was served.
+    cards_load_bearing: List[str] = field(default_factory=list)
 
     # Platform execution cost in the campaign's unit, distinct from model USD.
     estimated_cost: Optional[Dict[str, Any]] = None
@@ -462,6 +466,10 @@ class SearchStrategyConfig:
     # today's generic behaviour. Typed loosely so this module does not
     # import the harness package.
     harness: Optional[Any] = None
+    # What the campaign is served, as plain records (reference, kind,
+    # resolved, head, provenance, scope), written into the status file
+    # from the first second; empty when nothing is loaded.
+    experience: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class SearchStrategy(ABC):
@@ -579,6 +587,7 @@ class SearchStrategy(ABC):
             # The harness identity, structured, from the first second; a
             # watcher renders it in the header (WP6).
             harness=config.harness.ref_dict() if config.harness is not None else None,
+            experience=list(config.experience),
         )
         # The loaded harness, staged into every session this strategy
         # constructs (None: today's generic behaviour).

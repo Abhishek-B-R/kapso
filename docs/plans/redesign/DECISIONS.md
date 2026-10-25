@@ -6,6 +6,269 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-25, WP3 (taken after the sub-plan's review, while building)
+
+**Scope is a filter again, on the harness coordinate.** The 2026-08
+amendment made scope displayed information ("the index lists the whole
+bank; the reading agent selects") because the `family:`/`dataset:`
+coordinates were too fine: a card scoped to one dataset was useful on the
+next. The coordinate is now the harness, which is the domain itself, so a
+card measured under the predictive-modelling harness is noise in a
+trading build. `mine` loaded at the default scope lists and reads only the
+cards whose scope covers the coordinate (`domain`, or `harness:<name>`);
+`mine:all` lifts that; a bank you read serves everything it holds;
+quarantine is law under every scope. Alternative rejected: keep scope
+displayed and delete the `scope` knob, which would have made the harness
+coordinate decorative. Shows in `retriever.py` (the index and both reads
+take the scope), the intro's count, `docs/experience/`.
+
+**Loading never touches the network beyond a first fetch; `kapso
+experience update` does.** The sub-plan had `mine` pull from its remote
+on every load. Both reviewers showed what that does to a host session
+(`kapso-mcp --experience mine` on a machine whose remote is unreachable
+exits at every session start) and to a resume (the pin and the pull
+compete). A load pins the local state; `update [ref]` pulls `mine`
+fast-forward from its origin and re-fetches a bank you read at a moving
+reference; `remove <ref>` deletes a clone or an index. A pinned commit
+never moves; a campaign keeps its pin whatever `update` does later.
+Alternative rejected: pull on load with a fallback to the local head when
+the remote fails — a silent fallback (rule 2).
+
+**`mine:all` is the lift's syntax everywhere.** `scope="all"` existed only
+in Python; the CLI and the brief had no way to say it. `--experience
+mine:all`, the brief's `Experience: mine:all`, `kapso-mcp --experience
+mine:all` and `load_experience("mine:all")` are one form; `scope=` on
+`load_experience` goes. A suffix on any other reference is refused by
+name (a bank you read, the hosted gate and an index are always every
+scope).
+
+**The coordinate is the harness alone.** `build(serving_scope=)`, its
+launch-record key and the `dataset` coordinate are retired with
+`family:`; `KAPSO_TASK_HARNESS` is the one coordinate the gate reads.
+Alternative rejected: keep `dataset` as a benchmark's extra coordinate —
+a benchmark is a harness now (WP8), and a second coordinate would need
+its own scope grammar, writer rule and tests for one caller.
+
+**`none` is a reserved harness name.** `harness:none` is the coordinate of
+a campaign with no harness, and WP2's name grammar allowed a harness
+called `none`; `check` refuses the name. Alternative rejected: an
+unnameable coordinate such as `harness:-`, which reads worse in a card.
+
+**A card is identified by its source and its name; the citation grammar
+stays `[card:name]`.** With two loaded banks holding one name, the gate
+reads from the named source or the first that holds it and the pull log
+records the source of every served row; the learning side credits a cited
+name to the source the pull log shows it was read from, and reports a
+name read from two sources as an ambiguity instead of guessing. The
+evidence tool takes `source=` as the read does. Alternative rejected: a
+qualified citation `[card:name@source]` — every prompt, parser and grader
+that reads citations would change for the rare collision.
+
+**One index per campaign.** The search gates hold one backend; two loaded
+indexes are refused by name at planning. Alternative rejected: federated
+search across indexes with result provenance, which no backend supports
+today and which WP4 may revisit with the config.
+
+**The loaded experience is campaign identity.** The references and their
+scope enter the checkpoint's fingerprint; a resume loads the record's list
+and re-pins each bank at the recorded head, and a resume that names a
+different list is refused by name, as a changed harness is. Alternative
+rejected: an operator dial like the budget — a campaign served a different
+bank in its second half would be measuring two things.
+
+**`kapso-mcp` serves the bundled gates only, by what is loaded and what
+the directory holds.** `--gates` does not come back (the three
+directory-driven gates turn themselves off with a reason; `kg` carries
+write tools and never rode on a host); `--harness <ref>` gives the
+session its coordinate, as a build has one; the intro rides as the MCP
+server's `instructions`, so the session names its sources on connect;
+`leeroopedia` loaded on the host prints the reminder to add it as the
+host's own HTTP server; the session's staging directory is removed when
+the server exits; a source that cannot be loaded stops the server with
+the line that would fix it (no partial serving).
+
+**The intro has its own slot.** `handler.additional_context` is frozen at
+construction, so the intro appended after it never reached a session (WP2
+recorded this). `{{experience_intro}}` is threaded into the ideation and
+implementation prompts the way WP2 threads the harness guidance, and into
+no other session; the test renders the prompts.
+
+**Probe offers ride only your own bank.** A probe is a measurement you pay
+for whose evidence lands in a bank you can write; a colleague's open
+probes are not yours to run. The gate builds offers from `mine` alone.
+
+**No `--experience` on `deploy` or `learn`.** Deploy's sessions mount no
+gates at all (`deployment/selector`, `deployment/adapter`), so there is
+nothing to serve; WP5 revisits when it adds staging. `learn` writes `mine`
+whatever is loaded; `Kapso(bank=)` points `mine` elsewhere and is threaded
+through every crew. The master plan's "on the three verbs" was the
+harness interface's line.
+
+**Team banks: `share` stays push-only.** Joining a team bank that already
+has history, bare-repository synchronisation and divergence recovery are a
+later package; `share` refuses a push the remote rejects, in git's words,
+and the intro says "measured by you and your team" when `mine` has a
+remote. Papers stay out the same way: no ingestor reads one; the
+onboarding grammar marks `--paper` as not shipped, owner: the experience
+package's second iteration.
+
+**No `family:` knowledge anywhere.** The sub-plan had `kapso experience
+list` mark a bank whose cards carry the retired coordinate; that needs
+every card parsed on every `list` and keeps the old grammar alive in code
+(rule 7). `list` is silent; a pre-release bank is re-learned.
+
+**An index owns its namespace in both graph stores: a Weaviate collection
+named after it and a Neo4j `corpus` property every node and query carry.**
+The reviewers showed that two indexes holding a page of the same id
+shared one Neo4j node, so adding a corpus changed what an earlier index's
+"connected pages" returned. The graph backend now takes `corpus` as a
+required parameter (the index's id), writes it on every node, matches on
+it in every query and clears only its own nodes; the collection name is
+`Kapso<Name><id>`, so a name removed and added again never meets its old
+pages. The record's `backend_refs` carries both, which is how a loaded
+index connects. Alternative rejected: one label per index, which needs
+dynamic Cypher and gives nothing a property does not.
+
+**`kapso learn <campaign>` is the verb's form; the learning system's own
+commands move under `kapso learn dev`.** WP2 handed `kapso learn
+<campaign> [--harness]` to this package. argparse cannot give one verb a
+positional campaign beside nine subcommands (`import`, `mine`, `grade`,
+`update`, `develop`, `codify`, `ingest`, `gauntlet`, `behave`): the
+positional swallows the subcommand's name, or the subcommand parser
+refuses the path. Those nine are the development regime's tools, for
+people working on the learning system, so they live under `kapso learn
+dev <command>` with the same flags, and the engineer's form is the plain
+one. Alternative rejected: a subcommand named `campaign`, which is not
+what the onboarding grammar and the docs promise.
+
+**The learning crews are staged in full, and a harvest leaves the hosts'
+staging directories out of a bundle.** The pages-only block the crews'
+prompts carried is gone: the mining lead is staged at the bundle root like
+any session (the learning module's skills, servers, delegates and hooks
+beside the crew's own agent definitions and the contract), the update lead
+in its run directory, and the update crew's `codex exec` workers in the
+same directory in codex's format, `run-role.sh` exporting the harness's
+variables and passing the staged servers, agent roles and hook trust, the
+guidance read from a file beside the launcher. For a bundle to take a
+staging and stay as harvested, the harvest leaves `.claude`, `.agents` and
+`.codex` out at every level: they are the harness's files, recoverable from
+the hash the manifest records, and the session records under
+`.kapso/sessions`, which stay, say what each session ran with. The mining
+crew owns those names at a bundle root for its session and refuses any
+other occupant by name. Alternatives rejected: hiding a harvested `.claude`
+for the session's length (the immutability check would have to learn the
+hidden path, and the lead would see a directory the inventory does not
+name); a symlinked view of the bundle for the session (the record and the
+stream would land in the bundle through the links).
+
+**A mining run has a directory of its own, `learning.mining.run_root`.**
+Staging writes a session's record and stream under the campaign's
+`.kapso/sessions`; a bundle takes no writes, so `stage_harness` takes a
+`records_dir`, and a mining run's go to
+`<run_root>/<trajectory>/.kapso/sessions/lead/`, an update run's to
+`<run_dir>/.kapso/sessions/{lead,workers}/`, as every other crew keeps its
+runs under `learning/`. The mined view itself stays in the bundle.
+
+**The guidance names the task statement only when the campaign has one.**
+A learning run's directory has none and an archived campaign has its
+build's; a build writes the statement before its sessions, and the setup
+session, which writes the domain statement the task statement is composed
+from, has the path in its own prompt.
+
+**A bare name is never a path.** The plan let a bare name that is a
+directory be read in place, and the reviewers showed the trap: the
+checkout an index was made from, beside the run, shadowed the index of
+the same name, and the name could then neither be loaded nor removed. A
+path is written as one (`./`, `../`, `/`, `~`) and must exist; a bare
+name is a reserved name, a git shorthand or an index. The forms table is
+corrected.
+
+**A bank read by path is re-loaded from its recorded location, named as
+the launch named it.** A resume or an inbox reply may run far from the
+launch directory; the record's `resolved` is absolute, so that is what a
+resume re-loads, and the source keeps the launch's spelling of its
+reference so every record and the fingerprint agree. A reply rebuilds
+the object with the bank the launch had (`Kapso(bank=)` is the record's
+`mine` entry).
+
+**A bank at a tag is pinned at the tag.** `bank_head` reads the commit a
+bank is at (`HEAD`: `main` in a bare home, the checked-out revision in a
+clone), not `main`, so `acme/kapso-bank@v1` records, counts and serves
+the tag's commit. One clone directory per reference: the directory's
+name carries a digest of the reference, so two references that read
+alike as names never share a clone.
+
+**An index pin holds at the build.** A handle that loaded index A while
+the name was removed and ingested again as B before the build is refused
+at the build, as a resume with a stale record is: a campaign is served
+the index it loaded, never one that happens to carry the name now.
+
+**Attribution starts at reading.** The exposure ladder carries three
+rungs; a citation is credited to your bank when the card was opened from
+it (`read` or `evidence-read`), a copy only listed by `bank_index` was
+never read, and ambiguity means opened from both sources. A claim of
+independence is refuted by any exposure, a listing included. An
+unqualified `bank_get_card` with two banks goes to the first bank that
+can serve the name under its scope, so what the index advertises a plain
+read opens.
+
+**The hindcast and the behaviour scenarios replay the surface a campaign
+loading `mine` is served.** `compile_intro` moved to the serving module
+and composes the same intro, for `mine` at its default scope under the
+task's coordinate; the index they grade is rendered under that scope. A
+card of another harness is not availability the grader can charge a
+campaign with. The behaviour fixtures recorded with the earlier
+coordinates stay exempt from the drift test and are re-recorded when WP8
+ports the RelBench harness.
+
+**A lesson that admits nothing moves nothing.** A crew that changed no
+card, sighting or quarantine entry used to commit the rebuilt log alone,
+so the bank's head moved and the lesson read as admitted. The frame now
+commits, tags and pushes only when the bank's content changed; otherwise
+the report carries one head before and after and `learn()` says the
+lesson admitted nothing.
+
+**`kapso experience add leeroopedia` probes the gate once.** The plan's
+Interface promised it: the add sends the hosted server one MCP
+`initialize` with the key on its URL and reports the server's name; a
+refusal or an unreachable server stops the add with the status; an empty
+`LEEROOPEDIA_API_KEY=` is no key. Loading stays a presence check. The
+loaded source carries the URL and timeout of the config it came from,
+and the sessions mount exactly those (`get_mcp_config(hosted=)`), never
+the packaged address; a config gate list naming the hosted gate does not
+mount it, since what is loaded is what is served and the records name it.
+
+**A learn may run under a harness the build did not have.** `kapso learn
+<campaign> --harness <ref>` on a campaign whose record names none loads
+the harness for the crews (its learning module shapes their sessions)
+while the lessons keep the build's own coordinate (`none`); a deploy
+still runs as its build did.
+
+**The hosts' staging names include the adapter's MCP directory.** The
+Claude Code adapter writes `.claude_mcp/` beside a session; the frames
+call the adapter's cleanup after the lead's session, and the harvest
+leaves the directory out with the other staging directories.
+
+**The research ingest's modes and depth are config.** `experience.
+research_modes` and `experience.research_depth` replace two module
+literals; the researcher's findings are unwrapped into the typed
+sources the pipeline ingests.
+
+**A `result.json` left in the evaluation directory is refused at
+launch, not skipped.** (Taken during the proof run.) The evaluator
+writes `kapso_evaluation/result.json` by contract, allowed as a new
+runtime artifact; a copy an earlier run left at the root of the caller's
+directory was protected with the suite, and the first evaluation changed
+it and rejected every candidate. The launch now refuses the leftover by
+name, with the way out in the message, at the facade's input check and
+at the orchestrator's manifest. Alternative rejected: leaving the file
+out of the manifest and the copy silently, which would split the
+integrity rule ("every file in the suite is protected") with a special
+case, reach the vendored archive sandbox and its byte-identical copies
+in the benchmark suites, and still leave a stale result in the
+workspace for a session to read. Whether the contract should move the
+result out of the protected tree altogether is WP4's.
+
 ## 2026-10-25, WP2 (taken while building)
 
 **A harness's Python requirements are checked against `python3` on PATH,

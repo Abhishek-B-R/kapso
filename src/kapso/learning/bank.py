@@ -26,7 +26,11 @@ EXECUTED_VERDICTS = ("confirm", "weaken", "refute", "refine", "exercise")
 # the seeder skips the card until new executed evidence arrives (CD§1/§2).
 CODIFY_FAILED_MARKER = "codify attempt failed"
 
-_SCOPE_COORD_PATTERN = re.compile(r"^(family|dataset):(.+)$")
+# A card's scope: `domain`, or a list of `harness:<name>` coordinates
+# (`harness:none` for a lesson learned without one). The coordinate is the
+# harness (docs/plans/redesign/wp3-experience.md); a coordinate of any
+# other kind matches nothing.
+_SCOPE_COORD_PATTERN = re.compile(r"^(harness):(.+)$")
 DECOY_REGISTRY_NAME = ".decoys.yaml"
 SIGHTINGS_NAME = "sightings.md"
 _RULE_PATTERN = re.compile(r"\*\*Rule:\*\*\s*(.+?)(?:\n\s*\n|\n#|\Z)", re.S)
@@ -168,8 +172,8 @@ class Card:
 
     def eligible_for(self, task_coords: Dict[str, str]) -> bool:
         """Serving eligibility (§5.1): task ∈ scope. `domain` covers every
-        task; a coordinate list covers tasks matching any family:/dataset:
-        coordinate. Tags never participate."""
+        task; a coordinate list covers the tasks whose harness it names.
+        Tags never participate."""
         scope = self.scope
         if scope == "domain":
             return True
@@ -197,7 +201,7 @@ class Card:
             and all(_SCOPE_COORD_PATTERN.match(str(c)) for c in scope)
         ):
             findings.append(f"{self.name}: scope {scope!r} is neither `domain` "
-                            f"nor a family:/dataset: coordinate list")
+                            f"nor a harness: coordinate list")
         if not self.evidence:
             findings.append(f"{self.name}: evidence ledger is empty")
         for entry in self.evidence:

@@ -3,8 +3,9 @@
 A 45-minute build that takes `repo/train.py` from a DummyClassifier at
 about 0.50 accuracy toward the brief's 0.78 on the Kaggle Spaceship Titanic
 data, with the repository's own `evaluate.py` as the judge. This example is
-also the reference for Kapso's full loop (research, learn_knowledge, build,
-learn, build again), in `run_full_loop.py`.
+also the reference for Kapso's full loop (a question researched and ingested
+into an index, a build served it, a lesson learned, a build served the index
+and the bank), in `run_full_loop.py`.
 
 Recorded result: not recorded yet.
 
@@ -32,13 +33,18 @@ https://www.kaggle.com/competitions/spaceship-titanic/data into `repo/data/`.
 `python run.py` is the same build from Python, into the same `campaign/`
 directory: run one or the other.
 
-The full loop, which needs the knowledge-graph backends from
-`scripts/start_infra.sh` and about five hours:
+The full loop, which needs the stores an index is held in (Weaviate and
+Neo4j from `scripts/start_infra.sh`), `OPENAI_API_KEY` in `.env` for the
+embeddings, and about five hours:
 
 ```bash
 python run_full_loop.py
 python resume_full_loop.py learning/e2e-facade/<stamp> --from learn   # re-enter a run at a stage
 ```
+
+The same loop from the shell: `kapso experience add --research "..." --name spaceship`,
+`kapso build --experience spaceship ...`, `kapso learn campaign`, then
+`kapso build --experience spaceship,mine ...`.
 
 ## What to look at
 

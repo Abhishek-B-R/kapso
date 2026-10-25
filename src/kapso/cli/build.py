@@ -3,10 +3,12 @@
 import argparse
 import sys
 from pathlib import Path
+from typing import List
 
 from kapso.kapso import Kapso, DEFAULT_MAX_ITERATIONS
 from kapso.handles import Brief, Budget
 from kapso.execution.inbox import read_launch_record
+from kapso.experience import recorded_reference
 from kapso.harness import BUILD_MODULES, unmet_message
 from kapso.cli.common import (
     AVAILABLE_AGENTS,
@@ -57,16 +59,22 @@ def cmd_build(args) -> None:
             sys.exit(1)
         # The harness is loaded and its prerequisites checked before the
         # fork, so the handoff below never claims a launch that would die
-        # on a missing command or variable in the child's log. A bare
-        # resume takes the harness from the launch record, as the build
-        # will.
+        # on a missing command or variable in the child's log; the
+        # experience the same, so a reference that names nothing, or a
+        # source that is gone, refuses here with its line. A bare resume
+        # takes both from the launch record, as the build will.
+        kapso = Kapso(config=args.config)
+        record = read_launch_record(campaign) if args.resume else None
         ref = _harness_reference(args, brief)
-        if ref is None and args.resume:
-            record = read_launch_record(campaign)
-            if record is not None and record.get("harness"):
-                ref = record["harness"]["source"]
+        if ref is None and record is not None and record.get("harness"):
+            ref = record["harness"]["source"]
         if ref is not None:
-            _load_harness_or_exit(Kapso(config=args.config), args, brief, ref=ref)
+            _load_harness_or_exit(kapso, args, brief, ref=ref)
+        references = _experience_references(args, brief)
+        if not references and record is not None:
+            references = [recorded_reference(entry) for entry in record.get("experience", [])]
+        for reference in references:
+            kapso.load_experience(reference)
         _detach(
             "kapso build",
             _without_detach_flags(sys.argv[1:]),
@@ -78,8 +86,10 @@ def cmd_build(args) -> None:
         )
         return
 
-    kapso = Kapso(config=args.config, kg_index=args.kg_index)
+    kapso = Kapso(config=args.config)
     _load_harness_or_exit(kapso, args, brief)
+    for reference in _experience_references(args, brief):
+        kapso.load_experience(reference)
     solution = kapso.build(
         brief,
         evaluation=args.evaluation,
@@ -105,6 +115,15 @@ def _harness_reference(args, brief):
     if args.harness:
         return args.harness
     return brief.harness if isinstance(brief, Brief) else None
+
+
+def _experience_references(args, brief) -> List[str]:
+    """`--experience` (comma-separated) wins over the brief's Experience
+    line; a sentence or a plain-text goal names none. A bare resume names
+    none here: the build takes the record's list."""
+    if args.experience:
+        return [item.strip() for item in args.experience.split(",") if item.strip()]
+    return list(brief.experience) if isinstance(brief, Brief) else []
 
 
 def _load_harness_or_exit(kapso, args, brief, ref=None):
@@ -193,6 +212,11 @@ Examples:
              "reference (wins over the brief's Harness line)",
     )
     build_parser.add_argument(
+        "--experience", type=str, default=None,
+        help="Comma-separated sources to serve: mine, mine:all, leeroopedia, a bank "
+             "path or git reference, an index name (wins over the brief's Experience line)",
+    )
+    build_parser.add_argument(
         "--resume", action="store_true",
         help="Continue the campaign in --output from its checkpoint",
     )
@@ -214,5 +238,4 @@ Examples:
         "--config", type=str, default=None,
         help="Config path (default: packaged config.yaml)",
     )
-    build_parser.add_argument("--kg-index", type=str, help="Path to a knowledge index file")
     return cmd_build

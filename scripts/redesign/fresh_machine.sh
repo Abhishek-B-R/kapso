@@ -20,7 +20,7 @@ IMAGE_PROJECT="ubuntu-os-cloud"
 MAX_RUN="4h"
 HOURLY_USD="0.134"
 LABEL="purpose=kapso-fresh"
-CLAUDE_SECRET="claude-oauth-token-3"
+CLAUDE_SECRET="${KAPSO_FRESH_CLAUDE_SECRET:-claude-oauth-token-3}"   # the token rule's answer, when another login has the headroom
 OPENAI_SECRET="openai-api-key"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RUNS="$HERE/runs"

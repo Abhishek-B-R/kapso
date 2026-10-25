@@ -16,6 +16,7 @@ Environment Variables:
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Type
 
 try:
@@ -147,8 +148,15 @@ def create_gated_mcp_server() -> "Server":
     
     logger.info(f"Registered {len(all_tools)} tools from {len(active_gates)} gates")
     
-    # Create MCP server
-    mcp = Server("gated-knowledge")
+    # Create MCP server. A host session served experience gets the intro
+    # (what it is served, measured before) as the server's instructions,
+    # so the session names its sources on connect; the launcher stages
+    # the file and names it in the environment.
+    intro_path = os.environ.get("KAPSO_SERVING_INTRO")
+    mcp = Server(
+        "gated-knowledge",
+        instructions=Path(intro_path).read_text() if intro_path else None,
+    )
     
     @mcp.list_tools()
     async def list_tools() -> List[Tool]:

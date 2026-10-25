@@ -217,6 +217,8 @@ def test_lane_brief_single_lane_states_pins_without_sibling_talk():
 def test_implementation_prompt_injects_lane_brief(monkeypatch):
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
+    strategy.experience_intro_path = None
+    strategy.hosted = None
     strategy.shared_artifacts_brief = "No shared-cache artifacts registered yet."
     monkeypatch.setattr(
         GenericSearch, "_render_budget_status", lambda self: "budget"

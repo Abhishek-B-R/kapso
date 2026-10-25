@@ -11,13 +11,13 @@ import pytest
 
 from kapso.learning.bank import Bank, Card, split_card_text
 from kapso.learning.retriever import (
-    compile_intro,
     probe_offers,
     render_cards,
     render_index,
 )
+from kapso.learning.serving_launch import compile_intro
 
-TASK = {"family": "entity_binary_classification", "dataset": "rel-hm"}
+TASK = {"harness": "trading"}
 
 
 # One shared confidence string: the assessor writes it into BOTH
@@ -133,20 +133,50 @@ def build_bank(tmp_path, cards=None):
 
 def test_card_parse_and_eligibility(tmp_path):
     # Regression: scope is the eligibility law — domain covers everything, a
-    # coordinate list covers exactly its coordinates, tags never participate.
+    # coordinate list covers exactly the harnesses it names, tags never
+    # participate, and the retired family:/dataset: coordinates match nothing.
     root = build_bank(tmp_path, {
         "domain-card": card_text("domain-card", scope="domain"),
-        "hm-card": card_text("hm-card", scope=["dataset:rel-hm"]),
-        "family-card": card_text(
-            "family-card", scope=["family:entity_binary_classification"]),
-        "other-card": card_text("other-card", scope=["dataset:rel-avito"],
+        "trading-card": card_text("trading-card", scope=["harness:trading"]),
+        "none-card": card_text("none-card", scope=["harness:none"]),
+        "other-card": card_text("other-card", scope=["harness:other"],
                                 tags=("data:grouped_rows",)),
+        "legacy-card": card_text(
+            "legacy-card", scope=["family:entity_binary_classification"]),
     })
     bank = Bank(str(root))
     assert bank.cards["domain-card"].eligible_for(TASK)
-    assert bank.cards["hm-card"].eligible_for(TASK)
-    assert bank.cards["family-card"].eligible_for(TASK)
+    assert bank.cards["trading-card"].eligible_for(TASK)
+    assert not bank.cards["none-card"].eligible_for(TASK)
+    assert bank.cards["none-card"].eligible_for({"harness": "none"})
     assert not bank.cards["other-card"].eligible_for(TASK)
+    assert not bank.cards["legacy-card"].eligible_for(TASK)
+
+
+def test_the_scope_rule_filters_your_bank_and_names_the_lift(tmp_path):
+    # The index and both reads follow the scope rule (wp3-experience.md):
+    # `mine` at its default scope serves the cards whose scope covers the
+    # harness coordinate; `all` (mine:all, a bank you read) serves everything.
+    root = build_bank(tmp_path, {
+        "domain-card": card_text("domain-card"),
+        "other-card": card_text("other-card", scope=["harness:other"]),
+    })
+    bank = Bank(str(root))
+    every = render_index(bank, TASK)
+    assert [row["card"] for row in every["listed"]] == ["domain-card", "other-card"]
+    mine = render_index(bank, TASK, scope="harness")
+    assert [row["card"] for row in mine["listed"]] == ["domain-card"]
+    assert "[card:other-card]" not in mine["text"]
+    read = render_cards(bank, TASK, ["domain-card", "other-card"], False, {}, scope="harness")
+    assert [row["card"] for row in read["served"]] == ["domain-card"]
+    assert read["refused"] == [{
+        "card": "other-card",
+        "reason": "out of scope under harness:trading (scope ['harness:other']; "
+                  "`mine:all` serves every card you measured)",
+    }]
+    assert "*not served:* other-card" in read["text"]
+    lifted = render_cards(bank, TASK, ["other-card"], False, {})
+    assert [row["card"] for row in lifted["served"]] == ["other-card"]
 
 
 def test_horizontal_rule_in_body_is_not_the_ledger_delimiter(tmp_path):
@@ -203,17 +233,23 @@ def test_quarantine_is_law(tmp_path):
 
 
 def test_intro_and_launch_record(tmp_path):
-    # Regression: the intro is the whole push surface — head stamp + the
-    # three tool names, never card content; the launch record is v2 shape.
-    root = build_bank(tmp_path, {"a-card": card_text("a-card")})
+    # Regression: the surface a hindcast or a scenario replays is the one
+    # a campaign loading `mine` is served under the task's coordinate at
+    # its default scope — the head, the count the scope serves, the three
+    # tool names, never card content; the record is the campaign's shape.
+    root = build_bank(tmp_path, {
+        "a-card": card_text("a-card"),
+        "elsewhere-card": card_text("elsewhere-card", scope=["harness:lending"]),
+    })
     result = compile_intro(Bank(str(root)), TASK, "lr_head")
-    assert "lr_head" in result["intro"]
+    assert "1 card measured by you, under the trading harness, from your bank at head `lr_head`" in result["intro"]
     for tool in ("bank_index()", "bank_get_card(", "bank_get_card_with_evidence("):
         assert tool in result["intro"]
     assert "[card:a-card]" not in result["intro"]  # no card content pushed
     assert result["record"] == {
-        "mode": "agentic", "task": dict(TASK), "bank_head": "lr_head",
-        "gaps": ["no procedure in the bank covers this task's scope"],
+        "task": dict(TASK),
+        "sources": [{"reference": "mine", "kind": "bank", "resolved": str(root), "head": "lr_head",
+                     "provenance": "measured by you", "scope": "harness", "cards": 1}],
     }
 
 
@@ -288,7 +324,7 @@ def test_probe_offers_cap_eligibility_and_ride_reads(tmp_path):
     root = build_bank(tmp_path, {
         "strong-card": card_text("strong-card", score=0.8),
         "weak-card": card_text("weak-card", score=0.4),
-        "avito-card": card_text("avito-card", scope=["dataset:rel-avito"]),
+        "avito-card": card_text("avito-card", scope=["harness:other"]),
     })
     bank = Bank(str(root))
     (root / "index").mkdir(exist_ok=True)

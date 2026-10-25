@@ -636,7 +636,7 @@ def test_v2_checkpoint_is_rejected_without_migration(tmp_path: Path) -> None:
     # campaign reads "start a fresh campaign", never "missing cost_config".
     with pytest.raises(
         RunCheckpointIncompatibleError,
-        match=r"expected 4\. .*not migrated",
+        match=r"expected 5\. .*not migrated",
     ):
         store.load()
 
@@ -719,9 +719,9 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     # Mirror __init__-set attributes the build path reads (stub gotcha).
     kapso._config = {}
     kapso._bank_home = None
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
     result = kapso.build(
         "Improve support",
         output=str(workspace),
@@ -754,12 +754,12 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     eval_dir.mkdir()
     (eval_dir / "evaluate.py").write_text("print('accuracy: 0.9')\n")
     write_launch_record(workspace, {
-        "config_path": None, "kg_index": None, "mode": "MINIMAL",
+        "config_path": None, "mode": "MINIMAL",
         "coding_agent": None, "output_path": str(workspace),
         "max_iterations": 3, "time_budget_minutes": 60.0, "cost_budget": None,
         "finalization_reserve_minutes": None, "eval_dir": str(eval_dir),
         "data_dir": None, "additional_context": "", "context": None,
-        "serving_scope": None, "resumable_from_inbox": True, "dotenv_path": "",
+        "resumable_from_inbox": True, "dotenv_path": "",
     })
     captured: Dict[str, Any] = {}
 
@@ -814,9 +814,9 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
     kapso._config = {}
     kapso._bank_home = None
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
 
     kapso.build(output=str(workspace), resume=True)
     assert captured["goal"] == Brief(objective="Raise accuracy above 0.85").render()

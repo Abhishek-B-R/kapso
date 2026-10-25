@@ -17,7 +17,7 @@ from kapso.handles import Brief, Budget
 FACADE_KWARGS = {"evaluation", "data", "repo", "output", "resume", "mode", "coding_agent"}
 BUDGET_FIELDS = {"budget_minutes": "minutes", "budget_experiments": "experiments",
                  "budget_usd": "usd", "budget_reserve_minutes": "reserve_minutes"}
-CONSTRUCTOR = {"config", "kg_index"}
+CONSTRUCTOR = {"config"}
 BRIEF = {"goal", "goal_file", "brief"}
 DETACH = {"detach", "log"}
 
@@ -43,10 +43,11 @@ def _run(monkeypatch, *argv):
 
 
 HARNESS = {"harness"}   # loaded on the facade before build(), never a build() keyword
+EXPERIENCE = {"experience"}   # the same: each reference loaded before build()
 
 
 def test_every_flag_of_the_parser_is_accounted_for():
-    assert _parser_dests() == FACADE_KWARGS | set(BUDGET_FIELDS) | CONSTRUCTOR | BRIEF | DETACH | HARNESS
+    assert _parser_dests() == FACADE_KWARGS | set(BUDGET_FIELDS) | CONSTRUCTOR | BRIEF | DETACH | HARNESS | EXPERIENCE
 
 
 def test_every_flag_reaches_where_it_belongs(monkeypatch):
@@ -55,9 +56,9 @@ def test_every_flag_reaches_where_it_belongs(monkeypatch):
         monkeypatch, "--goal", "g", "--evaluation", "ev", "--data", "da", "--repo", "re",
         "--output", "out", "--budget-experiments", "3", "--budget-minutes", "30", "--budget-usd", "5",
         "--budget-reserve-minutes", "2", "--resume", "--mode", "MINIMAL", "--coding-agent", "codex",
-        "--config", "c.yaml", "--kg-index", "k.index",
+        "--config", "c.yaml",
     )
-    assert constructor.call_args.kwargs == {"config": "c.yaml", "kg_index": "k.index"}
+    assert constructor.call_args.kwargs == {"config": "c.yaml"}
     args, kwargs = facade.build.call_args
     assert args == ("g",)
     assert kwargs == {
@@ -165,3 +166,22 @@ def test_a_goal_sentence_loads_no_harness(monkeypatch):
     _, facade = _mock_facade(monkeypatch)
     _run(monkeypatch, "--goal", "g", "--output", "out")
     facade.load_harness.assert_not_called()
+    facade.load_experience.assert_not_called()
+
+
+def test_the_experience_flag_loads_each_source_before_the_build_and_wins_over_the_brief(monkeypatch, tmp_path):
+    path = tmp_path / "kapso-brief.md"
+    path.write_text("Objective    Raise AUC above 0.85\nExperience   leeroopedia\n")
+    _, facade = _mock_facade(monkeypatch)
+    _run(monkeypatch, "--brief", str(path), "--experience", "mine, org-x", "--output", "out")
+    assert [call.args for call in facade.load_experience.call_args_list] == [("mine",), ("org-x",)]
+    assert [name for name, _, _ in facade.method_calls[:2]] == ["load_experience", "load_experience"]
+    assert facade.build.call_args.args == (Brief.read(path),)
+
+
+def test_the_briefs_experience_line_loads_when_no_flag_is_given(monkeypatch, tmp_path):
+    path = tmp_path / "kapso-brief.md"
+    path.write_text("Objective    Raise AUC above 0.85\nExperience   mine, leeroopedia\n")
+    _, facade = _mock_facade(monkeypatch)
+    _run(monkeypatch, "--brief", str(path), "--output", "out")
+    assert [call.args for call in facade.load_experience.call_args_list] == [("mine",), ("leeroopedia",)]

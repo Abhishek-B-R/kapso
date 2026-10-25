@@ -15,6 +15,7 @@ import kapso.cli.common as cli_common
 from kapso.cli import main
 from kapso.execution.inbox import LAUNCH_SCHEMA_VERSION, inbox_path, load_requests, write_launch_record
 from kapso.execution.observability import BuildStatus
+from kapso.experience import ExperienceReferenceError
 from tests.test_inbox_cli import _paused_campaign
 
 
@@ -164,3 +165,33 @@ def test_build_detach_validates_the_harness_before_it_forks(tmp_path, monkeypatc
         _run(monkeypatch, "build", "--output", "campaign", "--resume", "--detach")
     assert caught.value.code == 1 and popen == []
     assert "kapso-test-missing-tool (command)" in capsys.readouterr().out
+
+
+def test_build_detach_loads_the_experience_before_it_forks(tmp_path, monkeypatch, popen, capsys):
+    """A reference that names nothing stops the parent with the forms, and
+    no child is started; a source that loads rides into the child's
+    command line; a bare resume takes the record's list and refuses a
+    source that is gone the same way."""
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ExperienceReferenceError):
+        _run(monkeypatch, "build", "--goal", "g", "--output", "campaign", "--experience", "./nowhere/bank.git", "--detach")
+    assert popen == []
+
+    # The hosted gate loads on its key alone (a bank would ask git, which
+    # this test's Popen stub stands in for).
+    monkeypatch.setenv("LEEROOPEDIA_API_KEY", "k")
+    _run(monkeypatch, "build", "--goal", "g", "--output", "campaign", "--experience", "leeroopedia", "--detach")
+    [call] = popen
+    assert call.argv[-2:] == ["--experience", "leeroopedia"]
+    assert "Experience: leeroopedia" in capsys.readouterr().out
+
+    campaign = tmp_path / "resumed"
+    campaign.mkdir()
+    write_launch_record(campaign, {
+        "schema_version": LAUNCH_SCHEMA_VERSION,
+        "experience": [{"reference": str(tmp_path / "gone.git"), "kind": "bank", "resolved": str(tmp_path / "gone.git"),
+                        "head": "0" * 40, "provenance": "measured by others", "scope": "all"}],
+    })
+    with pytest.raises(ExperienceReferenceError):
+        _run(monkeypatch, "build", "--output", "resumed", "--resume", "--detach")
+    assert len(popen) == 1

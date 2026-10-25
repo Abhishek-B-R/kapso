@@ -234,9 +234,10 @@ inference:
 
 Load it with `Kapso(config="kapso-config.yaml")` or
 `kapso build --config kapso-config.yaml --goal "..."`.
-`kapso research --config ...` also accepts a config path, but its research
-role must use a web-capable agent. Plain Chat Completions supplies no web
-search here; attempting that route fails explicitly before an API request.
+`kapso experience add --research ... --config ...` also accepts a config
+path, but its `research` role must use a web-capable agent. Plain Chat
+Completions supplies no web search here; attempting that route fails
+explicitly before an API request.
 
 Inference returns text without interpreting it as file edits. Nested
 `agent_specific` settings inherit from `inference.default` and can be

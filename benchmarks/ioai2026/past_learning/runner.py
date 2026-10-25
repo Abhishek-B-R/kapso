@@ -184,7 +184,6 @@ def main():
         config_path=config_path,
         mode=args.mode,
         coding_agent=args.coding_agent,
-        is_kg_active=False,
         workspace_dir=os.path.join(task_dir, "kapso_campaign"),
         goal=statement,
         resume=args.resume,

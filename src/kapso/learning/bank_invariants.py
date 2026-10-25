@@ -15,6 +15,12 @@
 import re
 from typing import Any, Dict, List, Optional
 
+from kapso.experience.reference import MINE
+
+# The exposure ladder's first rung (kapso.learning.retriever.EXPOSURE_LEVELS):
+# a card listed by `bank_index` and never opened. Attribution starts at
+# the next rung.
+INDEXED_ONLY = "indexed"
 from kapso.learning.bank import (
     EVIDENCE_VERDICTS,
     Bank,
@@ -431,7 +437,7 @@ class BankTransactionValidator:
                 if not str(card.frontmatter.get("probe") or "").strip():
                     findings.append(
                         f"{name}: a generalizing successor must carry its "
-                        f"unseen-family probe"
+                        f"unseen-coordinate probe"
                     )
         return findings
 
@@ -445,7 +451,7 @@ def evidence_admission_findings(
     card: Card,
     new_entries: List[Dict[str, Any]],
     store: TrajectoryStore,
-    serving_records: Dict[str, Dict[str, Any]],
+    exposures: Dict[str, Dict[str, Dict[str, str]]],
 ) -> List[str]:
     """§5.2's three checks for each new evidence entry, mechanical layer:
 
@@ -505,18 +511,44 @@ def evidence_admission_findings(
                                     f"does not re-grep in {ref_path}"
                                 )
 
-            record = serving_records.get(str(trajectory)) or {}
-            served_names = {row["card"] for row in record.get("served", [])}
+            # The campaign's pull log, read back as {card: {source: level}}:
+            # attribution starts at reading. A usage claim is credited to
+            # the source the card was opened from (`read` or
+            # `evidence-read`); a name that was only listed (`indexed`)
+            # was never read, and this card lives in your own bank (`mine`).
+            sources = (exposures.get(str(trajectory)) or {}).get(card.name) or {}
+            read_from = {source for source, level in sources.items() if level != INDEXED_ONLY}
+            others_read = sorted(source for source in read_from if source != MINE)
             claims_use = usage_claims_serving(usage)
             claims_independence = (
                 usage_negates_serving(usage) or "independen" in usage.lower()
             )
-            if claims_use and card.name not in served_names:
+            if claims_use and MINE not in read_from:
+                if MINE in sources:
+                    findings.append(
+                        f"{label}: usage claims serving/citation but {card.name} was "
+                        f"listed from your bank and never opened"
+                        + (f" (it was read from {', '.join(others_read)})" if others_read else "")
+                    )
+                elif others_read:
+                    findings.append(
+                        f"{label}: usage claims serving/citation but {card.name} was "
+                        f"served from {', '.join(others_read)}, not from your bank"
+                    )
+                else:
+                    findings.append(
+                        f"{label}: usage claims serving/citation but the pull log "
+                        f"does not carry a read of {card.name}"
+                    )
+            if claims_use and MINE in read_from and others_read:
                 findings.append(
-                    f"{label}: usage claims serving/citation but the serving "
-                    f"record does not carry {card.name}"
+                    f"{label}: {card.name} was read from your bank and from "
+                    f"{', '.join(others_read)}; a citation cannot tell the copies "
+                    f"apart — say which copy the campaign used, or drop the claim"
                 )
-            if claims_independence and card.name in served_names:
+            # Independence is refuted by any exposure: a name listed in
+            # front of the session was not rediscovered on its own.
+            if claims_independence and MINE in sources:
                 findings.append(
                     f"{label}: usage claims independence but {card.name} was "
                     f"served in that campaign"

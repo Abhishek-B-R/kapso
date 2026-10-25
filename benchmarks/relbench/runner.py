@@ -30,13 +30,16 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
 
-from kapso.core.config import load_config
+from kapso.core.config import load_experience_defaults
+from kapso.experience.reference import parse_experience_reference
+from kapso.experience.sources import resolve_source
 from kapso.kapso import DEFAULT_CONFIG_PATH
-from kapso.learning.serving_launch import prepare_campaign_serving
+from kapso.learning.serving_launch import prepare_campaign_serving, task_coordinates
 
 load_dotenv()
 
@@ -111,22 +114,28 @@ def solve_task(args) -> dict:
     generic = True
     mode = args.mode or "RELBENCH_GENERIC"
 
-    # Serving live (learn-from-trajectories §5.3, config-gated): pin the
-    # bank, compile the push brief into the problem context, stage the
-    # pull-tool env for ideation/implementation sessions. The feedback judge
-    # never receives the tools; the learner runs after campaigns, never
-    # inside them.
+    # Serving (docs/plans/redesign/wp3-experience.md): what --experience
+    # loads is what the sessions are served — each bank pinned, the intro
+    # in the problem context, the bank tools' env staged for the
+    # ideation/implementation sessions. This runner loads no harness, so
+    # its coordinate is `none`. The feedback judge never receives the
+    # tools; the learner runs after campaigns, never inside them.
     serving = None
-    if generic:
-        learning_config = load_config(DEFAULT_CONFIG_PATH)
+    if generic and args.experience:
+        settings = load_experience_defaults(str(DEFAULT_CONFIG_PATH))
+        sources = [
+            resolve_source(
+                parse_experience_reference(raw.strip(), indexes_root=Path(settings["indexes"])),
+                settings=settings,
+            )
+            for raw in args.experience.split(",") if raw.strip()
+        ]
         serving = prepare_campaign_serving(
-            learning_config,
-            {"family": handler.spec.family, "dataset": args.dataset},
-            handler.work_dir,
+            sources, task_coordinates(None), handler.work_dir, settings["probe_budget"],
         )
-        if serving:
-            handler.apply_bank_intro(serving["intro"])
-            print(f"  Knowledge bank: serving at head {serving['bank_head']}")
+        handler.apply_bank_intro(serving["intro"])
+        for line in serving["lines"]:
+            print(f"  Experience: {line}")
 
     initial_repo = args.initial_repo
     # Never auto-seed on --resume: the workspace already exists with its git
@@ -165,7 +174,6 @@ def solve_task(args) -> dict:
         config_path=config_path,
         mode=mode,
         coding_agent=args.coding_agent,
-        is_kg_active=not args.no_kg,
         workspace_dir=args.workspace,
         resume=args.resume,
         initial_repo=initial_repo,
@@ -216,6 +224,10 @@ def main() -> None:
     )
     parser.add_argument("--rebuild-cache", action="store_true")
     parser.add_argument("--knowledge-file", type=str, default=None)
+    parser.add_argument(
+        "--experience", type=str, default=None,
+        help="Comma-separated sources to serve: mine, a bank path or git reference, an index name",
+    )
     parser.add_argument("--list", action="store_true", help="List native RelBench tasks")
     parser.add_argument("--list-agents", action="store_true")
     args = parser.parse_args()

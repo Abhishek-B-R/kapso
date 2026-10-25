@@ -1,6 +1,6 @@
 """Learner session settings for direct construction (tests, the module CLI).
 
-`learn_knowledge()` threads the live config's `learner.ingestor` / `learner.merger`
+`add_experience()` threads the live config's `learner.ingestor` / `learner.merger`
 blocks into the learners. When a learner is built directly with partial params, the
 missing keys come from the packaged config — the single source (Rule 1) — so a
 default change can never leave the code and the config out of step.

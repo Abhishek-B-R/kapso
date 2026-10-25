@@ -69,11 +69,11 @@ def make_serve_scenario(tmp_path):
         "id": "b8-serving",
         "machinery": "serve",
         "description": "serving relevance on a known-truth bank",
-        "task": {"family": "entity_binary_classification", "dataset": "rel-hm"},
+        "task": {"harness": "trading"},
     }))
     (scenario_dir / "truth.md").write_text(
-        "the index lists the WHOLE bank (both cards; scope is displayed\n"
-        "information, never a filter); gaps report scope coverage.\n"
+        "the index lists every card the scope rule allows (the domain card;\n"
+        "the other harness's card stays out).\n"
     )
     (scenario_dir / "rubric.md").write_text(
         "1. Is every served card semantically relevant?\n"
@@ -81,7 +81,7 @@ def make_serve_scenario(tmp_path):
     )
     build_bank(scenario_dir / "fixture", {
         "relevant-card": card_text("relevant-card"),
-        "avito-card": card_text("avito-card", scope=["dataset:rel-avito"]),
+        "avito-card": card_text("avito-card", scope=["harness:other"]),
     })
     return scenario_dir
 
@@ -100,11 +100,15 @@ def test_serve_scenario_runs_real_machinery_and_gates(tmp_path):
     assert result["verdict"] == "PASS"
     run_dir = Path(result["run_dir"])
     record = yaml.safe_load((run_dir / "artifacts" / "serving-record.yaml").read_text())
-    assert record["mode"] == "agentic" and record["gaps"]  # v2 launch record
+    # the campaign's record shape: `mine` under the scenario's coordinate,
+    # at its default scope, with the count that scope serves
+    [served] = record["sources"]
+    assert record["task"] == {"harness": "trading"} and served["reference"] == "mine" and served["cards"] == 1
     index_text = (run_dir / "artifacts" / "index.md").read_text()
-    # the whole bank is indexed — scope never filters (2026-08-23)
+    # the surface a campaign loading `mine` is served: the scope rule
+    # keeps the trading and domain cards, a card of another harness out
     assert "[card:relevant-card]" in index_text
-    assert "[card:avito-card]" in index_text
+    assert "[card:avito-card]" not in index_text
     assert "truth.md" in reviewer.prompts[0] and "rubric.md" in reviewer.prompts[0]
 
 

@@ -38,9 +38,10 @@ running anything. See [The inbox](/docs/build/inbox).
   repository with `.kapso/run_state.json`.
 - The brief, when passed, matches the checkpoint's exactly; left out, it
   comes from the checkpoint.
-- The mode, coding agent, evaluation directory, config and knowledge index
+- The mode, coding agent, evaluation directory, config and experience
   match the launch's. A difference is refused by name; start a new build
-  in a new output directory instead.
+  in a new output directory instead. A bare resume is served the sources
+  the launch pinned, at the same heads.
 - The campaign is not `completed`: only reaching the objective completes a
   campaign, and a completed one is not resumed.
 

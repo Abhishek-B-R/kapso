@@ -194,6 +194,8 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
     strategy.gate_failure_policy = "skip"
     strategy.bank_serving = None
     strategy.kg_index_path = None
+    strategy.experience_intro_path = None
+    strategy.hosted = None
     strategy.idea_generation_model = "unused-single-path-model"
     strategy._claude_auth_settings = {"auth_mode": "oauth"}
     strategy.aws_region = "us-east-1"

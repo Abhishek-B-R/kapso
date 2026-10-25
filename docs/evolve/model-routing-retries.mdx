@@ -34,7 +34,7 @@ A role inherits every `default` key it does not override, so `repo_memory: {}` i
   The packaged config's `inference` block is the base layer; an `inference:` block in the file you pass with `--config` / `config_path` deep-merges over it, so overriding one key never forfeits the rest. Coding-agent models — such as `coding_agent.model` — stay explicit in your mode config because their provider and authentication are part of that agent's configuration.
 </Note>
 
-`Kapso.research()` runs on the `research` role, whose `web_search: true` carries the CLI's live-web tool; `depth="light"` requests medium search context and `depth="deep"` high.
+`kapso experience add --research` runs its web search on the `research` role, whose `web_search: true` carries the CLI's live-web tool, at the deep search depth.
 
 ## The embedding route
 

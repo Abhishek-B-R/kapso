@@ -33,8 +33,8 @@ strategies:
           gate_failure_policy: "warn"
           ideation_timeout: 300
           implementation_timeout: 600
-          ideation_gates: ["research", "experiment_history", "leeroopedia"]
-          implementation_gates: ["research", "leeroopedia"]
+          ideation_gates: ["research", "experiment_history"]
+          implementation_gates: ["research"]
       
       # Minimal for quick testing
       MINIMAL:
@@ -45,7 +45,7 @@ strategies:
           gate_failure_policy: "warn"
           ideation_timeout: 180
           implementation_timeout: 300
-          ideation_gates: ["research", "experiment_history", "leeroopedia"]
-          implementation_gates: ["research", "leeroopedia"]
+          ideation_gates: ["research", "experiment_history"]
+          implementation_gates: ["research"]
     
     default_preset: "PRODUCTION"

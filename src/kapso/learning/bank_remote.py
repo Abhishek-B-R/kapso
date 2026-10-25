@@ -1,17 +1,14 @@
 """Git-native bank sharing: the bank home's `origin` remote IS the share
 target. No remote in config — a bank carries its own, exactly like any
-git repo, and `kapso bank connect <url>` is how one gets attached.
+git repo, and `kapso experience share <url>` is how one gets attached.
 
 All subprocess calls run with GIT_TERMINAL_PROMPT=0 so a missing
 credential fails loudly in seconds instead of hanging on a prompt."""
 
 import os
-import re
 import subprocess
 from pathlib import Path
 from typing import Optional
-
-GITHUB_SLUG_PATTERN = re.compile(r"^[\w.-]+/[\w.-]+$")
 
 
 def _git_env() -> dict:
@@ -66,18 +63,3 @@ def connect_bank(home: Path, url: str) -> None:
         ["git", "--git-dir", str(home), "push", "origin", "main", "--tags"],
         check=True, env=_git_env(),
     )
-
-
-def create_bank_repo(slug: str, *, private: bool = True) -> str:
-    """Create a GitHub repo for the bank via the `gh` CLI (the caller
-    must have checked `gh` exists) and return its clone URL."""
-    if not GITHUB_SLUG_PATTERN.match(slug):
-        raise ValueError(
-            f"expected an org/name slug (e.g. acme/kapso-bank), got {slug!r}"
-        )
-    visibility = "--private" if private else "--public"
-    subprocess.run(
-        ["gh", "repo", "create", slug, visibility],
-        check=True, env=_git_env(),
-    )
-    return f"https://github.com/{slug}.git"

@@ -66,40 +66,25 @@ class LessonResult:
 
 @dataclass
 class MemoryStatus:
-    """What the agent knows right now, across both memory stores
-    (design §8.2): knowledge (imported — KG) and experience (earned —
-    the bank)."""
+    """Your own bank right now: its head, its active cards, the
+    trajectories in the store. What a build is served is
+    `Kapso.experience`, the loaded sources."""
 
-    knowledge_index: Optional[str]
-    knowledge_backend: Optional[str]
-    knowledge_enabled: bool
     bank_path: Optional[str]
     bank_head: Optional[str]
     bank_active_cards: Optional[int]
     store_trajectories: Optional[int]
-    serving_enabled: bool
 
     def explain(self) -> str:
         lines = ["Memory:"]
-        if self.knowledge_enabled:
-            lines.append(
-                f"  knowledge:  {self.knowledge_index or '(backends)'} "
-                f"({self.knowledge_backend}) — enabled"
-            )
-        else:
-            lines.append("  knowledge:  disabled")
         if self.bank_path and self.bank_head:
             lines.append(
                 f"  experience: {self.bank_path} @ {self.bank_head[:9]} — "
                 f"{self.bank_active_cards} active cards, "
-                f"{self.store_trajectories} trajectories in store, "
-                f"serving: {'enabled' if self.serving_enabled else 'disabled'}"
+                f"{self.store_trajectories} trajectories in store"
             )
         elif self.bank_path:
-            lines.append(
-                f"  experience: {self.bank_path} (bank not initialized), "
-                f"serving: {'enabled' if self.serving_enabled else 'disabled'}"
-            )
+            lines.append(f"  experience: {self.bank_path} (bank not initialized)")
         else:
             lines.append("  experience: no bank configured")
         return "\n".join(lines)

@@ -91,7 +91,7 @@ Harness      ../harnesses/trading
 
 ```bash
 cd examples/trading
-pip install numpy pandas pyarrow mcp
+pip install numpy pandas pyarrow "mcp<2"
 python generate.py
 kapso harness check ../harnesses/trading
 kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach

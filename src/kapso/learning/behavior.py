@@ -31,7 +31,9 @@ from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.learning.bank import Bank
 from kapso.learning.graders.frame import GradingFrame
-from kapso.learning.retriever import compile_intro, render_index
+from kapso.experience.reference import SCOPE_HARNESS
+from kapso.learning.retriever import render_index
+from kapso.learning.serving_launch import compile_intro
 from kapso.learning.trajectory_store import TrajectoryStore
 from kapso.learning.update_frame import UpdateFrame, init_bank
 
@@ -150,14 +152,14 @@ class BehaviorRunner:
     def _run_serve(
         self, scenario: Dict[str, Any], scenario_path: Path, artifacts_dir: Path
     ) -> None:
-        """B8-class: the real serving-v2 surface over the fixture bank —
-        the intro plus the full index (the agentic replacement for the
-        push brief)."""
+        """B8-class: the real serving surface over the fixture bank — the
+        intro plus the index `mine` serves under the scenario's
+        coordinate at its default scope."""
         bank = Bank(str(scenario_path / "fixture" / "bank"))
         intro = compile_intro(
             bank, scenario["task"], scenario.get("bank_head", "fixture")
         )
-        index = render_index(bank, scenario["task"])
+        index = render_index(bank, scenario["task"], scope=SCOPE_HARNESS)
         (artifacts_dir / "index.md").write_text(
             intro["intro"] + "\n\n" + index["text"]
         )

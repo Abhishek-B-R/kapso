@@ -229,6 +229,7 @@ def generate_solution(
     gate_failure_policy: str,
     bank_serving: Optional[Dict[str, str]] = None,
     kg_index_path: Optional[str] = None,
+    hosted: Optional[Dict[str, Any]] = None,
     ideation_web_search: bool,
     ideation_ensemble: Optional[List[Dict[str, str]]],
     idea_generation_model: str,
@@ -290,6 +291,7 @@ def generate_solution(
             gate_failure_policy=gate_failure_policy,
             bank_serving=bank_serving,
             kg_index_path=kg_index_path,
+            hosted=hosted,
         )
 
         # 3. Build restricted tool set (read-only for ideation). Claude
@@ -926,13 +928,15 @@ def build_ideation_prompt(
     inbox_ideation: str = "",
     knowledge_tools: str = "",
     domain_guidance: str = "",
+    experience_intro: str = "",
 ) -> str:
     """Build the ideation prompt for Claude Code. ``inbox_ideation`` is
     the rendered inbox block — the rule against designing around a
     person-only gap and what the person already answered (empty keeps
     the prompt byte-identical to before the inbox). ``knowledge_tools``
     is the guidance of the gates this session mounted (empty for a
-    session with no gates)."""
+    session with no gates); ``experience_intro`` what the campaign is
+    served, measured before (empty when nothing is loaded)."""
     # Load and render the prompt template
     template = load_prompt("execution/search_strategies/generic/prompts/ideation_claude_code.md")
     return render_prompt(
@@ -945,6 +949,7 @@ def build_ideation_prompt(
             "inbox_ideation": inbox_ideation,
             "knowledge_tools": knowledge_tools,
             "domain_guidance": optional_block(domain_guidance),
+            "experience_intro": optional_block(experience_intro),
         },
     )
 

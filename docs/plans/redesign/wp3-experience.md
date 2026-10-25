@@ -1,0 +1,878 @@
+# WP3: experience
+
+2026-10-25. Branch `wp3-experience` off `redesign` at `2e38996b` (WP2
+merged). Size M as the master estimates; sixteen changes below, three of
+them added after the review.
+
+## Scope
+
+Experience is what a campaign is served that was measured before: the
+lessons in a bank (yours, or one you read), Leeroopedia's hosted pages, a
+corpus ingested earlier. This package gives it one reference grammar, one
+loader (`load_experience`, `--experience`, the brief's `Experience` line),
+one `add` for what must exist before it can be loaded, a serving layer
+driven by what is loaded and nothing else (`serving.enabled` goes), the
+scope rule tied to the harness, a provenance intro the sessions read, and
+the sources with their pinned heads in every record. The verbs and knobs
+it replaces go: `kapso bank`, `kapso learn init-bank`, `kapso research`,
+`kapso index_kg`, `Kapso.research()`, `Kapso.learn_knowledge()`,
+`Kapso.index_kg()`, `Kapso(kg_index=)`, `--kg-index`, `build(serving_scope=)`
+with the `dataset` coordinate, and `kapso-mcp`'s `--gates`, `--kg-index`
+and `--family`. It adds what the review showed missing: `kapso experience
+update | remove`, `kapso learn <campaign>` with `--harness`, `kapso-mcp
+--harness`, and the intro's own prompt slot.
+
+**Not in scope.** The config without modes (WP4; until then the campaign's
+coordinate is the harness, not the mode). `build(context=)` and
+`additional_context` (WP4). A paper as a source: the onboarding grammar
+lists `--paper`, and no ingestor reads one; it is a later addition to
+`add`, said in the docs as such, owner: this package's second iteration.
+Joining a team bank that already has history and recovering from a
+diverged remote (`share` stays push-only, refusing in git's words). The plugin's `/kapso:experience` (WP7).
+`kapso trace` (WP6). The semantic test S6, "experience pays" (WP9), which
+this package makes runnable and does not run.
+
+## Interface
+
+### The reference
+
+`load_experience` takes one string, resolved by its form, as a harness
+reference is:
+
+| Form | Example | Resolves to | kind |
+|---|---|---|---|
+| reserved name | `mine`, `mine:all` | your own bank, the one `learn()` writes: `learning.bank.local_path`, `~/.kapso/bank.git` by default, created by `kapso experience add mine` or a first `learn()`; `:all` lifts the scope rule | `bank` |
+| reserved name | `leeroopedia` | the hosted gate at `gates.leeroopedia.url`; loading probes that `LEEROOPEDIA_API_KEY` is present in the environment or `.env` (the session's own connection reads it; it is never configuration) | `hosted` |
+| path | `./bank.git`, `~/team/bank.git`, `/srv/bank.git` | a bank home in the bank's own format, used in place; a string written as a path (`./`, `../`, `/`, `~`) is a path and must exist | `bank` |
+| git reference | `acme/kapso-bank`, `acme/kapso-bank@main`, `git+https://…@v2` | a bank you read and never write, cloned under `experience.banks` (`~/.kapso/experience/banks/<slug>@<rev>/`) with its fetch record beside the clone, as the harness store does | `bank` |
+| index name | `org-x` | a corpus ingested under that name: `experience.indexes/<name>/` (`~/.kapso/experience/indexes/`) | `index` |
+
+Resolution order: the two reserved names (`mine` with or without `:all`),
+then a string written as a path, which must exist, then a string with a
+scheme, `git+`, `@` or `#`, or an `owner/repo` shorthand, as a git
+reference, then an index name that exists. A `:all` suffix on anything but
+`mine` is refused by name. A string that matches
+none raises `ExperienceReferenceError` listing the forms and
+`kapso experience list`. Loading never ingests and never creates: a bank
+or an index that does not exist is refused with the `add` line that makes
+it.
+
+### The handle
+
+```python
+@dataclass
+class ExperienceSource:
+    reference: str          # as given
+    kind: str               # "bank" | "hosted" | "index"
+    resolved: str           # the bank home or clone, the gate's URL without its key, the index directory
+    head: Optional[str]     # a bank's pinned commit; an index's id; None for the hosted gate
+    provenance: str         # "measured by you" (mine), "measured by others" (a bank you read), "reported by others" (leeroopedia, an index)
+    scope: str              # "harness" or "all"; `mine:all` is "all"; a bank you read is always "all" (decided 2026-10-24)
+    def ref(self) -> ExperienceRef    # the record's shape: WP1's handle plus `scope` (the review)
+```
+
+```python
+kapso.load_experience(ref: str) -> ExperienceSource   # `mine:all` lifts the scope; no other knob
+kapso.experience -> list[ExperienceSource]      # in load order; loading a reference again replaces its entry
+kapso.add_experience(ref: str | None = None, *, repo: str | None = None, research: str | None = None, name: str | None = None) -> str   # `mine` creates the bank; a repo or a question ingests into the index `name`
+kapso.update_experience(ref: str | None = None) -> None   # pulls mine, re-fetches a bank you read at a moving reference; every source when None
+kapso.remove_experience(ref: str) -> None       # deletes a clone or an index with its record
+kapso.share_experience(url: str) -> None         # attaches the remote to your bank and pushes it
+```
+
+`load_experience` resolves, confirms the source is reachable and readable
+(a bank's format, a key's presence, an index's record), pins it (a bank at
+its head as it is on disk — loading never pulls, `update` does; an index
+at its id), prints
+one line (`Experience: mine at lr_2026-10-25_3, 142 cards, measured by
+you`) and appends it to the object's sources. `add_experience` ingests a
+repository or a research question into an index under the name and
+returns the name; it needs the graph containers, which it says when they
+are absent. `share_experience` is today's `connect_bank`, by its new name.
+
+### The CLI
+
+```
+kapso experience add mine                                      # creates the empty bank home (today: learn init-bank)
+kapso experience add leeroopedia                               # checks the key, probes the gate once
+kapso experience add --repo https://github.com/org/x --name org-x        # ingests into an index (today: learn_knowledge + index_kg)
+kapso experience add --research "QLoRA memory optimizations" --name qlora  # research, ingested (today: research + learn_knowledge)
+kapso experience list                                          # mine, leeroopedia, every bank clone, every index, each with its state
+kapso experience share https://github.com/acme/kapso-bank.git  # today: kapso bank connect
+kapso experience update                                        # pulls mine from its remote; re-fetches every bank you read at a moving reference
+kapso experience update acme/kapso-bank                        # one source
+kapso experience remove acme/kapso-bank                        # deletes a clone or an index with its record
+kapso learn ./campaign --harness ./harness                     # learns from a campaign directory (today: Python only)
+kapso build --experience mine,leeroopedia ...                  # wins over the brief's Experience line
+kapso build --experience mine:all ...                          # every card you measured, whatever the harness
+kapso-mcp --harness ./harness --experience mine,org-x          # a host session, served the same way, with its coordinate
+```
+
+`--experience` is on `build` and on `kapso-mcp`. It is not on `deploy`,
+which serves nothing, nor on `learn`, which writes `mine` whatever is
+loaded (`Kapso(bank=)` stays the way to point `mine` elsewhere); the master
+plan's "on the three verbs" is corrected here (a decision below). The
+brief's `Experience` line takes the same references, one comma-separated
+line or `- ` items; the loaded sources win over it.
+
+### What a build does with the sources
+
+- **Served where the engine serves**: ideation and implementation sessions,
+  never the judge, never setup or verification. A bank source mounts the
+  bank gate; the hosted source mounts the `leeroopedia` server; an index
+  mounts the `idea` and `code` search gates over that index (one index
+  per campaign; two loaded are refused by name). Nothing
+  loaded, nothing served: the gate lists in the strategy's parameters
+  lose `leeroopedia`, and the preflight's advisory for its key goes with
+  it (a key is checked when the source is loaded).
+- **One bank gate over every loaded bank.** The campaign's serving
+  directory (`.kapso/serving/`) holds one pinned clone per bank; the gate
+  reads `KAPSO_BANKS`, a JSON list of `{reference, head, dir, provenance, scope}`,
+  in place of `KAPSO_BANK_DIR` and `KAPSO_BANK_HEAD`; `bank_index` lists
+  every bank's servable cards grouped by source with the provenance line,
+  `bank_get_card(name, source=None)` reads from the named source (the
+  first that holds the name when none is named), the pull log records the
+  source. One bank is the common case and reads as today.
+- **The coordinate is the harness.** `KAPSO_TASK_HARNESS` carries the
+  loaded harness's name, or `none`; `KAPSO_TASK_FAMILY` goes. A card's
+  scope is `domain` or a list of `harness:<name>` coordinates
+  (`harness:none` for lessons learned without one; `none` is a reserved
+  harness name). Scope is a filter: `mine` lists in `bank_index` and opens
+  in both reads only the cards whose scope covers the coordinate;
+  `mine:all` lifts that and the intro says so; a bank you read serves
+  everything it holds; quarantine is law under every scope. The
+  card-writer writes `[harness:<name>]` from the trajectory's recorded
+  harness; `family:` coordinates are no longer written or read anywhere
+  (a pre-release bank is re-learned; there is nothing to migrate).
+- **The intro** is compiled from the sources and rides where today's bank
+  intro rides (after the static context notes): "You are served: 142
+  cards measured by you under the trading harness (your bank, head
+  `lr_2026-10-25_3`); 37 cards from `acme/kapso-bank`, measured by
+  others, every scope; Leeroopedia's pages, reported by others; the
+  `org-x` corpus (1,204 pages), reported by others." Then the fixed text
+  on how to read a card and what a citation is, as today. It reaches the
+  sessions through its own prompt slot, `{{experience_intro}}`, threaded
+  into the ideation and implementation prompts and nowhere else (the
+  judge, setup, verification and maintainer sessions never see it);
+  `handler.additional_context` is frozen at construction and was never a
+  seam (change 14). When `mine` has a remote the line says "measured by
+  you and your team".
+- **Pinned for the campaign.** Loading never pulls: `mine` is pinned at
+  its home's head and a bank you read at its clone's head, as they are on
+  disk (`kapso experience update` is the network step); an index at its
+  id. A
+  resume loads the recorded references and re-pins each bank at the
+  recorded head (a checkout of that commit in the serving directory), so a
+  resumed campaign is served what its first half was; a source that is
+  gone is refused by name with `kapso experience list`.
+- **The record.** `experience`, a list of `{reference, kind, resolved,
+  head, provenance, scope}` in load order, in `launch.json`, `status.json`, the
+  checkpoint (schema 5), `solution.json` (schema 4; `knowledge_index` and
+  `experience_head` go) and the trajectory manifest. `Solution.experience`
+  is the list; `explain()` prints one `Experience:` row per source. The
+  list enters the checkpoint's fingerprint: a resume that names a
+  different list is refused by name, as a changed harness is. The judge's
+  `cards_load_bearing` stays on the node and in the reconstructed
+  feedback, so the trajectory carries the attribution.
+
+### The host session
+
+`kapso-mcp --harness ./harness --experience mine,org-x` stages the same
+serving into the session's directory under `learning.serving.session_root`
+and serves the bank gate and the search gates beside `research`,
+`repo_memory` and `experiment_history`, which ride as today by what the
+directory holds. `--harness` gives the session its coordinate (`none`
+without it); the intro rides as the MCP server's `instructions`, so the
+session names its sources on connect; `leeroopedia` loaded here prints the
+reminder to add it as the host's own HTTP server (the bundled server
+serves bundled gates only); a source that cannot be loaded stops the
+server with the fixing line on stderr; the session's directory is removed
+when the server exits. `--gates`, `--kg-index` and `--family` go, and
+`--gates` does not come back: the directory-driven gates turn themselves
+off with a reason, and `kg` never rode on a host.
+
+### The learning side
+
+`learn()` writes `mine`, as today, and `Kapso(bank=)` is threaded through
+every crew it runs; the mining and update crews, the graders' hindcast and
+gauntlet, the behaviour scenarios and the bank invariants take the
+coordinate from the trajectory manifest's `harness` (name, or `none`);
+exposure comes from the archived pull log, which names the source of
+every served row, so a cited name is credited to the source it was read
+from and a name read from two sources is reported as an ambiguity; the
+hindcast's own serving record is availability only. The crews' lead
+sessions and their workers are staged with the harness's learning module
+in full (skills, servers, hooks beside the pages), closing WP2's finding.
+`learn_knowledge`, `research` and `index_kg` leave the facade; their
+pipelines stay where they are (`kapso.knowledge_base`, `kapso.researcher`)
+and are reached through `add_experience`.
+
+### Config
+
+```yaml
+experience:
+  banks: ~/.kapso/experience/banks       # banks you read, one clone per <slug>@<rev>, with a record beside
+  indexes: ~/.kapso/experience/indexes   # corpora you ingested, one directory per name
+learning:
+  bank:
+    local_path: ~/.kapso/bank.git        # mine
+  serving:
+    session_root: ~/.kapso/serving       # a host session's staging; `enabled` is gone
+  retriever:
+    probe_budget: 1                      # probe offers riding card reads, from `mine` alone
+gates:
+  leeroopedia:                           # the hosted source's address and timeout, unchanged
+```
+
+`load_experience_defaults(config_path)` reads the `experience` block, the
+three learning keys and the hosted gate's block, as `load_harness_defaults`
+does its own. Nothing
+names a source in the config: loading is at the call, the flag or the
+brief.
+
+## Ownership
+
+Edits: `src/kapso/experience/` (new: `reference.py`, `store.py`,
+`sources.py`, `serving.py`), `src/kapso/cli/experience.py` (new),
+`src/kapso/cli/build.py`, `src/kapso/cli/__init__.py`, `src/kapso/cli/learn.py`;
+deletions `src/kapso/cli/bank.py`, `src/kapso/cli/research.py`,
+`src/kapso/cli/index_kg.py`; `src/kapso/kapso.py`; `src/kapso/handles.py`
+(`Solution.experience` filled, two fields deleted); `src/kapso/learning/serving_launch.py`,
+`retriever.py` (the intro), `bank.py` (`eligible_for` on the harness
+coordinate), `trajectory_store.py`, `update_frame.py`, `mining.py`, the
+crews' role pages; `src/kapso/gated_mcp/gates/bank_gate.py`, `presets.py`,
+`host_session.py`; `src/kapso/execution/run_checkpoint.py` (schema 5),
+`observability.py`, `inbox.py`, `orchestrator.py`, `feedback_flow.py` and
+`search_strategies/generic/*` where the gate lists and the intro are
+threaded, `search_strategies/strategies.yaml`; `src/kapso/learning/harvest.py`,
+`lesson_result.py`, `bank_invariants.py`, `behavior.py`, `graders/frame.py`,
+`graders/gauntlet.py`, the grading prompts; `src/kapso/core/preflight.py`
+and `cli/doctor.py` (the verbs), `cli/watch.py` (the operation names);
+`src/kapso/harness/check.py` (the reserved name); `benchmarks/relbench/runner.py`
+and `campaign.py`; `moltbook_bot/server.py`; `examples/ml_model_development/`;
+`knowledge_base/learners/__main__.py`; `skills/*/kapso/SKILL.md`; the
+README; `src/kapso/config.yaml`, `core/config.py`; the docs; the tests.
+
+Read, not edited: `src/kapso/knowledge_base/search` and
+`src/kapso/researcher/` (reached, not reshaped, beyond the namespace an
+index needs: WP4 and later decide their fate).
+
+## Changes
+
+1. The reference grammar, the homes and the handle: `experience/reference.py`
+   (`parse_experience_reference(text, *, cwd, bank_home, banks_root,
+   indexes_root)` by the order above, `ExperienceReferenceError` with the
+   forms), `experience/store.py` (bank clones with a record beside, the
+   index home and its `index.json`), `experience/sources.py`
+   (`ExperienceSource`, `resolve_source`, the bank-format check, the key
+   check for the hosted gate, `pin`). After the review: a string written
+   as a path is a path and must exist; `mine:all`. Test `tests/test_experience_reference.py`:
+   each form and the order; an empty, odd or unknown string lists the
+   forms; a missing path names the path; a missing bank or index names
+   the `add` line; a key missing names the variable and `.env`; `:all`
+   on anything but `mine` refused by name.
+2. `Kapso.load_experience`, `Kapso.experience`, `load_experience_defaults`,
+   the config block, `scope`, the printed line, re-loading a reference
+   replacing its entry. Test `tests/test_experience_load.py`.
+3. The serving plan from sources: `serving_launch.plan_serving(sources,
+   task_coords, serve_dir)` clones each bank at its head, compiles the
+   intro from every source, writes the serving record with the sources,
+   returns the gate environment (`KAPSO_BANKS`, `KAPSO_TASK_HARNESS`, the
+   pull log) and the index references; `serving.enabled` deleted from the
+   config and the code; `build(serving_scope=)` and the `dataset`
+   coordinate with it; the RelBench runner takes `--experience` and its
+   harvest reads the record's sources. Built at `c670e1ed`. Tests:
+   `tests/test_serving_wiring.py` rewritten on sources (one bank reads as
+   today; two banks are two clones and one intro; no source means no
+   plan; the hosted gate and an index without a bank; two indexes
+   refused).
+4. The bank gate over several banks: `KAPSO_BANKS`, `bank_index` grouped
+   by source with provenance, `bank_get_card(cards, source=)` and the
+   evidence read likewise, the pull log with the source. Built at
+   `c670e1ed`. Tests: the gate's tests extended with two banks and a name
+   held by both.
+5. The scope coordinate: `Card.eligible_for({"harness": ...})`,
+   `harness:<name>` and `harness:none` (`none` reserved in the harness
+   `check`); scope as a filter in `render_index` and both reads for
+   `mine` at the default scope, lifted by `mine:all`; probe offers from
+   `mine` alone; the card-writer's page; the update frame, the mining
+   frame, the graders' hindcast and gauntlet, the behaviour scenarios and
+   the bank invariants taking the coordinate from the manifest's
+   `harness`; exposure and attribution from the pull log by (source,
+   name), a two-source name an ambiguity finding; "measured by you and
+   your team" when `mine` has a remote. Tests: `tests/test_bank_retriever.py`,
+   `tests/test_bank_pull.py`, `tests/test_update_frame.py`,
+   `tests/test_mining_frame.py`, `tests/test_grading_frame.py`,
+   `tests/test_bank_invariants.py` on the coordinate and on a duplicate
+   name across two sources. Built at `ccd529d4`.
+6. `build()`: the sources from the object, else the brief's `Experience`
+   line; the gates per source in ideation and implementation; the records
+   in `launch.json`, `status.json`, the checkpoint (schema 5) and
+   `solution.json` (schema 4, the two fields deleted), the trajectory
+   manifest, each entry with its `scope`; the fingerprint and the inbox's
+   resume keys trading `kg_index` and `serving_scope` for `experience`; a
+   resume re-pinning at the recorded heads and scopes, refusing a gone
+   source and a changed list by name; `Solution.experience`, `explain()`;
+   the judge's `cards_load_bearing` kept on the node and in the
+   reconstructed feedback; `Kapso(bank=)` threaded through every crew
+   `learn()` runs. Tests `tests/test_experience_records.py` (the real
+   writers, the sessions stubbed; a served build seeded from a
+   repository; the attribution round trip) and the learn test with two
+   distinct banks. Built at `993fdb60`.
+7. `add_experience(ref=, repo=, research=, name=)`: `mine` creates the
+   bank; a repository or a question ingests into the index home under
+   `name`, each index in its own backend namespace named in `index.json`
+   (`backend_refs`), an existing name refused, the record's keys the
+   ones the search gates read; the merger receives the index builder as
+   an experience-package function; `learn_knowledge`, `research`,
+   `index_kg` and `Kapso(kg_index=)` deleted, `Kapso.reply()` and the
+   resume constructing from the record's `experience`; the knowledge
+   search constructed when an index is loaded, and the orchestrator's
+   `_create_knowledge_search` building no backend without one (the WP2
+   no-key crash, which is there, not in the facade). Tests
+   `tests/test_experience_add.py` with the provider calls stubbed and the
+   real pipeline glue exercised, an orchestrator constructed with no
+   source and no embedding key, a reply from another directory. Built at
+   `e0b8acff`.
+8. `share_experience(url)` and `kapso experience share`; `create_bank_repo`
+   deleted (the repository is the person's to create with `gh`).
+9. `kapso experience add | list | share`, `add` with `ref` optional and
+   exactly one of `ref`, `--repo`, `--research` required in one message,
+   reserved names refused for `--name`; `kapso learn <campaign>
+   [--harness ref]` (WP2's hand-over); `kapso bank`, `kapso research`,
+   `kapso index_kg` and `kapso learn init-bank` deleted with their
+   modules; the verb tuple; the docs coverage check. Tests
+   `tests/test_cli_experience.py` (every subcommand's flags, `add mine`
+   creates the home, `list` has an empty state and the rows, `share`
+   attaches a remote to a bare bank) and `tests/test_cli_learn.py` (the
+   campaign form). Built at `a7e8101c`; the learning system's tools moved
+   under `kapso learn dev` (the decision is in DECISIONS.md).
+10. `--experience` on `kapso build` (validated before `--detach` forks, as
+    `--harness`), the brief's line, `kapso-mcp --experience` (built at
+    `c670e1ed`) with `--harness` for the coordinate, the intro as the
+    server's `instructions`, the session directory removed at exit, the
+    loaded hosted settings threaded into the gate config. Tests in
+    `tests/test_cli_build.py`, `tests/test_cli_detach.py`,
+    `tests/test_host_session_server.py` (an MCP initialisation reading
+    the instructions). Built at `6d71ac58` (the host session) and
+    `65e6f300` (`--experience` on the build and the brief's line in
+    `build()`).
+11. The harness's learning module staged into the crews' lead sessions
+    and their `codex exec` workers, with mining's `.claude` handling
+    leaving the harvested inventory intact. Test in
+    `tests/test_harness_deploy_learn.py` and the worker invocation's
+    configuration. Built at `ed7f8261`: a harvest leaves the hosts'
+    staging directories out of a bundle, a mining run has its own
+    directory under `learning.mining.run_root`, and the guidance names
+    the task statement only when the campaign has one (the decisions
+    are in DECISIONS.md).
+12. Docs: `docs/experience/{index,use,add,share}.mdx`,
+    `docs/reference/experience.mdx`, the `Experience` entries in the CLI,
+    API, brief and configuration references, `docs/learning/bank.mdx` and
+    `serving.mdx` rewritten on sources, `docs/knowledge/*` and
+    `docs/research/overview.mdx` folded into the experience pages with
+    redirects in `docs.json` (built at `074bab00`), the churn example's README on `learn()` then
+    `--experience mine`; `scripts/check_docs_coverage.py` covering the
+    verb; `mint validate` and `mint broken-links`. The deletion
+    inventory beyond the docs: the three skills' pages, the README,
+    `docs/installation.mdx`, `docs/coding-agent-skills.mdx`, the learning
+    and evolve pages, preflight's `research`/`learn_knowledge` verbs and
+    its `kapso bank` fix lines, `kapso doctor`'s verbs, `kapso watch`'s
+    operation names, `moltbook_bot/server.py` (`kg_index`, `/research`),
+    `knowledge_base/learners/__main__.py`, the ML full-loop example, the
+    manual tests.
+13. The record of this package: the proof runs, the review, the decisions,
+    the findings; the master's status. Built 2026-10-25: the Proof run
+    section below (the learn, three builds, two fresh-machine refusals),
+    the Review section's four tables, the decisions in `DECISIONS.md`,
+    the findings below, the master's row.
+14. The intro's seam: `{{experience_intro}}` threaded into the ideation
+    and implementation prompts as WP2 threads the harness guidance, and
+    into no other session. Tests render the two prompts with the intro
+    and assert its absence from the judge, setup, verification and
+    maintainer prompts; the mounted-gate assertion extended to two banks
+    and to an index; the judge's gate list never holds `bank`. Built at
+    `e4eb0712`.
+15. `kapso experience update [ref]` and `remove <ref>`, with
+    `Kapso.update_experience` and `remove_experience`: `update` pulls
+    `mine` fast-forward from its origin and re-fetches a bank you read at
+    a moving reference (a pinned commit never moves; a campaign keeps its
+    pin); `remove` deletes a clone or an index with its record and
+    namespace. Tests in `tests/test_cli_experience.py` with local git
+    remotes. Built at `e86110c7`.
+16. The drift test: `tests/test_no_retired_names.py` over `src`, `tests`,
+    `skills`, `examples`, `benchmarks`, `moltbook_bot` and `docs` for the
+    retired names (`serving.enabled`, `kapso bank`, `learn init-bank`,
+    `research(`, `learn_knowledge`, `index_kg`, `kg_index=`, `--kg-index`,
+    `KAPSO_BANK_DIR`, `KAPSO_TASK_FAMILY`, `serving_scope`, `family:`),
+    the precedent being `tests/test_no_evolve_left.py`. Built at
+    `e957ef8a`; the review added `KAPSO_BANK_HEAD`, `KAPSO_TASK_DATASET`
+    and `kapso-mcp --gates`, and the scan covers `tests/manual` once the
+    scripts on the retired verbs were removed (`1b15f2a8`).
+
+## Tests
+
+- Syntactic: the files above, in the curated gate. Negative cases: every
+  form that resolves to nothing; a bank in the wrong format; a key
+  missing; a gone source on resume; a changed list on resume; two banks
+  holding one card name, through the gate, the pull log and the evidence
+  check; a card with a `family:` coordinate (not eligible at the default
+  scope, served under `mine:all`); `:all` on a bank you read. Goldens: the
+  intro for one, two and three sources; the serving record; the gate
+  environment; the rendered ideation and implementation prompts with the
+  intro, and the judge's without. Contract: the record fields with
+  `scope`; the checkpoint and solution schemas; `Solution.open` reading
+  the sources back; the judge's gate list never holding `bank`.
+- Proof run, on a fresh machine from the wheel: WP2's trading campaign
+  (the harness example) learned on the box with `kapso learn <campaign>
+  --harness examples/harnesses/trading` (the crews on the shared token),
+  until the bank holds an admitted, servable card scoped `harness:trading`
+  or `domain`; then a build of the trading example on the machine with
+  `--harness` and `--experience mine` at a small budget (two experiments):
+  the archived campaign must show the intro in the ideation prompt with
+  the card count and "measured by you, under the trading harness", a
+  `bank_get_card` read in the pull log with its source and head,
+  `experience` in all four records with the head the learn produced,
+  `kapso experience list` printing `mine` with that head, and
+  `Solution.open` reading `experience` in a second process. A second
+  build under no harness must list zero of the harness-scoped cards and
+  all of them under `mine:all` (the index, not only the count).
+  `leeroopedia` is loaded on the development box with the key, once, and
+  its session record shows the server mounted; the fresh machine has no
+  key, which `add leeroopedia` must say.
+- Semantic hook: S6 ("experience pays") becomes runnable: the same task
+  built twice, the second served `mine`; the numbers to record are the
+  two scores and the cards the second campaign cited (the judge's
+  `cards_load_bearing`).
+
+## Acceptance
+
+- `kapso experience list` on a fresh machine prints the empty state with
+  the two `add` lines; after `add mine` it prints `mine` with its head and
+  zero cards; after a `learn()` that admitted a card the head moved and
+  the count is the cards' count (a learn that admits nothing moves
+  nothing, and says so).
+- A build with `--experience mine` after a learn serves the intro in the
+  ideation and implementation prompts and the bank gate; the campaign's
+  `launch.json`, `status.json`, `run_state.json` and `solution.json` carry
+  the same `experience` list with the pinned head and scope; a resume
+  after the bank moved re-pins at the recorded head; a resume that names
+  a different list is refused by name.
+- A build with nothing loaded serves nothing and records `experience: []`;
+  no key is needed for it (no embedder at construction).
+- `load_experience("acme/kapso-bank")` fetches the clone under
+  `experience.banks` with the record beside it and serves every card it
+  holds; `load_experience("mine")` under the trading harness lists and
+  opens only the cards scoped `domain` or `harness:trading`, and
+  `mine:all` lifts that.
+- `kapso bank`, `kapso research`, `kapso index_kg`, `kapso learn
+  init-bank`, `--kg-index`, `kapso-mcp --gates`, `serving.enabled` and
+  `serving_scope` are gone from the CLI, the docs, the skills, the
+  examples and the tests, which the drift test checks; `kapso experience
+  update | remove` and `kapso learn <campaign>` exist; the docs coverage
+  check covers `kapso experience`.
+- Both reviewers' findings on this plan and on the pull request are
+  answered below; the gate is green; the docs checks are green.
+
+## Risks
+
+| Risk | What is done |
+|---|---|
+| the bank gate's single-bank assumptions run deep (card names, the pull log, the exposure ladder) | change 4 keeps one bank the common case: `KAPSO_BANKS` with one entry reads as today; the index's grouping and `source` are additive |
+| the scope coordinate change strands existing banks | there is nothing to migrate pre-release and no `family:` knowledge stays in code: such a card is not eligible at the default scope and reads under `mine:all`; the owner's RelBench bank is re-learned when WP8 ports that harness |
+| the knowledge pipeline's containers (Weaviate, Neo4j) are absent on the fresh machine | `add --repo` says which container and the line that starts it; the proof run covers `mine`, not an index; the index path is tested with the pipeline stubbed at its boundary |
+| the Leeroopedia key on the fresh machine | not stored as a secret; loaded once on the development box; `add leeroopedia` on the machine must refuse with the variable name |
+| the learn in the proof run costs the shared token an hour of crews | the token gate before it; the learn runs once; the second build is small |
+| `--experience` on `learn` and `deploy` expected by the master | not added, with the reason in the Interface and a decision entry; the master's line corrected in this package's status row |
+
+## Review
+
+The sub-plan was reviewed at `276e796b` by Codex (`gpt-6-astra`, xhigh)
+and Claude Code (`claude-opus-5`) while changes 1, 2, 8 and half of 9 were
+landing; the reviews are kept locally in `scripts/redesign/runs/wp3-plan-review/`
+(gitignored, like the other run records). Each finding's answer is below; "amended" means the plan's text above was
+changed accordingly and the decision is in `DECISIONS.md` (2026-10-25,
+WP3). The pull-request review follows the build.
+
+### Codex
+
+| # | Finding | Answer |
+|---|---|---|
+| P1-1 | `plan_serving` as written clones and writes before a seeded workspace exists | The plan/stage split is kept: `plan_serving` is pure, `stage_serving` runs after orchestrator construction (change 3, built). A served build seeded from a repository is a change 6 test. |
+| P1-2 | The intro rides a dead seam: `handler.additional_context` is frozen at construction | Accepted; the plan prescribed the benchmark's slot. Change 14 threads `{{experience_intro}}` into the ideation and implementation prompts only, with rendered-prompt tests and an absence test for the judge, setup, verification and maintainer sessions. |
+| P1-3 | `scope` is lost between the handle, the gate and the records | Amended: `scope` is on `ExperienceRef`, in every record and in the fingerprint; `KAPSO_BANKS` carries it (built); a resume re-loads at the recorded scope (change 6). |
+| P1-4 | `eligible_for` does not filter; the retriever lists every servable card | Amended, with a decision: scope is a filter again on the harness coordinate — `mine` at the default scope lists and reads only the cards its scope covers, `mine:all` lifts, a bank you read serves everything, quarantine always (change 5). The Tests section's `family:` sentence is corrected: such a card is not eligible under the default scope and is served under `mine:all`. |
+| P1-5 | Multi-bank identity is more than a `source` field: citations, the evidence tool, attribution | Amended, with a decision: identity is (source, name) through the pull log; both read tools take `source=` (built); the learning side credits a cited name to the source it was read from and reports a two-source name as an ambiguity (change 5); the citation grammar stays `[card:name]`. Tests follow the whole path with a duplicate name. |
+| P1-6 | An index is neither isolated nor pinned: backends share namespaces | Accepted for change 7: each index gets its own backend namespace named in its record's `backend_refs`; `add` with an existing name refuses; `remove` deletes the namespace; "pinned at its id" means the namespace is never written again. Verified against both backends when built. |
+| P1-7 | The graders' hindcast and the evidence check still speak `family`/`dataset` and expect a `served` list | Accepted: change 5 lists `graders/frame.py`, `gauntlet.py`, `behavior.py`, `bank_invariants.py` and the grading prompts; exposure comes from the archived pull log with source identity, the hindcast record is availability only. |
+| P1-8 | `Kapso(bank=)` is not threaded to the update crew | Accepted: change 6 threads the resolved bank home through every crew `learn()` runs; test with two distinct banks. |
+| P1-9 | The host cannot mount the hosted source through the bundled server | Decided: `kapso-mcp` serves the bundled gates only; loading `leeroopedia` on the host prints the reminder to add it as the host's HTTP server (built, documented). |
+| P2-1 | Several indexes have no routing contract | Decided: one index per campaign, refused by name at planning (built). |
+| P2-2 | Deleting `index_kg` orphans the merger's builder; `.index` vs `index.json` | Change 7 names the builder the merger receives (an experience-package function) and pins the record's keys to what the gates read. |
+| P2-3 | The no-key crash is in the orchestrator's search construction, not the facade | Accepted: change 7 fixes `_create_knowledge_search` (no backend without a loaded index) with an orchestrator construction test under no key. |
+| P2-4 | `Kapso.reply()` still constructs with `kg_index=` | Accepted: change 7 constructs from the record's `experience`; a reply/resume test from another directory. |
+| P2-5 | `kapso learn <campaign>` and `--harness` on learn, assigned by WP2, are missing | Accepted: change 9 adds them with a CLI test. |
+| P2-6 | The crews' workers (`codex exec`) and mining's `.claude` handling are outside the lead's staging | Accepted: change 11 stages the learning module for the workers too and keeps the harvested inventory intact. |
+| P2-7 | Team-bank joining and synchronisation are unspecified | Decided: `share` stays push-only in this package, refusing a rejected push in git's words; joining and divergence recovery are a later package; the intro says "measured by you and your team" when `mine` has a remote (change 5). |
+| P2-8 | A bank you read is never refreshed | Amended: change 15 adds `kapso experience update [ref]` and `remove <ref>`; loading never pulls (decision). |
+| P2-9 | The host session has no coordinate and drops the intro | Amended: `kapso-mcp --harness <ref>` is the coordinate; the intro rides as the server's `instructions` (change 10). |
+| P2-10 | RelBench's runner and harvest break | Done in change 3: the runner takes `--experience`, the harvest reads the record's sources. |
+| P2-11 | `moltbook_bot`, `knowledge_base/learners/__main__`, the ML examples call deleted APIs | Accepted: change 12 migrates or retires each; change 16's drift test catches a retired name anywhere. |
+| P2-12 | Skills, preflight, doctor, `MemoryStatus` still prescribe the removed interface | Accepted: change 12 covers the three skills, preflight's verbs and fix lines, `kapso doctor`'s verbs; `MemoryStatus.serving_enabled` is gone (built). |
+| P2-13 | `probe_budget` and the hosted settings have no route | `probe_budget` rides `load_experience_defaults` (built, listed in Config); change 10 threads the loaded source's hosted settings into the gate config. |
+| P2-14 | A missing explicit path can resolve as a git reference; `harness:none` collides with a harness named `none`; `--name mine` | Amended: a string written as a path is a path and must exist (change 1); `none` is a reserved harness name (change 5); reserved names are refused for `--name` (change 9). |
+| P2-15 | The proof shows no card read; "the head moved" is false when nothing is admitted | Amended: the proof learns from the trading campaign, requires an admitted servable card, and asserts a `bank_get_card` read with source and head in the pull log; the acceptance line says "after a learn that admitted a card". |
+| P2-16 | The judge's `cards_load_bearing` is discarded before archival | Accepted: change 6 keeps it on the node and in the reconstructed feedback, with a round-trip test. |
+| P3-1 | Deviations recorded against the wrong decisions; papers have no owner | Amended: the decisions are in `DECISIONS.md`; papers' owner is the package's second iteration; the master's line was the harness interface's. |
+
+### Claude Code
+
+| # | Finding | Answer |
+|---|---|---|
+| P1-1 | The intro has no live seam | As Codex P1-2: change 14. |
+| P1-2 | Scope is not a filter anywhere | As Codex P1-4: a decision reversing the 2026-08 amendment, change 5. |
+| P1-3 | `harness:none` buckets every harness-less campaign; `scope="all"` has no CLI syntax; `dataset:` lingers | Amended: `mine:all` is the lift's syntax in the CLI, the brief and Python; `none` reserved; the `dataset` coordinate and `serving_scope` retired (built). The single coordinate is justified in the decision: the harness is the domain; a lesson learned outside any harness is `domain` or `none` by the writer's call. |
+| P1-4 | RelBench's serving breaks and nobody owns it | As Codex P2-10: done in change 3; the two files are in Ownership. |
+| P1-5 | The hindcast, gauntlet, behaviour scenarios and invariants still build `family`/`dataset` | As Codex P1-7: change 5. |
+| P1-6 | `kapso learn <campaign>` and `--harness` on learn are missing | As Codex P2-5: change 9. |
+| P1-7 | The host session loses gate control and its coordinate, fetches at every start, and an error kills it | Decided: no `--gates` (the directory-driven gates turn themselves off with a reason; `kg` never rode on a host); `--harness` gives the coordinate; loading never pulls, so a start touches the network only to fetch a bank for the first time; a source that cannot be loaded stops the server with the fixing line (rule 2, no partial serving); the session directory is removed at exit; the intro rides as the server's instructions (change 10). |
+| P1-8 | A bank you read can never be refreshed; no `update`/`remove` | As Codex P2-8: change 15. |
+| P2-1 | The no-key finding is mislocated | As Codex P2-3: change 7. |
+| P2-2 | A resume loses `scope`; the fingerprint keys and the inbox's resume keys must trade `kg_index`/`serving_scope` for `experience` | As Codex P1-3; `execution/inbox.py` is in Ownership; the decision says the loaded experience is campaign identity (fingerprinted, a changed list refused by name). |
+| P2-3 | `build(serving_scope=)` was never retired by name | Done in change 3, listed in Scope. |
+| P2-4 | Unlisted consumers: preflight verbs and fix lines, doctor, watch/observability operation names, `strategies.yaml`, the strategy's literal gate lists, skills, `moltbook_bot`, the ML examples, docs, tests, manual tests; make the acceptance machine-checkable | Accepted: each is named in change 12's inventory; change 16 adds the drift test over `src, tests, skills, examples, benchmarks, moltbook_bot, docs`. `strategies.yaml` and the mode lists lost `leeroopedia` in change 3; the strategy's literal defaults are the engine's own duplication, which WP4 collapses with the modes. |
+| P2-5 | The serving record's and the manifest's `bank_head` are read in unlisted places | Done in change 3 (`learn()` reads the record's `sources`; the manifest carries `experience`); the graders' readers are change 5. |
+| P2-6 | `kapso experience list` cannot detect `family:` cheaply or safely | Decided: no `family:` knowledge anywhere; `list` is silent; the Risks row is corrected. |
+| P2-7 | The deviation list is incomplete | Amended: every deviation has a decision entry (deploy, learn, papers, `update`/`remove`, `mine:all`, the host coordinate and intro). |
+| P2-8 | Probe offers ride every loaded bank | Decided: offers come from `mine` alone (change 5, with the gate). |
+| P3-1 | Names: `ExperienceSource` vs `Experience`/`ExperienceRef`; `experience.banks` names a home; `KAPSO_BANKS` is a document; `add_experience` cannot create `mine` | `ExperienceSource` stays: the plan's noun for a loaded thing is "source" throughout and `ExperienceRef` is its record, as `HarnessRef` is a harness's. The config keys name homes and say so in their comments. `KAPSO_BANKS` stays a document: the gate reads one variable. `add_experience("mine")` creates the bank (change 7), so Python and the CLI create the same three things. |
+| P3-2 | `kapso experience add`'s two shapes are unspecified; `--name mine` | Amended: `ref` is optional and exactly one of `ref`, `--repo`, `--research` is required, said in one message; reserved names refused (change 9). |
+| P3-3 | A non-`mine` source silently reinterprets `scope=` | Amended: `scope=` goes with `mine:all`; a suffix on any other reference is refused by name. |
+| P3-4 | Config-like values: `probe_budget`, the strategy's gate-list literals, the hosted key's wording | `probe_budget` is listed in Config and rides `load_experience_defaults`; the gate-list literals are WP4's (above); the Interface says the key is a presence probe plus a provider-read credential, never configuration. |
+| P3-5 | The index record's keys must match what the gate reads | Change 7 pins them (as Codex P2-2). |
+| P3-6 | Tests: the intro reaching a prompt, the judge never getting the bank gate, the resume re-pin, the mounted-gate assertion for two banks and an index; the proof on the churn example proves nothing about harness scoping | Amended: the Tests section names each; the proof runs on the trading fixture. S6 is measurable once change 14 is in. |
+| Q1 | Does `mine` pull on a resume? | No: loading never pulls; a resume re-pins at the recorded head from the local home. |
+| Q2 | Which card does a lesson's evidence credit when two banks hold the name? | The source the pull log shows it was read from; a name read from both is an ambiguity finding. |
+| Q3 | Is `experience` campaign identity or a dial? | Identity: fingerprinted; a resume that names a different list is refused by name. |
+
+### The pull request
+
+The branch was reviewed at `e957ef8a` by Codex (`gpt-6-astra`, xhigh)
+and Claude Code (`claude-opus-5`) over the diff against `redesign`; the
+briefs and the reviews are kept with the run records. Every finding and
+its answer; the fixes are one commit after `e957ef8a`, the decisions in
+DECISIONS.md under 2026-10-25 WP3.
+
+#### Codex
+
+| # | Finding | Answer |
+|---|---|---|
+| P1-1 | `research_sources` passes the `ResearchFindings` wrapper to the pipeline | Fixed: the findings' ideas, implementations and report are the pipeline's input; the test fake returns the wrapper. |
+| P1-2 | A bank at a tag is pinned and served at `main` | Fixed: `bank_head` reads `HEAD` (the checked-out revision in a clone, `main` in a bare home); a test pins a tag whose `main` moved on. |
+| P1-3 | Two references that read alike as names share one clone | Fixed: the clone directory's name carries a digest of the reference. |
+| P1-4 | An index pin does not constrain the index opened at the build | Fixed: the build refuses an index whose record id is not the handle's head (`re-ingested since it was loaded`); the local that held the launch record is no longer rebound. |
+| P2-1 | The evidence check treats a listing as a read | Fixed: credit requires `read` or `evidence-read`; a copy only listed is a finding; ambiguity means opened from both; independence is refuted by any exposure (a decision). |
+| P2-2 | The hindcast grades a surface the engine does not serve | Fixed: the hindcast and the behaviour scenarios render the index at scope `harness` and the intro `compile_intro` now composes from the sources module (`mine` at its default scope). |
+| P2-3 | A mining run with a real adapter leaves `.claude_mcp` in the bundle | Fixed: the frames call the adapter's `cleanup`; `.claude_mcp` is among the staging directories the harvest leaves out and the mining crew owns. An exception before the unstage leaves the staging for the next run's leftover handling, as before. |
+| P2-4 | A resume ignores the recorded location; a reply loses `Kapso(bank=)` | Fixed: a bank read by path re-loads from `resolved`, named as the launch named it; a reply rebuilds the object with the record's `mine` home. |
+| P2-5 | The hosted gate mounts the packaged address whatever the config | Fixed: the loaded source carries the config's URL and timeout; the plan carries them; `get_mcp_config(hosted=)` mounts them. |
+| P2-6 | A config gate list can mount the hosted gate with nothing loaded | Fixed: the strategy drops the hosted gate from any config list; only the loaded source appends it. The configuration page's example no longer lists it. |
+| P2-7 | `clear()` swallows a store's refusal | Fixed: the backend's `clear` raises; the Weaviate collection is deleted when the store holds it. |
+| P2-8 | The `idea` and `code` gates clip pages | Fixed: the whole page reaches the model. |
+| P2-9 | A lesson admitting nothing still commits and reads as admitted | Fixed: no bank change, no commit, tag or push; the report carries one head; `learn()` says the lesson admitted nothing (a decision). |
+| P2-10 | The campaign-directory learn drops the record's outcome | Fixed: the opened record feeds the generated report and log. |
+| P2-11 | `learn --harness` on a harness-less campaign is refused | Fixed: a learn takes the loaded harness for the crews; the lessons keep the build's coordinate; a deploy still refuses (a decision). |
+| P2-12 | An index-only host session gets no intro | Fixed: the host session stages once for whatever is loaded; the intro rides for an index or the hosted gate too. |
+| P2-13 | An empty key passes as present; the promised probe is missing | Fixed: an empty value is absent; `add leeroopedia` sends one MCP `initialize` and reports the server's name, a refusal stops the add. |
+| P2-14 | The full-loop example clashes on `name=` | Fixed: `index_name=` and `index_id=`; the resume script reads them. |
+| P2-15 | The manifest's `experience` differs in shape and null-ness | Fixed: `[]` when unserved; the six record fields, the serving record's count dropped. |
+| P2-16 | The no-backend test replaces the orchestrator | Kept with the orchestrator's own line (`knowledge_search or create_null()`) as the contract; constructing the real orchestrator needs a workspace and a handler the fake stands in for. Noted as a WP6 test to write when the orchestrator gains a construction fixture. |
+| P3-1 | Research modes and depth as literals; the bot's env config; test-local imports | Fixed: `experience.research_modes` and `.research_depth` in the config; the two test-local imports moved to the top. The bot reads `KAPSO_CONFIG_PATH` outside `src/kapso` and stays as it is. |
+| P3-2 | The CLI epilog and the configuration page name the old learn forms; manual tests call removed APIs | Fixed: the epilog's learn line and the page's command; the five manual scripts on the retired verbs are gone and the drift test scans `tests/manual`. |
+| P3-3 | The record-inspection snippet crashes for the hosted gate | Fixed: the snippet prints `head` as it is and says what it holds per kind. |
+
+#### Claude Code
+
+| # | Finding | Answer |
+|---|---|---|
+| H1 | A bank at a tag is served `main` | As Codex P1-2. |
+| H2 | Any directory beside the run shadows an index name | Fixed: a bare name is never a path (a decision); the forms table and the error wording follow. |
+| H3 | A resume or a reply from another directory re-resolves a path source | As Codex P2-4. |
+| M1 | An unqualified `bank_get_card` goes to a holder that cannot serve the name | Fixed: the first loaded bank that can serve the name under its scope; when none can, the first holder's refusal says why. |
+| M2 | An index-only or hosted-only host session gets no intro | As Codex P2-12. |
+| M3 | The loaded hosted settings never reach the gate | As Codex P2-5. |
+| M4 | The exam grades availability at scope `all`; the intro is the retired text; `behavior.py` untouched | As Codex P2-2, both call sites. |
+| M5 | The judge is told to look for a "Knowledge bank brief" | Fixed: the judge's prompt names the "Experience (measured before)" section and the bank tools. |
+| M6 | The evidence check reads the bundle path directly | Fixed: through the store's resolver. |
+| M7 | The count a load prints is not the count served | The handle's `cards` is what the source holds (a bank's card files at the head); the intro says what the scope serves. The reference says so; the label stays. |
+| L1 | `kapso watch` does not show the sources | Docs corrected: the status file carries them and `--json` prints it; the rendered header is WP6's. |
+| L2 | `add.mdx` claims a doctor row this package removed | Docs corrected: the gate is an experience source, not a doctor row. |
+| L3 | A test asserts against an attribute that does not exist | Fixed: the judge's agent config is asserted to mount no server. |
+| L4 | Two research knobs became module literals | As Codex P3-1. |
+| L5 | `build_requirements` keeps a dead `bank_home` | Fixed: dropped from the build verb and the union. |
+| L6 | `record` is rebound inside `build()` | Fixed: `index_record`. |
+| L7 | `or gate == "kg"` unreachable; the staging survives a SIGTERM; a removal needs the stores; the detach fixture's shape; drift patterns missing | Fixed: the branch, a SIGTERM handler that exits through the registration, the fixture's `kind` and provenance, the patterns (`KAPSO_BANK_HEAD`, `KAPSO_TASK_DATASET`, `kapso-mcp --gates`). A removal needs the stores by design: the namespace is cleared, not abandoned. |
+| Q | Are the behaviour fixtures re-recorded or retired? | Retired until WP8 ports the RelBench harness and re-records them; they stay exempt from the drift test (a decision). |
+
+## Proof run
+
+**The learn, on the development box, 2026-10-25 15:44 to 17:48 UTC.**
+The campaign is WP2's first fresh-machine build of the trading example
+(`wp2-claude`, Sharpe 1.9336, one experiment), its record lifted by hand
+from schema 3 to 4 (a finding below); the config a copy with every home
+under a scratch directory (the bank, the trajectory store, the mining,
+exam and update run roots), Claude on the shared token (Fable weekly 0.69
+at launch), the Codex workers on the ChatGPT login. The command was
+`kapso learn <campaign> --harness examples/harnesses/trading --config
+<copy>`, 123.8 minutes end to end, exit 0.
+
+| phase | what the record shows |
+|---|---|
+| harvest, 15:44 | the bundle in the store with its five sessions' streams; no `.claude`, `.agents`, `.codex` or `.claude_mcp` in it (change 11) |
+| mine, 15:44 to 16:18 | the lead's first turn refused by the model's safeguards (a finding below); the repair round mined the whole bundle in 33 minutes: `index`, `strategy`, `operations`, `artifacts` and `it-1/{index,flow-1}`, 156 references verified by its own check. The run's directory under `learning.mining.run_root` holds `.kapso/sessions/lead/{harness.json,stream.jsonl}` (module `learning`, host `claude_code`) and nothing else: the staging went with the session |
+| exam, 16:19 to 16:26 | the hindcast at the bank's founding head `79e93044`: 21 discoveries, every one MISS-NOVEL, the four scores null (an empty bank; the campaign served nothing, so no exposure ladder) |
+| lesson, 16:27 to 17:48 | the lead on Claude Code; six `codex exec` workers (`gpt-5.6-sol`, xhigh) through the generated `run-role.sh`, whose pipe reads the role prompt, then `harness-guidance.md` (the trading harness's learning guidance, "Domain guidance (harness trading 0.1.0)"), then the assignment; the assessor and a repair worker; then the frame's validation found six violations and the lead repaired them in place (three cards' second events re-ledgered from `confirm` to `exercise`, their reliability rederived 0.85 to 0.60). Fifteen cards created, six insights and nine procedures, every one `scope: [harness:trading]`, every one candidate at 0.60. The run's directory after: `.kapso/sessions/lead/harness.json` and `.kapso/sessions/workers/harness.json` (module `learning`, hosts `claude_code` and `codex`), the crew's own `.claude/agents/critic.md`, no `.agents` or `.codex` |
+| push, 17:48 | `Bank: 79e930443 -> a9ddad3d3 (admitted: True)`, `pushed: False` (no remote), `lesson banked locally · to share: kapso experience share <url>` |
+
+**The fresh machine, `kapso-fresh-wp3`** (`e2-standard-4`, Ubuntu 24.04,
+created 16:47 UTC, the wheel as a `uv` tool, Claude on the shared token,
+Codex on the API key), the trading harness and the trading and churn
+examples copied over with their data generated on the machine, the
+examples' requirements on the system `python3`. `kapso harness check
+../harnesses/trading` printed `check ok (7 skills, 2 agents, 2 servers, 6
+hooks)`; `kapso doctor build` passed its six checks; `kapso experience
+add leeroopedia` with no `.env` refused with `leeroopedia needs
+LEEROOPEDIA_API_KEY: put LEEROOPEDIA_API_KEY=kpsk_... in .env beside the
+run (sign up at https://app.leeroopedia.com/dashboard); nothing to
+install` (exit 1); `kapso experience list` printed the empty state, `no
+experience yet: kapso experience add mine creates your bank (a first
+learn() does too); ...`. The learned bank was carried over as a bare
+tarball into `~/.kapso/bank.git` with no remote, and `list` then printed
+`mine  /home/ubuntu/.kapso/bank.git  head a9ddad3d302d  15 cards  no
+remote (kapso experience share <url>)` over `leeroopedia  hosted  no key:
+put LEEROOPEDIA_API_KEY=... in .env`.
+
+**The first launches died at construction.** The trading build on the
+machine (17:49) and the hosted-gate build on the development box (17:50)
+both printed their banner (`Harness: trading 0.1.0 (83b6c0b60d6a) ...`,
+`Experience: mine at a9ddad3d302d, 15 cards, measured by you`) and the
+detached session's pid, then died in a second: `TypeError:
+SearchStrategyFactory.create() got an unexpected keyword argument
+'experience'`. The orchestrator hands the factory the loaded sources
+(change 6) and the factory had never been given the parameter; the gate
+had not caught it because the facade tests fake the orchestrator and the
+harness tests fake its strategy creation, the gap the findings below
+record for WP6. Fixed in `13fcb610`: the factory takes `experience` as it
+takes `harness`, and a test drives the real orchestrator's strategy
+creation against the factory's own signature. `kapso watch` on the dead
+campaign said `no status yet at campaign — the campaign is still starting
+(seeding its workspace), or nothing runs there` with the traceback in
+the log only (WP6's finding from WP2 again). The wheel was rebuilt from
+the fix (sha256 `cdeb16e9…`), reinstalled on the machine at 17:55, and
+both builds relaunched at 17:56.
+
+**The second launch on the machine died at ideation**, by design and for
+a reason of its own: the harness setup session found the market-data
+server failing to start (`mcp` 2.3.0 on the machine, the example's
+install line unpinned, the harness's servers written on the 1.x
+`FastMCP` import), patched the two server files in the harness directory
+to import either way, prepared `market-data`, and the ideation staging
+refused the campaign: `the harness changed since launch: trading 0.1.0
+(83b6c0b60d6a) recorded, trading now hashes fb161459743f; restore the
+recorded content ... or start a new campaign with a new --output`. WP2's
+proof had met the same drift and its setup session had installed `mcp<2`
+instead of editing the harness. The example's install line now names the
+bound (`19ec4ae3`); that a session can edit the harness directory at all
+is a finding below. The harness was restored from the fixture, `mcp`
+pinned at 1.30.0, and the build launched a third time at 18:06.
+
+**The third launch served, and its first attempt was rejected by the
+integrity check.** The harness setup prepared `market-data` through the
+server; ideation read the bank (`bank_index` listing 15 cards, then
+`bank_get_card` on five of them, in the pull log with the source and its
+head) and wrote a plan citing the cards by name
+(`[card:sealed-holdout-redirects-uncertain-score-gains]`,
+`[card:robustness-evidence-justifies-transfer]`); the implementer scored
+a Sharpe of 2.1934 out of sample and reported it; the engine rejected the
+attempt: `Provided evaluation integrity check failed (changed:
+result.json)`. The proof's fixture had carried the development box's
+`evaluation/result.json`, written by a run of the evaluator weeks
+before, into the provided suite, where it was protected with the rest;
+the evaluator's own write then counted as a change. The trap is any
+user's who runs their evaluator once before building: fixed in
+`dcb0bdc0`, the launch refuses the leftover by name (a decision in
+`DECISIONS.md`; the contract's own output path is a finding for WP4).
+That build was stopped, the stale file removed, and the build launched a
+fourth time at 18:22 on the wheel from `19ec4ae3`, forty minutes and two
+experiments; the churn build after it ran on the wheel from `dcb0bdc0`.
+
+**The trading build on the machine, 18:22 to 19:07 UTC**, `kapso build
+--harness ../harnesses/trading --experience mine`, forty minutes and two
+experiments, on the wheel from `19ec4ae3`. The launch banner:
+`Harness: trading 0.1.0 (83b6c0b60d6a) ...`, `Experience: mine at
+a9ddad3d302d, 15 cards, measured by you`; after staging, `Experience: 15
+cards measured by you, under the trading harness, from your bank at head
+a9ddad3d302d, pinned for this campaign` and `Gates mounted: ['research',
+'experiment_history', 'repo_memory', 'bank']`. Every item of the proof
+list holds in the archive (`scripts/redesign/runs/wp3/campaign1.tgz`,
+read by `check_wp3.py`):
+
+| | |
+|---|---|
+| the intro | `.kapso/serving/intro.md`: the heading, `You are served: - 15 cards measured by you, under the trading harness, from your bank at head a9ddad3d302d, pinned for this campaign`, then the three bank tools in reading order; the same text in the prompts of the ideation, lens-planning and implementation sessions, in its slot after the inbox section (seven of Claude Code's own transcripts of the machine carry it) |
+| the pull log | three reads, each stamped with the task's coordinate `{"harness": "trading"}` and `"sources": {"mine": "a9ddad3d30…"}`: `bank_index` listing 15 at 18:26, `bank_get_card` of five named cards at 18:26 (ideation, iteration 1: its plan cites `[card:sealed-holdout-redirects-uncertain-score-gains]` and `[card:robustness-evidence-justifies-transfer]`), `bank_index` at 18:56 (iteration 2) |
+| the serving record | `task: {harness: trading}`, one source with the six fields and `cards: 15`; the clone at `.kapso/serving/banks/mine-3fd30542` |
+| the records | `launch.json`, `status.json`, `run_state.json`, `solution.json` carry one `experience` list, `[{reference: mine, kind: bank, resolved: /home/ubuntu/.kapso/bank.git, head: a9ddad3d302d…, provenance: measured by you, scope: harness}]`, and one harness identity |
+| `kapso experience list` | `mine  /home/ubuntu/.kapso/bank.git  head a9ddad3d302d  15 cards  no remote (kapso experience share <url>)` |
+| a second process | `Solution.open("campaign").experience` → `[ExperienceRef(reference='mine', kind='bank', resolved='/home/ubuntu/.kapso/bank.git', head='a9ddad3d302d…', provenance='measured by you', scope='harness')]` |
+| the sessions | nine with `harness.json` and a stream: `harness_setup` (the three market-data tools), `ideation/iter1` (`bank_index`, `bank_get_card`, `get_top_experiments`), `ideation/iter2` (`bank_index`), two implementations, two verifications, two feedbacks |
+
+What the campaign delivered: nothing, by the harness's rule and the
+budget's end. Iteration 1 (18:25 to 18:56) scored on its first
+evaluation, and the verification session voided it: a development script
+of the implementer's had read the private 2024 bars (self-disclosed,
+removed in a later commit, but the per-instrument figures it derived had
+reached the campaign's shared profile), so the attempt was `void` on the
+rule with the measurement itself sound, its score cleared, `1 rejected`.
+Iteration 2 (18:56 to 19:07, launched at 84% of the budget) scored and
+its verification was cut by the budget, so it stayed unverified and
+undeliverable. `budget_exhausted`, two experiments, $13.17. At the
+budget's end the judge's retry failed as WP2's had, the finding below.
+
+**The churn build on the machine, 19:09 to 19:24 UTC**, on the wheel
+from `dcb0bdc0`, with the refusal demonstrated first: a `result.json`
+written into the churn example's `evaluation/` and `kapso build
+--experience mine` launched against it ended before any session with
+`EvaluationIntegrityError: /home/ubuntu/fixture/examples/churn-first-build/evaluation/result.json
+is the evaluator's own output, left by an earlier run; it would be
+protected as part of the suite and the first evaluation would change
+it, rejecting every candidate. Remove it and launch again` (exit 1, the
+traceback above it as every refused launch prints). The file removed,
+the build ran with no harness, fifteen minutes and one experiment. The
+load line said `Experience: mine at a9ddad3d302d, 15 cards, measured by
+you` (the bank's size) and the serving line `Experience: 0 cards
+measured by you, under no harness, from your bank at head
+a9ddad3d302d, pinned for this campaign` (what the task's coordinate
+admits); the intro the same; the pull log one `bank_index` with
+`"task": {"harness": "none"}`, `"sources": {"mine": "a9ddad3d30…"}`,
+`"listed_count": 0`. The index rendered on the machine by the gate's own
+code under no harness: `mine` lists 0, `mine:all` lists all 15 with
+`source: mine`. The campaign scored **0.846** on its one experiment
+(target 0.85, `max_iterations`, $2.81), with the judge's feedback
+substantive this time; the four records carry the same `experience`
+list as the trading build's, and `Solution.open` in a second process
+returned the score and the `ExperienceRef`. Archive:
+`scripts/redesign/runs/wp3/campaign2.tgz`.
+
+The machine was deleted at 19:27 UTC after 2.64 hours ($0.35); the run's local
+record (`scripts/redesign/runs/wp3/`) holds the create and install logs,
+both wheels' hashes, thirty-six run logs and the three archives.
+
+**The hosted gate, on the development box, 17:56 to 18:16 UTC.** The
+churn example copied to a scratch directory with a `.env` holding the
+Leeroopedia key; `kapso experience add leeroopedia` printed
+`LEEROOPEDIA_API_KEY present and the gate answers as leeroopedia;
+--experience leeroopedia mounts it in ideation and implementation` (the
+`initialize` probe, change 14 as reviewed); then `kapso build
+--experience leeroopedia` with no harness, fifteen minutes and one
+experiment. The launch banner read `Experience: leeroopedia (hosted),
+reported by others`; the log's gate lines `ideation_gates: ['research',
+'experiment_history', 'repo_memory', 'leeroopedia']` and
+`implementation_gates: ['research', 'repo_memory', 'inbox',
+'leeroopedia']`, the bundled gates from the config and the hosted one
+from the loaded source; the ideation tools list carried the server's
+eight tools (`mcp__leeroopedia__search_knowledge` ...
+`mcp__leeroopedia__get_page`) beside the bundled gates'; the intro
+`You are served: - Leeroopedia's pages, reported by others`, with no
+bank-tool text since no bank was loaded, and the ideation session's
+transcript (Claude Code's own record of the prompt) shows it in its slot,
+after the inbox section and before `## Your Process`, as the
+implementation session's does. The ideation session called
+`query_hyperparameter_priors` once (`Knowledge consulted: ...
+leeroopedia 1 (query_hyperparameter_priors)`, `Knowledge credits:
+leeroopedia 749 → 749 remaining`). The budget ended the campaign after
+one rejected experiment ($2.12): the judge, on the sixty-second floor,
+answered that it had no iteration to report on, the budget's-end finding
+WP2 left for WP4. The four records carry one identity, `reference:
+leeroopedia, kind: hosted, resolved: https://mcp.leeroopedia.com/mcp?token={LEEROOPEDIA_API_KEY},
+head: null, provenance: reported by others, scope: all`, the key's
+placeholder and never the key; no pull log, since no bank was served.
+Archive: `scripts/redesign/runs/wp3/hosted-campaign.tgz`.
+
+## Findings for later packages
+
+- **The mining lead's first turn can be refused by the model's
+  safeguards** (the learning crews; WP6 for the status). On the proof's
+  learn (2026-10-25 15:44 UTC, Claude Code on `claude-fable-5`) the
+  lead's first request came back as `API Error: Fable 5's safeguards
+  flagged this message … Details: [reasoning_extraction]`: the session's
+  final message was that text, the frame filed it as
+  `mined/mining-report.md`, the validator found the view missing, and the
+  one repair round (`learning.mining.repair_rounds: 1`) launched the lead
+  again, which mined the whole bundle under the repair prompt in
+  thirty-three minutes. The crew reads session streams, which carry the
+  models' own `[thinking]` lines; the classifier reads that as reasoning
+  extraction, intermittently. A refused first turn is not a mined view:
+  the frame should recognise the refusal (the adapter sees
+  `model_refusal_no_fallback`) and relaunch without spending the repair
+  round. Pre-existing; not a path this package changed.
+- **The orchestrator has no construction fixture** (WP6). The contract
+  that a build with nothing loaded builds no knowledge backend and needs
+  no embeddings key is pinned at the facade (the orchestrator receives
+  `knowledge_search=None` and its own line takes the null search); a test
+  constructing the real orchestrator without a key wants a fixture the
+  observability package can give it. The proof run showed the cost of the
+  gap: the orchestrator's call into the strategy factory carried a keyword
+  the factory lacked, every build died at construction, and no test had
+  walked that seam (the facade tests fake the orchestrator, the harness
+  tests fake its strategy creation). `13fcb610` fixed it and pinned the
+  seam (the real orchestrator's strategy creation bound against the
+  factory's own signature); the fixture that constructs the real strategy
+  is still WP6's.
+- **`kapso watch` does not render the sources or the harness** (WP6).
+  The status file carries both from the first second; the rendered
+  screen's header is the observability package's.
+- **The behaviour scenarios' fixtures carry the earlier coordinates**
+  (WP8). `benchmarks/relbench/data/learning_behavior/` was recorded with
+  `family:` scopes; under the harness coordinate those cards are not
+  eligible at the default scope, so `b4-generalization` and its kin are
+  re-recorded when the RelBench harness is ported, and stay exempt from
+  the drift test until then.
+- **A session can edit the harness directory, and the campaign dies at
+  the next staging** (WP4, the harness package; WP6 for how it shows).
+  On the proof run's fresh machine the harness setup session found the
+  market-data server failing on an `mcp` 2.x install and patched the two
+  server files under the harness's own directory, which the sessions
+  reach by path (`KAPSO_HARNESS_ROOT`, the servers' commands); the hash
+  moved and the ideation staging refused the campaign by design, after
+  the setup's minutes and dollars. The identity check is right; what is
+  missing is the rule before it: the harness directory is the author's,
+  read-only to every session (the servers staged from a copy, or a hook
+  the staging adds that denies writes under the harness root, and a line
+  of the setup session's guidance saying to fix the environment, never
+  the harness). The watch screen should also say what the log says, that
+  the harness changed, rather than `failed` alone.
+- **The example evaluators write their result into the protected
+  directory** (the examples; WP4 for the contract). `kapso_evaluation/
+  result.json` is the contract's own output path, allowed as a new runtime
+  artifact; a copy left in the caller's directory by an earlier run was
+  protected with the suite and the first evaluation changed it, rejecting
+  every candidate of the proof's third launch. Fixed in this package by
+  refusing the leftover at launch, by name and with the way out; whether
+  the contract should move the result out of the protected tree is WP4's
+  question.
+- **The judge's retry runs in a fresh session with the nudge alone**
+  (WP4, with the budget's end). The feedback generator's "one in-session
+  nudge" sends `RETRY_PROMPT` through `agent.generate_code`, which the
+  Claude Code adapter runs as a new process: the judge answers that it is
+  "the first turn of this conversation" with "no iteration, attempt, or
+  rubric" to report on, and the iteration's verdict is lost (both proof
+  builds, at the budget's end, after the first call was cut by the
+  clamp). A retry has to carry the whole prompt again, or resume the
+  session; and what the judge may do in the budget's last minute is
+  WP4's question with the rest of the budget's end.
+- **A solution record of an earlier schema cannot be learned from**
+  (by design, pre-release). The proof's campaign was built by WP2's code
+  (record schema 3); its record was lifted to schema 4 by hand before the
+  learn. Once released, a schema change needs the migration the master
+  reserves for then.

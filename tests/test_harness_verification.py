@@ -72,7 +72,7 @@ class FakeJudge:
 
     def generate(self, **kwargs):
         self.seen.append(kwargs)
-        return SimpleNamespace(feedback="a solid attempt", evaluation_valid=True, score=0.9, stop=False, duration_seconds=1.0, cost_usd=0.0)
+        return SimpleNamespace(feedback="a solid attempt", evaluation_valid=True, score=0.9, stop=False, duration_seconds=1.0, cost_usd=0.0, cards_load_bearing=[])
 
 
 class Workspace:

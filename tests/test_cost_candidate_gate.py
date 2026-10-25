@@ -49,7 +49,7 @@ class FeedbackProvider:
         self.end_facts.append(kwargs["session_end_facts"])
         return SimpleNamespace(
             feedback="Evaluation succeeded", evaluation_valid=True,
-            score=0.8, stop=False, duration_seconds=None,
+            score=0.8, stop=False, duration_seconds=None, cards_load_bearing=[],
         )
 
 

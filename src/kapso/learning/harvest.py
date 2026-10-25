@@ -9,7 +9,7 @@
 # living documents) and stays the authority on what its shared space holds.
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
 
@@ -30,7 +30,7 @@ def harvest_campaign(
     living_documents: Optional[Dict[str, str]] = None,
     work_dir_exclude: tuple = (),
     kapso_commit: Optional[str] = None,
-    bank_head: Optional[str] = None,
+    experience: Optional[List[Dict[str, Any]]] = None,
     upload: Optional[bool] = None,
 ) -> str:
     """Harvest a finished campaign into the store under the strict contract.
@@ -62,6 +62,6 @@ def harvest_campaign(
         work_dir_exclude=work_dir_exclude,
         contract="strict",
         kapso_commit=kapso_commit,
-        bank_head=bank_head,
+        experience=experience,
         upload=upload,
     )

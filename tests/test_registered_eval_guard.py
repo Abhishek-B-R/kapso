@@ -84,7 +84,7 @@ def test_a_lane_recovers_only_its_own_sessions_archive(tmp_path, monkeypatch):
     stub.__dict__.update(
         expansion_lane_env=None, workspace=None, llm=None,
         registered_evaluation_manifest=None, implementation_gates=[],
-        gate_failure_policy="skip", bank_serving=None, kg_index_path=None,
+        gate_failure_policy="skip", bank_serving=None, kg_index_path=None, hosted=None,
         implementation_cli="claude_code", implementation_model="m",
         implementation_fallback_model=None, implementation_web=False,
         _claude_auth_settings={}, env_strip=[], env_defaults={},

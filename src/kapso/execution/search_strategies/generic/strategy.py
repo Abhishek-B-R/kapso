@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from pathlib import Path
-from kapso.gated_mcp.presets import knowledge_tools_block, user_setup_gaps
+from kapso.gated_mcp.presets import HOSTED_GATE, knowledge_tools_block, user_setup_gaps
 from kapso.execution.search_strategies.base import (
     SearchStrategy,
     SearchStrategyConfig,
@@ -220,8 +220,8 @@ class GenericSearch(SearchStrategy):
           Under `best`, before any validly evaluated node exists, the latest
           committed non-error, non-tampered node is used so in-progress work
           continues in place; `main` only when no committed work exists.
-        - ideation_gates: MCP gates for ideation (default: ["research", "experiment_history", "repo_memory", "leeroopedia"])
-        - implementation_gates: MCP gates for implementation (default: ["research", "repo_memory", "leeroopedia"])
+        - ideation_gates: MCP gates for ideation (default: ["research", "experiment_history", "repo_memory"])
+        - implementation_gates: MCP gates for implementation (default: ["research", "repo_memory"])
         - implementation_web: Live-web access in implementation sessions —
           claude WebSearch/WebFetch and codex --search (default: True).
           Independent of the ideation `web_search` knob.
@@ -284,8 +284,14 @@ class GenericSearch(SearchStrategy):
         # into ideation, implementation, and lens-planner sessions — never
         # the feedback judge.
         self.bank_serving = self.params.get("bank_serving")
-        # Knowledge-store index for the wiki-search gates (learn_knowledge
-        # / index_kg write it; the facade threads it per campaign).
+        # The experience intro's path (wp3-experience.md): what the
+        # campaign is served, compiled from the loaded sources and staged
+        # into the serving directory AFTER construction (a seeded
+        # workspace must be empty then), so it is read when a prompt is
+        # built, never here. None = nothing loaded.
+        self.experience_intro_path = self.params.get("experience_intro_path")
+        # The loaded index's record for the wiki-search gates (an ingest
+        # writes it; the facade threads it per campaign).
         self.kg_index_path = self.params.get("kg_index_path")
         # Durable-archive recovery root for the registered evaluation (glob
         # of run archive parents, e.g. "tmp/relbench/*/runs"). None disables
@@ -350,8 +356,15 @@ class GenericSearch(SearchStrategy):
             self.ideation_ensemble,
             self.ideation_selector,
         )
-        # Include experiment_history, repo_memory, and leeroopedia gates by default for ideation
-        self.ideation_gates = self.params.get("ideation_gates", ["research", "experiment_history", "repo_memory", "leeroopedia"])
+        # Include experiment_history and repo_memory by default for ideation.
+        # The hosted gate is an experience source: loading it mounts it
+        # (below), and a config list that names it does not — what is
+        # loaded is what is served, and the records name it.
+        self.hosted = self.params.get("hosted")
+        self.ideation_gates = [
+            gate for gate in self.params.get("ideation_gates", ["research", "experiment_history", "repo_memory"])
+            if gate != HOSTED_GATE
+        ]
         
         # Config params for implementation
         self.implementation_model = self.params.get(
@@ -394,7 +407,10 @@ class GenericSearch(SearchStrategy):
             )
         self.implementation_timeout = self.params.get("implementation_timeout")
         self.gate_failure_policy = self.params.get("gate_failure_policy", "warn")
-        self.implementation_gates = self.params.get("implementation_gates", ["research", "repo_memory", "leeroopedia"])
+        self.implementation_gates = [
+            gate for gate in self.params.get("implementation_gates", ["research", "repo_memory"])
+            if gate != HOSTED_GATE
+        ]
         # The campaign inbox (docs/research/evolve-hub-design.md v4): with
         # it on, implementation sessions get the request_from_user gate and
         # a session that asks is stopped; the campaign pauses until the
@@ -416,14 +432,19 @@ class GenericSearch(SearchStrategy):
             for gates in (self.ideation_gates, self.implementation_gates):
                 if "bank" not in gates:
                     gates.append("bank")
-        # Same law for the knowledge store: when a KG index is staged the
-        # wiki-search gates must be mounted, or learn_knowledge writes
-        # pages no campaign can read (E2E review 2026-08-24, blocker 2).
+        # Same law for the knowledge store: when an index is loaded the
+        # wiki-search gates must be mounted, or an ingest writes pages
+        # no campaign can read (E2E review 2026-08-24, blocker 2).
         if self.params.get("kg_index_path"):
             for gates in (self.ideation_gates, self.implementation_gates):
                 for gate in ("idea", "code"):
                     if gate not in gates:
                         gates.append(gate)
+        # And for the hosted source: loading it is what mounts its server
+        # (docs/plans/redesign/wp3-experience.md); no config list names it.
+        if self.hosted:
+            for gates in (self.ideation_gates, self.implementation_gates):
+                gates.append(HOSTED_GATE)
         self.parent_policy = parent_policy
         
         # Experiment history path (set by orchestrator)
@@ -1058,6 +1079,7 @@ class GenericSearch(SearchStrategy):
             gate_failure_policy=self.gate_failure_policy,
             bank_serving=self.bank_serving,
             kg_index_path=self.kg_index_path,
+            hosted=self.hosted,
             ideation_web_search=self.ideation_web_search,
             ideation_ensemble=self.ideation_ensemble,
             idea_generation_model=self.idea_generation_model,
@@ -1115,6 +1137,7 @@ class GenericSearch(SearchStrategy):
             get_best_experiment=self.get_best_experiment,
             run_planner_session=self._run_lens_planner_session,
             domain_guidance=self.stage_harness_for("ideation", ideation_dir, "lens_planner", "claude_code").guidance,
+            experience_intro=self.experience_intro(),
         )
 
     def _generate_solution_ensemble(
@@ -1200,7 +1223,17 @@ class GenericSearch(SearchStrategy):
             inbox_ideation=self._render_inbox_ideation(),
             knowledge_tools=knowledge_tools_block("ideation", allowed_tools),
             domain_guidance=domain_guidance,
+            experience_intro=self.experience_intro(),
         )
+
+    def experience_intro(self) -> str:
+        """The intro the campaign's sessions read — what it is served,
+        measured before — from the serving directory the launcher staged;
+        "" when nothing is loaded. Read at prompt time: a path with no file
+        behind it is a staging failure, and raises."""
+        if not self.experience_intro_path:
+            return ""
+        return Path(self.experience_intro_path).read_text()
 
     def _render_inbox_ideation(self) -> str:
         """The inbox block for ideation: the rule against designing around
@@ -1267,6 +1300,7 @@ class GenericSearch(SearchStrategy):
             gate_failure_policy=self.gate_failure_policy,
             bank_serving=self.bank_serving,
             kg_index_path=self.kg_index_path,
+            hosted=self.hosted,
             implementation_cli=self.implementation_cli,
             implementation_model=self.implementation_model,
             implementation_fallback_model=self.implementation_fallback_model,
@@ -1337,6 +1371,7 @@ class GenericSearch(SearchStrategy):
             inbox_section=inbox_section,
             knowledge_tools=knowledge_tools_block("implementation", allowed_tools),
             domain_guidance=domain_guidance,
+            experience_intro=self.experience_intro(),
         )
 
     def _manifest_of_record(self, node: SearchNode) -> Optional[Dict[str, Any]]:

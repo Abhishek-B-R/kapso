@@ -144,7 +144,7 @@ class RepoIngestor(Ingestor):
                 - github_org: Optional GitHub organization to push workflow repos to
         """
         # Keys not given come from the packaged config, the single source of
-        # these defaults (learn_knowledge() passes the live config's block).
+        # these defaults (add_experience() passes the live config's block).
         super().__init__({**learner_defaults("ingestor"), **(params or {})})
         self._timeout = self.params["timeout"]
         self._effort = self.params["effort"]

@@ -110,6 +110,20 @@ def test_a_manifest_without_an_identity_yields_no_manifest(tmp_path):
     ]
 
 
+def test_the_no_harness_coordinate_is_a_reserved_name(tmp_path):
+    # `harness:none` is the coordinate of a campaign that runs with no
+    # harness (the experience package's scope rule); a harness may not
+    # take the name, or its lessons would share a bucket with every
+    # harness-less campaign's.
+    manifest, findings = inspect_manifest(write_manifest(
+        tmp_path / "x", "schema_version: 1\nname: none\nversion: 0.1.0\ndescription: d\n",
+    ))
+    assert manifest is None
+    assert [f.message for f in findings] == [
+        "name 'none' is reserved: it is the coordinate of a campaign that runs with no harness",
+    ]
+
+
 def test_a_missing_manifest_names_the_directory(tmp_path):
     (tmp_path / "x").mkdir()
     with pytest.raises(ManifestError, match="no harness.yaml"):

@@ -1,23 +1,21 @@
 ---
 title: "Kapso CLI reference: every command, flag and default"
 sidebarTitle: "CLI"
-description: "The ten kapso commands and their nineteen subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
-keywords: ["kapso CLI", "kapso build", "kapso harness", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
+description: "The eight kapso commands and their subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
+keywords: ["kapso CLI", "kapso build", "kapso harness", "kapso experience", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
 ---
 
-Kapso installs the `kapso` executable with ten commands, and `kapso-mcp`, the MCP server that serves Kapso's knowledge and experience tools to the coding-agent session you work in (see [below](#kapso-mcp)).
+Kapso installs the `kapso` executable with eight commands, and `kapso-mcp`, the MCP server that serves Kapso's experience to the coding-agent session you work in (see [below](#kapso-mcp)).
 
 | Command | What it does |
 |---------|--------------|
 | [`kapso build`](#kapso-build) | Build software that meets a brief, by experiment |
 | [`kapso harness`](#kapso-harness) | Author, check and fetch harnesses: the domain layer a build loads |
-| [`kapso research`](#kapso-research) | Deep web research for an objective |
-| [`kapso learn`](#kapso-learn) | Trajectory learning: import, mine, grade, update, codify |
+| [`kapso experience`](#kapso-experience) | What a build is served that was measured before: your bank, the hosted gate, ingested corpora |
+| [`kapso learn`](#kapso-learn) | Mine a finished campaign into your bank; the learning system's own tools under `dev` |
 | [`kapso deploy`](#kapso-deploy) | Deploy a solution as running software |
-| [`kapso index_kg`](#kapso-index-kg) | Index a knowledge graph from a wiki or JSON |
 | [`kapso watch`](#kapso-watch) | Watch a running operation |
 | [`kapso inbox`](#kapso-inbox) | What a paused campaign is waiting on you for, and the reply that resumes it |
-| [`kapso bank`](#kapso-bank) | Manage the lesson bank's share remote |
 | [`kapso doctor`](#kapso-doctor) | Check this machine can run what your config asks for |
 
 ## Global options
@@ -46,6 +44,7 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `--data` | Directory holding your data; copied to `kapso_datasets/` | — |
 | `--repo` | The starting repository, a local path (copied) or a GitHub URL (cloned) | — |
 | `--harness` | The [harness](/docs/harnesses) to build with: a bundled name, a directory, or a git reference. Wins over the brief's `Harness` line; checked before anything starts, and an unmet need of the build's modules refuses with its fix | the brief's `Harness` line, else none |
+| `--experience` | Comma-separated [experience](/docs/experience) to serve: `mine`, `mine:all`, `leeroopedia`, a bank path or git reference, an index name. Wins over the brief's `Experience` line; each source is loaded before anything starts, and one that does not exist refuses with the `kapso experience add` line that makes it | the brief's `Experience` line, else nothing served |
 | `-o`, `--output` | The campaign directory, the solution's trace. Empty for a fresh build | a temporary directory |
 | `--budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
 | `--budget-experiments` | Maximum experiments this call may run. A resume keeps the launch's cap | `10` |
@@ -57,13 +56,13 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `-m`, `--mode` | Config mode: `GENERIC` or `MINIMAL` | from config (`default_mode`) |
 | `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code`, `vertex_claude_code`. In mode `GENERIC` the implementation and verification sessions run on the strategy parameter `implementation_cli` (`claude_code` unless a config sets it); this flag does not change that | from config |
 | `--config` | Config path | the packaged `config.yaml` |
-| `--kg-index` | Path to a `.index` file for knowledge search | — |
 
-A budget flag wins over the brief's `Budget` line; on a resume the launch record fills what is still unset.
+A budget flag wins over the brief's `Budget` line; on a resume the launch record fills what is still unset, the experience included: a bare resume is served the sources the launch pinned, and a resume that names a different list is refused by name.
 
 ```bash
 kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
 kapso build --harness ./harnesses/trading --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+kapso build --experience mine,leeroopedia --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
 kapso build --goal "Build a web scraper for news articles" --output ./scraper
 kapso build --goal-file problem.txt --budget-experiments 20 --output ./campaign
 kapso build --output ./campaign --resume --detach
@@ -118,28 +117,50 @@ kapso harness remove acme/harnesses@v3#trading
 kapso harness list
 ```
 
-## kapso research
+## kapso experience
 
-Runs deep web research and writes structured findings.
+What a build is served that was measured before: your own bank (the one `learn()` writes), the hosted Leeroopedia gate, a bank you read, a corpus ingested under a name. A build loads sources at the call (`--experience mine,leeroopedia`, the brief's `Experience` line, `load_experience()`); this verb makes what must exist first, lists what exists, and shares your bank.
 
-| Flag | What it does | Default |
-|------|--------------|---------|
-| `--objective` | Research objective | — |
-| `--objective-file` | File containing the objective. Mutually exclusive with `--objective` | — |
-| `--mode` | `idea`, `implementation` or `study`. Repeat the flag for more than one | `idea` and `implementation` |
-| `--depth` | `light` or `deep` | `deep` |
-| `-o`, `--output` | Output file for results, as JSON | — |
+| Subcommand | What it does |
+|------------|--------------|
+| `add` | `add mine` creates your bank, empty; `add leeroopedia` checks the gate's key is in `.env`; `add --repo <url> --name <n>` ingests a repository into the index `<n>`; `add --research "<question>" --name <n>` researches the web and ingests the findings. Exactly one of the three; an index name that exists is refused |
+| `list` | `mine` with its head, card count and remote; the hosted gate's key state; the banks you read; the indexes with their id, page count and origin |
+| `share` | Attach a git remote to your bank and push it; `learn()` pushes there from then on |
+| `update` | The network step loading never takes: `mine` takes its remote's main, a bank you read at a moving reference is fetched again, a tag or a commit never moves; every bank when none is named. A running campaign keeps the pin it launched with |
+| `remove` | Delete a bank you read (its clone and record) or an index (its backend namespace, its pages and its record). Your bank, the hosted gate and a bank by path are not the store's to remove |
+
+Every subcommand takes `--config` for the config whose `experience` block names the homes.
 
 ```bash
-kapso research --objective "How to optimize transformers?"
-kapso research --objective "LLM fine-tuning" --mode idea
-kapso research --objective "RAG implementation" --mode idea --mode implementation
-kapso research --objective-file topic.txt --mode study --depth deep
+kapso experience add mine
+kapso experience add leeroopedia
+kapso experience add --repo https://github.com/org/x --name org-x
+kapso experience add --research "QLoRA memory optimizations" --name qlora
+kapso experience list
+kapso experience share https://github.com/acme/kapso-bank.git
+kapso experience update
+kapso experience update acme/kapso-bank
+kapso experience remove org-x
 ```
 
 ## kapso learn
 
-Trajectory learning. Ten subcommands cover importing finished campaigns, mining them, grading a bank, and folding results back in.
+Learn from a finished campaign into your bank: import, mine, exam, lesson, what [`learn()`](/docs/reference/kapso-api#learn) does.
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `campaign` | The campaign directory (the solution's trace) or a trajectory id in the store. **Required** | — |
+| `--harness` | The harness the campaign ran under (a name, a path or a git reference), when its launch record names none | the record's |
+| `--config` | Config path | packaged `config.yaml` |
+
+```bash
+kapso learn ./campaign
+kapso learn ./campaign --harness ./harness
+```
+
+### kapso learn dev
+
+The learning system's own tools, the development regime: nine subcommands cover importing archived campaigns, mining them, grading a bank, and folding results back in. Every one takes `--config` to point at a config other than the packaged `config.yaml`.
 
 | Subcommand | What it does |
 |------------|--------------|
@@ -147,16 +168,13 @@ Trajectory learning. Ten subcommands cover importing finished campaigns, mining 
 | `mine` | Mine store-resident trajectories into their derived `mined/` views |
 | `grade` | Grade a bank against held-out trajectories, or one arriving trajectory |
 | `update` | Run the update crew: fold mined and graded trajectories into the bank |
-| `init-bank` | Create the bank home: a bare repo plus the founding skeleton |
 | `develop` | Run one learner version through the development regime |
 | `codify` | Run one codify request, which is a build minus ideation, against the bank |
 | `ingest` | Operating-regime chain for one campaign: mine, exam, lesson |
 | `gauntlet` | Run the duplicate and stability traps against a completed development run |
 | `behave` | Run behavior scenarios as semantic production tests |
 
-Every subcommand takes `--config` to point at a config other than the packaged `config.yaml`.
-
-### kapso learn import
+### kapso learn dev import
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -166,11 +184,11 @@ Every subcommand takes `--config` to point at a config other than the packaged `
 | `--no-upload` | Skip remote upload even when one is configured | no |
 
 ```bash
-kapso learn import --subset docs/plans/learning/d1-subset.yaml
-kapso learn import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.tgz
+kapso learn dev import --subset docs/plans/learning/d1-subset.yaml
+kapso learn dev import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.tgz
 ```
 
-### kapso learn mine
+### kapso learn dev mine
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -179,10 +197,10 @@ kapso learn import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.t
 | `--force` | Regenerate even when already mined | no |
 
 ```bash
-kapso learn mine --all
+kapso learn dev mine --all
 ```
 
-### kapso learn grade
+### kapso learn dev grade
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -193,10 +211,10 @@ kapso learn mine --all
 | `--trajectory` | One trajectory id, for exam mode | no |
 
 ```bash
-kapso learn grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
+kapso learn dev grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
 ```
 
-### kapso learn update
+### kapso learn dev update
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -205,18 +223,10 @@ kapso learn grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
 | `--split` | Split manifest. On development runs this asserts batch and held-out are disjoint | no |
 
 ```bash
-kapso learn update --learner-version v3 --batch-manifest batch.yaml
+kapso learn dev update --learner-version v3 --batch-manifest batch.yaml
 ```
 
-### kapso learn init-bank
-
-Creates the bank home. Takes only `--config`.
-
-```bash
-kapso learn init-bank
-```
-
-### kapso learn develop
+### kapso learn dev develop
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -224,20 +234,20 @@ kapso learn init-bank
 | `--learner-version` | Crew version identifier | **yes** |
 
 ```bash
-kapso learn develop --split splits/d1.yaml --learner-version v3
+kapso learn dev develop --split splits/d1.yaml --learner-version v3
 ```
 
-### kapso learn codify
+### kapso learn dev codify
 
 | Flag | What it does | Required |
 |------|--------------|----------|
 | `--request` | Request YAML naming the card, fixture, materials and gates | **yes** |
 
 ```bash
-kapso learn codify --request requests/card-117.yaml
+kapso learn dev codify --request requests/card-117.yaml
 ```
 
-### kapso learn ingest
+### kapso learn dev ingest
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -245,20 +255,20 @@ kapso learn codify --request requests/card-117.yaml
 | `--learner-version` | Crew version doing the lesson | **yes** |
 
 ```bash
-kapso learn ingest --trajectory rel-hm-user-churn-a2 --learner-version v3
+kapso learn dev ingest --trajectory rel-hm-user-churn-a2 --learner-version v3
 ```
 
-### kapso learn gauntlet
+### kapso learn dev gauntlet
 
 | Flag | What it does | Required |
 |------|--------------|----------|
 | `--learner-version` | Completed development run to trap | **yes** |
 
 ```bash
-kapso learn gauntlet --learner-version v3
+kapso learn dev gauntlet --learner-version v3
 ```
 
-### kapso learn behave
+### kapso learn dev behave
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -266,7 +276,7 @@ kapso learn gauntlet --learner-version v3
 | `--all` | Run every scenario | no |
 
 ```bash
-kapso learn behave --all
+kapso learn dev behave --all
 ```
 
 ## kapso deploy
@@ -289,31 +299,9 @@ kapso deploy ../churn-build --strategy docker
 kapso deploy ../churn-build --env API_KEY=xxx --interactive
 ```
 
-## kapso index_kg
-
-Indexes a corpus into the knowledge graph and writes a `.index` file that campaigns load with `--kg-index`.
-
-| Flag | What it does | Default |
-|------|--------------|---------|
-| `--save-to` | Path to write the `.index` file. **Required** | — |
-| `--wiki-dir` | Wiki directory to index. Mutually exclusive with `--data-path` | — |
-| `--data-path` | JSON data file to index | — |
-| `--search-type` | `kg_graph_search` or `kg_llm_navigation` | from config |
-| `--force` | Clear existing data before indexing | off |
-
-```bash
-kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
-kapso index_kg --data-path ./data/kg_data.json --save-to ./data/indexes/kaggle.index
-kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index --force
-```
-
-<Note>
-  Indexing needs Weaviate and Neo4j running. See [Optional: knowledge-graph backends](/docs/installation#optional-knowledge-graph-backends).
-</Note>
-
 ## kapso watch
 
-Renders the status of a running `build`, `learn` or `learn_knowledge` operation.
+Renders the status of a running `build`, `learn` or `experience` operation (an ingest).
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
@@ -334,12 +322,12 @@ A campaign writes its status file the moment its workspace is seeded, in phase `
 
 ### The status file
 
-`--json` prints the file as it is. Every operation (`build`, `learn`, `learn_knowledge`) carries the same core; `build` adds its campaign payload. Fields appear as they are first written, so a reader treats each as optional.
+`--json` prints the file as it is. Every operation (`build`, `learn`, `experience`) carries the same core; `build` adds its campaign payload. Fields appear as they are first written, so a reader treats each as optional.
 
 | Field | What it holds |
 |-------|---------------|
-| `operation` | `build`, `learn` or `learn_knowledge` |
-| `phases` | The operation's phases in order. Build: `setup`, `harness_setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `verification`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Knowledge: `ingest`, `merge` |
+| `operation` | `build`, `learn` or `experience` |
+| `phases` | The operation's phases in order. Build: `setup`, `harness_setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `verification`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Experience (an ingest): `ingest`, `merge` |
 | `state` | `starting` (preparing, for a build the `setup` phase), `running`, `done` or `failed` |
 | `phase`, `phase_started_at` | The current phase and when it began |
 | `pid` | The writing process. `kapso watch` reports `DEAD` when it is gone |
@@ -380,40 +368,13 @@ kapso inbox reply ./campaign 1
 kapso inbox reply 1 "added the key" --detach
 ```
 
-## kapso bank
-
-The lesson bank is local-only by default. These two subcommands give it a git remote. Credentials stay with `git` and `gh`; Kapso never handles them.
-
-### kapso bank connect
-
-| Argument | What it does | Required |
-|----------|--------------|----------|
-| `url` | Git URL of the bank repository, https or ssh | **yes** |
-
-```bash
-kapso bank connect https://github.com/your-org/kapso-bank.git
-```
-
-### kapso bank create
-
-Creates the GitHub repository with the `gh` CLI, then connects it.
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `slug` | `org/name` for the new repository. **Required** | — |
-| `--public` | Create the repository public | private |
-
-```bash
-kapso bank create your-org/kapso-bank
-```
-
 ## kapso doctor
 
 Reports the requirements your **active config** implies, and exits non-zero when a required item is missing.
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `verb` | Narrow the report to `research`, `learn_knowledge`, `build`, `learn` or `deploy` | union of all five |
+| `verb` | Narrow the report to `build`, `learn`, `deploy` or `experience` (what an ingest needs) | union of all four |
 | `--models` | Live-probe each configured CLI and model pair, spending a few one-token calls | off |
 | `--config` | Config to check | packaged `config.yaml` |
 
@@ -431,16 +392,17 @@ A stdio MCP server for the coding-agent session you work in: the gates Kapso's o
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--gates` | Comma-separated gates to serve | `research,repo_memory,experiment_history,bank` |
-| `--kg-index` | A `.index` file; adds the `idea` and `code` search gates | — |
-| `--config` | Config whose serving, bank and embedding settings apply | packaged `config.yaml` |
+| `--experience` | Comma-separated sources to serve, in the forms `kapso experience list` shows (`mine`, `mine:all`, a bank path or git reference, an index name); a bank mounts the `bank` gate, an index the `idea` and `code` gates | nothing loaded: no bank, no index |
+| `--harness` | The harness the session works under (a name, a path or a git reference): its name is the coordinate `mine` serves cards by | `none` |
+| `--config` | Config whose experience, bank and embedding settings apply | packaged `config.yaml` |
 | `--root` | The directory the session works in | the current directory |
-| `--family` | The task family the bank serves for | the config's `default_mode`, lowercased |
+
+`research`, `repo_memory` and `experiment_history` ride by what the directory holds; a gate that cannot be served is named on stderr with its reason. The intro naming the loaded sources is the server's instructions, so the session sees what it is served on connect.
 
 ```bash
-claude mcp add kapso -- kapso-mcp
-codex mcp add kapso -- kapso-mcp
-kapso-mcp --gates research,bank --config kapso-config.yaml
+claude mcp add kapso -- kapso-mcp --experience mine
+codex mcp add kapso -- kapso-mcp --experience mine
+kapso-mcp --harness ./harness --experience mine,org-x --config kapso-config.yaml
 ```
 
 A gate that cannot be served is named on stderr with its reason; see [Use the gates from your own coding agent](/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).

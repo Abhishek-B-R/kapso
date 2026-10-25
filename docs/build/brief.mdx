@@ -47,7 +47,7 @@ solution = Kapso().build(
 | `Rules` | Invariants the judge enforces on every candidate: the evaluator untouched, no fitting on the hold-out, no rows dropped, data read-only | no |
 | `Budget` | `minutes`, `experiments`, `usd` (model spend), `reserve_minutes` (escrowed for the final checkout and evaluation) | no |
 | `Harness` | The [harness](/docs/harnesses) the build loads: a bundled name, a directory read from where the build runs, or a git reference. `--harness` wins over it | no |
-| `Experience` | References, kept verbatim for the experience feature as it ships | no |
+| `Experience` | The [experience](/docs/experience) the build is served: `mine`, `mine:all`, `leeroopedia`, a bank path or git reference, an index name, as `- ` items or one comma-separated line. `--experience` and `load_experience()` win over it | no |
 
 A line starts with its name; indented lines continue it, and a blank line
 between two lines of the same field is a paragraph break. `Rules` and

@@ -56,7 +56,7 @@ A paragraph that leaves an axis unmentioned is malformed. Statuses are
 dated claims, not verdicts: re-defend a SATURATED or DEFERRED claim
 whenever new evidence contradicts it.
 
-{{domain_guidance}}## How to decide (return economics)
+{{domain_guidance}}{{experience_intro}}## How to decide (return economics)
 
 - The campaign is rewarded ONLY for closing the gap to the GOAL's bar. A
   lens set that keeps producing champion-parity candidates while the

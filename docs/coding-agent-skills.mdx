@@ -5,7 +5,7 @@ description: "Copy one skill folder into your project and your coding agent oper
 keywords: ["Kapso skill", "Claude Code skill", "Codex skill", "OpenCode skill", "SKILL.md", "coding agent Kapso"]
 ---
 
-The Kapso skill is one `SKILL.md` file that teaches a coding agent how to operate Kapso from a session: verify the install, launch and follow a campaign, answer a campaign that is waiting on you, resume an interrupted run, learn from a finished campaign, ingest outside knowledge, run research and deploy the winner. It lives in the repository under [`skills/`](https://github.com/Leeroo-AI/kapso/tree/main/skills), one folder per agent, and an agent that has it reaches the right command first instead of reading the package source until its turn budget runs out. This documentation is also served to agents through an MCP server, described on [Docs in your coding agent](/docs/agent-access); the skill is the complement, for the agent that runs Kapso rather than reads about it.
+The Kapso skill is one `SKILL.md` file that teaches a coding agent how to operate Kapso from a session: verify the install, launch and follow a campaign, answer a campaign that is waiting on you, resume an interrupted run, learn from a finished campaign, serve a build the experience it should start from, and deploy the winner. It lives in the repository under [`skills/`](https://github.com/Leeroo-AI/kapso/tree/main/skills), one folder per agent, and an agent that has it reaches the right command first instead of reading the package source until its turn budget runs out. This documentation is also served to agents through an MCP server, described on [Docs in your coding agent](/docs/agent-access); the skill is the complement, for the agent that runs Kapso rather than reads about it.
 
 ## What the skill tells the agent
 
@@ -17,7 +17,7 @@ The file is about 270 lines of facts and rules, written for the mistakes agents 
 - A campaign runs for tens of minutes to hours, so the agent launches it with `--detach` and `--output` in a sibling directory, and hands you `kapso watch <campaign> --follow` in the same reply, with the goal it passed and the note that your own metric can replace the one it assumed.
 - `WAITING ON YOU` is a pause, not a failure. The agent reads the request with `kapso inbox <campaign>` and answers with `kapso inbox reply`, and it never restarts the campaign or puts a secret in the reply. See [the inbox](/docs/build/inbox).
 - A dead campaign resumes with `kapso build --output <campaign> --resume` and nothing else, since the checkpoint and the launch record carry the brief and the flags. See [Resuming runs](/docs/build/resume-and-budgets).
-- `learn("./campaign")` banks what a campaign taught; served lessons stay off until `learning.serving.enabled: true` in a config passed with `--config`. `learn_knowledge()` is for outside sources. See [Trajectory learning](/docs/learning/overview).
+- `learn("./campaign")` banks what a campaign taught, and a build is served the bank only when it loads it: `--experience mine`. Outside sources are ingested with `kapso experience add` and loaded the same way. See [Trajectory learning](/docs/learning/overview) and [Experience](/docs/experience).
 - `deploy()` is a minutes-long foreground operation on a real `Solution` (the object `build()` returned, or `Solution.open(path)`), not a campaign. See [Deployment](/docs/deployment/strategies).
 - A one-file change with an obvious fix is faster by hand. The agent says which it is doing and never launches a campaign you did not ask for.
 

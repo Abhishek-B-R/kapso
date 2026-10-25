@@ -18,7 +18,7 @@ NAME = "doctor"
 def cmd_doctor(args) -> None:
     """Report what the active config actually needs, and exit 1 when a
     required item is missing. With no verb this is the union across all
-    five verbs; naming one narrows it to that verb's own requirements.
+    four verbs; naming one narrows it to that verb's own requirements.
     --models adds the live tier (a one-token probe per {cli, model} pair).
 
     Same resolver the verbs themselves run at call time, so the doctor can
@@ -30,7 +30,7 @@ def cmd_doctor(args) -> None:
     # here, so those verbs report their fullest requirement set.
     context = (
         {"bank_home": configured_bank_home(config)}
-        if verb in ("build", "learn") else {}
+        if verb == "learn" else {}
     )
 
     requirements = requirements_for(verb, config, **context)
@@ -74,7 +74,7 @@ def add_parser(subparsers):
             "Reports the requirements the ACTIVE CONFIG implies — an "
             "all-codex config is never asked for claude, and a local "
             "codify target is never asked for gcloud. With no argument "
-            "this is the union across all five verbs; name one "
+            "this is the union across all four verbs; name one "
             f"({', '.join(VERBS)}) to see just that verb's requirements, "
             "which are exactly the checks it runs at call time. Every "
             "missing item names the config key that wants it and one fix. "

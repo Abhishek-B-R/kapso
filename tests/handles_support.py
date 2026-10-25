@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Optional, Sequence
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_experience_defaults, load_harness_defaults
 import kapso.kapso as kapso_module
 from kapso.execution.orchestrator import SolveResult
 from kapso.handles import Brief, Solution
@@ -39,8 +39,6 @@ def make_solution(campaign: Any, objective: str = "score things", **overrides: A
         rejected_candidates=0,
         callback_metrics={},
         callback_primary_metric=None,
-        knowledge_index=None,
-        experience_head=None,
     )
     fields.update(overrides)
     return Solution(**fields)
@@ -83,9 +81,10 @@ def facade() -> Kapso:
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
     kapso._config = {}
     kapso._bank_home = None
-    kapso._kg_index_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
+    kapso._experience = []
+    kapso._experience_settings = load_experience_defaults()
     return kapso
 
 

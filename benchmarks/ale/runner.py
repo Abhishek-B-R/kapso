@@ -108,7 +108,6 @@ def solve_problem(
         config_path=CONFIG_PATH,
         mode=mode,
         coding_agent=coding_agent,
-        is_kg_active=use_kg,
     )
     
     # Run the solve loop

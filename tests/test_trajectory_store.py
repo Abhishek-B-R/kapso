@@ -77,7 +77,6 @@ def test_save_load_roundtrip(tmp_path):
     assert manifest["task"] == "rel-amazon/user-churn"
     assert manifest["created"] == "2026-01-01T00:00:00Z"
     assert manifest["contract"] == "strict"
-    assert manifest["family"] == "entity_binary_classification"
     assert manifest["outcome"] == {
         "selected_run": "run_0001",
         "val": {"roc_auc": 0.7136},
@@ -92,14 +91,29 @@ def test_save_load_roundtrip(tmp_path):
     assert (run_dir / "metrics.json").is_file()
 
 
-def test_gather_excludes_pycache(tmp_path):
+def test_gather_leaves_out_caches_and_the_hosts_staging_directories(tmp_path):
     # Regression: derived caches are noise — a .pyc must never enter the
-    # inventory (mining hashes every listed file against the manifest).
+    # inventory (mining hashes every listed file against the manifest) —
+    # and the hosts' staging directories are the harness's files, not the
+    # campaign's: a bundle has none, at any level, so the mining crew can
+    # stage its own at the root; the session records stay.
     store = make_store(tmp_path)
-    save(store, tmp_path)
+    work_dir, log = build_work_dir(tmp_path)
+    for staged in (".claude/skills/market-data/SKILL.md", ".claude/harness-hooks.json",
+                   ".agents/skills/market-data/SKILL.md", ".codex/hooks.json",
+                   "runs/run_0001/.claude/skills/backtesting/SKILL.md"):
+        (work_dir / staged).parent.mkdir(parents=True, exist_ok=True)
+        (work_dir / staged).write_text("staged\n")
+    record = work_dir / ".kapso" / "sessions" / "harness_setup" / "harness.json"
+    record.parent.mkdir(parents=True)
+    record.write_text("{}")
+    save_trajectory(store, TRAJECTORY_ID, work_dir=str(work_dir), campaign_log=str(log))
     inventory = store.manifest(TRAJECTORY_ID)["inventory"]
-    assert not [p for p in inventory["sha256"] if "__pycache__" in p]
-    assert inventory["files"] == len(inventory["sha256"])
+    listed = list(inventory["sha256"])
+    assert not [p for p in listed if "__pycache__" in p]
+    assert not [p for p in listed if p.startswith((".claude/", ".agents/", ".codex/")) or "/.claude/" in p]
+    assert ".kapso/sessions/harness_setup/harness.json" in listed
+    assert inventory["files"] == len(listed)
 
 
 def test_double_save_is_idempotent(tmp_path):

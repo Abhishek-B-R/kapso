@@ -9,7 +9,7 @@ import os
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from kapso.execution.cost_estimator import normalize_cost_config
 
@@ -82,8 +82,13 @@ class RunCheckpoint:
     # crash after it does not repeat it. Both None without a harness.
     harness: Optional[Dict[str, str]] = None
     harness_setup: Optional[Dict[str, Any]] = None
+    # v5: what the campaign is served (the experience package's records:
+    # reference, kind, resolved, head, provenance, scope per source), so a
+    # resume re-pins each source at the recorded head and scope. Empty
+    # when nothing is loaded.
+    experience: List[Dict[str, Any]] = field(default_factory=list)
 
-    SCHEMA_VERSION = 4
+    SCHEMA_VERSION = 5
     VALID_STATUSES = {"running", "completed"}
     # waiting_for_user: the campaign paused for a reply in the inbox
     # (docs/research/evolve-hub-design.md v4); a resume continues the
@@ -112,6 +117,7 @@ class RunCheckpoint:
         maximize_scoring: bool = True,
         harness: Optional[Dict[str, str]] = None,
         harness_setup: Optional[Dict[str, Any]] = None,
+        experience: Optional[List[Dict[str, Any]]] = None,
     ) -> "RunCheckpoint":
         checkpoint = cls(
             schema_version=cls.SCHEMA_VERSION,
@@ -131,6 +137,7 @@ class RunCheckpoint:
             maximize_scoring=maximize_scoring,
             harness=dict(harness) if harness is not None else None,
             harness_setup=dict(harness_setup) if harness_setup is not None else None,
+            experience=[dict(source) for source in experience or []],
         )
         checkpoint.validate_structure()
         return checkpoint
@@ -171,6 +178,7 @@ class RunCheckpoint:
             "maximize_scoring",
             "harness",
             "harness_setup",
+            "experience",
         }
         missing = sorted(required - set(data))
         if missing:

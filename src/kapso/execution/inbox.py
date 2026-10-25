@@ -418,14 +418,18 @@ def read_launch_record(workspace_dir: str | Path) -> Optional[Dict[str, Any]]:
 # does not fingerprint budgets).
 RESUME_FROM_RECORD = (
     "mode", "coding_agent", "eval_dir", "data_dir", "additional_context",
-    "context", "serving_scope", "max_iterations", "time_budget_minutes",
+    "context", "max_iterations", "time_budget_minutes",
     "cost_budget", "finalization_reserve_minutes",
 )
 # The launch settings the checkpoint fingerprints. Changing one is refused
 # by the checkpoint with a fingerprint mismatch that names nothing; naming
 # the setting here is what the person needs.
-FINGERPRINTED_LAUNCH_KEYS = ("mode", "coding_agent", "eval_dir", "kg_index", "config_path")
-_PATH_LAUNCH_KEYS = ("eval_dir", "kg_index", "config_path")
+FINGERPRINTED_LAUNCH_KEYS = ("mode", "coding_agent", "eval_dir", "config_path", "experience")
+_PATH_LAUNCH_KEYS = ("eval_dir", "config_path")
+# The loaded experience is campaign identity by its references and scopes;
+# the heads are re-pinned from the record, so a bank that moved since the
+# launch is not a change (docs/plans/redesign/wp3-experience.md).
+_EXPERIENCE_LAUNCH_KEY = "experience"
 
 
 def resume_arguments(record: Dict[str, Any], requested: Dict[str, Any]) -> Dict[str, Any]:
@@ -444,6 +448,8 @@ def launch_mismatches(record: Dict[str, Any], requested: Dict[str, Any]) -> Dict
     respelled directory is not a change."""
 
     def normal(key: str, value: Any) -> Any:
+        if key == _EXPERIENCE_LAUNCH_KEY:
+            return [(source["reference"], source["scope"]) for source in (value or [])]
         if value is None or key not in _PATH_LAUNCH_KEYS:
             return value
         return str(Path(str(value)).expanduser().resolve())

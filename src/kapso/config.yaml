@@ -103,6 +103,17 @@ harness:
   verification_attempts: 2           # sessions run for one attempt before it is recorded unverified
   server_tool_timeout_seconds: 600   # a harness server's per-call timeout where the host takes one (Codex)
 
+# The experience homes (docs/plans/redesign/wp3-experience.md). Your own
+# bank is learning.bank.local_path; the hosted gate is gates.leeroopedia.
+experience:
+  banks: ~/.kapso/experience/banks      # banks you read, one clone per <slug>@<rev> with a fetch record beside
+  indexes: ~/.kapso/experience/indexes  # corpora you ingested with `kapso experience add --name <n>`, one directory each
+  # `kapso experience add --research "<question>"`: the modes the web
+  # search answers in (idea, implementation, study) and its depth (light,
+  # deep); the findings are ingested as they come.
+  research_modes: [idea, implementation]
+  research_depth: deep
+
 # =============================================================================
 # Platform defaults — the base layer under every mode of every config file
 # =============================================================================
@@ -172,8 +183,8 @@ modes:
         implementation_model: "claude-opus-5"
         auth_mode: "oauth"
         gate_failure_policy: "warn"
-        ideation_gates: ["research", "experiment_history", "repo_memory", "leeroopedia"]
-        implementation_gates: ["research", "repo_memory", "leeroopedia"]
+        ideation_gates: ["research", "experiment_history", "repo_memory"]
+        implementation_gates: ["research", "repo_memory"]
 
     retry:
       max_attempts: 2
@@ -198,9 +209,10 @@ modes:
         auth_mode: "oauth"
         streaming: true
     
-    # Knowledge search configuration
-    # All model/collection details are in knowledge_search.yaml presets.
-    # Use index_kg() to index data, then pass kg_index to Kapso.
+    # Knowledge search configuration: how an index (`kapso experience add
+    # --repo|--research`) is built and searched. All model/collection
+    # details are in knowledge_search.yaml presets; a build searches the
+    # index it loads (`--experience <name>`).
     knowledge_search:
       type: "kg_graph_search"
       enabled: true
@@ -228,7 +240,7 @@ modes:
         # Publish each extracted Workflow as a runnable GitHub repository
         # (after validation; `gh` reads GH_TOKEN). Off by default: a run then
         # produces pages only, and Workflow pages keep a placeholder URL.
-        # learn_knowledge(github_org=..., is_private=...) turns it on for a call.
+        # (`kapso experience add` runs the ingestor with this setting).
         publish_workflows: false
         github_repo_visibility: "private"
       merger:
@@ -255,8 +267,8 @@ modes:
         implementation_model: "claude-opus-5"
         auth_mode: "oauth"
         gate_failure_policy: "warn"
-        ideation_gates: ["research", "experiment_history", "repo_memory", "leeroopedia"]
-        implementation_gates: ["research", "repo_memory", "leeroopedia"]
+        ideation_gates: ["research", "experiment_history", "repo_memory"]
+        implementation_gates: ["research", "repo_memory"]
 
     retry:
       max_attempts: 2
@@ -333,7 +345,7 @@ learning:
   # Import reports land under the run-dir home (doubt D6: repo-root
   # `learning/`, gitignored, synced to the artifacts bucket).
   import_report_dir: learning/imports
-  # Status files for learn / learn_knowledge (observability design §1);
+  # Status files for learn / experience (observability design §1);
   # a build's lives with its workspace at W/.kapso/status.json. Watch any
   # of them with `kapso watch <path>`.
   status_dir: learning/status
@@ -356,6 +368,10 @@ learning:
     critic_model: "claude-fable-5"
     timeout_minutes: 240
     repair_rounds: 1
+    # A mining run's own directory, `<run_root>/<trajectory>/`: the lead's
+    # harness staging record and stream (`.kapso/sessions/lead/`) when the
+    # lesson runs with a harness. The mined view itself lives in the bundle.
+    run_root: learning/mining
   retriever:
     # Serving v2 (serving-agentic-redesign.md): no selection knobs — the
     # index carries the whole eligible set and the reading agent selects.
@@ -392,21 +408,19 @@ learning:
     # The bank home (design §3.1): a local bare repo, created automatically
     # on first learn(). Every update run clones this home, edits, and pushes
     # back — single writer per bank. Sharing is git-native: the home's own
-    # `origin` remote (attached via `kapso bank connect <url>`) is the push
+    # `origin` remote (attached via `kapso experience share <url>`) is the push
     # target; no origin means learn() stays local-only. There is no remote
     # key here — a bank carries its remote itself, like any git repo. One
     # bank per user, under ~/.kapso like the trajectory store: at
     # data/kapso-bank.git it was copied into campaigns with --data-dir data.
     local_path: ~/.kapso/bank.git
   serving:
-    # Serving v2 (serving-agentic-redesign.md): when enabled, campaign
-    # launches pin the bank, the knowledge intro rides after the static
-    # context notes, and ideation/implementation sessions get the three
-    # bank tools — bank_index / bank_get_card / bank_get_card_with_evidence
-    # (the feedback judge never does). Per-benchmark off-switch. The same
-    # switch serves the bank to a host session through kapso-mcp.
-    enabled: false
-    # Where a host session's serving is staged (its pinned bank checkout,
+    # What is loaded is what is served (docs/plans/redesign/wp3-experience.md):
+    # a build with experience loaded pins each bank, rides the intro after
+    # the static context notes, and gives ideation/implementation sessions
+    # the three bank tools — bank_index / bank_get_card /
+    # bank_get_card_with_evidence (the feedback judge never gets them).
+    # Where a host session's serving is staged (its pinned bank checkouts,
     # serving record and pull log), one directory per kapso-mcp process.
     # A campaign stages into its own work dir instead.
     session_root: ~/.kapso/serving

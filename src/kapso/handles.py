@@ -502,10 +502,16 @@ class ExperienceRef:
     resolved: str
     head: Optional[str]
     provenance: str
+    scope: str          # "harness" or "all": what of the source the campaign was served
+
+
+# The record's six fields, the shape every record carries (the serving
+# record adds the count served beside them).
+EXPERIENCE_RECORD_FIELDS = ("reference", "kind", "resolved", "head", "provenance", "scope")
 
 
 _RECORD = Path(".kapso") / "solution.json"
-_RECORD_SCHEMA = 3
+_RECORD_SCHEMA = 4
 _LABEL = 15   # the column explain()'s values start at: the longest label, "Goal achieved:", and a space
 
 
@@ -534,12 +540,10 @@ class Solution:
     evaluator: Optional[EvaluatorRef]
     harness: Optional[HarnessRef]
     verification: Optional[Dict[str, Any]]   # the harness's verdict on the delivered candidate: {verdict, summary, findings}
-    experience: List[ExperienceRef]
+    experience: List[ExperienceRef]          # what the campaign was served, each source at its pinned head and scope
     rejected_candidates: int      # candidates rejected for touching the evaluator
     callback_metrics: Dict[str, float]      # the caller's own iteration_evaluator, delivered candidate
     callback_primary_metric: Optional[str]
-    knowledge_index: Optional[str]
-    experience_head: Optional[str]
 
     @property
     def record_path(self) -> Path:
@@ -585,6 +589,7 @@ class Solution:
                     "resolved": source.resolved,
                     "head": source.head,
                     "provenance": source.provenance,
+                    "scope": source.scope,
                 }
                 for source in self.experience
             ],
@@ -592,8 +597,6 @@ class Solution:
             "rejected_candidates": self.rejected_candidates,
             "callback_metrics": dict(self.callback_metrics),
             "callback_primary_metric": self.callback_primary_metric,
-            "knowledge_index": self.knowledge_index,
-            "experience_head": self.experience_head,
         }
 
     def save(self) -> Path:
@@ -649,8 +652,6 @@ class Solution:
             rejected_candidates=data["rejected_candidates"],
             callback_metrics=dict(data["callback_metrics"]),
             callback_primary_metric=data["callback_primary_metric"],
-            knowledge_index=data["knowledge_index"],
-            experience_head=data["experience_head"],
         )
 
     def diff(self) -> str:
@@ -709,11 +710,11 @@ class Solution:
         if self.verification is not None:
             row("Verified", f"{self.verification['verdict']} — {self.verification['summary']}")
         for source in self.experience:
-            row("Experience", f"{source.reference} ({source.kind}, {source.resolved})")
-        if self.knowledge_index:
-            row("Knowledge", self.knowledge_index)
-        if self.experience_head:
-            row("Experience", f"bank at {self.experience_head}")
+            # The head's first twelve characters, as every print shows it;
+            # the record keeps the full value.
+            pinned = f" at {source.head[:12]}" if source.head else ""
+            every = " (every scope)" if source.kind == "bank" and source.scope == "all" else ""
+            row("Experience", f"{source.reference}{pinned}, {source.provenance}{every}")
         if self.requests:
             lines.append("Waiting on you:")
             for request in self.requests:

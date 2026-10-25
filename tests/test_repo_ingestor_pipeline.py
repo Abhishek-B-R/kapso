@@ -21,7 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 from kapso.core.config import PLATFORM_CONFIG_PATH, load_config
-from kapso.core.preflight import learn_knowledge_requirements
+from kapso.core.preflight import experience_requirements
 from kapso.knowledge_base.learners.ingestors import repo_ingestor as ingestor_module
 from kapso.knowledge_base.learners.merger import knowledge_merger as merger_module
 from kapso.execution.coding_agents.factory import CodingAgentFactory
@@ -298,7 +298,7 @@ def test_preflight_requires_the_gh_token_only_when_publishing(monkeypatch):
     monkeypatch.delenv("GH_TOKEN", raising=False)
     labels = lambda publishing: {
         item.label: item.required
-        for item in learn_knowledge_requirements(PACKAGED, skip_merge=True, publish_workflows=publishing)
+        for item in experience_requirements(PACKAGED, publish_workflows=publishing)
     }
     assert "GH_TOKEN" not in labels(False)
     assert labels(True)["GH_TOKEN"] is True
@@ -366,7 +366,7 @@ def test_preflight_checks_the_bridge_of_a_vertex_learner_instead_of_a_login():
     config = copy.deepcopy(PACKAGED)
     for role in ("ingestor", "merger"):
         config["modes"][config["default_mode"]]["learner"][role].update(VERTEX_SESSION)
-    rows = {item.label: item for item in learn_knowledge_requirements(config)}
+    rows = {item.label: item for item in experience_requirements(config)}
     assert {"litellm", "Google credentials", "agent_specific.vertex_project"} <= set(rows)
     assert rows["agent_specific.vertex_project"].ok is True
     assert "codex authenticated" not in rows

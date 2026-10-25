@@ -71,6 +71,11 @@ New runtime artifacts are allowed. For example, a provided evaluator can write:
 If a runtime artifact is itself executable evaluator source, write it outside
 `kapso_evaluation/` or include it in the original provided suite.
 
+A `result.json` left at the root of your evaluation directory by an earlier
+run is refused at launch: it would be protected as part of the suite, and
+the first evaluation would change it and reject every candidate. Remove it
+and launch again.
+
 ## Rejection semantics
 
 When verification fails, Kapso sets:

@@ -21,13 +21,23 @@ import yaml
 
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
+from kapso.harness.load import Harness
+from kapso.harness.staging import StagedHarness, host_for, stage_harness
 from kapso.learning.refs import extract_refs
-from kapso.learning.trajectory_store import MANIFEST_NAME, TrajectoryStore, _hash_file
+from kapso.learning.trajectory_store import (
+    MANIFEST_NAME,
+    STAGING_DIRECTORIES,
+    TrajectoryStore,
+    _hash_file,
+)
 
 CREW_DIR = Path(__file__).parent / "crews" / "mining"
 MINED_DIR_NAME = "mined"
 MINING_REPORT_NAME = "mining-report.md"
 FORMAT_DOC_NAME = "mined-format.md"
+# The lead's session, as the harness staging records it under the mining
+# run directory (`<run_root>/<trajectory>/.kapso/sessions/lead/`).
+LEAD_SESSION = "lead"
 
 FLOW_STATUSES = (
     "ideated", "selected-unbuilt", "build-failed", "evaluated", "judged", "champion"
@@ -287,13 +297,16 @@ class MiningFrame:
 
     # ------------------------------------------------------------- public
 
-    def mine(self, trajectory_id: str, force: bool = False, domain_guidance: str = "") -> Path:
+    def mine(self, trajectory_id: str, force: bool = False, harness: Optional[Harness] = None) -> Path:
         """Produce <bundle>/mined/ for one trajectory; returns the mined dir.
 
         Idempotent: an already-mined trajectory is skipped unless `force`
         (the mined view is a derived layer — regeneration replaces it whole).
-        ``domain_guidance`` is the harness's learning pages, appended to the
-        lead's prompt (kapso.harness.staging.pages_block); "" without one.
+        ``harness`` is the one the lesson runs with: its learning module is
+        staged into the lead's session at the bundle root (the pages in the
+        prompt; the skills, servers, delegates and hooks beside it) and
+        removed with the rest of the staging, the session's record and
+        stream kept under `<run_root>/<trajectory>/`; none without one.
         """
         manifest = self.store.manifest(trajectory_id)
         bundle_dir = self.store.resolve(trajectory_id)
@@ -302,15 +315,18 @@ class MiningFrame:
             return mined_dir
         if mined_dir.exists():
             shutil.rmtree(mined_dir)
+        run_dir = Path(self.config["run_root"]).expanduser() / trajectory_id.replace("/", "--")
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
 
-        self._stage(bundle_dir, trajectory_id)
-        agent = self._build_lead(bundle_dir)
+        staged = self._stage(bundle_dir, trajectory_id, harness, run_dir)
+        agent = self._build_lead(bundle_dir, staged)
         timeout = self.config["timeout_minutes"] * 60
         prompt = (CREW_DIR / "lead_prompt.md").read_text().replace(
             "{{trajectory_id}}", trajectory_id
         )
-        if domain_guidance:
-            prompt += "\n\n" + domain_guidance
+        if staged.guidance:
+            prompt += "\n\n" + staged.guidance
         result = agent.generate_code(prompt, timeout_seconds=timeout)
         self._write_report(mined_dir, result.output)
 
@@ -323,6 +339,7 @@ class MiningFrame:
             result = agent.generate_code(repair_prompt, timeout_seconds=timeout)
             self._write_report(mined_dir, result.output)
             findings = MinedViewValidator(bundle_dir, manifest).validate()
+        agent.cleanup()
         self._unstage(bundle_dir)
         if findings:
             raise RuntimeError(
@@ -335,12 +352,19 @@ class MiningFrame:
 
     # ------------------------------------------------------------ staging
 
-    def _stage(self, bundle_dir: Path, trajectory_id: str) -> None:
-        """Place the contract and agent definitions at the checkout root.
+    def _stage(
+        self, bundle_dir: Path, trajectory_id: str, harness: Optional[Harness], run_dir: Path
+    ) -> StagedHarness:
+        """Place the contract, the crew's agent definitions and the harness's
+        learning module at the bundle root.
 
-        A crashed earlier run leaves our own staging behind; that exact
-        leftover (byte-identical contract doc) is removed and re-staged. Any
-        OTHER occupant of these names is not ours to delete — refuse loudly.
+        The staging owns the contract's name and the hosts' staging
+        directories there: a crashed earlier run's leftover (the
+        byte-identical contract doc marks it) is removed and re-staged; any
+        other occupant of these names is not ours to delete — refuse loudly.
+        A harvest leaves those directories out, so a bundle has none of its
+        own. The session's record and stream go under the run directory,
+        never into the bundle.
         """
         format_target = bundle_dir / FORMAT_DOC_NAME
         contract_text = (CREW_DIR / "mined_format.md").read_text()
@@ -350,19 +374,14 @@ class MiningFrame:
                     f"bundle {trajectory_id} contains a foreign {FORMAT_DOC_NAME}; "
                     "refusing to stage over it"
                 )
-            format_target.unlink()
-        claude_dir = bundle_dir / ".claude"
-        if claude_dir.exists():
-            leftover_names = sorted(
-                p.name for p in (claude_dir / "agents").glob("*.md")
-            ) if (claude_dir / "agents").is_dir() else []
-            our_names = sorted(p.name for p in (CREW_DIR / "agents").glob("*.md"))
-            if leftover_names != our_names:
+            self._unstage(bundle_dir)
+        for name in STAGING_DIRECTORIES:
+            if (bundle_dir / name).exists():
                 raise FileExistsError(
-                    f"bundle {trajectory_id} contains a foreign .claude dir; "
-                    "refusing to stage over it"
+                    f"bundle {trajectory_id} contains a {name} directory that is not the "
+                    "mining crew's; refusing to stage over it (a harvest leaves the hosts' "
+                    "staging directories out of a bundle; harvest the campaign again)"
                 )
-            shutil.rmtree(claude_dir)
         shutil.copy2(CREW_DIR / "mined_format.md", format_target)
         agents_dir = bundle_dir / ".claude" / "agents"
         agents_dir.mkdir(parents=True)
@@ -375,24 +394,33 @@ class MiningFrame:
             for placeholder, value in substitutions.items():
                 text = text.replace(placeholder, value)
             (agents_dir / definition.name).write_text(text)
+        lead = self.config["lead"]
+        return stage_harness(
+            harness, "learning", session_dir=bundle_dir, campaign_dir=bundle_dir,
+            session_id=LEAD_SESSION,
+            host=host_for(lead["cli"]) if harness is not None else lead["cli"],
+            records_dir=run_dir / ".kapso" / "sessions",
+        )
 
     def _unstage(self, bundle_dir: Path) -> None:
         (bundle_dir / FORMAT_DOC_NAME).unlink()
-        shutil.rmtree(bundle_dir / ".claude")
+        for name in STAGING_DIRECTORIES:
+            if (bundle_dir / name).is_dir():
+                shutil.rmtree(bundle_dir / name)
 
-    def _build_lead(self, bundle_dir: Path):
+    def _build_lead(self, bundle_dir: Path, staged: StagedHarness):
         lead = self.config["lead"]
         agent_config = CodingAgentConfig(
             agent_type=lead["cli"],
             model=lead["model"],
             debug_model=lead["model"],
-            agent_specific={
+            agent_specific=staged.merged_agent_specific({
                 "auth_mode": lead["auth_mode"],
                 "effort": lead["effort"],
                 "append_system_prompt":
                     (CREW_DIR / "append_system_prompt.md").read_text().strip(),
                 "streaming": True,
-            },
+            }),
         )
         agent = self.agent_factory.create(agent_config)
         agent.initialize(str(bundle_dir))

@@ -21,7 +21,7 @@ experiment.
 | `research` | — | Bundled |
 | `experiment_history` | `EXPERIMENT_HISTORY_PATH` | Bundled |
 | `repo_memory` | — | Bundled |
-| `bank` | `KAPSO_BANK_DIR`, `KAPSO_BANK_HEAD`, `KAPSO_SERVING_PULL_LOG`, `KAPSO_TASK_FAMILY`, `KAPSO_PROBE_BUDGET` | Bundled |
+| `bank` | `KAPSO_BANKS`, `KAPSO_SERVING_PULL_LOG`, `KAPSO_TASK_HARNESS`, `KAPSO_PROBE_BUDGET` (injected by Kapso per session from the loaded experience) | Bundled |
 | `leeroopedia` | `LEEROOPEDIA_API_KEY` | Hosted (`mcp.leeroopedia.com`, nothing to install) |
 | `inbox` | `KAPSO_INBOX_PATH`, `KAPSO_SESSION_ID`, `KAPSO_NODE_ID` (injected by Kapso per session) | Bundled |
 
@@ -97,7 +97,7 @@ from kapso.gated_mcp import get_mcp_config
 
 mcp_servers, allowed_tools = get_mcp_config(
     ["idea", "experiment_history", "repo_memory"],
-    kg_index_path="./knowledge.index",
+    kg_index_path="~/.kapso/experience/indexes/org-x/index.json",
     experiment_history_path="./.kapso/experiment_history.json",
     repo_root=".",
     gate_failure_policy="error",
@@ -156,17 +156,17 @@ A campaign session has its gate configuration built per session, with the campai
 | `research` | The `codex` CLI is on PATH | — |
 | `repo_memory` | The repository holds `.kapso/repo_memory.json`, which a campaign builds | The git top level of the working directory |
 | `experiment_history` | The working directory is inside a campaign directory | The nearest ancestor with `.kapso/experiment_history.json`; `models.embedding` from the config adds semantic search |
-| `bank` | `learning.serving.enabled` is true and the bank home exists | A pinned clone, the serving record and the pull log staged under `learning.serving.session_root`, one directory per server process |
-| `idea`, `code` | `--kg-index <file>` names an index | The index file |
+| `bank` | `--experience` loads a bank (`mine`, `mine:all`, a bank path or git reference) | One pinned clone per loaded bank, the serving record, the pull log and the intro staged under `learning.serving.session_root`, one directory per server process, removed when the server exits; the coordinate is the harness `--harness` names, `none` without one; the intro is the server's instructions, so the session names its sources on connect |
+| `idea`, `code` | `--experience` loads an index by name | The index's record |
 
 Every gate left out is named on stderr with its reason, so `claude mcp list` or the host's log says what the session can and cannot reach. The `kg` gate (which carries the write tools) and the `inbox` gate (a session asking a person) are never served to a host. Leeroopedia is a hosted server, not a bundled gate: add it to the host as an HTTP MCP server at the address in the config's `gates:` block, with your key on the URL.
 
 ```bash
 kapso-mcp --help
-kapso-mcp --gates research,bank --config kapso-config.yaml --family generic
+kapso-mcp --harness ./harness --experience mine,org-x --config kapso-config.yaml
 ```
 
-`--root` names the session's directory when it is not the current one, and `--family` the task family the bank serves for (default: the config's `default_mode`, lowercased, which is what a campaign without `serving_scope` uses).
+`--root` names the session's directory when it is not the current one, `--experience` the sources to serve, comma-separated, in the forms `kapso experience list` shows, and `--harness` the harness the session works under (a name, a path or a git reference): its name is the coordinate `mine` serves cards by, as a build's is. Leeroopedia is a hosted server, not a bundled gate: loading it here only prints a reminder to add it to the host as an HTTP MCP server.
 
 ## Adding a gate
 

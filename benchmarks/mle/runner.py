@@ -113,7 +113,6 @@ def solve_competition(
     problem_handler = MleBenchHandler(competition_id, fetch_huggingface_models=fetch_huggingface)
     orchestrator = OrchestratorAgent(
         problem_handler,
-        is_kg_active=effective_use_kg,
         config_path=CONFIG_PATH,
         mode=mode,
         coding_agent=coding_agent,

@@ -91,7 +91,7 @@ def deploy_tools() -> Dict[str, Tuple[str, str]]:
             tools[name] = (requires["binary"], requires.get("install", f"install {requires['binary']}"))
     return tools
 
-VERBS = ("research", "learn_knowledge", "build", "learn", "deploy")
+VERBS = ("build", "learn", "deploy", "experience")
 
 
 # =============================================================================
@@ -543,8 +543,9 @@ def _git_requirement(origin: str) -> Requirement:
 # =============================================================================
 
 def research_requirements(config: Dict[str, Any]) -> List[Requirement]:
-    """`research()` runs one web-search session — the `inference` block's
-    default spec with the `research` role's overrides on top."""
+    """`add_experience(research=)` runs one web-search session — the
+    `inference` block's default spec with the `research` role's overrides
+    on top."""
     inference = config.get("inference") or {}
     spec = deep_merge(
         inference.get("default") or {},
@@ -571,36 +572,36 @@ def research_requirements(config: Dict[str, Any]) -> List[Requirement]:
                 ok=False,
                 fix="set inference.roles.research.cli to a "
                     "web-capable CLI agent",
-                origin="research() requires live web search",
+                origin="add_experience(research=) requires live web search",
             )
         )
     return requirements
 
 
-def learn_knowledge_requirements(
+def experience_requirements(
     config: Dict[str, Any],
     *,
     mode: Optional[str] = None,
-    skip_merge: bool = False,
+    research: bool = False,
     publish_workflows: Optional[bool] = None,
 ) -> List[Requirement]:
-    """`learn_knowledge()` ingests sources into wiki pages, then merges
-    them into the KG. `skip_merge=True` stops after extraction, which
-    drops the merger session and both backend stores. Publishing the
-    extracted workflows as repositories (`learner.ingestor.publish_workflows`,
-    or the call's GitHub arguments, passed as `publish_workflows`) needs
-    the token `gh` reads."""
+    """`add_experience(repo=|research=)` ingests a corpus into an index:
+    the ingestor and merger sessions, git for the clone, the embeddings
+    key and both graph stores the index is written into; with
+    `research=True` the web-search session too. Publishing the extracted
+    workflows as repositories (`learner.ingestor.publish_workflows`)
+    needs the token `gh` reads."""
     mode_name, block = _mode_block(config, mode)
     learner = block.get("learner") or {}
     prefix = f"modes.{mode_name}.learner"
 
     specs = session_specs(learner.get("ingestor") or {}, f"{prefix}.ingestor")
-    if not skip_merge:
-        specs += session_specs(learner.get("merger") or {}, f"{prefix}.merger")
+    specs += session_specs(learner.get("merger") or {}, f"{prefix}.merger")
 
-    requirements = cli_requirements(specs)
+    requirements = research_requirements(config) if research else []
+    requirements += cli_requirements(specs)
     requirements.append(_git_requirement(
-        "Source.Repo ingestion clones the repository"
+        "ingesting a repository clones it"
     ))
     ingestor = learner.get("ingestor") or {}
     if publish_workflows is None:
@@ -614,16 +615,14 @@ def learn_knowledge_requirements(
                 "account is logged in",
             origin=f"{prefix}.ingestor.publish_workflows",
         ))
-    if not skip_merge:
-        requirements.append(_embedding_requirement(
-            "the merge embeds every wiki page",
-            (block.get("knowledge_search") or {}).get("params"),
-        ))
-        requirements.extend(_kg_backend_requirements(
-            "the merge writes pages into the KG stores "
-            "(pass skip_merge=True to extract only)",
-            block.get("knowledge_search"),
-        ))
+    requirements.append(_embedding_requirement(
+        "the index embeds every page",
+        (block.get("knowledge_search") or {}).get("params"),
+    ))
+    requirements.extend(_kg_backend_requirements(
+        "the index is written into the graph stores",
+        block.get("knowledge_search"),
+    ))
     return requirements
 
 
@@ -632,11 +631,13 @@ def build_requirements(
     *,
     mode: Optional[str] = None,
     coding_agent: Optional[str] = None,
-    kg_index: Optional[str] = None,
-    bank_home: Optional[Path] = None,
+    index: Optional[str] = None,
 ) -> List[Requirement]:
     """`build()` runs a campaign: ideation, implementation, evaluation and
-    feedback sessions, plus whatever MCP gates the strategy names."""
+    feedback sessions, plus whatever MCP gates the strategy names. `index`
+    is the name of a loaded index, whose search needs the embeddings key
+    and the graph stores; a bank a build loads is read from its home and
+    needs nothing of this machine."""
     mode_name, block = _mode_block(config, mode)
     prefix = f"modes.{mode_name}"
     strategy = block.get("search_strategy") or {}
@@ -656,7 +657,7 @@ def build_requirements(
 
     inference = config.get("inference") or {}
     roles = ["commit_message", "repo_memory"]
-    if kg_index:
+    if index:
         roles.extend(["kg_rerank", "kg_navigate"])
     for role in roles:
         role_spec = deep_merge(
@@ -686,29 +687,19 @@ def build_requirements(
             f"the experiment store embeds every node's solution "
             f"(models.embedding = {embedding_model})"
         )
-    if kg_index:
-        embedding_uses.append(f"knowledge search — Kapso(kg_index={kg_index!r})")
+    if index:
+        embedding_uses.append(f"the search over the loaded index `{index}`")
     if embedding_uses:
         requirements.append(_embedding_requirement(
             "; ".join(embedding_uses),
             (block.get("knowledge_search") or {}).get("params"),
         ))
-    if kg_index:
+    if index:
         requirements.extend(_kg_backend_requirements(
-            f"knowledge search — Kapso(kg_index={kg_index!r})",
+            f"the search over the loaded index `{index}`",
             block.get("knowledge_search"),
         ))
 
-    serving = ((config.get("learning") or {}).get("serving") or {})
-    if serving.get("enabled") and bank_home is not None:
-        requirements.append(Requirement(
-            label=f"lesson bank at {bank_home}",
-            ok=Path(bank_home).exists(),
-            fix="run kapso.learn(...) once to create it, or "
-                "set learning.serving.enabled: false",
-            origin="learning.serving.enabled: true — campaigns are served bank cards",
-            required=False,
-        ))
     return requirements
 
 
@@ -757,7 +748,7 @@ def learn_requirements(
     """`learn()` runs four crews — mining, grading, the update crew, and
     (when a procedure is codified) the codify run. The grading crew is
     deliberately cross-model, so a default config genuinely needs both
-    CLIs here even though `research()` needs one."""
+    CLIs here even though a web-search session needs one."""
     learning = config.get("learning") or {}
 
     specs = session_specs(learning.get("mining") or {}, "learning.mining")
@@ -806,7 +797,7 @@ def _bank_push_requirements(
             return [Requirement(
                 label="bank origin remote",
                 ok=False,
-                fix="kapso bank connect <url>   (or kapso bank create <org>/<name>)",
+                fix="kapso experience share <url>",
                 origin="push=True was requested",
             )]
         if push is None:
@@ -817,7 +808,7 @@ def _bank_push_requirements(
             return [Requirement(
                 label="bank remote (sharing)",
                 ok=False,
-                fix="kapso bank connect <url> — shares lessons across "
+                fix="kapso experience share <url> — shares lessons across "
                     "machines and teammates",
                 origin=f"{bank_home} has no origin remote — lessons stay local",
                 required=False,
@@ -905,11 +896,10 @@ def deploy_requirements(
 
 
 _BUILDERS = {
-    "research": research_requirements,
-    "learn_knowledge": learn_knowledge_requirements,
     "build": build_requirements,
     "learn": learn_requirements,
     "deploy": deploy_requirements,
+    "experience": experience_requirements,
 }
 
 
@@ -927,14 +917,14 @@ def requirements_for(
     verb: Optional[str], config: Dict[str, Any], **context: Any,
 ) -> List[Requirement]:
     """Static requirements for one verb, or — with `verb=None` — the union
-    across all five, which is what a bare `kapso doctor` reports."""
+    across all four, which is what a bare `kapso doctor` reports."""
     if verb is None:
         bank_home = configured_bank_home(config)
         merged: List[Requirement] = []
         for name in VERBS:
             merged.extend(
                 _BUILDERS[name](config, bank_home=bank_home)
-                if name in ("build", "learn")
+                if name == "learn"
                 else _BUILDERS[name](config)
             )
         return dedupe(merged)
@@ -1012,17 +1002,21 @@ def _specs_for(
     if context.get("coding_agent"):
         agent_block["type"] = context["coding_agent"]
 
+    research_specs = (
+        [SessionSpec(
+            cli=str(research_spec.get("cli") or "codex"),
+            model=str(research_spec["model"]),
+            origin=f"inference.roles.research = {research_spec['model']}",
+            inference=True,
+        )] if research_spec.get("model") else []
+    )
     per_verb: Dict[str, List[SessionSpec]] = {
-        "research": (
-            [SessionSpec(
-                cli=str(research_spec.get("cli") or "codex"),
-                model=str(research_spec["model"]),
-                origin=f"inference.roles.research = {research_spec['model']}",
-                inference=True,
-            )] if research_spec.get("model") else []
-        ),
-        "learn_knowledge": session_specs(
-            block.get("learner") or {}, f"modes.{mode_name}.learner"
+        # Ingesting a corpus: the ingestor and merger sessions, and the
+        # web-search session when a question is researched (the union a
+        # bare doctor reports includes it).
+        "experience": (
+            session_specs(block.get("learner") or {}, f"modes.{mode_name}.learner")
+            + (research_specs if verb is None or context.get("research") else [])
         ),
         "build": (
             session_specs(

@@ -42,8 +42,18 @@ REQUIRED_FILES_HISTORICAL = (
 )
 CONTRACTS = ("strict", "historical")
 
-# Derived caches are noise, not evidence — excluded at gather time.
-GATHER_EXCLUDED_DIR_NAMES = ("__pycache__",)
+# The directories a session's staging writes: the skills, hooks and
+# delegates kapso.harness.staging writes for a host, and the MCP
+# configuration the Claude Code adapter writes beside a session. A harvest
+# leaves them out at every level: they are the harness's and the engine's
+# files, recoverable from the hash the manifest records and the config,
+# and the session records under `.kapso/sessions` keep what each session
+# ran with; the mining crew owns these names at a bundle root for the
+# length of its session.
+STAGING_DIRECTORIES = (".claude", ".agents", ".codex", ".claude_mcp")
+# Left out at gather time: derived caches are noise, not evidence; the
+# staging directories are the harness's, not the campaign's.
+GATHER_EXCLUDED_DIR_NAMES = ("__pycache__", *STAGING_DIRECTORIES)
 
 # <task-dir>/<stamp>_<lane>, e.g. rel-amazon--user-churn/20260813T015420_lane-c10
 TRAJECTORY_ID_PATTERN = re.compile(
@@ -388,7 +398,7 @@ def save_trajectory(
     work_dir_exclude: tuple = (),
     contract: str = "strict",
     kapso_commit: Optional[str] = None,
-    bank_head: Optional[str] = None,
+    experience: Optional[List[Dict[str, Any]]] = None,
     upload: Optional[bool] = None,
     harness: Optional[Dict[str, str]] = None,
     learning_harness: Optional[Dict[str, str]] = None,
@@ -421,14 +431,14 @@ def save_trajectory(
         "task": parts["task"].replace("--", "/"),
         "created": _created_from_stamp(parts["stamp"]),
         "kapso_commit": kapso_commit,
-        "bank_head": bank_head,
-        # The harness the build ran with (what the experience package scopes
-        # lessons by), and the one that did the learning when it differs.
+        # The experience the build was served (the serving record's
+        # sources, each with its pinned head), and the harness it ran with
+        # (what the experience package scopes lessons by), and the one
+        # that did the learning when it differs.
+        "experience": experience,
         "harness": harness,
         "learning_harness": learning_harness,
         "contract": contract,
-        "dataset": report.get("dataset"),
-        "family": report.get("family"),
         "outcome": _outcome_from_report(report),
         "inventory": _inventory_of(staged_dir),
     }

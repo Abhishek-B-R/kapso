@@ -235,7 +235,7 @@ def test_launch_mismatches_name_fingerprinted_changes_and_ignore_respelled_paths
     (tmp_path / "eval").mkdir()
     record = {
         "mode": "MINIMAL", "coding_agent": None, "eval_dir": str(tmp_path / "eval"),
-        "kg_index": None, "config_path": "/x/config.yaml", "time_budget_minutes": 60.0,
+        "config_path": "/x/config.yaml", "time_budget_minutes": 60.0,
     }
     respelled = {**record, "eval_dir": str(tmp_path / "sub" / ".." / "eval"), "time_budget_minutes": 120.0}
     assert launch_mismatches(record, respelled) == {}
@@ -245,3 +245,12 @@ def test_launch_mismatches_name_fingerprinted_changes_and_ignore_respelled_paths
         "mode": ("MINIMAL", "GENERIC"),
         "eval_dir": (record["eval_dir"], None),
     }
+    # The loaded experience is identity by reference and scope: a bank
+    # that moved since the launch (another head) is not a change, a
+    # different list or scope is, by name.
+    mine = {"reference": "mine", "kind": "bank", "resolved": "/b", "head": "aaa", "provenance": "measured by you", "scope": "harness"}
+    served = {**record, "experience": [mine]}
+    assert launch_mismatches(served, {**served, "experience": [{**mine, "head": "bbb"}]}) == {}
+    lifted = [{**mine, "scope": "all"}]
+    assert launch_mismatches(served, {**served, "experience": lifted}) == {"experience": ([mine], lifted)}
+    assert launch_mismatches(served, {**served, "experience": []}) == {"experience": ([mine], [])}

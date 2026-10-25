@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from kapso import Budget, Kapso, Solution
+from kapso.researcher import Researcher
 
 
 # =============================================================================
@@ -163,17 +164,11 @@ async def startup_event():
     """Initialize Kapso on server startup."""
     global kapso_instance
     
-    # Optional: Load knowledge graph index
-    kg_index = os.environ.get("KAPSO_KG_INDEX")
     config_path = os.environ.get("KAPSO_CONFIG_PATH")
-    
-    kapso_instance = Kapso(
-        config=config_path,
-        kg_index=kg_index,
-    )
-    
+
+    kapso_instance = Kapso(config=config_path)
+
     print(f"KAPSO Brain Server initialized")
-    print(f"  Knowledge Graph: {'enabled' if kg_index else 'disabled'}")
     print(f"  Claude Backend: {CLAUDE_BACKEND}")
     
     if CLAUDE_BACKEND == "none":
@@ -257,8 +252,8 @@ async def research(req: ResearchRequest):
         raise HTTPException(status_code=503, detail="KAPSO not initialized")
     
     try:
-        findings = kapso_instance.research(
-            objective=req.objective,
+        findings = Researcher(config_path=os.environ.get("KAPSO_CONFIG_PATH")).research(
+            req.objective,
             mode="study",
             depth="light",
         )

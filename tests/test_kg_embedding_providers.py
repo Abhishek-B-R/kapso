@@ -22,6 +22,7 @@ from kapso.knowledge_base.search.factory import KnowledgeSearchFactory
 
 VERTEX_PARAMS = {
     "weaviate_collection": "LeeroopediaKG",
+    "corpus": "leeroopedia",
     "embedding_provider": "vertex",
     "embedding_model": "gemini-embedding-2",
     "vertex_project": "proj",
@@ -212,6 +213,7 @@ def test_index_refs_rebuild_the_same_embedder(vertex_session, offline_backend):
         "neo4j_uri": "bolt://localhost:7687",
         "neo4j_user": "neo4j",
         "weaviate_collection": "LeeroopediaKG",
+        "corpus": "leeroopedia",
         "embedding_provider": "vertex",
         "embedding_model": "gemini-embedding-2",
         "embedding_dimensions": 1536,
@@ -238,6 +240,7 @@ def test_index_without_a_provider_keeps_openai(monkeypatch, offline_backend):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     served = KnowledgeSearchFactory.create("kg_graph_search", params={
         "weaviate_collection": "KapsoKG",
+        "corpus": "kapso",
         "embedding_model": "text-embedding-3-large",
     })
     assert isinstance(served._embedder, embeddings.OpenAIEmbedder)
@@ -247,6 +250,7 @@ def test_index_without_a_provider_keeps_openai(monkeypatch, offline_backend):
         "neo4j_uri": "bolt://localhost:7687",
         "neo4j_user": "neo4j",
         "weaviate_collection": "KapsoKG",
+        "corpus": "kapso",
         "embedding_provider": "openai",
         "embedding_model": "text-embedding-3-large",
     }
@@ -271,6 +275,7 @@ def test_the_stores_are_config_and_travel_with_the_index(monkeypatch):
         "weaviate_grpc_port": 50052,
         "neo4j_uri": "bolt://localhost:17687",
         "weaviate_collection": "KapsoLearnTest",
+        "corpus": "learn-test",
     })
     search._initialize_clients()
     assert connections["weaviate"] == {

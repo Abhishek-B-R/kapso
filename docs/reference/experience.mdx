@@ -1,0 +1,155 @@
+---
+title: "Experience reference: the forms, the scope rule, the records, the intro, the config"
+sidebarTitle: "Experience"
+description: "Every form an experience reference takes, what each source serves and under which scope, the handle and the record fields, the serving directory and the pull log, the variables the bank gate reads, the intro's text, the index record, the config keys and the errors."
+keywords: ["experience reference", "mine:all", "ExperienceRef", "serving-record.yaml", "serving-pull.jsonl", "KAPSO_BANKS", "index.json", "experience.banks", "experience.indexes"]
+---
+
+The grammar and the contracts of the experience package, in one place. [Use experience on a build](/docs/experience/use), [Add a source](/docs/experience/add) and [Share a bank](/docs/experience/share) say when each matters.
+
+## The reference
+
+A source is named by one string, on `kapso build --experience` (comma-separated), `kapso-mcp --experience`, the brief's `Experience` line, `load_experience()`, and the `kapso experience` subcommands. Five forms, tried in this order:
+
+| Form | Example | Resolution | Scope |
+|---|---|---|---|
+| your bank | `mine` | `learning.bank.local_path` (`~/.kapso/bank.git`), which must exist (`kapso experience add mine`, or a first `learn()`) | `harness` |
+| your bank, every card | `mine:all` | the same bank | `all` |
+| the hosted gate | `leeroopedia` | `gates.leeroopedia.url` and `.tool_timeout_seconds` from the config the source is loaded with (what the sessions mount), with `LEEROOPEDIA_API_KEY` set to something in the environment or in `.env` beside the run; `kapso experience add leeroopedia` sends the gate one MCP `initialize` with the key and reports the server's name, loading only checks the key is there | `all` |
+| a bank by path | `./team/bank.git`, `../banks/acme.git`, `/srv/banks/acme.git`, `~/banks/acme.git` | read in place; a path is written as one (`./`, `../`, `/`, `~`) and must exist. A bare name is never a path, so a directory beside the run (the checkout an index was made from, say) cannot shadow an index of the same name | `all` |
+| a bank by git reference | `acme/kapso-bank`, `acme/kapso-bank@v2`, `git+https://github.com/acme/kapso-bank@main`, `git@github.com:acme/kapso-bank@v2` | cloned once into `<experience.banks>/<slug>@<rev>/` with a fetch record (`remote`, `rev`, `commit`, `fetched_at`) beside the clone; `@rev` a branch, a tag or a commit, `main` unless given | `all` |
+| an index name | `org-x` | `<experience.indexes>/<name>/index.json`, written by `kapso experience add --repo` or `--research` | `all` |
+
+A string that matches none of the forms, a path that does not exist, a bank whose `main` lacks the founding skeleton (`index.md`, `insights/`, `procedures/`), a git reference that cannot be fetched, an index name with no record, or the hosted gate without its key is refused with the reason and the line that fixes it: `ExperienceReferenceError` for a form, `ExperienceError` for a source. `:all` on anything but `mine` is refused: every other form serves everything it holds. An index name is `[a-z0-9][a-z0-9-]*`; `mine` and `leeroopedia` are reserved.
+
+## Scope
+
+A card's `scope` is `domain` or a list of `harness:<name>` coordinates; a lesson learned under no harness is written `harness:none`, so `none` is a reserved harness name. The task's coordinate is the loaded harness's name, or `none`. Under scope `harness`, `mine` lists and opens the cards scoped `domain` or `harness:<the coordinate>` and refuses the rest by name (`out of scope under harness:trading (scope [harness:lending]; mine:all serves every card you measured)`); under scope `all`, every card. Quarantine (the decoy registry and the `cold`, `retired` and `superseded` states) applies under both, silently; a decoy refuses as unknown. One index per campaign: the search gates read one.
+
+## The handle
+
+`load_experience(ref)` returns an `ExperienceSource`, and `kapso.experience` lists them in load order; a reference loaded again replaces its entry.
+
+| Field | What it holds |
+|---|---|
+| `reference` | the string as given, `mine` for both forms of your bank |
+| `kind` | `bank`, `hosted` or `index` |
+| `resolved` | the bank home or clone, the gate's URL without its key, the index directory |
+| `head` | a bank's pinned commit, an index's id, `None` for the hosted gate |
+| `provenance` | `measured by you`, `measured by you and your team` (`mine` with a remote), `measured by others` (a bank you read), `reported by others` (the hosted gate, an index) |
+| `scope` | `harness` or `all` |
+| `cards` | a bank's card files at the pinned head, an index's pages: what the source holds. What a campaign is served from a bank is the count under the task's scope, the number the intro says |
+| `label()` | the line loading prints: `mine at 3f9c1a2b, 12 cards, measured by you`, `org-x (index 7c2d9e1f, 84 pages), reported by others`, `leeroopedia (hosted), reported by others` |
+
+## The records
+
+Every record of a campaign carries the same list, one `ExperienceRef` per source with `reference`, `kind`, `resolved`, `head`, `provenance` and `scope`:
+
+| Record | Where | Role |
+|---|---|---|
+| the solution | `solution.experience`, `<campaign>/.kapso/solution.json` (schema 4) | what the campaign was served, read back by `Solution.open` |
+| the checkpoint | `<campaign>/.kapso/run_state.json` (schema 5), `experience` required | fingerprinted by `(reference, scope)`: a resume with a different list is refused by name |
+| the launch record | `<campaign>/.kapso/launch.json` | what a bare resume re-loads, each bank re-pinned at its `head`, each index checked at its id |
+| the status file | `<campaign>/.kapso/status.json` | the sources, from the first second; `kapso watch --json` prints them with the file (the rendered screen leaves them to WP6's header) |
+| the trajectory manifest | `trajectory.yaml`, `experience` | what the campaign a lesson is mined from was served, with each pinned head |
+
+The campaign's serving directory, `<campaign>/.kapso/serving/`:
+
+| Path | What it holds |
+|---|---|
+| `banks/<name>/` | one clone per bank, checked out at its pinned head |
+| `intro.md` | the intro the ideation and implementation sessions read |
+| `serving-record.yaml` | `task` (the coordinate) and `sources`, each `ExperienceRef` with the `cards` it served |
+| `serving-pull.jsonl` | one event per tool call: `tool`, `task`, `sources` (each head); for `bank_index` the `section`, `listed_count` and `listed`; for a card read the `requested` names, the `source` asked for, the `served`, the `refused` with reasons, the `tensions` named |
+
+A harvest archives the directory with the campaign, and attribution starts at reading: a card cited in a lesson is credited when it was opened from your bank (`bank_get_card`, with or without evidence), a copy only listed by `bank_index` was never read, and a card read from another source only, or opened from two, is a finding of the lesson's evidence check; a claim of independence is refuted by any exposure, a listing included.
+
+## What the sessions get
+
+The ideation and implementation sessions, never the judge. The bank gate reads its environment:
+
+| Variable | Value |
+|---|---|
+| `KAPSO_BANKS` | a JSON list, one entry per bank: `reference`, `head`, `dir` (the clone), `provenance`, `scope` |
+| `KAPSO_SERVING_PULL_LOG` | the pull log's path |
+| `KAPSO_TASK_HARNESS` | the coordinate: the harness's name, or `none` |
+| `KAPSO_PROBE_BUDGET` | `learning.retriever.probe_budget`: measurement offers riding card reads, per campaign |
+| `KAPSO_SERVING_INTRO` | for `kapso-mcp`: the staged intro's path, served as the MCP server's instructions |
+
+The bank gate's tools: `bank_index(section=)` (the whole eligible set, reliability order, no cap), `bank_get_card(cards, source=)`, `bank_get_card_with_evidence(cards, source=)`. An index mounts the `idea` and `code` gates (`wiki_idea_search`, `wiki_code_search`) over its record; the hosted gate mounts Leeroopedia's server. The engine mounts them by what is loaded, and a staged intro that advertises the bank tools with the gate unmounted is an error at launch, never a silent miss.
+
+## The intro
+
+Its own slot in the ideation and implementation prompts, after the harness's guidance and before the process section:
+
+```text
+## Experience (measured before)
+
+You are served:
+- <n> cards measured by you, under the <harness> harness | under no harness | every scope, from your bank at head `<12 hex>`, pinned for this campaign
+- <n> cards from `<reference>`, measured by others, every scope, at head `<12 hex>`, pinned for this campaign
+- Leeroopedia's pages, reported by others
+- the `<name>` corpus (<n> pages), reported by others
+
+Three tools, in reading order:                    ← when a bank is loaded
+- bank_index() — ...
+- bank_get_card(cards) — ...
+- bank_get_card_with_evidence(cards) — ...
+
+The corpus is searched with the `idea` and `code` tools: a query returns the pages that answer it.   ← when an index is loaded
+```
+
+The same lines are the launch banner (`Experience: ...`) and the status file's sources.
+
+## The index record
+
+`<experience.indexes>/<name>/index.json`, written once when the pages are indexed:
+
+| Field | What it holds |
+|---|---|
+| `name`, `id` | the name, and the twelve-hex id that pins the index |
+| `created_at`, `source` | when, and from what (the repository URL or the question) |
+| `search_backend` | `kg_graph_search` |
+| `backend_refs` | the stores' endpoints, the embedding provider and model, the Weaviate `collection` (`Kapso<Name><id>`) and the Neo4j `corpus` (the id) the index owns |
+| `page_count` | the pages indexed |
+
+An index owns its namespace in both stores: a name removed and added again never meets its old pages. A campaign that loaded an index is served it at its id; a resume after the index was re-ingested is refused.
+
+## Config
+
+| Key | Default | Meaning |
+|---|---|---|
+| `experience.banks` | `~/.kapso/experience/banks` | banks you read, one clone per `<slug>@<rev>` with a fetch record beside |
+| `experience.indexes` | `~/.kapso/experience/indexes` | indexes, one directory per name |
+| `experience.research_modes`, `.research_depth` | `[idea, implementation]`, `deep` | what `kapso experience add --research` asks the web for, and how deep |
+| `learning.bank.local_path` | `~/.kapso/bank.git` | your bank, `mine` (`Kapso(bank=)` overrides it) |
+| `learning.serving.session_root` | `~/.kapso/serving` | where `kapso-mcp` stages a host session, one directory per process, removed at exit |
+| `learning.retriever.probe_budget` | `1` | measurement offers riding card reads, per campaign |
+| `gates.leeroopedia.url`, `.tool_timeout_seconds` | the hosted server's URL with the key's placeholder, its per-call timeout | the hosted gate |
+| `modes.<mode>.knowledge_search.params` | the stores' endpoints, the embedding provider and model, the reranker | how an index is built and searched |
+| `modes.<mode>.learner.ingestor`, `.merger` | the sessions that build an index | see [Configuration](/docs/reference/configuration#learner) |
+
+## Commands and calls
+
+`kapso experience add | list | share | update | remove` ([CLI](/docs/reference/cli#kapso-experience)); `kapso build --experience`, `kapso-mcp --experience --harness`; `load_experience`, `add_experience`, `share_experience`, `update_experience`, `remove_experience` and `experience` on the facade ([Python API](/docs/reference/kapso-api#load-experience)); the brief's `Experience` line ([brief format](/docs/reference/brief-format)).
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="What experience is" icon="book-open" href="/docs/experience">
+    The sources, the one rule, how a session reads them
+  </Card>
+  <Card title="Use experience on a build" icon="play" href="/docs/experience/use">
+    The flag, the brief line, Python, the records, a host session
+  </Card>
+  <Card title="Harness reference" icon="book" href="/docs/reference/harness">
+    The coordinate a card is scoped by
+  </Card>
+  <Card title="The lesson bank" icon="database" href="/docs/learning/bank">
+    What is on a card
+  </Card>
+</CardGroup>
+
+Related pages: [What experience is](/docs/experience) · [Use experience on a build](/docs/experience/use) · [Add a source](/docs/experience/add) · [Share a bank](/docs/experience/share) · [CLI](/docs/reference/cli#kapso-experience) · [Python API](/docs/reference/kapso-api#load-experience)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

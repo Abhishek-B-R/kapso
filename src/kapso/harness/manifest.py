@@ -111,6 +111,12 @@ def valid_name(name: str) -> bool:
     return bool(name) and name[0] in _NAME_FIRST and all(c in _NAME_REST for c in name)
 
 
+# The coordinate of a campaign that runs with no harness, which the
+# experience package scopes lessons by (`harness:none`); no harness may
+# take the name.
+RESERVED_HARNESS_NAME = "none"
+
+
 def read_manifest(root: Path) -> Manifest:
     """Read `<harness>/harness.yaml`; every finding is raised at once."""
     manifest, findings = inspect_manifest(root)
@@ -167,6 +173,12 @@ class _Inspector:
         name = self.scalar(top.get("name"), "name")
         if self.present("name", top) and (not isinstance(name, str) or not valid_name(name)):
             self.note(top["name"], f"name {name!r} must match [a-z0-9][a-z0-9-]*")
+            name = None
+        elif name == RESERVED_HARNESS_NAME:
+            self.note(
+                top["name"],
+                f"name {name!r} is reserved: it is the coordinate of a campaign that runs with no harness",
+            )
             name = None
         version = self.scalar(top.get("version"), "version")
         if isinstance(version, (int, float)) and not isinstance(version, bool):

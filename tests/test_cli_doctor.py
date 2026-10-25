@@ -77,21 +77,21 @@ def test_missing_requirements_exit_nonzero_with_a_fix_for_each(
 
 
 def test_naming_a_verb_narrows_the_report_to_that_verb(full_machine, capsys):
-    """`kapso doctor research` must show research's requirements only —
-    the packaged research role is codex-only, so a claude row here would
-    mean the doctor and the verb disagree about what a call needs."""
-    cmd_doctor(args(verb="research"))
+    """`kapso doctor learn` must show learn's requirements only — the
+    grading crew needs both CLIs, and the graph stores belong to
+    `experience`, so a Neo4j row here would mean the doctor and the verb
+    disagree about what a call needs."""
+    cmd_doctor(args(verb="learn"))
     out = capsys.readouterr().out
-    assert "kapso doctor research" in out
-    assert "codex CLI" in out
-    assert "claude CLI" not in out
+    assert "kapso doctor learn" in out
+    assert "codex CLI" in out and "claude CLI" in out
     assert "Neo4j" not in out
 
 
 def test_bare_doctor_reports_the_union_across_verbs(full_machine, capsys):
     cmd_doctor(args())
     out = capsys.readouterr().out
-    # learn's claude+codex crews, learn_knowledge's stores, deploy's targets.
+    # learn's claude+codex crews, experience's stores, deploy's targets.
     for expected in ("codex CLI", "claude CLI", "Neo4j (localhost:7687)",
                      "deploy target docker"):
         assert expected in out
@@ -137,7 +137,7 @@ def test_models_flag_adds_the_live_tier_and_can_fail_the_doctor(
         lambda cli, model: (False, "You've reached your Fable 5 limit"),
     )
     with pytest.raises(SystemExit) as excinfo:
-        cmd_doctor(args(verb="research", models=True))
+        cmd_doctor(args(verb="learn", models=True))
     assert excinfo.value.code == 1
     out = capsys.readouterr().out
     assert "codex can serve gpt-5.6-sol" in out

@@ -46,6 +46,8 @@ HOST_OF_AGENT = {
 _SKILLS_DIR = {CLAUDE_HOST: Path(".claude") / "skills", CODEX_HOST: Path(".agents") / "skills"}
 _HOOKS_FILE = {CLAUDE_HOST: Path(".claude") / "harness-hooks.json", CODEX_HOST: Path(".codex") / "hooks.json"}
 _AGENTS_PATH = {CLAUDE_HOST: Path(".claude") / "harness-agents.json", CODEX_HOST: Path(".codex") / "harness-agents"}
+# Everything above lands in `.claude`, `.agents` or `.codex`: the names a
+# harvest leaves out of a bundle (kapso.learning.trajectory_store.STAGING_DIRECTORIES).
 _OPEN_SKILL = {CLAUDE_HOST: "/{name}", CODEX_HOST: "${name}"}
 _ASK_AGENT = {
     CLAUDE_HOST: 'the Agent tool with subagent_type "{name}"',
@@ -105,22 +107,6 @@ class StagedHarness:
         return args
 
 
-def pages_block(harness: Optional[Harness], module: str) -> str:
-    """The module's pages alone, as the "Domain guidance" block, for a
-    session the engine runs without staging files into its directory (the
-    learning crews, whose bundles are checked for immutability); "" without
-    a harness."""
-    if harness is None:
-        return ""
-    lines = [f"{GUIDANCE_HEADING} (harness {harness.name} {harness.version})", ""]
-    for page in ("guardrails.md", f"{module}.md"):
-        file = harness.path / "instructions" / page
-        if file.is_file():
-            lines.append(file.read_text(encoding="utf-8").rstrip())
-            lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
-
-
 def no_harness(module: str, host: str, session_dir: Path, session_id: str) -> StagedHarness:
     """What a session gets without a harness: nothing."""
     return StagedHarness(module=module, host=host, session_dir=Path(session_dir), session_id=session_id, guidance="")
@@ -134,8 +120,12 @@ def stage_harness(
     campaign_dir: Path,
     session_id: str,
     host: str,
+    records_dir: Optional[Path] = None,
 ) -> StagedHarness:
-    """Stage one module of the harness into one session directory."""
+    """Stage one module of the harness into one session directory. The
+    session's record and stream go under `<campaign>/.kapso/sessions`, or
+    under `records_dir` when the campaign directory takes no writes (an
+    archived bundle a learning crew reads)."""
     session_dir = Path(session_dir)
     campaign_dir = Path(campaign_dir)
     if harness is None:
@@ -150,7 +140,10 @@ def stage_harness(
             f"the harness changed since launch: {harness.label()} recorded, "
             f"{harness.name} now hashes {current[:12]}; {harness.restore_hint()}"
         )
-    stager = _Stager(harness, module, session_dir, campaign_dir, session_id, host)
+    stager = _Stager(
+        harness, module, session_dir, campaign_dir, session_id, host,
+        Path(records_dir) if records_dir is not None else campaign_dir / ".kapso" / "sessions",
+    )
     # Ensemble members stage into one directory from several threads; the
     # files are written one staging at a time.
     with _STAGING_LOCK:
@@ -168,7 +161,10 @@ _STAGING_LOCK = threading.Lock()
 
 
 class _Stager:
-    def __init__(self, harness: Harness, module: str, session_dir: Path, campaign_dir: Path, session_id: str, host: str):
+    def __init__(
+        self, harness: Harness, module: str, session_dir: Path, campaign_dir: Path,
+        session_id: str, host: str, records_dir: Path,
+    ):
         self.harness = harness
         self.module = module
         self.attachments = harness.module(module)
@@ -176,6 +172,7 @@ class _Stager:
         self.campaign_dir = campaign_dir
         self.session_id = session_id
         self.host = host
+        self.records_dir = records_dir
         self.prepared = self.prepared_names()
         self.staged = StagedHarness(
             module=module, host=host, session_dir=session_dir, session_id=session_id,
@@ -189,7 +186,7 @@ class _Stager:
     # ------------------------------------------------------------- paths
 
     def session_record_dir(self) -> Path:
-        return self.campaign_dir / ".kapso" / "sessions" / self.session_id
+        return self.records_dir / self.session_id
 
     def writes(self) -> List[Path]:
         """Every path under the session directory this staging writes."""
@@ -373,8 +370,12 @@ class _Stager:
                 lines.append(f"- {name} — its tools are named mcp__{name}__<tool>")
             lines.append("")
         lines.append("### Paths")
-        statement = self.session_dir / TASK_STATEMENT_FILE if not self.at_campaign_root() else self.campaign_dir / TASK_STATEMENT_FILE
-        lines.append(f"- Task statement: {statement} (read it before anything else)")
+        # The statement is named when the campaign has one: a build writes
+        # it before its sessions; a learning crew's run directory has none,
+        # and an archived campaign has the one its build wrote.
+        if (self.campaign_dir / TASK_STATEMENT_FILE).is_file():
+            statement = self.session_dir / TASK_STATEMENT_FILE if not self.at_campaign_root() else self.campaign_dir / TASK_STATEMENT_FILE
+            lines.append(f"- Task statement: {statement} (read it before anything else)")
         lines.append(f"- Harness root: ${HARNESS_ROOT_VARIABLE} = {self.harness.path}")
         if self.prepared:
             lines.append("- Prepared resources: " + ", ".join(f"{PREPARED_DIR}/{name}" for name in self.prepared))

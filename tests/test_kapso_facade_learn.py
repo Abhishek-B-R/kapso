@@ -46,7 +46,7 @@ def facade_config(tmp_path) -> str:
             "import_report_dir": str(tmp_path / "imports"),
             "status_dir": str(tmp_path / "status"),
             "harvest": {"enabled": True},
-            "serving": {"enabled": False},
+            "serving": {"session_root": str(tmp_path / "serving")},
             "bank": {"local_path": str(tmp_path / "bank-home.git")},
             "retriever": {"probe_budget": 1},
             "graders": {"run_root": str(tmp_path / "graders")},
@@ -87,7 +87,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             fake._config = config
             return fake
 
-        def mine(self, trajectory_id, force=False, domain_guidance=""):
+        def mine(self, trajectory_id, force=False, harness=None):
             calls.mined.append(trajectory_id)
             # Stamp the manifest as the real miner does, so learn()'s
             # mined-once idempotency is exercised for real.
@@ -103,7 +103,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             return f"mined/{trajectory_id}"
 
     class FakeGrading:
-        def __init__(self, store, config):
+        def __init__(self, store, config, bank_home=None):
             pass
 
         def grade_exam(self, trajectory_id, bank_dir, bank_head,
@@ -117,10 +117,10 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             return report
 
     class FakeUpdate:
-        def __init__(self, store, config):
+        def __init__(self, store, config, bank_home=None):
             pass
 
-        def run_update(self, batch, run_root, learner_version, domain_guidance=""):
+        def run_update(self, batch, run_root, learner_version, harness=None):
             calls.updates.append(
                 {"batch": batch, "version": learner_version}
             )
@@ -255,7 +255,7 @@ def test_learn_push_preflight_fires_before_any_pipeline_work(
 
 
 def test_learn_pushes_to_connected_origin(tmp_path, monkeypatch):
-    # Regression: with an origin attached (kapso bank connect), learn()
+    # Regression: with an origin attached (kapso experience share), learn()
     # pushes main+tags there by default and the share remote ends at the
     # post-lesson head — the multi-machine share contract.
     config_path = facade_config(tmp_path)
@@ -310,7 +310,6 @@ def test_memory_status_shapes(tmp_path):
     kapso = Kapso(config=config_path)
     status = kapso.memory
     assert isinstance(status, MemoryStatus)
-    assert status.knowledge_enabled is False
     assert status.bank_head is None
     assert "not initialized" in status.explain()
 
@@ -321,13 +320,13 @@ def test_memory_status_shapes(tmp_path):
     assert "1 active cards" in status.explain()
 
 
-def test_build_serving_staging_and_disabled_byte_identity(
+def test_build_serving_staging_and_nothing_loaded_byte_identity(
     tmp_path, monkeypatch
 ):
-    # Regression (design §4): serving on + bank present -> the intro rides
-    # the problem context, bank_serving reaches the orchestrator, and the
-    # provenance stamp lands; serving off -> context byte-identical to the
-    # pre-serving facade and no override is passed.
+    # Regression (wp3-experience.md): `mine` loaded -> the intro rides the
+    # problem context, bank_serving reaches the orchestrator, and the
+    # record lands in the workspace; nothing loaded -> context
+    # byte-identical to the pre-serving facade and no override is passed.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
     _git_workspace(tmp_path / "ws")
@@ -367,58 +366,39 @@ def test_build_serving_staging_and_disabled_byte_identity(
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", FakeOrchestrator)
     monkeypatch.chdir(tmp_path)
 
-    # serving disabled: no intro, no override
+    # nothing loaded: no intro, no override
     kapso = Kapso(config=config_path)
     kapso.build("test goal", output=str(tmp_path / "out1"))
     off_context = captured["handler"].additional_context
-    assert "Knowledge bank" not in off_context
+    assert "Experience" not in off_context
     assert captured["kwargs"]["strategy_params_overrides"] is None
 
-    # serving enabled: intro + override + stamp
-    config = yaml.safe_load(Path(config_path).read_text())
-    config["learning"]["serving"]["enabled"] = True
-    Path(config_path).write_text(yaml.safe_dump(config))
+    # `mine` loaded: intro + override + the pinned head on the solution
     kapso = Kapso(config=config_path)
+    kapso.load_experience("mine")
     solution = kapso.build("test goal", output=str(tmp_path / "out2"))
-    on_context = captured["handler"].additional_context
-    assert "## Knowledge bank" in on_context
-    assert "bank_index()" in on_context
+    # the context is untouched (it is frozen at construction and never
+    # was a seam): the intro is staged for the prompts to read
+    assert captured["handler"].additional_context == off_context
     override = captured["kwargs"]["strategy_params_overrides"]
-    assert "KAPSO_BANK_DIR" in override["bank_serving"]
-    assert solution.experience_head is not None
+    assert "KAPSO_BANKS" in override["bank_serving"]
+    intro_path = Path(override["experience_intro_path"])
+    assert intro_path == tmp_path / "out2" / ".kapso" / "serving" / "intro.md"
+    intro = intro_path.read_text()
+    assert "## Experience (measured before)" in intro
+    assert "1 card measured by you, under no harness" in intro
+    assert "bank_index()" in intro
+    # the solution carries the source at its pinned head and scope
+    assert [(s.reference, s.head, s.scope) for s in solution.experience] == [
+        ("mine", kapso.experience[0].head, "harness"),
+    ]
+    assert "Experience:" in solution.explain() and "measured by you" in solution.explain()
     # the serving record landed inside the campaign workspace
     record = tmp_path / "out2" / ".kapso" / "serving" / "serving-record.yaml"
     assert record.is_file()
     # both launches registered in the config's registry, not the user's own
     registry = (tmp_path / "campaigns.jsonl").read_text().splitlines()
     assert [json.loads(line)["goal"] for line in registry] == ["test goal"] * 2
-
-
-def test_learn_knowledge_flattens_research_output(tmp_path, monkeypatch):
-    # Regression (E2E 2026-08-24): research(mode="idea") returns a LIST of
-    # typed sources; passing it directly (the advertised contract) must
-    # reach the pipeline flattened — never as one 'list'-typed source.
-    config_path = facade_config(tmp_path)
-    kapso = Kapso(config=config_path)
-    captured = {}
-
-    class FakePipeline:
-        def __init__(self, **kwargs):
-            pass
-
-        def run(self, *sources, skip_merge=False, status=None):
-            captured["sources"] = sources
-            return SimpleNamespace(
-                sources_processed=len(sources), total_pages_extracted=1,
-                created=1, edited=0, errors=[],
-            )
-
-    monkeypatch.setattr("kapso.kapso.KnowledgePipeline", FakePipeline)
-    idea_a, idea_b = object(), object()
-    kapso.learn_knowledge([idea_a, idea_b], skip_merge=True)
-    assert captured["sources"] == (idea_a, idea_b)
-    with pytest.raises(ValueError, match="empty source lists"):
-        kapso.learn_knowledge([], skip_merge=True)
 
 
 def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
@@ -429,9 +409,6 @@ def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
     # must fail loud instead.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
-    config = yaml.safe_load(Path(config_path).read_text())
-    config["learning"]["serving"]["enabled"] = True
-    Path(config_path).write_text(yaml.safe_dump(config))
 
     class GatelessOrchestrator:
         def __init__(self, handler, **kwargs):
@@ -451,65 +428,8 @@ def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", GatelessOrchestrator)
     monkeypatch.chdir(tmp_path)
     kapso = Kapso(config=config_path)
+    kapso.load_experience("mine")
     with pytest.raises(RuntimeError, match="'bank' gate is not mounted"):
         kapso.build("test goal", output=str(tmp_path / "out3"))
 
 
-def test_learn_knowledge_records_the_index_it_wrote(tmp_path, monkeypatch):
-    # Regression (E2E review 2026-08-24): kg_index provenance was None on
-    # every learn_knowledge -> build sequence because the facade never
-    # recorded the index the merge wrote.
-    config_path = facade_config(tmp_path)
-    kapso = Kapso(config=config_path)
-    wiki_dir = tmp_path / "wikis"
-    wiki_dir.mkdir()
-    (wiki_dir / ".index").write_text('{"page_count": 3}')
-
-    wiring = {}
-
-    class FakePipeline:
-        def __init__(self, **kwargs):
-            wiring.update(kwargs)
-
-        def run(self, *sources, skip_merge=False, status=None):
-            return SimpleNamespace(
-                sources_processed=1, total_pages_extracted=3,
-                created=3, edited=0, errors=[],
-            )
-
-    monkeypatch.setattr("kapso.kapso.KnowledgePipeline", FakePipeline)
-    monkeypatch.setattr(
-        "kapso.kapso.KnowledgeSearchFactory",
-        SimpleNamespace(create=lambda **kw: SimpleNamespace(
-            is_enabled=lambda: True), create_null=lambda: None),
-    )
-    # The preflight probes a real embeddings key and the knowledge stores'
-    # ports; it has its own suite (test_preflight), this test is about the
-    # index the merge records.
-    monkeypatch.setattr("kapso.kapso.run_preflight", lambda *a, **k: None)
-    kapso.learn_knowledge(object(), wiki_dir=str(wiki_dir))
-    # The merge builds a missing index through the facade, which owns the
-    # config that names the search backends.
-    assert wiring["index_builder"] == kapso.index_kg
-    assert kapso._kg_index_path == str(wiki_dir / ".index")
-    assert kapso.memory.knowledge_index == str(wiki_dir / ".index")
-
-
-def test_index_kg_rejects_a_call_without_a_save_path(tmp_path):
-    kapso = Kapso(config=facade_config(tmp_path))
-    with pytest.raises(ValueError, match="save_to is required"):
-        kapso.index_kg(wiki_dir=str(tmp_path))
-
-
-def test_index_kg_rejects_a_call_without_any_data(tmp_path):
-    kapso = Kapso(config=facade_config(tmp_path))
-    with pytest.raises(ValueError, match="Must provide either"):
-        kapso.index_kg(save_to=str(tmp_path / "test.index"))
-
-
-def test_missing_kg_index_file_raises_at_construction(tmp_path):
-    with pytest.raises(FileNotFoundError, match="Index file not found"):
-        Kapso(
-            config=facade_config(tmp_path),
-            kg_index=str(tmp_path / "missing.index"),
-        )

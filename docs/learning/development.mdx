@@ -2,7 +2,7 @@
 title: "How Kapso develops and promotes a new learner version"
 sidebarTitle: "Development regime"
 description: "The learner itself is the artifact under test: a fresh bank, a chronological replay, then gauntlet traps, behaviour scenarios and A/B arms before promotion."
-keywords: ["learner version", "kapso learn develop", "gauntlet", "behavior scenarios", "A/B arms", "codify"]
+keywords: ["learner version", "kapso learn dev develop", "gauntlet", "behavior scenarios", "A/B arms", "codify"]
 ---
 
 Everything else in this section treats the bank as the thing being improved. Here the **crew** is the artifact and the bank is disposable.
@@ -12,7 +12,7 @@ A development run asks: if this version of the update crew had processed the cor
 ## The development run
 
 ```bash
-kapso learn develop --split splits/d1.yaml --learner-version crew_v4
+kapso learn dev develop --split splits/d1.yaml --learner-version crew_v4
 ```
 
 The driver is deliberately dumb. Batching is chronology plus a size knob, the split is the exam's authority, and every decision that matters comes from the [graders](/docs/learning/graders) rather than from the driver.
@@ -48,7 +48,7 @@ flowchart TD
 Two traps that buy an answer key by construction. See [the gauntlet](/docs/learning/graders#the-gauntlet).
 
 ```bash
-kapso learn gauntlet --learner-version crew_v4
+kapso learn dev gauntlet --learner-version crew_v4
 ```
 
 ### Behaviour scenarios
@@ -56,8 +56,8 @@ kapso learn gauntlet --learner-version crew_v4
 Mechanical tests prove the machinery holds its invariants. Behaviour scenarios prove the behaviour is semantically right, judged by a cross-model reviewer against fixtures whose correct outcome was authored and signed by a person at creation time.
 
 ```bash
-kapso learn behave --all
-kapso learn behave --scenario ./scenarios/serve-thin-bank
+kapso learn dev behave --all
+kapso learn dev behave --scenario ./scenarios/serve-thin-bank
 ```
 
 A scenario directory holds `scenario.yaml` naming the machinery under test — `serve`, `grade-exam`, `update` or `frozen` (reviewer-only slices of frozen real artifacts) — a `truth.md` with the ground truth and expected outcome, and a `rubric.md` of the reviewer's questions.
@@ -82,7 +82,7 @@ Two rules keep it honest:
 Codify is a separate mechanism worth knowing about: **a build minus ideation**. The card is the idea, so there is nothing to ideate.
 
 ```bash
-kapso learn codify --request requests/card-117.yaml
+kapso learn dev codify --request requests/card-117.yaml
 ```
 
 <Note>

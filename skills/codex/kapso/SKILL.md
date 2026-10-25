@@ -1,6 +1,6 @@
 ---
 name: kapso
-description: Operate Kapso (PyPI leeroo-kapso), the long-running agents that optimize AI and Data systems, from a coding session — verify the install with kapso doctor, launch and follow a build campaign toward a scored goal, answer a campaign that is WAITING ON YOU, resume an interrupted run, learn from a finished campaign into the lesson bank, ingest repos and research into the knowledge graph, and deploy the winner. Use when the user mentions Kapso or kapso build, learn, research, deploy, doctor, watch, inbox, bank, or asks to build and verify something against a measurable metric (accuracy, latency, score) in a project where kapso is installed. Do not use for ordinary code edits, or for hand-tuning a metric when Kapso is neither installed nor asked for.
+description: Operate Kapso (PyPI leeroo-kapso), the long-running agents that optimize AI and Data systems, from a coding session — verify the install with kapso doctor, launch and follow a build campaign toward a scored goal, answer a campaign that is WAITING ON YOU, resume an interrupted run, learn from a finished campaign into the lesson bank, serve a build the experience it should start from (your bank, Leeroopedia, a team's bank, an ingested corpus), and deploy the winner. Use when the user mentions Kapso or kapso build, learn, experience, deploy, doctor, watch, inbox, or asks to build and verify something against a measurable metric (accuracy, latency, score) in a project where kapso is installed. Do not use for ordinary code edits, or for hand-tuning a metric when Kapso is neither installed nor asked for.
 ---
 
 # Kapso
@@ -17,20 +17,22 @@ the source is large and a session that greps it runs out of turns before answeri
 - Every model call runs through a coding-agent CLI that must be logged in:
   `claude` (ideation, implementation, judging) and `codex` (research, utilities).
   There is no API-key fallback. `OPENAI_API_KEY` is optional and only ever
-  embeds text: the knowledge graph, and semantic search over past experiments
-  once `models.embedding` is set in the config (off in the shipped config).
-- `LEEROOPEDIA_API_KEY` in `.env` connects every campaign session to Leeroopedia,
-  a hosted knowledge base of ML and AI frameworks (nothing to install; a new
-  account at https://app.leeroopedia.com/dashboard has $20 of free credit).
-  Without it the campaign still runs and `doctor` shows the row as `[-- ]`.
+  embeds text: a corpus ingested with `kapso experience add`, and semantic search
+  over past experiments once `models.embedding` is set in the config (off in the
+  shipped config).
+- `LEEROOPEDIA_API_KEY` in `.env` is the hosted knowledge base of ML and AI
+  frameworks (nothing to install; a new account at
+  https://app.leeroopedia.com/dashboard has $20 of free credit). A build reads it
+  when it loads it: `--experience leeroopedia`. Without the key `doctor` shows the
+  row as `[-- ]` and `kapso experience add leeroopedia` says where the key goes.
 - Secrets come from `.env` in the directory you run from (`find_dotenv(usecwd=True)`);
   a shell export works only if it is actually exported. Config never holds secrets.
 - All knobs live in one YAML. To change anything, copy the packaged file, edit, and
   pass it with `--config` / `Kapso(config=...)`. Never set Kapso behaviour through
   environment variables.
-- Run `kapso doctor build` (or `kapso doctor learn|research|learn_knowledge|deploy`)
-  before any run. Every required row must read `[OK ]`; `[-- ]` rows are optional.
-  Add `--models` to live-probe every configured model with one token each; a model
+- Run `kapso doctor build` (or `kapso doctor learn|deploy|experience`) before any
+  run. Every required row must read `[OK ]`; `[-- ]` rows are optional. Add
+  `--models` to live-probe every configured model with one token each; a model
   the login cannot serve fails here in seconds instead of hours in. A usage cap on
   a model it can serve is not visible to the probe.
 - A campaign takes tens of minutes to hours. Launch it with `--detach`: the
@@ -45,6 +47,9 @@ the source is large and a session that greps it runs out of turns before answeri
   from a tool call.
 - A run that ends with `WAITING ON YOU` has paused, not failed (exit code 0).
   Do not restart it; reply through the inbox (below).
+- A build is served exactly the experience it loads (`--experience`, the brief's
+  `Experience` line, `load_experience()`), and nothing when it loads nothing.
+  There is no serving switch in the config.
 
 ## Build: run a campaign
 
@@ -66,11 +71,13 @@ Rules
   - the evaluator is never modified
   - no fitting on the held-out rows
 Budget       minutes=60 experiments=10
+Experience   mine, leeroopedia
 ```
 
 Only `Objective` is required; whatever the user gives goes in verbatim, and the
 whole brief reaches the judge. `--goal "..."` is the one-line form of the same
-thing.
+thing. `Harness` names the domain layer the build runs with (a bundled name, a
+directory, a git reference); `Experience` names what it is served.
 
 First look for an evaluation the repo already has: a scoring script, a test
 suite, a benchmark command. Then:
@@ -105,6 +112,7 @@ kapso build \
   --data data \
   --output ../churn-campaign \
   --budget-minutes 60 --budget-experiments 10 \
+  --experience mine \
   --detach
 kapso watch ../churn-campaign --follow
 ```
@@ -125,7 +133,11 @@ kapso watch ../churn-campaign --follow
 - Bound the run: `--budget-experiments` (default 10), `--budget-minutes` (durable
   across resumes), `--budget-usd` (best effort; codex sessions report no cost).
   A flag wins over the brief's `Budget` line.
-- `-m GENERIC` (default, knowledge search on) or `-m MINIMAL`; `-a` picks the coding
+- `--experience mine,leeroopedia` names what the build is served (below); it
+  wins over the brief's `Experience` line, and each source is loaded before the
+  fork, so a source that does not exist refuses here, not in the child's log.
+  `--harness <ref>` names the domain layer the same way.
+- `-m GENERIC` (default, the gates on) or `-m MINIMAL`; `-a` picks the coding
   agent (`claude_code` default, `codex`, `gemini`, `openhands`, `oss_claude_code`).
 - The summary block ends `COMPLETED` with score and stop reason, or `WAITING ON YOU`.
 
@@ -133,11 +145,13 @@ Python, same thing:
 
 ```python
 from kapso import Kapso, Brief, Budget, Solution
-solution = Kapso().build(
+k = Kapso()
+k.load_experience("mine")
+solution = k.build(
     Brief.read("kapso-brief.md"), repo=".", evaluation="evaluation", data="data",
     output="./campaign", budget=Budget(minutes=60),
 )
-print(solution.explain())   # .score .goal_achieved .branch .campaign .requests .diff()
+print(solution.explain())   # .score .goal_achieved .branch .campaign .experience .diff()
 Solution.open("./campaign") # the same solution from any process, once the build returned
 ```
 
@@ -175,63 +189,75 @@ the death in; a reply that only announces a resume leaves the campaign dead. Oth
 to other campaigns; never kill one. The checkpoint in `.kapso/run_state.json` carries
 the brief and the search state; the launch record `.kapso/launch.json` carries
 every flag of the launch, and a resume reads both, so pass only what you mean
-to change (a bigger `--budget-minutes`, say). A resume that changes the mode, coding agent,
-evaluation, config or knowledge index is refused by name; start a new campaign in
+to change (a bigger `--budget-minutes`, say). A bare resume is served the sources
+the launch pinned, at the same heads. A resume that changes the mode, coding agent,
+evaluation, config, harness or experience is refused by name; start a new campaign in
 a new output path instead. A campaign paused by the inbox resumes through
 `kapso inbox reply`, not `--resume`.
 
 ## Learn: bank what a campaign taught
 
-`learn()` mines one finished campaign into the lesson bank, a local git repo of
+`learn()` mines one finished campaign into your bank, a local git repo of
 evidence-priced cards. It runs crews for an hour or more and needs both CLIs.
+
+```bash
+kapso learn ./campaign                          # or a trajectory id
+kapso learn ./campaign --harness ./harness      # when the campaign's record names none
+```
 
 ```python
 from kapso import Kapso
 k = Kapso()
 lesson = k.learn("./campaign")      # or learn(solution); a trajectory id also works
 print(lesson.explain())             # cards created/updated, admitted, report paths
-print(k.memory.explain())           # bank head, active cards, serving flag
+print(k.memory.explain())           # bank head, active cards
 ```
 
 - The bank is created on first use at `learning.bank.local_path`
-  (`~/.kapso/bank.git`). Share it with `kapso bank connect <git-url>` or
-  `kapso bank create org/name`; after that every `learn()` pushes.
-- Serving is off by default. For the next campaign to read the bank, set
-  `learning.serving.enabled: true` in your config and pass it. Without that,
+  (`~/.kapso/bank.git`), or by `kapso experience add mine`. Share it with
+  `kapso experience share <git-url>` (create the repository yourself first,
+  `gh repo create org/kapso-bank --private`); after that every `learn()` pushes
+  and `kapso experience update` pulls the team's lessons.
+- A build is served the bank when it loads it: `--experience mine`. Without that,
   banked cards have no effect on `build()`.
 - Follow a learn with `kapso watch learning/status`.
-- The `kapso learn ...` CLI subcommands (import, mine, grade, update, develop,
-  codify, gauntlet, behave) are the learner-development regime, not the everyday
-  path. From a shell the everyday path is the two Python lines above.
+- `kapso learn dev <import|mine|grade|update|develop|codify|ingest|gauntlet|behave>`
+  are the learning system's own tools, for people working on the learning system,
+  not the everyday path.
 
-## learn_knowledge: import outside knowledge
+## Experience: what a build is served
 
-Repos and research become wiki pages in a knowledge graph. This is a different
-memory from the lesson bank.
-
-```python
-from kapso import Kapso, Source
-k = Kapso()
-findings = k.research("gradient boosting for churn", mode=["idea", "implementation"], depth="deep")
-k.learn_knowledge(Source.Repo("https://github.com/org/repo"), findings, wiki_dir="data/wikis")
-index = k.index_kg(wiki_dir="data/wikis", save_to="data/indexes/churn.index")
-Kapso(kg_index=index).build("...")
-```
-
-Needs Weaviate on 8080 and Neo4j on 7687 (from a source checkout:
-`bash scripts/start_infra.sh`). Ingest time scales with the material, not with
-`depth`, and can run for hours.
-
-## Research
+A build is served exactly what it loads. `kapso experience` makes the sources
+that must exist first, lists them, and shares your bank.
 
 ```bash
-kapso research --objective "..." --mode idea --mode implementation --depth deep -o findings.json
+kapso experience add mine                                          # your bank, empty; learn() fills it
+kapso experience add leeroopedia                                   # checks the key in .env
+kapso experience add --repo https://github.com/org/repo --name org-repo   # a repository into an index (hours)
+kapso experience add --research "gradient boosting for churn" --name churn-gbm   # the web researched, then ingested
+kapso experience list                                              # mine, the hosted gate, banks you read, indexes
+kapso experience share https://github.com/org/kapso-bank.git
+kapso experience update                                            # pulls mine, re-fetches banks you read
+kapso experience remove org-repo                                   # an index, or a bank you read
+kapso build --experience mine,leeroopedia,org-repo --brief kapso-brief.md ...
 ```
 
-`mode` is `idea`, `implementation`, or `study` (repeat the flag); `depth` is `light`
-or `deep`. In Python `research(objective, mode=[...], depth=...)` with keyword-only
-`mode` and `depth`; pass results into a campaign with
-`build(..., context=[findings.to_string()])`. Runs on codex with web search.
+- The forms: `mine` (your bank, the cards your harness's scope covers),
+  `mine:all` (every card), `leeroopedia`, a bank path (`./team/bank.git`) or git
+  reference (`acme/kapso-bank@v2`), an index name. A source that does not exist
+  is refused with the `add` line that makes it; loading never ingests.
+- Ingesting a repository or a question needs `kapso doctor experience` green:
+  Weaviate on 8080 and Neo4j on 7687 (from a source checkout: `bash
+  scripts/start_infra.sh`), `OPENAI_API_KEY` for the embeddings, both CLIs. It is
+  a foreground command that can run for hours; the time scales with the material.
+  Follow it with `kapso watch learning/status`. One index per build.
+- The same sources reach the session you are in through `kapso-mcp`:
+  `claude mcp add kapso -- kapso-mcp --experience mine` (`--harness <ref>` gives
+  it the harness's scope).
+- Python: `k.add_experience(repo=url, name="org-repo")`, `k.load_experience("mine")`,
+  `k.share_experience(url)`, `k.update_experience()`, `k.remove_experience(name)`;
+  `k.experience` lists what is loaded and `solution.experience` what a campaign
+  was served, each source at its pinned head.
 
 ## Deploy
 
@@ -291,7 +317,8 @@ are doing and why; never launch a campaign the user did not ask for.
 - Resuming runs: https://docs.leeroo.com/docs/build/resume-and-budgets.md
 - Evaluation integrity: https://docs.leeroo.com/docs/evolve/evaluation-integrity.md
 - Trajectory learning: https://docs.leeroo.com/docs/learning/overview.md
-- Knowledge graph: https://docs.leeroo.com/docs/knowledge/overview.md
+- Experience: https://docs.leeroo.com/docs/experience.md
+- Harnesses: https://docs.leeroo.com/docs/harnesses.md
 - Deployment: https://docs.leeroo.com/docs/deployment/strategies.md
 - Index of every page: https://docs.leeroo.com/llms.txt
 

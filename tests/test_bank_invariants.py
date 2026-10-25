@@ -73,7 +73,7 @@ def test_claim_change_requires_version_and_log(tmp_path):
     # both ways (bump without change; change without bump).
     def scope_edit_no_bump(root):
         text = read_card(root, "a-card").replace(
-            "scope: domain", "scope: [family:entity_binary_classification]"
+            "scope: domain", "scope: [harness:trading]"
         )
         write_card(root, "a-card", text)
 
@@ -212,7 +212,7 @@ def test_generalize_born_candidate_with_probe(tmp_path):
         write_card(root, "general-card", successor)
         (root / "retired" / "insights").mkdir(parents=True)
         text_a = read_card(root, "a-card").replace("state: active", "state: superseded")
-        text_a = text_a.replace("scope: domain", "scope: [family:entity_binary_classification]")
+        text_a = text_a.replace("scope: domain", "scope: [harness:trading]")
         text_a = text_a.replace("supersedes: null",
                                 "supersedes: null\nsuperseded_by: general-card")
         # reference the parent ledger so only the generalize findings remain
@@ -222,7 +222,7 @@ def test_generalize_born_candidate_with_probe(tmp_path):
     before, after = clone_bank(tmp_path, {"a-card": card_text("a-card")}, generalize)
     findings = BankTransactionValidator(before, after, body_floors={"rule": 35, "section": 25, "confidence": 8}).validate()
     assert any("must be born candidate" in f for f in findings)
-    assert any("unseen-family probe" in f for f in findings)
+    assert any("unseen-coordinate probe" in f for f in findings)
 
 
 def make_store_with_trajectory(tmp_path):
@@ -266,23 +266,50 @@ def test_evidence_admission_source_resolution(tmp_path):
     assert any("does not re-grep" in f for f in findings)
 
 
-def test_evidence_admission_usage_vs_record(tmp_path):
-    # Regression (§5.2 check 2): claimed serving without a record — and
-    # claimed independence WITH one — both trip.
+def test_evidence_admission_usage_vs_pull_log(tmp_path):
+    # Regression (§5.2 check 2): claimed serving without exposure — and
+    # claimed independence WITH it — both trip. Exposure is the pull log's
+    # ladder per source: a card read from a colleague's bank is not this
+    # card, and a name read from both banks cannot be claimed by citation.
     store = make_store_with_trajectory(tmp_path)
     bank_root = build_bank(tmp_path, {"a-card": card_text("a-card")})
     card = Bank(str(bank_root)).cards["a-card"]
-    served_record = {TRAJECTORY_ID: {"served": [{"card": "a-card"}]}}
-    findings = evidence_admission_findings(
-        card, [entry(usage="The card was served and cited by the spec.")],
-        store, {},
-    )
-    assert any("serving record does not carry" in f for f in findings)
+    served = entry(usage="The card was served and cited by the spec.")
+    findings = evidence_admission_findings(card, [served], store, {})
+    assert any("the pull log does not carry a read of a-card" in f for f in findings)
     findings = evidence_admission_findings(
         card, [entry(usage="Independent rediscovery — never served.")],
-        store, served_record,
+        store, {TRAJECTORY_ID: {"a-card": {"mine": "read"}}},
     )
     assert any("claims independence but" in f for f in findings)
+    assert evidence_admission_findings(
+        card, [served], store, {TRAJECTORY_ID: {"a-card": {"mine": "read"}}},
+    ) == []
+    findings = evidence_admission_findings(
+        card, [served], store, {TRAJECTORY_ID: {"a-card": {"acme/kapso-bank": "read"}}},
+    )
+    assert any("served from acme/kapso-bank, not from your bank" in f for f in findings)
+    # Attribution starts at reading: a copy only listed was never read, so
+    # a citation is credited to the copy opened, and ambiguity needs both
+    # copies opened.
+    findings = evidence_admission_findings(
+        card, [served], store,
+        {TRAJECTORY_ID: {"a-card": {"mine": "indexed", "acme/kapso-bank": "read"}}},
+    )
+    assert any("listed from your bank and never opened (it was read from acme/kapso-bank)" in f for f in findings)
+    assert evidence_admission_findings(
+        card, [served], store,
+        {TRAJECTORY_ID: {"a-card": {"mine": "evidence-read", "acme/kapso-bank": "indexed"}}},
+    ) == []
+    findings = evidence_admission_findings(
+        card, [served], store, {TRAJECTORY_ID: {"a-card": {"mine": "indexed"}}},
+    )
+    assert any("listed from your bank and never opened" in f for f in findings)
+    findings = evidence_admission_findings(
+        card, [served], store,
+        {TRAJECTORY_ID: {"a-card": {"mine": "read", "acme/kapso-bank": "read"}}},
+    )
+    assert any("cannot tell the copies apart" in f for f in findings)
 
 
 def test_evidence_admission_verdict_earnable(tmp_path):
@@ -342,9 +369,8 @@ def test_negated_serving_is_independence_not_a_claim(tmp_path):
         store, {},
     )
     assert findings == []
-    served_record = {TRAJECTORY_ID: {"served": [{"card": "a-card"}]}}
     findings = evidence_admission_findings(
         card, [entry(usage="Never served in that campaign.")],
-        store, served_record,
+        store, {TRAJECTORY_ID: {"a-card": {"mine": "indexed"}}},
     )
     assert any("claims independence but" in f for f in findings)
