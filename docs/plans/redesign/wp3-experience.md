@@ -371,7 +371,7 @@ index needs: WP4 and later decide their fate).
     API, brief and configuration references, `docs/learning/bank.mdx` and
     `serving.mdx` rewritten on sources, `docs/knowledge/*` and
     `docs/research/overview.mdx` folded into the experience pages with
-    redirects in `docs.json`, the churn example's README on `learn()` then
+    redirects in `docs.json` (built at `074bab00`), the churn example's README on `learn()` then
     `--experience mine`; `scripts/check_docs_coverage.py` covering the
     verb; `mint validate` and `mint broken-links`. The deletion
     inventory beyond the docs: the three skills' pages, the README,
@@ -402,7 +402,10 @@ index needs: WP4 and later decide their fate).
     retired names (`serving.enabled`, `kapso bank`, `learn init-bank`,
     `research(`, `learn_knowledge`, `index_kg`, `kg_index=`, `--kg-index`,
     `KAPSO_BANK_DIR`, `KAPSO_TASK_FAMILY`, `serving_scope`, `family:`),
-    the precedent being `tests/test_no_evolve_left.py`.
+    the precedent being `tests/test_no_evolve_left.py`. Built at
+    `e957ef8a`; the review added `KAPSO_BANK_HEAD`, `KAPSO_TASK_DATASET`
+    and `kapso-mcp --gates`, and the scan covers `tests/manual` once the
+    scripts on the retired verbs were removed (`1b15f2a8`).
 
 ## Tests
 
