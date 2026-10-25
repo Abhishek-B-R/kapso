@@ -6,6 +6,73 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-25, WP6 (planned; taken while revising the sub-plan after review)
+
+**Every session has a record, and the adapters write its runs.** The
+staging writes `session.json` for every staged session, harness or not
+(WP2 wrote one only with a harness), and each adapter appends one run
+entry per host invocation at the end of that invocation, in its own
+`finally`, so a session that raises, resumes or retries is recorded as
+it happened. Alternative rejected: a `finish(result)` call at every
+site that runs a session, which has no result when the session raises
+and misses the two Codex paths that bypass the adapters.
+
+**`done` stays in `solve()`; the delivery runs inside it.** The facade
+hands `solve()` a `finish` callable (the checkout and the record) that
+runs inside the orchestrator's protected region before the terminal
+publish, and the checkpoint completes after it. Alternative rejected:
+publishing `done` from the facade after the record, which would strand
+the five benchmark runners that call `solve()` directly and the tests
+that pin `done` after it.
+
+**A launch receipt beside the log.** `--detach` writes
+`<campaign>.launch.json` with the child's pid and the log's path before
+the child starts, so `kapso watch` can tell a campaign that is starting
+from one that died before its status. Alternative rejected: a first
+status frame written by the CLI, which the strategy constructor's own
+`BuildStatus` would overwrite.
+
+**The liveness rule is the view's.** A campaign is listed when
+`OperationStatusView.alive is not False` (`starting` included, and a
+machine without `/proc` judged by the heartbeat) or when it waits on
+the person; the registry is written on every launch, inbox on or off;
+the running learns and ingests are listed from `learning.status_dir`,
+which takes `watch --all` off the observability design's deferred list.
+`kapso inbox` keeps listing requests. `watch --tree` is retired: the
+trace renders the attempts, and two renderers over one file would
+drift.
+
+**The trace prints evidence, not a merge verdict.** The six questions of
+S4 are answered by a reader from the sections; the recommendation is
+`kapso-review`'s, as its specification says. The verb keeps the master's
+name, `kapso trace`, though WP1 retired `Solution.trace` because the
+word promised a log: the trace renders the record and says so on its
+page. The cost line carries its coverage (`claude_code` when any Codex
+run exists), extending the status surface's time-only rule to a record
+reader that already prints the campaign's cost.
+
+**The engine's errors print their message, on stderr.** For the
+engine's own error classes the CLI prints the message alone (however
+many lines, as the preflight's report is) and no traceback; any other
+exception keeps its traceback. The CLI's own `Error:` refusals move
+from stdout to stderr with them, so a script reading stdout sees
+results only.
+
+**The pull log carries the session.** The staging passes the session's
+label to the bank gate's environment and every event records it, so
+reads are attributed to the session that made them; an ask of WP3's
+package, merged, taken here.
+
+**The refusal is a result field and a config count.**
+`CodingResult.refused` is set by the Claude Code adapter on the model's
+safeguard refusal; the mining frame relaunches a refused lead
+`learning.mining.refusal_relaunches` times (one) before any repair
+round, and notes it through the learn status it is handed.
+
+**`stopped_reason` and `requests` keep their names.** WP1 left the
+rename open; both names are in the status file, the checkpoint and the
+API, and a rename gains nothing.
+
 ## 2026-10-25, WP3 (taken after the sub-plan's review, while building)
 
 **Scope is a filter again, on the harness coordinate.** The 2026-08
