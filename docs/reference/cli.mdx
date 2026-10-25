@@ -1,7 +1,7 @@
 ---
 title: "Kapso CLI reference: every command, flag and default"
 sidebarTitle: "CLI"
-description: "The eleven kapso commands and their twenty-two subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
+description: "The eight kapso commands and their subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
 keywords: ["kapso CLI", "kapso build", "kapso harness", "kapso experience", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
 ---
 
@@ -128,6 +128,8 @@ What a build is served that was measured before: your own bank (the one `learn()
 | `add` | `add mine` creates your bank, empty; `add leeroopedia` checks the gate's key is in `.env`; `add --repo <url> --name <n>` ingests a repository into the index `<n>`; `add --research "<question>" --name <n>` researches the web and ingests the findings. Exactly one of the three; an index name that exists is refused |
 | `list` | `mine` with its head, card count and remote; the hosted gate's key state; the banks you read; the indexes with their id, page count and origin |
 | `share` | Attach a git remote to your bank and push it; `learn()` pushes there from then on |
+| `update` | The network step loading never takes: `mine` takes its remote's main, a bank you read at a moving reference is fetched again, a tag or a commit never moves; every bank when none is named. A running campaign keeps the pin it launched with |
+| `remove` | Delete a bank you read (its clone and record) or an index (its backend namespace, its pages and its record). Your bank, the hosted gate and a bank by path are not the store's to remove |
 
 Every subcommand takes `--config` for the config whose `experience` block names the homes.
 
@@ -138,11 +140,29 @@ kapso experience add --repo https://github.com/org/x --name org-x
 kapso experience add --research "QLoRA memory optimizations" --name qlora
 kapso experience list
 kapso experience share https://github.com/acme/kapso-bank.git
+kapso experience update
+kapso experience update acme/kapso-bank
+kapso experience remove org-x
 ```
 
 ## kapso learn
 
-Trajectory learning. Ten subcommands cover importing finished campaigns, mining them, grading a bank, and folding results back in.
+Learn from a finished campaign into your bank: import, mine, exam, lesson, what [`learn()`](/docs/reference/kapso-api#learn) does.
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `campaign` | The campaign directory (the solution's trace) or a trajectory id in the store. **Required** | — |
+| `--harness` | The harness the campaign ran under (a name, a path or a git reference), when its launch record names none | the record's |
+| `--config` | Config path | packaged `config.yaml` |
+
+```bash
+kapso learn ./campaign
+kapso learn ./campaign --harness ./harness
+```
+
+### kapso learn dev
+
+The learning system's own tools, the development regime: nine subcommands cover importing archived campaigns, mining them, grading a bank, and folding results back in. Every one takes `--config` to point at a config other than the packaged `config.yaml`.
 
 | Subcommand | What it does |
 |------------|--------------|
@@ -150,16 +170,13 @@ Trajectory learning. Ten subcommands cover importing finished campaigns, mining 
 | `mine` | Mine store-resident trajectories into their derived `mined/` views |
 | `grade` | Grade a bank against held-out trajectories, or one arriving trajectory |
 | `update` | Run the update crew: fold mined and graded trajectories into the bank |
-| `init-bank` | Create the bank home: a bare repo plus the founding skeleton |
 | `develop` | Run one learner version through the development regime |
 | `codify` | Run one codify request, which is a build minus ideation, against the bank |
 | `ingest` | Operating-regime chain for one campaign: mine, exam, lesson |
 | `gauntlet` | Run the duplicate and stability traps against a completed development run |
 | `behave` | Run behavior scenarios as semantic production tests |
 
-Every subcommand takes `--config` to point at a config other than the packaged `config.yaml`.
-
-### kapso learn import
+### kapso learn dev import
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -169,11 +186,11 @@ Every subcommand takes `--config` to point at a config other than the packaged `
 | `--no-upload` | Skip remote upload even when one is configured | no |
 
 ```bash
-kapso learn import --subset docs/plans/learning/d1-subset.yaml
-kapso learn import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.tgz
+kapso learn dev import --subset docs/plans/learning/d1-subset.yaml
+kapso learn dev import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.tgz
 ```
 
-### kapso learn mine
+### kapso learn dev mine
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -182,10 +199,10 @@ kapso learn import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.t
 | `--force` | Regenerate even when already mined | no |
 
 ```bash
-kapso learn mine --all
+kapso learn dev mine --all
 ```
 
-### kapso learn grade
+### kapso learn dev grade
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -196,10 +213,10 @@ kapso learn mine --all
 | `--trajectory` | One trajectory id, for exam mode | no |
 
 ```bash
-kapso learn grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
+kapso learn dev grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
 ```
 
-### kapso learn update
+### kapso learn dev update
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -208,18 +225,10 @@ kapso learn grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
 | `--split` | Split manifest. On development runs this asserts batch and held-out are disjoint | no |
 
 ```bash
-kapso learn update --learner-version v3 --batch-manifest batch.yaml
+kapso learn dev update --learner-version v3 --batch-manifest batch.yaml
 ```
 
-### kapso learn init-bank
-
-Creates the bank home. Takes only `--config`.
-
-```bash
-kapso learn init-bank
-```
-
-### kapso learn develop
+### kapso learn dev develop
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -227,20 +236,20 @@ kapso learn init-bank
 | `--learner-version` | Crew version identifier | **yes** |
 
 ```bash
-kapso learn develop --split splits/d1.yaml --learner-version v3
+kapso learn dev develop --split splits/d1.yaml --learner-version v3
 ```
 
-### kapso learn codify
+### kapso learn dev codify
 
 | Flag | What it does | Required |
 |------|--------------|----------|
 | `--request` | Request YAML naming the card, fixture, materials and gates | **yes** |
 
 ```bash
-kapso learn codify --request requests/card-117.yaml
+kapso learn dev codify --request requests/card-117.yaml
 ```
 
-### kapso learn ingest
+### kapso learn dev ingest
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -248,20 +257,20 @@ kapso learn codify --request requests/card-117.yaml
 | `--learner-version` | Crew version doing the lesson | **yes** |
 
 ```bash
-kapso learn ingest --trajectory rel-hm-user-churn-a2 --learner-version v3
+kapso learn dev ingest --trajectory rel-hm-user-churn-a2 --learner-version v3
 ```
 
-### kapso learn gauntlet
+### kapso learn dev gauntlet
 
 | Flag | What it does | Required |
 |------|--------------|----------|
 | `--learner-version` | Completed development run to trap | **yes** |
 
 ```bash
-kapso learn gauntlet --learner-version v3
+kapso learn dev gauntlet --learner-version v3
 ```
 
-### kapso learn behave
+### kapso learn dev behave
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -269,7 +278,7 @@ kapso learn gauntlet --learner-version v3
 | `--all` | Run every scenario | no |
 
 ```bash
-kapso learn behave --all
+kapso learn dev behave --all
 ```
 
 ## kapso deploy
@@ -361,33 +370,6 @@ kapso inbox reply ./campaign 1
 kapso inbox reply 1 "added the key" --detach
 ```
 
-## kapso bank
-
-The lesson bank is local-only by default. These two subcommands give it a git remote. Credentials stay with `git` and `gh`; Kapso never handles them.
-
-### kapso bank connect
-
-| Argument | What it does | Required |
-|----------|--------------|----------|
-| `url` | Git URL of the bank repository, https or ssh | **yes** |
-
-```bash
-kapso bank connect https://github.com/your-org/kapso-bank.git
-```
-
-### kapso bank create
-
-Creates the GitHub repository with the `gh` CLI, then connects it.
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `slug` | `org/name` for the new repository. **Required** | — |
-| `--public` | Create the repository public | private |
-
-```bash
-kapso bank create your-org/kapso-bank
-```
-
 ## kapso doctor
 
 Reports the requirements your **active config** implies, and exits non-zero when a required item is missing.
@@ -412,16 +394,17 @@ A stdio MCP server for the coding-agent session you work in: the gates Kapso's o
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--gates` | Comma-separated gates to serve | `research,repo_memory,experiment_history,bank` |
-| `--kg-index` | A `.index` file; adds the `idea` and `code` search gates | — |
-| `--config` | Config whose serving, bank and embedding settings apply | packaged `config.yaml` |
+| `--experience` | Comma-separated sources to serve, in the forms `kapso experience list` shows (`mine`, `mine:all`, a bank path or git reference, an index name); a bank mounts the `bank` gate, an index the `idea` and `code` gates | nothing loaded: no bank, no index |
+| `--harness` | The harness the session works under (a name, a path or a git reference): its name is the coordinate `mine` serves cards by | `none` |
+| `--config` | Config whose experience, bank and embedding settings apply | packaged `config.yaml` |
 | `--root` | The directory the session works in | the current directory |
-| `--family` | The task family the bank serves for | the config's `default_mode`, lowercased |
+
+`research`, `repo_memory` and `experiment_history` ride by what the directory holds; a gate that cannot be served is named on stderr with its reason. The intro naming the loaded sources is the server's instructions, so the session sees what it is served on connect.
 
 ```bash
-claude mcp add kapso -- kapso-mcp
-codex mcp add kapso -- kapso-mcp
-kapso-mcp --gates research,bank --config kapso-config.yaml
+claude mcp add kapso -- kapso-mcp --experience mine
+codex mcp add kapso -- kapso-mcp --experience mine
+kapso-mcp --harness ./harness --experience mine,org-x --config kapso-config.yaml
 ```
 
 A gate that cannot be served is named on stderr with its reason; see [Use the gates from your own coding agent](/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).

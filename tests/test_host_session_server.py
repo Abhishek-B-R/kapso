@@ -26,6 +26,7 @@ from kapso.gated_mcp.host_session import (
     campaign_directory,
     load_sources,
     prepare_host_gates,
+    remove_session_dir,
     repository_root,
 )
 from kapso.gated_mcp.presets import resolve_gates
@@ -56,7 +57,7 @@ def _index(tmp_path, name):
     return _source(tmp_path, name)
 
 
-def _prepare(tmp_path, root, *, requested=DEFAULT_GATES, sources=(), mode_config=None):
+def _prepare(tmp_path, root, *, requested=DEFAULT_GATES, sources=(), mode_config=None, harness_name=None):
     return prepare_host_gates(
         root=root,
         requested=list(requested),
@@ -64,6 +65,7 @@ def _prepare(tmp_path, root, *, requested=DEFAULT_GATES, sources=(), mode_config
         sources=list(sources),
         session_dir=tmp_path / "sessions" / "s1",
         probe_budget=1,
+        harness_name=harness_name,
     )
 
 
@@ -155,6 +157,23 @@ def test_the_bank_is_staged_for_the_session_when_one_is_loaded(tmp_path, codex_o
     assert resolution.unavailable_gates == ()
 
 
+def test_the_harness_is_the_coordinate_and_the_intro_is_the_servers_instructions(tmp_path, codex_on_path):
+    seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
+    gates = _prepare(
+        tmp_path, tmp_path, requested=["bank"], sources=[_source(tmp_path, "mine")], harness_name="trading",
+    )
+    env = gates.env
+    assert env["KAPSO_TASK_HARNESS"] == "trading"
+    intro = Path(env["KAPSO_SERVING_INTRO"])
+    assert intro == tmp_path / "sessions" / "s1" / "intro.md"
+    assert "## Experience (measured before)" in intro.read_text()
+    assert "1 card measured by you, under the trading harness" in intro.read_text()
+    # the staging goes with the server
+    remove_session_dir(tmp_path / "sessions" / "s1")
+    assert not (tmp_path / "sessions" / "s1").exists()
+    remove_session_dir(tmp_path / "sessions" / "s1")   # gone already: nothing to do
+
+
 def test_the_bank_stays_off_while_no_bank_is_loaded(tmp_path, codex_on_path):
     seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
     off = _prepare(tmp_path, tmp_path, requested=["bank"])
@@ -207,6 +226,53 @@ def test_duplicates_are_dropped_and_order_kept(tmp_path, codex_on_path):
 
 
 # ------------------------------------------------------------------ main
+
+
+def test_main_takes_the_harness_for_its_name(tmp_path, monkeypatch, capsys):
+    trading = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
+    captured = {}
+    monkeypatch.setattr(
+        host_module, "prepare_host_gates",
+        lambda **kwargs: captured.update(kwargs) or host_module.HostGates(enabled=["research"], env={}),
+    )
+    monkeypatch.setattr(host_module, "run_server", _no_server)
+    monkeypatch.chdir(tmp_path)
+    host_module.main(["--harness", str(trading)])
+    assert captured["harness_name"] == "trading" and captured["sources"] == []
+    assert "kapso-mcp: serving research for" in capsys.readouterr().err
+    # the session directory is removed when the server exits
+    assert captured["session_dir"].parent == Path(host_module.load_experience_defaults(None)["session_root"]).expanduser()
+
+
+async def _no_server():
+    return None
+
+
+def test_the_bundled_server_serves_the_staged_intro_as_its_instructions(tmp_path, monkeypatch):
+    import kapso.gated_mcp.server as server_module
+
+    intro = tmp_path / "intro.md"
+    intro.write_text("## Experience (measured before)\n\nYou are served:\n- 1 card measured by you\n")
+    built = {}
+
+    class FakeServer:
+        def __init__(self, name, instructions=None):
+            built.update(name=name, instructions=instructions)
+
+        def list_tools(self):
+            return lambda fn: fn
+
+        def call_tool(self):
+            return lambda fn: fn
+
+    monkeypatch.setattr(server_module, "Server", FakeServer)
+    monkeypatch.setattr(server_module, "_resolve_configuration", lambda: {})
+    monkeypatch.setenv("KAPSO_SERVING_INTRO", str(intro))
+    server_module.create_gated_mcp_server()
+    assert built == {"name": "gated-knowledge", "instructions": intro.read_text()}
+    monkeypatch.delenv("KAPSO_SERVING_INTRO")
+    server_module.create_gated_mcp_server()
+    assert built["instructions"] is None
 
 
 def test_main_serves_what_it_can_and_exits_when_nothing_is_left(tmp_path, monkeypatch, capsys):

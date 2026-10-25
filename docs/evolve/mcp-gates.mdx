@@ -156,17 +156,17 @@ A campaign session has its gate configuration built per session, with the campai
 | `research` | The `codex` CLI is on PATH | — |
 | `repo_memory` | The repository holds `.kapso/repo_memory.json`, which a campaign builds | The git top level of the working directory |
 | `experiment_history` | The working directory is inside a campaign directory | The nearest ancestor with `.kapso/experiment_history.json`; `models.embedding` from the config adds semantic search |
-| `bank` | `--experience` loads a bank (`mine`, a bank path or git reference) | One pinned clone per loaded bank, the serving record and the pull log staged under `learning.serving.session_root`, one directory per server process; the coordinate is `none` (a host session has no harness) |
+| `bank` | `--experience` loads a bank (`mine`, `mine:all`, a bank path or git reference) | One pinned clone per loaded bank, the serving record, the pull log and the intro staged under `learning.serving.session_root`, one directory per server process, removed when the server exits; the coordinate is the harness `--harness` names, `none` without one; the intro is the server's instructions, so the session names its sources on connect |
 | `idea`, `code` | `--experience` loads an index by name | The index's record |
 
 Every gate left out is named on stderr with its reason, so `claude mcp list` or the host's log says what the session can and cannot reach. The `kg` gate (which carries the write tools) and the `inbox` gate (a session asking a person) are never served to a host. Leeroopedia is a hosted server, not a bundled gate: add it to the host as an HTTP MCP server at the address in the config's `gates:` block, with your key on the URL.
 
 ```bash
 kapso-mcp --help
-kapso-mcp --experience mine,org-x --config kapso-config.yaml
+kapso-mcp --harness ./harness --experience mine,org-x --config kapso-config.yaml
 ```
 
-`--root` names the session's directory when it is not the current one, and `--experience` the sources to serve, comma-separated, in the forms `kapso experience list` shows. Leeroopedia is a hosted server, not a bundled gate: loading it here only prints a reminder to add it to the host as an HTTP MCP server.
+`--root` names the session's directory when it is not the current one, `--experience` the sources to serve, comma-separated, in the forms `kapso experience list` shows, and `--harness` the harness the session works under (a name, a path or a git reference): its name is the coordinate `mine` serves cards by, as a build's is. Leeroopedia is a hosted server, not a bundled gate: loading it here only prints a reminder to add it to the host as an HTTP MCP server.
 
 ## Adding a gate
 

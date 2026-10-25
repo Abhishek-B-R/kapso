@@ -22,6 +22,7 @@
 
 import argparse
 import asyncio
+import atexit
 import os
 import shutil
 import subprocess
@@ -31,12 +32,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_experience_defaults, load_mode_config
+from kapso.core.config import (
+    PLATFORM_CONFIG_PATH,
+    load_experience_defaults,
+    load_harness_defaults,
+    load_mode_config,
+)
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.experience.reference import parse_experience_reference
 from kapso.experience.sources import ExperienceSource, resolve_source
 from kapso.gated_mcp.presets import GATES
 from kapso.gated_mcp.server import run_server
+from kapso.harness import load_harness
 from kapso.learning.serving_launch import plan_serving, stage_serving, task_coordinates
 
 # The gates a host session gets without being asked. `idea` and `code`
@@ -97,15 +104,18 @@ def prepare_host_gates(
     sources: Sequence[ExperienceSource],
     session_dir: Path,
     probe_budget: int,
+    harness_name: Optional[str] = None,
 ) -> HostGates:
     """Decide which of the requested gates this session can have, and
     build the environment the bundled server resolves them from. The
     loaded banks are staged into `session_dir` here (one pinned clone
-    each, the serving record, the pull log) when the bank gate is among
-    the requested; a host session has no harness, so its coordinate is
-    `none`. Request order is kept, duplicates dropped; an unknown gate or
-    a campaign-only one is a configuration error, never silently skipped."""
-    plan = plan_serving(list(sources), task_coordinates(None), session_dir, probe_budget)
+    each, the serving record, the pull log and the intro the server
+    serves as its instructions) when the bank gate is among the
+    requested; `harness_name` is the session's coordinate (`--harness`),
+    `none` without one. Request order is kept, duplicates dropped; an
+    unknown gate or a campaign-only one is a configuration error, never
+    silently skipped."""
+    plan = plan_serving(list(sources), task_coordinates(harness_name), session_dir, probe_budget)
     env: Dict[str, str] = {}
     enabled: List[str] = []
     notes: List[str] = []
@@ -153,7 +163,9 @@ def prepare_host_gates(
             if plan is None or not plan["banks"]:
                 notes.append(f"bank: off (no bank loaded; {LOAD_HINT} mine)")
                 continue
-            env.update(stage_serving(plan, list(sources))["bank_serving"])
+            staged = stage_serving(plan, list(sources))
+            env.update(staged["bank_serving"])
+            env["KAPSO_SERVING_INTRO"] = staged["intro_path"]
         elif gate in INDEX_GATES or gate == "kg":
             if plan is None or not plan["kg_index_path"]:
                 notes.append(f"{gate}: off (no index loaded; {LOAD_HINT} <name>)")
@@ -189,12 +201,26 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--experience", type=str, default=None,
         help=(
-            "Comma-separated sources to serve: mine, a bank path or git reference, "
+            "Comma-separated sources to serve: mine, mine:all, a bank path or git reference, "
             "an index name (see `kapso experience list`). Nothing loaded serves "
             "no bank and no index"
         ),
     )
+    parser.add_argument(
+        "--harness", type=str, default=None,
+        help=(
+            "The harness this session works under (a name, a path or a git reference): "
+            "its name is the coordinate `mine` serves cards by; none means `none`"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def remove_session_dir(session_dir: Path) -> None:
+    """The session's staging (pinned clones, record, pull log, intro) goes
+    with the server; a host session has no learning to harvest it for."""
+    if session_dir.exists():
+        shutil.rmtree(session_dir)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
@@ -204,11 +230,21 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     mode_config = load_mode_config(config_path)
     root = Path(args.root).expanduser().resolve() if args.root else Path.cwd()
     sources = load_sources(args.experience, settings)
+    harness_name = None
+    if args.harness:
+        # Loaded for its name alone: the coordinate the bank serves by.
+        # stderr keeps stdout for the MCP transport.
+        harness = load_harness(
+            args.harness, settings=load_harness_defaults(config_path),
+            say=lambda line: print(f"kapso-mcp: {line}", file=sys.stderr),
+        )
+        harness_name = harness.name
     requested = list(DEFAULT_GATES)
     if any(source.kind == "index" for source in sources):
         requested.extend(INDEX_GATES)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     session_dir = Path(settings["session_root"]).expanduser() / f"{stamp}-{os.getpid()}"
+    atexit.register(remove_session_dir, session_dir)
     gates = prepare_host_gates(
         root=root,
         requested=requested,
@@ -216,6 +252,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         sources=sources,
         session_dir=session_dir,
         probe_budget=settings["probe_budget"],
+        harness_name=harness_name,
     )
     for note in gates.notes:
         print(f"kapso-mcp: {note}", file=sys.stderr)
