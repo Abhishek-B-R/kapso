@@ -25,6 +25,8 @@ from kapso.experience.sources import (
     ExperienceSource,
     bank_head,
     count_cards,
+    hosted_key_missing,
+    hosted_key_present,
     resolve_source,
 )
 from kapso.experience.store import ExperienceStore, IndexRecord
@@ -49,6 +51,8 @@ __all__ = [
     "IndexRecord",
     "bank_head",
     "count_cards",
+    "hosted_key_missing",
+    "hosted_key_present",
     "parse_experience_reference",
     "resolve_source",
     "valid_index_name",

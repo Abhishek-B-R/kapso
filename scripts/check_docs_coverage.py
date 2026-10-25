@@ -30,6 +30,7 @@ SUBPARSER_GROUPS = (
     ("learn_sub", "kapso learn"),
     ("bank_sub", "kapso bank"),
     ("sub", "kapso harness"),
+    ("experience_sub", "kapso experience"),
 )
 
 

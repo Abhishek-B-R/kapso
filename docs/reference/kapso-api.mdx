@@ -35,6 +35,9 @@ Kapso(
 |--------|---------|--------------|
 | [`load_harness()`](#load-harness) | `Harness` | Load the domain layer the verbs run with |
 | [`harness`](#load-harness) | `Harness \| None` | The loaded harness |
+| [`load_experience()`](#load-experience) | `ExperienceSource` | Load a source a build is served: your bank, the hosted gate, a bank you read, an index |
+| [`experience`](#load-experience) | `list[ExperienceSource]` | The loaded sources, in load order |
+| [`share_experience()`](#load-experience) | `None` | Attach a git remote to your bank and push it |
 | [`build()`](#build) | `Solution` | Run an experiment campaign that meets a brief |
 | [`research()`](#research) | `ResearchFindings` | Deep web research on an objective |
 | [`learn()`](#learn) | `LessonResult` | Mine one finished campaign into the lesson bank |
@@ -69,6 +72,31 @@ kapso.harness                                                 # the same object,
 It resolves the reference, fetching a git one into the store, runs `check` and raises `HarnessError` on a failure, hashes the directory, and reads what this machine lacks into `missing` without raising. A second call replaces the first: one object, one harness. Nothing starts here. The forms, the checks and the handle are in the [harness reference](/docs/reference/harness).
 
 `build()` uses the loaded harness over the brief's `Harness` line, and refuses before any session while a need of the build's modules is unmet. `deploy()` and `learn()` take the harness from the solution's record when none is loaded; a loaded one of the same name is used instead, another version included; another name is refused.
+
+## load_experience
+
+Loads a source a build is served, what was measured before: your own
+bank (the one `learn()` writes), the hosted Leeroopedia gate, a bank you
+read, or a corpus ingested under a name. See [Experience](/docs/experience).
+
+```python
+load_experience(ref: str, *, scope: str = "harness") -> ExperienceSource
+share_experience(url: str) -> None
+```
+
+| Argument | What it does |
+|----------|--------------|
+| `ref` | `mine` (your bank), `leeroopedia` (the hosted gate, its key in `.env`), a bank home by path (`./bank.git`), a bank repository by git reference (`acme/kapso-bank`, `acme/kapso-bank@v2`, `git+https://…@main`), or the name of an ingested index (`org-x`) |
+| `scope` | `harness`: `mine` serves the cards learned under the loaded harness; `all`: every card. A bank you read serves what it holds either way |
+
+```python
+source = kapso.load_experience("mine")
+source.kind, source.resolved, source.head, source.provenance   # "bank", "/home/me/.kapso/bank.git", "3f9c…", "measured by you"
+kapso.experience                                               # the loaded sources, in load order
+kapso.share_experience("https://github.com/acme/kapso-bank.git")
+```
+
+Loading resolves the reference, confirms the source exists and is readable (a bank's format, the hosted gate's key, an index's record), pins it (`mine` after a pull from its remote, at its head; a bank you read at its clone's head; an index at its id), prints one line and appends it to the object's sources; a reference loaded again replaces its entry. Loading never ingests and never creates: a source that does not exist is refused with the `kapso experience add` line that makes it. `share_experience` attaches a git remote to your bank and pushes it, creating the bank first when there is none; `learn()` pushes there from then on and `mine` pulls from there before it is served.
 
 ## build
 

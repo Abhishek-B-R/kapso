@@ -104,14 +104,8 @@ def resolve_source(
         )
     if reference.kind == "hosted":
         hosted = settings["hosted"]
-        present = os.environ.get(HOSTED_KEY) or HOSTED_KEY in dotenv_values(
-            dotenv_path if dotenv_path is not None else find_dotenv(usecwd=True)
-        )
-        if not present:
-            raise ExperienceError(
-                f"{HOSTED} needs {HOSTED_KEY}: put {HOSTED_KEY}=kpsk_... in .env beside the run (sign up at "
-                "https://app.leeroopedia.com/dashboard); nothing to install"
-            )
+        if not hosted_key_present(dotenv_path):
+            raise ExperienceError(hosted_key_missing())
         return ExperienceSource(
             reference=reference.raw, kind="hosted", resolved=hosted["url"], head=None, provenance=PROVENANCE_REPORTED,
             scope=SCOPE_ALL, url=hosted["url"],
@@ -120,6 +114,21 @@ def resolve_source(
     return ExperienceSource(
         reference=reference.raw, kind="index", resolved=str(record.path), head=record.id, provenance=PROVENANCE_REPORTED,
         scope=SCOPE_ALL, path=record.path, cards=record.page_count,
+    )
+
+
+def hosted_key_present(dotenv_path: Optional[str] = None) -> bool:
+    """The hosted gate's key, in the environment or in `.env` beside the
+    run: a presence probe, never a read of the value."""
+    return bool(os.environ.get(HOSTED_KEY)) or HOSTED_KEY in dotenv_values(
+        dotenv_path if dotenv_path is not None else find_dotenv(usecwd=True)
+    )
+
+
+def hosted_key_missing() -> str:
+    return (
+        f"{HOSTED} needs {HOSTED_KEY}: put {HOSTED_KEY}=kpsk_... in .env beside the run (sign up at "
+        "https://app.leeroopedia.com/dashboard); nothing to install"
     )
 
 

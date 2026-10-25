@@ -115,7 +115,7 @@ from kapso.learning.serving_launch import (
     stage_serving,
 )
 from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
-from kapso.learning.bank_remote import bank_origin
+from kapso.learning.bank_remote import bank_origin, connect_bank
 from kapso.learning.update_frame import UpdateFrame, init_bank
 
 from kapso.deployment import (
@@ -358,6 +358,18 @@ class Kapso:
         self._experience = [s for s in self._experience if s.reference != source.reference] + [source]
         print(f"Experience: {source.label()}")
         return source
+
+    def share_experience(self, url: str) -> None:
+        """Attach `url` as your bank's remote and push the bank there; a
+        bank that does not exist yet is created first. learn() pushes
+        there from then on, and `mine` pulls from there before it is
+        served. Credentials are git's own."""
+        home = Path(self._experience_settings["bank_home"]).expanduser()
+        if not home.exists():
+            init_bank(str(home))
+            print(f"created your bank at {home}")
+        connect_bank(home, url)
+        print(f"your bank {home} shares to {url}")
 
     # =========================================================================
     # Knowledge Graph Indexing

@@ -1,16 +1,17 @@
 ---
 title: "Kapso CLI reference: every command, flag and default"
 sidebarTitle: "CLI"
-description: "The ten kapso commands and their nineteen subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
-keywords: ["kapso CLI", "kapso build", "kapso harness", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
+description: "The eleven kapso commands and their twenty-two subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
+keywords: ["kapso CLI", "kapso build", "kapso harness", "kapso experience", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
 ---
 
-Kapso installs the `kapso` executable with ten commands, and `kapso-mcp`, the MCP server that serves Kapso's knowledge and experience tools to the coding-agent session you work in (see [below](#kapso-mcp)).
+Kapso installs the `kapso` executable with eleven commands, and `kapso-mcp`, the MCP server that serves Kapso's knowledge and experience tools to the coding-agent session you work in (see [below](#kapso-mcp)).
 
 | Command | What it does |
 |---------|--------------|
 | [`kapso build`](#kapso-build) | Build software that meets a brief, by experiment |
 | [`kapso harness`](#kapso-harness) | Author, check and fetch harnesses: the domain layer a build loads |
+| [`kapso experience`](#kapso-experience) | What a build is served that was measured before: your bank, the hosted gate, ingested corpora |
 | [`kapso research`](#kapso-research) | Deep web research for an objective |
 | [`kapso learn`](#kapso-learn) | Trajectory learning: import, mine, grade, update, codify |
 | [`kapso deploy`](#kapso-deploy) | Deploy a solution as running software |
@@ -116,6 +117,25 @@ kapso harness remove acme/harnesses@v3#trading
 
 ```bash
 kapso harness list
+```
+
+## kapso experience
+
+What a build is served that was measured before: your own bank (the one `learn()` writes), the hosted Leeroopedia gate, a bank you read, a corpus ingested under a name. A build loads sources at the call (`--experience mine,leeroopedia`, the brief's `Experience` line, `load_experience()`); this verb makes what must exist first, lists what exists, and shares your bank.
+
+| Subcommand | What it does |
+|------------|--------------|
+| `add` | `add mine` creates your bank, empty; `add leeroopedia` checks the gate's key is in `.env` |
+| `list` | `mine` with its head, card count and remote; the hosted gate's key state; the banks you read; the indexes |
+| `share` | Attach a git remote to your bank and push it; `learn()` pushes there from then on and `mine` pulls from there before it is served |
+
+Every subcommand takes `--config` for the config whose `experience` block names the homes.
+
+```bash
+kapso experience add mine
+kapso experience add leeroopedia
+kapso experience list
+kapso experience share https://github.com/acme/kapso-bank.git
 ```
 
 ## kapso research

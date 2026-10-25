@@ -22,12 +22,12 @@ from dotenv import find_dotenv, load_dotenv
 # README tells users to create next to their project was never read.
 load_dotenv(find_dotenv(usecwd=True))
 
-from kapso.cli import bank, build, deploy, doctor, harness, inbox, index_kg, learn, research, watch
+from kapso.cli import bank, build, deploy, doctor, experience, harness, inbox, index_kg, learn, research, watch
 from kapso.cli.common import list_agents
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 # The verbs, in the order `kapso --help` lists them.
-VERB_MODULES = (build, harness, research, learn, deploy, index_kg, watch, inbox, bank, doctor)
+VERB_MODULES = (build, harness, experience, research, learn, deploy, index_kg, watch, inbox, bank, doctor)
 
 
 def main():
@@ -40,6 +40,7 @@ def main():
 Commands:
   build      Build software that meets a brief, by experiment
   harness    Author, check and fetch harnesses: the domain layer a build loads
+  experience What a build is served that was measured before: your bank, the hosted gate, ingested corpora
   research   Web research for objectives
   learn      Trajectory learning (store, mining, updating, grading)
   deploy     Deploy solutions as running software
@@ -92,5 +93,5 @@ Examples:
         handlers[args.command](args)
     else:
         parser.print_help()
-        print("\nError: Please specify a command (build, research, learn, deploy, index_kg, watch, inbox, bank, doctor)")
+        print("\nError: Please specify a command (build, harness, experience, research, learn, deploy, index_kg, watch, inbox, bank, doctor)")
         sys.exit(1)
