@@ -28,8 +28,8 @@ CODIFY_FAILED_MARKER = "codify attempt failed"
 
 # A card's scope: `domain`, or a list of `harness:<name>` coordinates
 # (`harness:none` for a lesson learned without one). The coordinate is the
-# harness (docs/plans/redesign/wp3-experience.md); `family:` and
-# `dataset:` are retired and match nothing.
+# harness (docs/plans/redesign/wp3-experience.md); a coordinate of any
+# other kind matches nothing.
 _SCOPE_COORD_PATTERN = re.compile(r"^(harness):(.+)$")
 DECOY_REGISTRY_NAME = ".decoys.yaml"
 SIGHTINGS_NAME = "sightings.md"

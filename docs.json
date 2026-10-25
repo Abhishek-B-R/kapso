@@ -79,11 +79,12 @@
             ]
           },
           {
-            "group": "Knowledge graph",
+            "group": "Experience",
             "pages": [
-              "docs/knowledge/overview",
-              "docs/knowledge/learning-pipeline",
-              "docs/knowledge/search-backends"
+              "docs/experience/index",
+              "docs/experience/use",
+              "docs/experience/add",
+              "docs/experience/share"
             ]
           },
           {
@@ -95,12 +96,6 @@
               "docs/learning/graders",
               "docs/learning/serving",
               "docs/learning/development"
-            ]
-          },
-          {
-            "group": "Research",
-            "pages": [
-              "docs/research/overview"
             ]
           },
           {
@@ -133,6 +128,7 @@
               "docs/reference/kapso-api",
               "docs/reference/brief-format",
               "docs/reference/harness",
+              "docs/reference/experience",
               "docs/deployment/api-reference",
               "docs/reference/configuration"
             ]
@@ -188,7 +184,23 @@
     },
     {
       "source": "/docs/concepts/knowledge-system",
-      "destination": "/docs/knowledge/overview"
+      "destination": "/docs/experience"
+    },
+    {
+      "source": "/docs/knowledge/overview",
+      "destination": "/docs/experience"
+    },
+    {
+      "source": "/docs/knowledge/learning-pipeline",
+      "destination": "/docs/experience/add"
+    },
+    {
+      "source": "/docs/knowledge/search-backends",
+      "destination": "/docs/experience/add"
+    },
+    {
+      "source": "/docs/research/overview",
+      "destination": "/docs/experience/add"
     },
     {
       "source": "/docs/components/orchestrator",
@@ -204,11 +216,11 @@
     },
     {
       "source": "/docs/components/knowledge-search/overview",
-      "destination": "/docs/knowledge/search-backends"
+      "destination": "/docs/experience/add"
     },
     {
       "source": "/docs/components/wiki-mcp/overview",
-      "destination": "/docs/knowledge/overview"
+      "destination": "/docs/experience"
     },
     {
       "source": "/docs/guides/configuration",
@@ -220,7 +232,7 @@
     },
     {
       "source": "/docs/knowledge/wiki-structure",
-      "destination": "/docs/knowledge/overview"
+      "destination": "/docs/experience/add"
     },
     {
       "source": "/docs/benchmarks/generic-problems",

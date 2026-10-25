@@ -596,7 +596,7 @@ class Kapso:
             exam: Run the hindcast exam against the pinned pre-lesson bank
                 head first. False is for development replays only.
             push: Push the bank commit to the bank's `origin` remote
-                (attached via `kapso bank connect <url>`). None means
+                (attached via `kapso experience share <url>`). None means
                 "push exactly when an origin is attached".
             on_status: Optional hook called with the status dict after
                 every status write and heartbeat (observability §4b).
@@ -939,7 +939,7 @@ class Kapso:
         if pushed:
             print(f"lesson banked and pushed to {origin}")
         else:
-            print("lesson banked locally · to share: kapso bank connect <url>")
+            print("lesson banked locally · to share: kapso experience share <url>")
         return LessonResult(
             trajectory_id=trajectory_id,
             bank_head_before=bank_head_before,

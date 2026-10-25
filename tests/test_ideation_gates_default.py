@@ -39,7 +39,7 @@ def test_default_gates_include_research(tmp_path):
 def test_staged_memory_stores_mount_their_own_gates(tmp_path):
     # Regression (E2E review 2026-08-24, blockers 1+2): serving injects an
     # intro naming bank_index / bank_get_card / bank_get_card_with_evidence
-    # and learn_knowledge writes pages the wiki-search gates read. Both are
+    # and an ingest writes pages the wiki-search gates read. Both are
     # reachable only if the providing gate is mounted, so the gate list
     # FOLLOWS the staged store instead of being an independent config
     # choice — the live run advertised bank tools no session had.

@@ -749,7 +749,7 @@ def learn_requirements(
     """`learn()` runs four crews — mining, grading, the update crew, and
     (when a procedure is codified) the codify run. The grading crew is
     deliberately cross-model, so a default config genuinely needs both
-    CLIs here even though `research()` needs one."""
+    CLIs here even though a web-search session needs one."""
     learning = config.get("learning") or {}
 
     specs = session_specs(learning.get("mining") or {}, "learning.mining")
@@ -798,7 +798,7 @@ def _bank_push_requirements(
             return [Requirement(
                 label="bank origin remote",
                 ok=False,
-                fix="kapso bank connect <url>   (or kapso bank create <org>/<name>)",
+                fix="kapso experience share <url>",
                 origin="push=True was requested",
             )]
         if push is None:
@@ -809,7 +809,7 @@ def _bank_push_requirements(
             return [Requirement(
                 label="bank remote (sharing)",
                 ok=False,
-                fix="kapso bank connect <url> — shares lessons across "
+                fix="kapso experience share <url> — shares lessons across "
                     "machines and teammates",
                 origin=f"{bank_home} has no origin remote — lessons stay local",
                 required=False,

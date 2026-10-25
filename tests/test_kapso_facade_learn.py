@@ -255,7 +255,7 @@ def test_learn_push_preflight_fires_before_any_pipeline_work(
 
 
 def test_learn_pushes_to_connected_origin(tmp_path, monkeypatch):
-    # Regression: with an origin attached (kapso bank connect), learn()
+    # Regression: with an origin attached (kapso experience share), learn()
     # pushes main+tags there by default and the share remote ends at the
     # post-lesson head — the multi-machine share contract.
     config_path = facade_config(tmp_path)

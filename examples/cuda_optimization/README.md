@@ -43,5 +43,6 @@ directory: run one or the other. A CUDA device is required.
 - The target: a number in `Target` once you know the hardware.
 - The budget: the brief's `Budget minutes=90 experiments=8`, or the command's
   `--budget-minutes` and `--budget-experiments`, which win over it.
-- Research first: `kapso research --objective "flash attention in Triton"
-  -o findings.json` and pass the findings with `build(..., context=[...])`.
+- Research first: `kapso experience add --research "flash attention in Triton"
+  --name triton-attention`, then build with `--experience triton-attention`
+  so the sessions can search what the research found.

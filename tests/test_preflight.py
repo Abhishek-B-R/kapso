@@ -199,7 +199,7 @@ def test_gate_policy_decides_whether_a_missing_gate_blocks(
 def test_platform_injected_gate_env_is_never_reported_as_user_setup(
     packaged, full_machine,
 ):
-    """KAPSO_BANK_DIR / EXPERIMENT_HISTORY_PATH / KG_INDEX_PATH are set by
+    """KAPSO_BANKS / EXPERIMENT_HISTORY_PATH / KG_INDEX_PATH are set by
     Kapso when it launches a session. Reporting them at preflight would be
     a guaranteed false positive on every clean machine — and the packaged
     config names the experiment_history gate, so this fires by default."""
@@ -359,7 +359,7 @@ def test_local_only_bank_nudges_the_doctor_but_stays_out_of_every_run(
 
     doctor = by_label(requirements_for("learn", packaged, bank_home=home))
     assert doctor["bank remote (sharing)"].required is False
-    assert "kapso bank connect" in doctor["bank remote (sharing)"].fix
+    assert "kapso experience share" in doctor["bank remote (sharing)"].fix
 
     during_run = labels(
         requirements_for("learn", packaged, bank_home=home, push=False))

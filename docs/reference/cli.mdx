@@ -5,20 +5,17 @@ description: "The eight kapso commands and their subcommands, with every flag, i
 keywords: ["kapso CLI", "kapso build", "kapso harness", "kapso experience", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
 ---
 
-Kapso installs the `kapso` executable with eleven commands, and `kapso-mcp`, the MCP server that serves Kapso's knowledge and experience tools to the coding-agent session you work in (see [below](#kapso-mcp)).
+Kapso installs the `kapso` executable with eight commands, and `kapso-mcp`, the MCP server that serves Kapso's experience to the coding-agent session you work in (see [below](#kapso-mcp)).
 
 | Command | What it does |
 |---------|--------------|
 | [`kapso build`](#kapso-build) | Build software that meets a brief, by experiment |
 | [`kapso harness`](#kapso-harness) | Author, check and fetch harnesses: the domain layer a build loads |
 | [`kapso experience`](#kapso-experience) | What a build is served that was measured before: your bank, the hosted gate, ingested corpora |
-| [`kapso research`](#kapso-research) | Deep web research for an objective |
-| [`kapso learn`](#kapso-learn) | Trajectory learning: import, mine, grade, update, codify |
+| [`kapso learn`](#kapso-learn) | Mine a finished campaign into your bank; the learning system's own tools under `dev` |
 | [`kapso deploy`](#kapso-deploy) | Deploy a solution as running software |
-| [`kapso index_kg`](#kapso-index-kg) | Index a knowledge graph from a wiki or JSON |
 | [`kapso watch`](#kapso-watch) | Watch a running operation |
 | [`kapso inbox`](#kapso-inbox) | What a paused campaign is waiting on you for, and the reply that resumes it |
-| [`kapso bank`](#kapso-bank) | Manage the lesson bank's share remote |
 | [`kapso doctor`](#kapso-doctor) | Check this machine can run what your config asks for |
 
 ## Global options
@@ -304,7 +301,7 @@ kapso deploy ../churn-build --env API_KEY=xxx --interactive
 
 ## kapso watch
 
-Renders the status of a running `build`, `learn` or `learn_knowledge` operation.
+Renders the status of a running `build`, `learn` or `experience` operation (an ingest).
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
@@ -325,12 +322,12 @@ A campaign writes its status file the moment its workspace is seeded, in phase `
 
 ### The status file
 
-`--json` prints the file as it is. Every operation (`build`, `learn`, `learn_knowledge`) carries the same core; `build` adds its campaign payload. Fields appear as they are first written, so a reader treats each as optional.
+`--json` prints the file as it is. Every operation (`build`, `learn`, `experience`) carries the same core; `build` adds its campaign payload. Fields appear as they are first written, so a reader treats each as optional.
 
 | Field | What it holds |
 |-------|---------------|
-| `operation` | `build`, `learn` or `learn_knowledge` |
-| `phases` | The operation's phases in order. Build: `setup`, `harness_setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `verification`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Knowledge: `ingest`, `merge` |
+| `operation` | `build`, `learn` or `experience` |
+| `phases` | The operation's phases in order. Build: `setup`, `harness_setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `verification`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Experience (an ingest): `ingest`, `merge` |
 | `state` | `starting` (preparing, for a build the `setup` phase), `running`, `done` or `failed` |
 | `phase`, `phase_started_at` | The current phase and when it began |
 | `pid` | The writing process. `kapso watch` reports `DEAD` when it is gone |
@@ -377,7 +374,7 @@ Reports the requirements your **active config** implies, and exits non-zero when
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `verb` | Narrow the report to `research`, `learn_knowledge`, `build`, `learn` or `deploy` | union of all five |
+| `verb` | Narrow the report to `build`, `learn`, `deploy` or `experience` (what an ingest needs) | union of all four |
 | `--models` | Live-probe each configured CLI and model pair, spending a few one-token calls | off |
 | `--config` | Config to check | packaged `config.yaml` |
 

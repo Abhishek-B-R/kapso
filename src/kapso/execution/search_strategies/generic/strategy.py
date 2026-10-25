@@ -290,8 +290,8 @@ class GenericSearch(SearchStrategy):
         # workspace must be empty then), so it is read when a prompt is
         # built, never here. None = nothing loaded.
         self.experience_intro_path = self.params.get("experience_intro_path")
-        # Knowledge-store index for the wiki-search gates (learn_knowledge
-        # / index_kg write it; the facade threads it per campaign).
+        # The loaded index's record for the wiki-search gates (an ingest
+        # writes it; the facade threads it per campaign).
         self.kg_index_path = self.params.get("kg_index_path")
         # Durable-archive recovery root for the registered evaluation (glob
         # of run archive parents, e.g. "tmp/relbench/*/runs"). None disables
@@ -422,9 +422,9 @@ class GenericSearch(SearchStrategy):
             for gates in (self.ideation_gates, self.implementation_gates):
                 if "bank" not in gates:
                     gates.append("bank")
-        # Same law for the knowledge store: when a KG index is staged the
-        # wiki-search gates must be mounted, or learn_knowledge writes
-        # pages no campaign can read (E2E review 2026-08-24, blocker 2).
+        # Same law for the knowledge store: when an index is loaded the
+        # wiki-search gates must be mounted, or an ingest writes pages
+        # no campaign can read (E2E review 2026-08-24, blocker 2).
         if self.params.get("kg_index_path"):
             for gates in (self.ideation_gates, self.implementation_gates):
                 for gate in ("idea", "code"):

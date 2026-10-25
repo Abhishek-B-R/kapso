@@ -2,7 +2,7 @@
 title: "Kapso Python API: the Kapso class, method by method"
 sidebarTitle: "Python API"
 description: "Every public method on the Kapso class, with its full signature, arguments, return type and a working example, plus the handles it takes and hands back: Brief, Budget and Solution."
-keywords: ["Kapso Python API", "Kapso class", "build", "Brief", "Budget", "Solution", "learn_knowledge", "Python SDK"]
+keywords: ["Kapso Python API", "Kapso class", "build", "Brief", "Budget", "Solution", "load_experience", "Python SDK"]
 ---
 
 Everything public is importable from the top-level `kapso` package.
@@ -18,7 +18,6 @@ kapso = Kapso()
 ```python
 Kapso(
     config: str | None = None,
-    kg_index: str | None = None,
     bank: str | None = None,
 )
 ```
@@ -26,8 +25,7 @@ Kapso(
 | Argument | What it does | Default |
 |----------|--------------|---------|
 | `config` | Path to a config file: the engine's knobs, nothing else. Nothing starts here | the packaged `config.yaml` |
-| `kg_index` | Path to an existing `.index` file. Without one, knowledge search is off | `None` |
-| `bank` | Lesson-bank home directory. Overrides `learning.bank.local_path` | from config |
+| `bank` | Your bank's home directory, where `learn()` writes and `mine` is served from. Overrides `learning.bank.local_path` | from config |
 
 ## Methods at a glance
 
@@ -388,13 +386,13 @@ print(view.explain())
 
 ## close
 
-Releases the knowledge-search network clients: Weaviate, Neo4j and embeddings.
+Releases the index search's network clients: Weaviate, Neo4j and embeddings, connected when a build loads an index.
 
 ```python
 kapso.close()
 ```
 
-Idempotent, and registered at construction to run on exit, so scripts finish without unclosed-socket warnings. Calling it early is safe; `index_kg()` and `learn_knowledge()` reconnect.
+Idempotent, and registered at construction to run on exit, so scripts finish without unclosed-socket warnings. Calling it early is safe; the next build that loads an index reconnects.
 
 ## Related
 

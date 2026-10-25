@@ -1,13 +1,18 @@
 """The complete Kapso production loop, end to end, on the ML example.
 
-research -> learn_knowledge -> build -> learn -> build
+add_experience(research=) -> build -> learn -> build
 (learn-facade-integration.md Phase 2; the reviewer gate judges the logs.)
 
+The first build is served the index the research made; the second is
+served the index and the bank the lesson wrote, so the loop-closure
+check reads the second campaign's record: the `mine` source it was
+served must sit at the head the lesson produced.
+
 Every stage's artifacts land in an isolated sandbox under learning/
-(gitignored): its own bank, trajectory store, run roots, and wiki dir —
-production stores untouched. The KG BACKENDS (local Weaviate/Neo4j
-containers) are the shared dev ones; the wiki pages written there carry
-this run's stamp in their sandbox wiki_dir copy.
+(gitignored): its own bank, trajectory store, run roots, and experience
+homes — production stores untouched. The graph STORES (local
+Weaviate/Neo4j containers) are the shared dev ones; the index's own
+namespace, named after it, keeps this run's pages apart.
 
 Run:  PYTHONPATH=src:. python examples/ml_model_development/run_full_loop.py
 """
@@ -27,7 +32,6 @@ import yaml
 
 from kapso.kapso import DEFAULT_CONFIG_PATH, Kapso
 from kapso.handles import Budget
-from kapso.learning.update_frame import init_bank
 from examples.ml_model_development.e2e.generate_data import generate
 
 # The example's own reference E2E config budgets 45 minutes for this task
@@ -107,6 +111,31 @@ def stage(status_path: Path, name: str, state: str, **extra) -> None:
     print(f"\n=== STAGE {name}: {state} {extra if extra else ''}\n", flush=True)
 
 
+def sandbox_config(sandbox: Path) -> Path:
+    """The packaged config with every learning and experience home moved
+    into the sandbox, so a run never touches the production stores."""
+    config = yaml.safe_load(Path(DEFAULT_CONFIG_PATH).read_text())
+    config["learning"]["bank"] = {"local_path": str(sandbox / "bank-home.git")}
+    config["learning"]["trajectory_store"] = {"local": str(sandbox / "store"),
+                                              "remote": None}
+    config["learning"]["import_report_dir"] = str(sandbox / "imports")
+    config["learning"]["status_dir"] = str(sandbox / "status")
+    config["learning"]["graders"]["run_root"] = str(sandbox / "graders")
+    config["learning"]["mining"]["run_root"] = str(sandbox / "mining")
+    config["learning"]["mining"]["timeout_minutes"] = 60
+    config["learning"]["update_crew"]["run_root"] = str(sandbox / "update")
+    config["experience"] = {"banks": str(sandbox / "experience" / "banks"),
+                            "indexes": str(sandbox / "experience" / "indexes")}
+    config_path = sandbox / "config.e2e.yaml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    return config_path
+
+
+def served(solution) -> dict:
+    """What a campaign was served, by reference: the pinned head of each."""
+    return {source.reference: source.head for source in solution.experience}
+
+
 def main() -> None:
     example_dir = Path(__file__).parent
     repo_root = example_dir.parent.parent
@@ -114,22 +143,10 @@ def main() -> None:
     sandbox = repo_root / "learning" / "e2e-facade" / stamp
     sandbox.mkdir(parents=True)
     status_path = sandbox / "stage_status.json"
+    index_name = f"spaceship-{stamp.lower()}"
     print(f"E2E sandbox: {sandbox}", flush=True)
 
-    # --- isolated config: packaged config with sandboxed learning homes ---
-    config = yaml.safe_load(Path(DEFAULT_CONFIG_PATH).read_text())
-    config["learning"]["bank"] = {"local_path": str(sandbox / "bank-home.git")}
-    config["learning"]["trajectory_store"] = {"local": str(sandbox / "store"),
-                                              "remote": None}
-    config["learning"]["import_report_dir"] = str(sandbox / "imports")
-    config["learning"]["serving"]["enabled"] = True
-    config["learning"]["graders"]["run_root"] = str(sandbox / "graders")
-    config["learning"]["update_crew"]["run_root"] = str(sandbox / "update")
-    config["learning"]["mining"]["timeout_minutes"] = 60
-    config_path = sandbox / "config.e2e.yaml"
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-
-    init_bank(str(sandbox / "bank-home.git"))
+    config_path = sandbox_config(sandbox)
 
     # --- stage the task material ---
     workdir = sandbox / "task"
@@ -140,42 +157,18 @@ def main() -> None:
     test_df.to_csv(workdir / "data" / "test.csv", index=False)
 
     kapso = Kapso(config=str(config_path))
+    kapso.add_experience("mine")
     (sandbox / "memory-0-start.txt").write_text(kapso.memory.explain())
 
-    # --- 1. research ---
-    stage(status_path, "research", "running")
-    findings = kapso.research(RESEARCH_QUESTION, mode="idea", depth="light")
-    (sandbox / "research_findings.md").write_text(str(findings))
-    if len(str(findings)) < 500:
-        raise RuntimeError(
-            f"research produced only {len(str(findings))} chars — not a "
-            "usable findings set"
-        )
-    stage(status_path, "research", "done",
-          chars=len(str(findings)))
+    # --- 1. experience: the web researched for the question, ingested ---
+    stage(status_path, "experience", "running", name=index_name)
+    kapso.add_experience(research=RESEARCH_QUESTION, name=index_name)
+    corpus = kapso.load_experience(index_name)
+    if not corpus.cards:
+        raise RuntimeError(f"the index {index_name} holds no pages — not a usable corpus")
+    stage(status_path, "experience", "done", name=index_name, index=corpus.head, pages=corpus.cards)
 
-    # --- 2. learn_knowledge ---
-    stage(status_path, "learn_knowledge", "running")
-    kg_result = kapso.learn_knowledge(
-        findings, wiki_dir=str(sandbox / "wikis"),
-    )
-    (sandbox / "memory-1-after-knowledge.txt").write_text(kapso.memory.explain())
-    if not kapso.memory.knowledge_enabled:
-        raise RuntimeError(
-            "S1 CONTRACT VIOLATION: knowledge_search is not live after a "
-            "merged learn_knowledge run"
-        )
-    if kg_result.errors or kg_result.total_pages_extracted == 0:
-        raise RuntimeError(
-            f"learn_knowledge ingested nothing usable: pages="
-            f"{kg_result.total_pages_extracted}, errors={kg_result.errors}"
-        )
-    stage(status_path, "learn_knowledge", "done",
-          pages=kg_result.total_pages_extracted,
-          created=kg_result.created, edited=kg_result.edited,
-          errors=len(kg_result.errors))
-
-    # --- 3. build #1 (KG + founding bank) ---
+    # --- 2. build #1: served the corpus ---
     stage(status_path, "build1", "running")
     sol1 = kapso.build(
         GOAL,
@@ -185,11 +178,9 @@ def main() -> None:
     )
     (sandbox / "solution1.txt").write_text(sol1.explain())
     stage(status_path, "build1", "done",
-          score=sol1.score, goal_achieved=sol1.goal_achieved,
-          experience_head=sol1.experience_head,
-          knowledge_index=sol1.knowledge_index)
+          score=sol1.score, goal_achieved=sol1.goal_achieved, served=served(sol1))
 
-    # --- 4. learn (the experience loop closes) ---
+    # --- 3. learn (the experience loop closes) ---
     stage(status_path, "learn", "running")
     lesson = kapso.learn(sol1)
     (sandbox / "lesson.txt").write_text(lesson.explain())
@@ -201,8 +192,9 @@ def main() -> None:
           cards_created=lesson.cards_created,
           cards_updated=lesson.cards_updated)
 
-    # --- 5. build #2 (KG + updated bank) ---
+    # --- 4. build #2: served the corpus and the bank the lesson wrote ---
     stage(status_path, "build2", "running")
+    kapso.load_experience("mine")
     sol2 = kapso.build(
         GOAL,
         repo=str(workdir),
@@ -212,14 +204,13 @@ def main() -> None:
     (sandbox / "solution2.txt").write_text(sol2.explain())
     (sandbox / "memory-3-final.txt").write_text(kapso.memory.explain())
     stage(status_path, "build2", "done",
-          score=sol2.score, goal_achieved=sol2.goal_achieved,
-          experience_head=sol2.experience_head)
+          score=sol2.score, goal_achieved=sol2.goal_achieved, served=served(sol2))
 
-    # --- loop-closure check: sol2 was served the POST-lesson head ---
-    served2 = sol2.experience_head
-    if lesson.admitted and served2 != lesson.bank_head_after:
+    # --- loop-closure check: build2 was served `mine` at the POST-lesson head ---
+    served2 = served(sol2).get("mine")
+    if served2 != lesson.bank_head_after:
         raise RuntimeError(
-            f"LOOP NOT CLOSED: build2 served {served2}, lesson produced "
+            f"LOOP NOT CLOSED: build2 served mine at {served2}, lesson produced "
             f"{lesson.bank_head_after}"
         )
     stage(status_path, "loop", "closed",

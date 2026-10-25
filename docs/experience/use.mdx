@@ -1,0 +1,152 @@
+---
+title: "Use experience on a build"
+sidebarTitle: "Use experience"
+description: "Name the sources on kapso build, in the brief or in Python; read what the sessions see, what the campaign records, how a resume is served the same list, and how a coding-agent session of your own reads the same sources through kapso-mcp."
+keywords: ["kapso build --experience", "load_experience", "Experience line", "bank_index", "bank_get_card", "serving record", "pull log", "kapso-mcp"]
+---
+
+A build is served exactly the experience it loads. This page is the user's side: naming the sources, reading what the campaign did with them, and giving your own coding-agent session the same sources. [Add a source](/docs/experience/add) and [Share a bank](/docs/experience/share) make the sources; the [reference](/docs/reference/experience) has every form and every field.
+
+## Name the sources
+
+Three ways, one build:
+
+```bash
+kapso build --experience mine,leeroopedia --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+```
+
+```text
+Objective    Raise the churn model's out-of-sample AUC above 0.85
+Experience   mine, leeroopedia
+```
+
+```python
+kapso = Kapso()
+kapso.load_experience("mine")
+kapso.load_experience("leeroopedia")
+kapso.experience            # the loaded sources, in load order
+solution = kapso.build(Brief.read("kapso-brief.md"), repo="repo", output="campaign")
+```
+
+`--experience` and `load_experience()` win over the brief's `Experience` line, as `--harness` wins over its `Harness` line; with nothing loaded, a fresh build takes the brief's items. A reference takes one of these forms:
+
+| Form | Example | What is served |
+|---|---|---|
+| your bank | `mine` | the cards your harness's scope covers, from the bank `learn()` writes |
+| your bank, every scope | `mine:all` | every card you measured, whatever the harness |
+| the hosted gate | `leeroopedia` | Leeroopedia's pages, with `LEEROOPEDIA_API_KEY` in `.env` |
+| a bank by path | `./team/bank.git`, `~/banks/acme.git` | a bank home read in place, every scope |
+| a bank by git reference | `acme/kapso-bank`, `acme/kapso-bank@v2`, `git+https://github.com/acme/kapso-bank@main` | a bank cloned once into the store, every scope |
+| an index name | `org-x` | the corpus ingested under that name |
+
+Loading resolves the reference, confirms the source exists and is readable, pins it as it is on disk and prints one line per source:
+
+```text
+Experience: mine at 3f9c1a2b, 12 cards, measured by you
+Experience: leeroopedia (hosted), reported by others
+```
+
+Loading never pulls, never ingests and never creates. A reference that names nothing is refused with the forms above; a source that does not exist yet is refused with the `kapso experience add` line that makes it; the hosted gate without its key is refused with where the key goes. On a detached build the sources are loaded before the fork, so a refusal reaches you, not the child's log.
+
+## What the sessions see
+
+Before the first session, the engine stages the serving under `.kapso/serving/` in the campaign: one clone per bank at its pinned head, `intro.md`, the serving record, and, as the sessions run, their pull log. The ideation and implementation sessions read the intro after the harness's guidance:
+
+```text
+## Experience (measured before)
+
+You are served:
+- 12 cards measured by you, under the trading harness, from your bank at head `3f9c1a2b7d4e`, pinned for this campaign
+- Leeroopedia's pages, reported by others
+
+Three tools, in reading order:
+- bank_index() — the whole bank as one index page: card name, one-liner,
+  score, and when it applies. Cheap; call it whenever your next decision
+  might have been faced before.
+- bank_get_card(cards) — full card bodies (procedures include their code
+  path).
+- bank_get_card_with_evidence(cards) — the card plus its reliability and
+  evidence trail, for due diligence before you stake real budget on its
+  advice.
+```
+
+The engine does not select cards. `bank_index` lists the whole eligible set, in reliability order, with no cap and no relevance cut; the reading agent decides what to open. A corpus adds the `wiki_idea_search` and `wiki_code_search` tools over its pages; Leeroopedia mounts its own server. The judge gets none of them: it scores what the evaluation printed, and records which cards the attempt leaned on as `cards_load_bearing`.
+
+Three things the frame does on every read:
+
+- **Scope.** Under a harness, `mine` lists and opens the cards scoped `domain` or `harness:<name>`; a card outside is refused by name with the reason (`out of scope under harness:trading; mine:all serves every card you measured`). A bank you read, the hosted gate and an index serve everything they hold.
+- **Quarantine, silently.** Cards in the decoy registry and cards in non-serving states (`cold`, `retired`, `superseded`) never appear.
+- **Contradictions, named.** Two cards that declare they contradict each other are named as a pair, never presented side by side as if they agreed.
+
+A card may carry a measurement offer; it rides card reads only, with its cost clause, under `learning.retriever.probe_budget` per campaign. When two sources hold a card of one name, `bank_get_card(cards, source=)` says which; the pull log names the source of every row served.
+
+## What the campaign records
+
+The same list, in every record:
+
+| Where | What |
+|---|---|
+| `solution.experience`, `.kapso/solution.json` | one entry per source: `reference`, `kind`, `resolved`, `head`, `provenance`, `scope` |
+| `.kapso/run_state.json` | the same list, fingerprinted: a resume with a different one is refused |
+| `.kapso/launch.json` | the same list, what a bare resume re-loads |
+| `.kapso/status.json` | the sources, named from the first second; `kapso watch` shows them |
+| `.kapso/serving/serving-record.yaml` | the task's coordinate and each source with the count it served |
+| `.kapso/serving/serving-pull.jsonl` | one event per tool call: the tool, what was asked, the source, the heads, what was served and refused |
+
+```python
+solution = Solution.open("campaign")
+for source in solution.experience:
+    print(source.reference, source.head[:12], source.provenance, source.scope)
+```
+
+`learn()` harvests the serving record and the pull log with the campaign, so a lesson is credited to the source its card was read from, and `kapso experience list` shows your bank's head beside what a campaign was served.
+
+## Resume
+
+A bare `kapso build --output campaign --resume` is served what the launch was: the record's list, each bank re-pinned at its recorded head even when the bank moved since, each index at its id. A resume that names a different list, by flag or by load, is refused by name; a source that is gone is refused with the way back; an index re-ingested since the launch is refused, since a campaign is served the corpus it started with.
+
+## Your own session
+
+The same sources reach the coding-agent session you work in through `kapso-mcp`, Kapso's MCP server:
+
+```bash
+claude mcp add kapso -- kapso-mcp --experience mine
+codex mcp add kapso -- kapso-mcp --experience mine,org-x --harness ./harness
+```
+
+`--harness` gives the session its coordinate, the name `mine` serves cards by, as a build's harness does; without it the coordinate is `none`. The session is staged under `learning.serving.session_root`, one directory per server process, and removed when the server exits; the intro naming the sources is the server's instructions, so the session sees what it is served on connect. The gates a directory supports (`research`, `repo_memory`, `experiment_history`) ride along; one that cannot be served is named on stderr with its reason. See [Use the gates from your own coding agent](/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).
+
+## What this machine has
+
+```text
+$ kapso experience list
+mine         /home/me/.kapso/bank.git                     head 3f9c1a2b7d4e   12 cards   shares to https://github.com/acme/kapso-bank.git
+leeroopedia  hosted                                       key present
+banks you read
+  https://github.com/acme/kapso-bank.git@v2   head 8b1e0c9d4f2a   41 cards   /home/me/.kapso/experience/banks/github.com-acme-kapso-bank@v2
+indexes
+  org-x        index 7c2d9e1f0a3b   84 pages   ingested 2026-10-25   from https://github.com/org/x
+```
+
+`kapso experience update` is the network step loading never takes: `mine` takes its remote's main, a bank you read at a branch or `HEAD` is fetched again, a tag or a commit never moves; a running campaign keeps its pins. `kapso experience remove <ref>` deletes a bank you read or an index; your bank, the hosted gate and a bank by path are not the store's to remove.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Add a source" icon="plus" href="/docs/experience/add">
+    Your bank, the hosted gate, a repository or a question ingested into an index
+  </Card>
+  <Card title="Share a bank" icon="share-nodes" href="/docs/experience/share">
+    Attach a remote to your bank; read another team's
+  </Card>
+  <Card title="Trajectory learning" icon="brain" href="/docs/learning/overview">
+    How learn() fills your bank
+  </Card>
+  <Card title="Experience reference" icon="book" href="/docs/reference/experience">
+    Every form, record, variable and config key
+  </Card>
+</CardGroup>
+
+Related pages: [What experience is](/docs/experience) · [Add a source](/docs/experience/add) · [Share a bank](/docs/experience/share) · [Experience reference](/docs/reference/experience) · [The brief](/docs/build/brief)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

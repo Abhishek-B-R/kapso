@@ -121,9 +121,9 @@ def test_transient_classifier_rejects_auth_config_and_programming_errors(error):
 
 def test_researcher_failure_propagates():
     # Fail loud: a research failure returned as empty findings poisons
-    # every downstream consumer silently — learn_knowledge ingested
-    # nothing and reported success (found live 2026-08-24 by the facade
-    # E2E). Provider errors must reach the caller.
+    # every downstream consumer silently — an ingest took nothing and
+    # reported success (found live 2026-08-24 by the facade E2E).
+    # Provider errors must reach the caller.
     class FailingBackend:
         def llm_completion_with_web_search(self, **kwargs):
             raise AuthenticationError("bad key")

@@ -34,7 +34,7 @@ Kapso sends every model call through a coding-agent CLI. Install those CLIs and 
   </Step>
 
   <Step title="Optional: an OpenAI key for embeddings">
-    Only the knowledge graph and semantic search over past experiments embed text, and generation never touches the OpenAI API. Nothing in a stock install needs the key. When you turn either on (a `kg_index`, `learn_knowledge`, or `models.embedding` in your config), put the key in a `.env` file in the directory you run Kapso from:
+    Only an ingested corpus and semantic search over past experiments embed text, and generation never touches the OpenAI API. Nothing in a stock install needs the key. When you turn either on (`kapso experience add --repo` or `--research`, a build that loads an index, or `models.embedding` in your config), put the key in a `.env` file in the directory you run Kapso from:
 
     ```bash
     echo 'OPENAI_API_KEY=sk-...' >> .env
@@ -153,7 +153,7 @@ kapso doctor build
 Required checks passed (6 checked).
 ```
 
-The five verbs are `research`, `learn_knowledge`, `build`, `learn` and `deploy`. With no verb, `doctor` reports the union of all five.
+The four verbs are `build`, `learn`, `deploy` and `experience` (what `kapso experience add --repo` and `--research` need). With no verb, `doctor` reports the union of all four.
 
 ### How do I confirm my models are actually reachable?
 
@@ -185,9 +185,9 @@ CLAUDE_CODE_OAUTH_TOKEN=...
 CODEX_API_KEY=...
 ```
 
-## Optional: Knowledge-graph backends
+## Optional: the stores an index needs
 
-`learn_knowledge()` and `kapso index_kg` store into a local Weaviate and Neo4j. Both run in Docker. From a source checkout:
+`kapso experience add --repo` and `--research` ingest a corpus into an index held in a local Weaviate and Neo4j; a build that loads the index searches them. Both run in Docker. From a source checkout:
 
 ```bash
 bash scripts/start_infra.sh
@@ -203,9 +203,9 @@ bash scripts/stop_infra.sh              # stop, keep the data
 bash scripts/stop_infra.sh --volumes    # stop and wipe the data
 ```
 
-The stack runs Weaviate 1.39. If your volumes were created by an older stack (Weaviate 1.27), note that Weaviate supports upgrading one minor version at a time. The index is rebuilt from your wiki pages, so the simplest path is to wipe it and re-index: `bash scripts/stop_infra.sh --volumes`, `bash scripts/start_infra.sh`, then run `kapso index_kg` again.
+The stack runs Weaviate 1.39. If your volumes were created by an older stack (Weaviate 1.27), note that Weaviate supports upgrading one minor version at a time. An index is rebuilt from its source, so the simplest path is to wipe the stores and ingest again: `bash scripts/stop_infra.sh --volumes`, `bash scripts/start_infra.sh`, then `kapso experience remove <name>` and `kapso experience add` again.
 
-`kapso doctor` reports both as `Weaviate (localhost:8080)` and `Neo4j (localhost:7687)` when your config enables knowledge search.
+`kapso doctor experience` reports both as `Weaviate (localhost:8080)` and `Neo4j (localhost:7687)`; a build needs them only when it loads an index. See [Add a source](/docs/experience/add).
 
 ## Optional: Benchmarks
 

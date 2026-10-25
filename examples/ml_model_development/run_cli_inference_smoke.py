@@ -1,11 +1,12 @@
 """Live smoke of the CLI-only inference conversion (design §7.7).
 
-Scaled-down production loop — research (CLI web-search session) ->
-learn_knowledge (small ingest; S1 refresh) -> one short build (repo
-memory, commit messages, judge, embeddings on the converted stack) —
-with per-stage wall-clock recorded so the timings can be compared
-against the API-path baseline in learning/e2e-facade/20260825T223634
-(research 76s; build1 15m26s for the full 45-min-budget run).
+Scaled-down production loop — add_experience(research=) (the CLI
+web-search session, then a small ingest) -> one short build served the
+index (repo memory, commit messages, judge, embeddings on the converted
+stack) — with per-stage wall-clock recorded so the timings can be
+compared against the API-path baseline in
+learning/e2e-facade/20260825T223634 (research 76s; build1 15m26s for
+the full 45-min-budget run).
 
 Run:  PYTHONPATH=src:. python examples/ml_model_development/run_cli_inference_smoke.py
 """
@@ -22,13 +23,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-import yaml
-
-from kapso.kapso import DEFAULT_CONFIG_PATH, Kapso
+from kapso.kapso import Kapso
 from kapso.handles import Budget
-from kapso.learning.update_frame import init_bank
 from examples.ml_model_development.e2e.generate_data import generate
-from examples.ml_model_development.run_full_loop import GOAL
+from examples.ml_model_development.run_full_loop import GOAL, sandbox_config, served
 
 # Smoke budgets: the point is exercising every converted seam through at
 # least one full iteration (implementation -> evaluation -> judge ->
@@ -57,20 +55,10 @@ def main() -> None:
     ).stdout.strip()
     timings = {"build": build}
     timings_path = sandbox / "stage_timings.json"
+    index_name = f"smoke-{stamp.lower()}"
     print(f"CLI smoke sandbox: {sandbox} (build {build})", flush=True)
 
-    config = yaml.safe_load(Path(DEFAULT_CONFIG_PATH).read_text())
-    config["learning"]["bank"] = {"local_path": str(sandbox / "bank-home.git"),
-                                  "remote": None}
-    config["learning"]["trajectory_store"] = {"local": str(sandbox / "store"),
-                                              "remote": None}
-    config["learning"]["import_report_dir"] = str(sandbox / "imports")
-    config["learning"]["serving"]["enabled"] = True
-    config["learning"]["graders"]["run_root"] = str(sandbox / "graders")
-    config["learning"]["update_crew"]["run_root"] = str(sandbox / "update")
-    config_path = sandbox / "config.smoke.yaml"
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-    init_bank(str(sandbox / "bank-home.git"))
+    config_path = sandbox_config(sandbox)
 
     workdir = sandbox / "task"
     shutil.copytree(example_dir / "repo", workdir)
@@ -80,6 +68,7 @@ def main() -> None:
     test_df.to_csv(workdir / "data" / "test.csv", index=False)
 
     kapso = Kapso(config=str(config_path))
+    kapso.add_experience("mine")
 
     def timed(name, fn):
         print(f"=== SMOKE STAGE {name}: running", flush=True)
@@ -90,31 +79,15 @@ def main() -> None:
         print(f"=== SMOKE STAGE {name}: done in {timings[name]}s", flush=True)
         return result
 
-    # --- 1. research: the facade's Researcher() now runs codex --search ---
-    findings = timed("research", lambda: kapso.research(
-        RESEARCH_QUESTION, mode="idea", depth="light",
-    ))
-    (sandbox / "research_findings.md").write_text(str(findings))
-    if len(str(findings)) < 500:
-        raise RuntimeError(
-            f"research produced only {len(str(findings))} chars"
-        )
-
-    # --- 2. learn_knowledge: small ingest; proves the KG path + S1 wiring ---
-    kg_result = timed("learn_knowledge", lambda: kapso.learn_knowledge(
-        findings, wiki_dir=str(sandbox / "wikis"),
-    ))
-    if kg_result.errors or kg_result.total_pages_extracted == 0:
-        raise RuntimeError(
-            f"learn_knowledge ingested nothing usable: pages="
-            f"{kg_result.total_pages_extracted}, errors={kg_result.errors}"
-        )
-    if not kapso.memory.knowledge_enabled:
-        raise RuntimeError("S1 refresh failed: knowledge_search not live")
-    timings["learn_knowledge_pages"] = kg_result.total_pages_extracted
+    # --- 1. experience: the research session (codex --search), then a small ingest ---
+    timed("experience", lambda: kapso.add_experience(research=RESEARCH_QUESTION, name=index_name))
+    corpus = kapso.load_experience(index_name)
+    if not corpus.cards:
+        raise RuntimeError(f"the index {index_name} holds no pages")
+    timings["experience_pages"] = corpus.cards
     timings_path.write_text(json.dumps(timings, indent=1))
 
-    # --- 3. short build: repo memory + commit messages + judge + embeddings ---
+    # --- 2. short build served the index: repo memory + commit messages + judge + embeddings ---
     sol = timed("build", lambda: kapso.build(
         GOAL,
         repo=str(workdir),
@@ -124,6 +97,7 @@ def main() -> None:
     (sandbox / "solution.txt").write_text(sol.explain())
     timings["build_score"] = sol.score
     timings["build_goal_achieved"] = sol.goal_achieved
+    timings["build_served"] = served(sol)
     timings_path.write_text(json.dumps(timings, indent=1))
     print(f"\nCLI_SMOKE_COMPLETE sandbox={sandbox} timings={timings}",
           flush=True)

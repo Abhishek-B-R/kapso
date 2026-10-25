@@ -87,5 +87,5 @@ Examples:
         handlers[args.command](args)
     else:
         parser.print_help()
-        print("\nError: Please specify a command (build, harness, experience, research, learn, deploy, index_kg, watch, inbox, bank, doctor)")
+        print("\nError: Please specify a command (build, harness, experience, learn, deploy, watch, inbox, doctor)")
         sys.exit(1)

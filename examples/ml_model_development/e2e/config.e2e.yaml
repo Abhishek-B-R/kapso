@@ -23,8 +23,8 @@ x-e2e-anchors:
         gate_failure_policy: "warn"
         ideation_timeout: 300
         implementation_timeout: 600
-        ideation_gates: ["research", "experiment_history", "repo_memory", "leeroopedia"]
-        implementation_gates: ["research", "repo_memory", "leeroopedia"]
+        ideation_gates: ["research", "experiment_history", "repo_memory"]
+        implementation_gates: ["research", "repo_memory"]
 
     retry:
       max_attempts: 2

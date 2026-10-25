@@ -66,16 +66,16 @@ flowchart TB
 
 ### Kapso (main API)
 
-The user-facing entry point that provides the four-pillar API:
+The user-facing entry point: the three verbs, and the two layers a verb runs with.
 
 ```python
 class Kapso:
-    def research(objective, mode, depth) -> ResearchFindings
-    def learn(source) -> LessonResult              # mine one finished campaign
-    def learn_knowledge(*sources, wiki_dir) -> PipelineResult  # ingest into the KG
-    def build(goal, ...) -> Solution
+    def load_harness(ref) -> Harness                 # the domain layer a build runs with
+    def load_experience(ref) -> ExperienceSource     # what a build is served: mine, leeroopedia, a bank, an index
+    def add_experience(ref=None, *, repo=None, research=None, name=None) -> str   # make a source
+    def build(brief, ...) -> Solution
+    def learn(source) -> LessonResult                # mine one finished campaign into your bank
     def deploy(solution, strategy) -> Software
-    def index_kg(wiki_dir, save_to) -> str
 ```
 
 ### OrchestratorAgent

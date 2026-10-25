@@ -78,8 +78,7 @@ WRITING — the rules that bind every edit:
   lesson whose card cannot be served back to the campaign that produced
   it is a card the bank can never use (found live 2026-08-24: seven
   cards scoped to invented families left the next campaign's index
-  empty). `family:` and `dataset:` coordinates are retired and match
-  nothing.
+  empty). A coordinate of any other kind matches nothing.
   `scope_conditions` is REQUIRED on every card you author or rewrite — it
   is user-facing: serving renders it as the index's `applies-when` line,
   the one line an agent scans against its own plan to decide whether to

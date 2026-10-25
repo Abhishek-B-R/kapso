@@ -68,8 +68,8 @@ Kapso is an open-source Python framework by [Leeroo](https://leeroo.com), publis
 | Pillar | Method | Description |
 |--------|--------|-------------|
 | [**Build**](https://docs.leeroo.com/docs/build/brief) | `.build()` | Run an experiment campaign that meets a brief: candidates implemented on their own branches, measured, the best kept and refined. |
-| **Learn** | [`.learn()`](https://docs.leeroo.com/docs/learning/overview) / [`.learn_knowledge()`](https://docs.leeroo.com/docs/knowledge/overview) | Two memories: `learn()` mines your own finished campaigns into evidence-priced knowledge cards (experience); `learn_knowledge()` ingests repositories and research into the Knowledge Graph (imported knowledge). |
-| [**Research**](https://docs.leeroo.com/docs/research/overview) | `.research()` | Run deep web research to gather ideas and implementation references. Returns structured findings you can feed into the knowledge base or use as context for evolving solutions. |
+| [**Learn**](https://docs.leeroo.com/docs/learning/overview) | `.learn()` | Mine a finished campaign into your bank: evidence-priced lesson cards, each with its reliability and the measurements that earned it. |
+| [**Experience**](https://docs.leeroo.com/docs/experience) | `.load_experience()` / `.add_experience()` | What a build is served: your bank, the hosted Leeroopedia gate, a bank your team shares, or a corpus ingested from a repository or a researched question. A build is served exactly what it loads. |
 | [**Deploy**](https://docs.leeroo.com/docs/deployment/overview) | `.deploy()` | Turn a solution into running software. Supports local execution, Docker containers, or cloud platforms like Modal. |
 
 ## 🚀 Quickstart
@@ -130,7 +130,7 @@ setup is never asked for `claude`. Narrow it to one verb to see just that
 verb's requirements:
 
 ```bash
-kapso doctor build             # or research / learn_knowledge / learn / deploy
+kapso doctor build             # or learn / deploy / experience
 ```
 
 Those are the same checks the verb itself runs before it does any work —
@@ -142,8 +142,9 @@ you may not need (docker, Weaviate, Neo4j, the deploy targets).
 [setup prompt](https://docs.leeroo.com/docs/installation#set-up-through-your-coding-agent)
 into Claude Code, Codex or OpenCode.
 
-**Knowledge-graph backends (optional)** — `learn_knowledge()` and
-`kg_index` store into local Weaviate + Neo4j. From a source checkout:
+**The stores an index needs (optional)** — `kapso experience add --repo`
+and `--research` ingest a corpus into local Weaviate + Neo4j. From a
+source checkout:
 
 ```bash
 bash scripts/start_infra.sh   # starts both via docker
@@ -189,45 +190,39 @@ print(solution.explain())
 # lessons, and bank evidence-priced knowledge cards. The bank (a local
 # git repo) is created automatically on first use — lessons stay on your
 # machine until you share them:
-#     kapso bank connect <git-url>   # or: kapso bank create org/name
+#     kapso experience share <git-url>
 # after which every learn() pushes the bank there.
 lesson = kapso.learn(solution)
 print(lesson.explain())
 
-# Build again — with `learning.serving.enabled: true` in your config,
-# the next campaign is served the cards it just earned.
+# Build again, served the cards it just earned: a build is served exactly
+# the experience it loads.
+kapso.load_experience("mine")
 solution2 = kapso.build("...", output="./campaign2")
 ```
 
-With the knowledge-graph backends running, you can also import outside
-knowledge and serve it to campaigns:
+With the stores running, you can also ingest outside knowledge into an
+index and serve it the same way:
 
 ```python
-from kapso import Kapso, Source
+from kapso import Kapso
 
 kapso = Kapso()
 
-# Research the web, then ingest findings + a repository into the KG
-findings = kapso.research(
-    "RLHF and DPO fine-tuning for legal contract analysis",
-    mode=["idea", "implementation"],
-)
-kapso.learn_knowledge(
-    Source.Repo("https://github.com/huggingface/trl"),
-    findings.ideas,
-    findings.implementations,
-    wiki_dir="data/wikis",
-)
+# Once: a repository, or the web researched for a question, into an index
+kapso.add_experience(repo="https://github.com/huggingface/trl", name="trl")
+kapso.add_experience(research="RLHF and DPO fine-tuning for legal contract analysis", name="dpo-legal")
 
-# Campaigns on this Kapso now consult the knowledge graph automatically
+# Every build that loads the index searches it; Leeroopedia rides on its key
+kapso.load_experience("trl")
+kapso.load_experience("leeroopedia")
 solution = kapso.build("Fine-tune Llama-3.1-8B for clause risk classification")
 ```
 
-A note on budgeting: `depth="light"` bounds the *research* stage only.
-`learn_knowledge()` extracts everything the material supports — a small
-findings set can still become dozens of linked wiki pages and an
-hours-long ingest. Ingest time scales with extractable substance, not
-with the depth flag; pass fewer sources when you want a faster ingest.
+A note on budgeting: an ingest extracts everything the material supports.
+A single question can become dozens of linked pages and an hours-long
+ingest; ingest time scales with extractable substance, so add the
+sources you will search, not every source you have.
 
 And to turn a solution into running software:
 

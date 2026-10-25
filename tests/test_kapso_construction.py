@@ -1,7 +1,7 @@
 """A real `Kapso()` is whole: every attribute a verb reads is set by the
 constructor, including the ones initialised last (the first proof review
-found `_web_researcher` stranded after a method was inserted into the
-constructor's body, so `research()` raised AttributeError)."""
+found an attribute stranded after a method was inserted into the
+constructor's body, so a verb raised AttributeError)."""
 
 from kapso import Kapso
 

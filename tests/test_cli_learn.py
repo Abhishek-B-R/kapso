@@ -1,8 +1,8 @@
 """`kapso learn <campaign>` is the verb's plain form (WP2's hand-over to
 the experience package): it learns through the facade, loading the harness
 `--harness` names first; the learning system's own nine tools live under
-`kapso learn dev`, with their flags; `init-bank` is gone (`kapso
-experience add mine`)."""
+`kapso learn dev`, with their flags, and nothing else (the bank is made by
+`kapso experience add mine`)."""
 
 import argparse
 import sys
@@ -39,7 +39,6 @@ def test_the_plain_form_is_the_campaign_and_the_tools_sit_under_dev():
     forms, dev = _dev_subparsers()
     assert forms == ["campaign", "dev"]
     assert set(dev) == {"import", "mine", "grade", "update", "develop", "codify", "ingest", "gauntlet", "behave"}
-    assert "init-bank" not in dev
     assert dev["import"] == {"subset", "archive", "id", "config", "no_upload"}
     assert dev["grade"] == {"bank", "bank_head", "split", "learner_version", "trajectory", "config"}
 

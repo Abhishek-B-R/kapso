@@ -29,7 +29,7 @@ The system works by:
 
 1. **Receiving a brief**: What you want to build, how it is measured, the target and the rules
 2. **Initializing the repository**: From `repo`, a workflow search, or empty
-3. **Gathering context**: From the knowledge graph and repo memory
+3. **Gathering context**: From the experience the build loaded and repo memory
 4. **Generating solutions**: Via pluggable coding agents
 5. **Asking you when only you can help**: A session that needs a credential, access or a file only a person can provide records a request in the [inbox](/docs/build/inbox); the campaign pauses and your reply continues that same session
 6. **Running evaluation**: Agent builds and runs evaluation in `kapso_evaluation/`
@@ -92,7 +92,7 @@ When `build()` is called, the system initializes the workspace:
 |---------------------|----------|
 | Local path | Use existing repository as starting point |
 | GitHub URL | Clone repository and use as starting point |
-| `None` (default) | Search for a relevant workflow via the knowledge graph. If found, clone its repository. Otherwise, start from an empty repository. |
+| `None` (default) | Search for a relevant workflow in a loaded index. If found, clone its repository. Otherwise, start from an empty repository. |
 
 ## Configuration modes
 
@@ -100,8 +100,8 @@ Two ship, both running the generic strategy:
 
 | Mode | Description | Best For |
 |------|-------------|----------|
-| `GENERIC` | The default: MCP gates, knowledge search, full feedback loop | General problem solving |
-| `MINIMAL` | The same loop with the knowledge machinery off | Quick experiments, simple problems |
+| `GENERIC` | The default: MCP gates, the loaded experience served, full feedback loop | General problem solving |
+| `MINIMAL` | The same loop with the gates off | Quick experiments, simple problems |
 
 ```python
 # Use a specific mode

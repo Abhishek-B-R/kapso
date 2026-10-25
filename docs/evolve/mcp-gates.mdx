@@ -97,7 +97,7 @@ from kapso.gated_mcp import get_mcp_config
 
 mcp_servers, allowed_tools = get_mcp_config(
     ["idea", "experiment_history", "repo_memory"],
-    kg_index_path="./knowledge.index",
+    kg_index_path="~/.kapso/experience/indexes/org-x/index.json",
     experiment_history_path="./.kapso/experiment_history.json",
     repo_root=".",
     gate_failure_policy="error",

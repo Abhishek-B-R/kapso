@@ -2,7 +2,7 @@
 title: "The Kapso lesson bank: cards, evidence and reliability"
 sidebarTitle: "The lesson bank"
 description: "The bank is a git repository of evidence-priced cards. Each carries a type, a reliability state, a score with a written rationale, and its evidence trail."
-keywords: ["lesson bank", "evidence-priced cards", "reliability state", "insight card", "procedure card", "kapso bank"]
+keywords: ["lesson bank", "evidence-priced cards", "reliability state", "insight card", "procedure card", "kapso experience add mine"]
 ---
 
 The bank is a git repository. Each card is a file, each lesson is a reviewed commit, and every commit is tagged, so any campaign can be pinned to an exact bank state.
@@ -17,6 +17,8 @@ The body is written to be read cold by an engineer who has never seen the card b
 |-----------|---------------|
 | `insight` | A mechanism that paid or failed, and the conditions under which it holds |
 | `procedure` | A runnable harness. The code ships with the card, under `procedures/<name>/` |
+
+A card also carries its `scope`: `domain`, or the `harness:<name>` coordinates it was measured under (`harness:none` for a campaign that ran without one). The coordinate is read off the trajectory, never invented: a card scoped to a name nobody builds under is a card the bank can never serve. Under a [harness](/docs/harnesses), `mine` serves the cards whose scope covers it; `mine:all` serves every card. See [Serving](/docs/learning/serving).
 
 The reliability block carries a `state`, a `score`, and a `rationale`. The rationale is not optional:
 
@@ -74,25 +76,21 @@ sightings.md       where cards have been seen to apply
 
 Every lesson lands as one commit tagged `lr_<id>`, so a campaign can pin the exact bank it was served.
 
-## Creating a bank
+## Creating and sharing a bank
 
 ```bash
 kapso experience add mine
 ```
 
-This creates the bank home — a bare repository plus the founding skeleton — at `learning.bank.local_path`, which ships as `~/.kapso/bank.git`: one bank per user, outside any project, so a campaign's `--data-dir` never sweeps it up.
+This creates the bank home, a bare repository plus the founding skeleton, at `learning.bank.local_path`, which ships as `~/.kapso/bank.git`: one bank per user, outside any project, so a campaign's `--data-dir` never sweeps it up. A first `learn()` creates it too.
 
 The bank is local-only until you give it a remote:
 
 ```bash
-kapso bank connect https://github.com/your-org/kapso-bank.git
+kapso experience share https://github.com/your-org/kapso-bank.git
 ```
 
-Or create the repository and connect it in one step, using the `gh` CLI:
-
-```bash
-kapso bank create your-org/kapso-bank
-```
+After that every `learn()` pushes its lesson there and `kapso experience update` pulls your team's. The repository is yours to create (`gh repo create your-org/kapso-bank --private`); a bank another team shares is read by its reference, `--experience acme/kapso-bank`. See [Share a bank](/docs/experience/share).
 
 <Note>
   Credentials stay with `git` and `gh`. Kapso never handles them.
@@ -107,6 +105,10 @@ A card may declare that it `contradicts` another. Two rules follow:
 
 ## Reading the bank yourself
 
+```bash
+kapso experience list
+```
+
 ```python
 from kapso import Kapso
 
@@ -114,7 +116,7 @@ kapso = Kapso()
 print(kapso.memory.explain())
 ```
 
-`memory` reports the bank head and the trajectory count alongside the knowledge-graph state. See [memory](/docs/reference/kapso-api#memory).
+`list` prints your bank with its head, its card count and where it shares to; `memory` reports the bank head and the trajectory count. See [memory](/docs/reference/kapso-api#memory). A campaign reads the bank when it loads it: `kapso build --experience mine`; see [Serving](/docs/learning/serving).
 
 ## Related
 
