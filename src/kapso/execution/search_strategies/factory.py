@@ -116,6 +116,7 @@ class SearchStrategyFactory:
         goal: str = "",
         status_heartbeat_seconds: Optional[float] = None,
         harness: Optional[Any] = None,
+        experience: Optional[List[Dict[str, Any]]] = None,
     ) -> SearchStrategy:
         """
         Create a search strategy instance.
@@ -136,7 +137,9 @@ class SearchStrategyFactory:
             feedback_generator: FeedbackGenerator for generating feedback after experiments
             goal: Goal string for feedback generation
             status_heartbeat_seconds: The campaign status file's heartbeat cadence
-        
+            harness: The loaded harness (kapso.harness.Harness), staged into the sessions
+            experience: The loaded sources as recorded (ExperienceRef dicts), named in the status file
+
         Returns:
             Configured SearchStrategy instance
         """
@@ -167,8 +170,9 @@ class SearchStrategyFactory:
             goal=goal,
             status_heartbeat_seconds=status_heartbeat_seconds,
             harness=harness,
+            experience=[dict(source) for source in experience or []],
         )
-        
+
         return cls._registry[strategy_type_lower](
             config,
             workspace_dir=workspace_dir,
