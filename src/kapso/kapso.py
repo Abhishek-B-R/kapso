@@ -271,7 +271,9 @@ class Kapso:
         # close them at interpreter exit so scripts end without unclosed-
         # socket ResourceWarnings (onboarding E2E finding #8).
         atexit.register(self.close)
-        
+        # Lazy-initialized web researcher (created on first `.research()` call).
+        self._web_researcher: Optional[Researcher] = None
+
         # Print initialization status
         if kg_index:
             print(f"Initialized Kapso")
@@ -296,9 +298,6 @@ class Kapso:
             print(f"  needs {row.label}: {row.fix}  [{', '.join(row.modules)}]")
         return self._harness
 
-        # Lazy-initialized web researcher (created on first `.research()` call).
-        self._web_researcher: Optional[Researcher] = None
-    
     # =========================================================================
     # Knowledge Graph Indexing
     # =========================================================================
@@ -1502,6 +1501,12 @@ class Kapso:
         # directory), then the brief's line. A resume compares the hash
         # with the checkpoint's and refuses a changed harness by name.
         harness = self._harness
+        if harness is not None:
+            # The directory as it is at the call, not at the load: an edit
+            # since changes the hash (and a resume compares that hash), a
+            # fix since clears a row. The object keeps the fresh handle.
+            harness = reload_harness(harness, settings=self._harness_settings)
+            self._harness = harness
         if harness is None and record is not None and record.get("harness"):
             harness = load_harness(record["harness"]["source"], settings=self._harness_settings)
         if harness is None and brief.harness:
@@ -1514,12 +1519,6 @@ class Kapso:
             if changed:
                 raise RunCheckpointIncompatibleError(resume_refusal(recorded, harness))
         if harness is not None:
-            if harness is self._harness:
-                # The directory as it is at the call, not at the load: an
-                # edit since changes the hash, a fix since clears a row.
-                # The object keeps the fresh handle.
-                harness = reload_harness(harness, settings=self._harness_settings)
-                self._harness = harness
             unmet = harness.missing_for(BUILD_MODULES)
             if unmet:
                 raise HarnessError(unmet_message(harness, unmet, "build"))

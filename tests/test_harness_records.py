@@ -85,6 +85,12 @@ def test_a_resume_after_an_edit_is_refused_by_name_with_the_way_out(engine, tmp_
     assert f"`git checkout` in {harness_dir.resolve()}" in message
     assert "start a new campaign with a new --output" in message
 
+    # The same object, which still holds the handle of the launch: the
+    # directory is read again at the call, so the edit is seen too.
+    with pytest.raises(RunCheckpointIncompatibleError, match="the harness changed since launch"):
+        first.build(output=str(workspace), resume=True)
+    assert first.harness.hash == second.harness.hash
+
 
 def test_the_same_content_from_another_path_resumes(engine, tmp_path):
     workspace, harness_dir, strategies = engine

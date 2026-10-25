@@ -68,8 +68,10 @@ def is_void(verification: Optional[Dict[str, Any]]) -> bool:
 
 
 def is_deliverable(verification: Optional[Dict[str, Any]]) -> bool:
-    """An attempt the harness never verified is not delivered."""
-    return verification is None or verification["verdict"] != UNVERIFIED
+    """Delivered: an attempt with no harness verdict, or a valid one. A
+    void is never delivered, and neither is an attempt the harness's
+    session did not verify."""
+    return verification is None or verification["verdict"] == VALID
 
 
 def render_verification(verification: Optional[Dict[str, Any]]) -> str:

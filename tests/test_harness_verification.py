@@ -24,7 +24,7 @@ from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 from kapso.handles import Solution
 from kapso.harness import HarnessError, load_harness
-from kapso.harness.verdict import read_verdict, render_verification
+from kapso.harness.verdict import is_deliverable, read_verdict, render_verification
 from tests.handles_support import candidate_branch, git, git_workspace, make_solution
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
@@ -186,6 +186,23 @@ def test_a_void_verdict_clears_the_score_and_the_judge_cannot_resurrect_it(strat
     strategy.node_history = [node]
     assert strategy.get_best_experiment() is None and strategy.get_deliverable_experiment() is None
     assert sum(not n.evaluation_valid for n in strategy.get_experiment_history()) == 1
+
+    # Not a parent either: the committed-work fallback skips a void.
+    node.code_diff = "+signal = bars.rolling(20, center=True).mean()"
+    strategy.parent_policy = "best"
+    assert strategy._select_parent().branch_name == "main"
+
+    # The void holds when the judge fails: nothing to deliver, no score.
+    def judge_dies(**kwargs):
+        raise RuntimeError("judge killed")
+    again = node_for(strategy)
+    strategy.feedback_generator.generate = judge_dies
+    strategy._verify_attempt(again)
+    strategy._generate_feedback(again)
+    assert again.evaluation_valid is False and again.score is None
+    assert "judge killed" in again.feedback
+    assert is_deliverable(again.verification) is False and is_deliverable({"verdict": "unverified"}) is False
+    assert is_deliverable({"verdict": "valid", "summary": "ok", "findings": []}) is True and is_deliverable(None) is True
 
 
 def test_no_verdict_is_retried_once_then_unverified_and_never_delivered(strategy, tmp_path):

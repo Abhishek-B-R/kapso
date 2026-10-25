@@ -85,7 +85,7 @@ from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, no_harness, stage_harness
-from kapso.harness.verdict import VERDICT_FILE, is_deliverable, read_verdict, verification_dir
+from kapso.harness.verdict import VERDICT_FILE, is_deliverable, is_void, read_verdict, verification_dir
 from kapso.execution.search_strategies.generic.lens_planning import (
     design_axes_brief,
     normalize_design_axes,
@@ -1439,8 +1439,9 @@ class GenericSearch(SearchStrategy):
         # OLD (defective-evaluator) measurement. Without this the live
         # requester stayed invalid forever — excluded from parenting and
         # delivery despite carrying an honest new-head score. Tampering
-        # nodes never reach the bridge (integrity errors are filtered).
-        node.evaluation_valid = True
+        # nodes never reach the bridge (integrity errors are filtered); a
+        # harness void stands whatever the measurement.
+        node.evaluation_valid = not is_void(node.verification)
         return True
 
     def refresh_score_projections(
@@ -1617,7 +1618,8 @@ class GenericSearch(SearchStrategy):
         # work (a deadline-killed implementation, an evaluation that never
         # ran) is still real progress; branching from `main` strands it on
         # its branch and the next iteration redoes it. Integrity-flagged
-        # candidates stay excluded — never build on an evaluator tamperer.
+        # candidates stay excluded — never build on an evaluator tamperer,
+        # nor on an attempt the harness voided.
         committed = [
             node
             for node in self.node_history
@@ -1625,6 +1627,7 @@ class GenericSearch(SearchStrategy):
             and not node.evaluation_integrity_error
             and not node.cost_refusal
             and not getattr(node, "suspended", False)
+            and not is_void(node.verification)
             and node.code_diff.strip()
             and node.branch_name
         ]

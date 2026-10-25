@@ -158,7 +158,11 @@ def generate_feedback(
         print(f"[GenericSearch] Error generating feedback: {e}")
         node.feedback = f"Error generating feedback: {e}"
         node.should_stop = False
-    
+        if is_void(verification):
+            # The harness's void holds whether or not the judge spoke.
+            node.evaluation_valid = False
+            node.score = None
+
     return node
 
 
