@@ -24,8 +24,6 @@ from kapso.researcher import Researcher
 
 GRAPH_SEARCH = "kg_graph_search"
 WIKI_DIR = "wiki"
-RESEARCH_MODES = ["idea", "implementation"]
-RESEARCH_DEPTH = "deep"
 _NOT_ALNUM = re.compile(r"[^A-Za-z0-9]+")
 
 
@@ -80,16 +78,17 @@ def check_name(name: Optional[str], store: ExperienceStore) -> str:
     return name
 
 
-def research_sources(question: str, config_path: Optional[str]) -> List[Any]:
-    """The web researched for a question: the typed sources the
-    researcher returns, the pipeline's input."""
-    findings = Researcher(config_path=config_path).research(question, mode=RESEARCH_MODES, depth=RESEARCH_DEPTH)
-    sources: List[Any] = []
-    for item in findings if isinstance(findings, (list, tuple)) else [findings]:
-        if isinstance(item, (list, tuple)):
-            sources.extend(item)
-        else:
-            sources.append(item)
+def research_sources(question: str, settings: Dict[str, Any], config_path: Optional[str]) -> List[Any]:
+    """The web researched for a question, in the modes and at the depth
+    the config's `experience` block names: the typed sources inside the
+    researcher's findings (its ideas, its implementations, its report
+    when one was asked for), the pipeline's input."""
+    findings = Researcher(config_path=config_path).research(
+        question, mode=list(settings["research_modes"]), depth=settings["research_depth"],
+    )
+    sources: List[Any] = list(findings.ideas) + list(findings.implementations)
+    if findings.report is not None:
+        sources.append(findings.report)
     if not sources:
         raise IngestError(f"the research on {question!r} returned nothing to ingest")
     return sources

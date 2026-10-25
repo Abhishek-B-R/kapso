@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 _HOSTED_GATES: Dict[str, Dict[str, str]] = load_config(
     str(PLATFORM_CONFIG_PATH)
 )["gates"]
+# The one hosted gate, the experience source `leeroopedia`.
+HOSTED_GATE = "leeroopedia"
 
 
 @dataclass
@@ -486,12 +488,17 @@ def get_mcp_config(
     gate_failure_policy: str = "warn",
     bank_serving: Optional[Dict[str, str]] = None,
     inbox: Optional[Dict[str, str]] = None,
+    hosted: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], List[str]]:
     """
     Get MCP server config and allowed tools for the given gates.
-    
+
     Args:
         gates: List of gate names (e.g., ["idea", "research", "experiment_history"])
+        hosted: The hosted gate as a campaign loaded it: `url` (the key's
+                placeholder in it) and `tool_timeout_seconds`, from the
+                config the source was loaded with. None mounts the
+                packaged config's address.
         server_name: MCP server name (default: "gated-knowledge")
         project_root: Project root path (defaults to the Kapso checkout root)
         kg_index_path: Path to .index file. Required if "kg", "idea", or "code" 
@@ -598,16 +605,21 @@ def get_mcp_config(
     # Hosted servers: the URL template is filled from the gate's required
     # env and handed to the CLI as a streamable-HTTP server. The per-call
     # timeout is Claude Code's per-server `timeout` (milliseconds); the
-    # Codex adapter translates it to its own key.
+    # Codex adapter translates it to its own key. The address and timeout
+    # are the loaded source's (`hosted`, from the config the session was
+    # launched with) when a campaign serves the gate, the packaged
+    # config's otherwise.
     for gate_name in enabled_gates:
         gate_def = GATES[gate_name]
         if gate_def.url:
+            url = hosted["url"] if hosted and gate_name == HOSTED_GATE else gate_def.url
+            timeout_seconds = hosted["tool_timeout_seconds"] if hosted and gate_name == HOSTED_GATE else gate_def.tool_timeout_seconds
             mcp_servers[gate_def.server_name] = {
                 "type": "http",
-                "url": gate_def.url.format(
+                "url": url.format(
                     **{key: effective_env[key] for key in gate_def.required_env}
                 ),
-                "timeout": gate_def.tool_timeout_seconds * 1000,
+                "timeout": int(timeout_seconds) * 1000,
             }
     
     # Get allowed tools

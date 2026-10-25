@@ -49,7 +49,7 @@ def main() -> None:
         raise RuntimeError(
             "resume requires the experience stage done; run run_full_loop.py instead"
         )
-    index_name = status["experience"]["name"]
+    index_name = status["experience"]["index_name"]
     print(f"Resuming E2E in sandbox: {sandbox}", flush=True)
 
     kapso = Kapso(config=str(sandbox / "config.e2e.yaml"))
@@ -57,9 +57,9 @@ def main() -> None:
     # The index the research made is loaded, never re-ingested: loading
     # reads its record and connects to the stores it was built on.
     corpus = kapso.load_experience(index_name)
-    if corpus.head != status["experience"]["index"]:
+    if corpus.head != status["experience"]["index_id"]:
         raise RuntimeError(
-            f"the index {index_name} is {corpus.head} now, {status['experience']['index']} "
+            f"the index {index_name} is {corpus.head} now, {status['experience']['index_id']} "
             "when the run made it — the sandbox was re-ingested; start a new run"
         )
     (sandbox / "memory-1b-resumed.txt").write_text(kapso.memory.explain())

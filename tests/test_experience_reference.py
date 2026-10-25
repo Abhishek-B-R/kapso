@@ -17,10 +17,13 @@ from kapso.experience import (
     ExperienceStore,
     IndexRecord,
     parse_experience_reference,
+    probe_hosted_gate,
+    recorded_reference,
     resolve_source,
 )
 from kapso.learning.update_frame import init_bank
 from tests.handles_support import git
+from tests.test_bank_retriever import card_text
 
 
 def settings_for(tmp_path: Path) -> dict:
@@ -31,6 +34,8 @@ def settings_for(tmp_path: Path) -> dict:
         "hosted": {"url": "https://mcp.leeroopedia.com/mcp?token={LEEROOPEDIA_API_KEY}", "tool_timeout_seconds": 600},
         "session_root": str(tmp_path / "serving"),
         "probe_budget": 1,
+        "research_modes": ["idea", "implementation"],
+        "research_depth": "deep",
     }
 
 
@@ -71,6 +76,15 @@ def test_the_forms_in_their_order(tmp_path):
     assert (scp.url, scp.rev, scp.slug) == ("git@github.com:acme/kapso-bank.git", "v2", "github.com-acme-kapso-bank")
     index = parse("org-x")
     assert index.kind == "index" and index.name == "org-x" and index.path == indexes / "org-x"
+    # A bare name is never a path: the checkout an index was made from,
+    # beside the run, cannot shadow the index; a bare name that is only a
+    # directory names nothing.
+    (tmp_path / "org-x").mkdir()
+    assert parse("org-x").kind == "index"
+    (tmp_path / "just-a-dir").mkdir()
+    with pytest.raises(ExperienceReferenceError, match="is not a reserved name, a path, a git reference, or an index"):
+        parse("just-a-dir")
+    assert parse("./just-a-dir").kind == "path"
 
 
 def test_what_matches_nothing_lists_the_forms_and_the_add_line(tmp_path):
@@ -175,11 +189,75 @@ def test_the_hosted_gate_needs_its_key(tmp_path, monkeypatch):
     assert (source.kind, source.head, source.provenance, source.scope) == ("hosted", None, "reported by others", "all")
     assert source.resolved == settings["hosted"]["url"] and "kpsk_test" not in source.resolved
     assert source.label() == "leeroopedia (hosted), reported by others"
-    # The key in .env beside the run is enough too.
+    # The key in .env beside the run is enough too; an empty one is absent.
     monkeypatch.delenv("LEEROOPEDIA_API_KEY")
     env_file = tmp_path / ".env"
     env_file.write_text("LEEROOPEDIA_API_KEY=kpsk_from_env\n")
     assert resolve_source(reference, settings=settings, dotenv_path=str(env_file)).kind == "hosted"
+    env_file.write_text("LEEROOPEDIA_API_KEY=\n")
+    with pytest.raises(ExperienceError, match="leeroopedia needs LEEROOPEDIA_API_KEY"):
+        resolve_source(reference, settings=settings, dotenv_path=str(env_file))
+
+
+def test_the_hosted_probe_initialises_the_gate_with_the_key_and_reads_either_answer_shape(tmp_path, monkeypatch):
+    # Regression: `add leeroopedia` is the one-time probe — the key goes
+    # on the URL, an MCP initialize is sent, the server's name comes back
+    # from a JSON or an event-stream answer; a refusal and an empty key
+    # stop the add with the fixing line.
+    settings = settings_for(tmp_path)
+    calls = []
+
+    def post(url, payload, timeout_seconds):
+        calls.append((url, payload["method"], timeout_seconds))
+        if "sse" in url:
+            return 200, "text/event-stream", 'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"Leeroopedia"}}}\n\n'
+        if "refuse" in url:
+            return 401, "application/json", "{}"
+        return 200, "application/json", '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"Leeroopedia"}}}'
+
+    monkeypatch.setenv("LEEROOPEDIA_API_KEY", "kpsk_test")
+    assert probe_hosted_gate(settings, dotenv_path="", post=post) == "Leeroopedia"
+    assert calls[-1] == ("https://mcp.leeroopedia.com/mcp?token=kpsk_test", "initialize", 600)
+    sse = {**settings, "hosted": {**settings["hosted"], "url": "https://sse.example/mcp?token={LEEROOPEDIA_API_KEY}"}}
+    assert probe_hosted_gate(sse, dotenv_path="", post=post) == "Leeroopedia"
+    refusing = {**settings, "hosted": {**settings["hosted"], "url": "https://refuse.example/mcp?token={LEEROOPEDIA_API_KEY}"}}
+    with pytest.raises(ExperienceError, match=r"leeroopedia refused the probe \(HTTP 401\)"):
+        probe_hosted_gate(refusing, dotenv_path="", post=post)
+    monkeypatch.setenv("LEEROOPEDIA_API_KEY", "")
+    with pytest.raises(ExperienceError, match="leeroopedia needs LEEROOPEDIA_API_KEY"):
+        probe_hosted_gate(settings, dotenv_path="", post=post)
+
+
+def test_a_bank_at_a_tag_is_pinned_at_the_tag_not_at_main(tmp_path):
+    # Regression: the store checks the revision out; the head recorded and
+    # served must be that revision's commit, not main's, which moved on.
+    settings = settings_for(tmp_path)
+    home = bank_home(tmp_path, name="acme-bank.git", cards=2)
+    tagged = git(tmp_path, "--git-dir", str(home), "rev-parse", "main").strip()
+    git(tmp_path, "--git-dir", str(home), "tag", "v1", tagged)
+    work = tmp_path / "work-acme"
+    git(tmp_path, "clone", "-q", str(home), str(work))
+    (work / "insights" / "later.md").write_text(card_text("later"))
+    git(work, "add", "-A")
+    git(work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "later")
+    git(work, "push", "-q", "origin", "main")
+    assert git(tmp_path, "--git-dir", str(home), "rev-parse", "main").strip() != tagged
+    reference = parse_experience_reference(f"git+file://{home}@v1", indexes_root=settings["indexes"])
+    source = resolve_source(reference, settings=settings)
+    assert source.head == tagged and source.cards == 2
+    store = ExperienceStore(settings["banks"], settings["indexes"])
+    assert json.loads(store.record_path(reference).read_text())["commit"] == tagged
+
+
+def test_a_recorded_reference_re_loads_the_same_source_from_anywhere():
+    # Regression: a bank read by path is recorded at its absolute
+    # location, so a resume or a reply from another directory finds it;
+    # `mine` at every scope is `mine:all`; a git reference stays itself.
+    assert recorded_reference({"reference": "mine", "kind": "bank", "resolved": "/h/bank.git", "scope": "all"}) == "mine:all"
+    assert recorded_reference({"reference": "mine", "kind": "bank", "resolved": "/h/bank.git", "scope": "harness"}) == "mine"
+    assert recorded_reference({"reference": "./team/bank.git", "kind": "bank", "resolved": "/srv/team/bank.git", "scope": "all"}) == "/srv/team/bank.git"
+    assert recorded_reference({"reference": "acme/kapso-bank@v2", "kind": "bank", "resolved": "/h/banks/x", "scope": "all"}) == "acme/kapso-bank@v2"
+    assert recorded_reference({"reference": "org-x", "kind": "index", "resolved": "/h/indexes/org-x", "scope": "all"}) == "org-x"
 
 
 def test_an_index_is_loaded_at_its_id(tmp_path):

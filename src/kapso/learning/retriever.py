@@ -27,8 +27,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from kapso.experience.reference import SCOPE_ALL
-from kapso.learning.bank import Bank, Card
-from kapso.learning.bank_invariants import usage_claims_serving
+from kapso.learning.bank import SERVABLE_STATES, Bank, Card
+from kapso.learning.bank_invariants import INDEXED_ONLY, usage_claims_serving
 
 # Probe-queue row grammar: the derived index is one file, readable by
 # crews and parsed by the serve-time offer — structural constant, not a knob.
@@ -38,17 +38,9 @@ _PROBE_ROW_PATTERN = re.compile(r"^\d+\. \[card:([a-z0-9][a-z0-9-]*)\] \(([^)]*)
 # The intro is the entire push surface (serving-agentic-redesign.md §4):
 # what the bank is, the three tools in reading order, and the arbitrate
 # line. No census, no card content, no citation instruction — the citation
-# convention lives in the module prompts.
-BANK_INTRO_HEAD = """## Knowledge bank (measured practice from past campaigns)
-
-A bank of evidence-priced cards distilled from earlier campaigns on this
-benchmark: insights (mechanisms that paid or failed, with the conditions
-they hold under) and procedures (runnable harnesses — their code ships with
-the card). Every card carries a reliability score and the evidence behind
-it. It complements the practice notes above; where they disagree, let your
-own measurements arbitrate.
-"""
-
+# convention lives in the module prompts. The intro itself is compiled
+# from the loaded sources (kapso.learning.serving_launch); this is the
+# tools' part of it.
 BANK_TOOLS_TEXT = """Three tools, in reading order:
 - bank_index() — the whole bank as one index page: card name, one-liner,
   score, and when it applies. Cheap; call it whenever your next decision
@@ -58,11 +50,6 @@ BANK_TOOLS_TEXT = """Three tools, in reading order:
 - bank_get_card_with_evidence(cards) — the card plus its reliability and
   evidence trail, for due diligence before you stake real budget on its
   advice."""
-
-# The one-bank intro the graders' hindcast and the behaviour scenarios
-# serve; a campaign's intro is compiled from its sources
-# (kapso.learning.serving_launch.compile_sources_intro).
-INTRO_TEXT = BANK_INTRO_HEAD + "\n" + BANK_TOOLS_TEXT
 
 # Probe offers ride card reads (§3.2), never the index or the intro. The
 # cost clause is the wave-A lesson: a probe protocol silently adopted as
@@ -95,33 +82,6 @@ def _gaps(eligible: List[Card]) -> List[str]:
     if not any(card.type == "procedure" for card in eligible):
         gaps.append("no procedure in the bank covers this task's scope")
     return gaps
-
-
-def compile_intro(
-    bank: Bank, task_coords: Dict[str, str], bank_head: str
-) -> Dict[str, Any]:
-    """The push side of serving v2: the fixed intro + the launch record.
-
-    Returns {intro, record}. `intro` is the markdown appended after the
-    static context notes; `record` is the launch serving record —
-    mode/task/bank_head/gaps. Exposure is not recorded here: it is derived
-    from the pull log, which starts empty. Deterministic throughout.
-    """
-    eligible = [c for c in bank.servable() if c.eligible_for(task_coords)]
-    gaps = _gaps(eligible)
-    stamp = (
-        f"Serving from the knowledge bank at head `{bank_head}` "
-        f"(pinned for this whole campaign)."
-    )
-    return {
-        "intro": stamp + "\n\n" + INTRO_TEXT,
-        "record": {
-            "mode": "agentic",
-            "task": dict(task_coords),
-            "bank_head": bank_head,
-            "gaps": gaps,
-        },
-    }
 
 
 # ------------------------------------------------------------------ index
@@ -397,6 +357,15 @@ def render_sources_index(
     return {"text": "\n\n".join(texts), "listed": listed, "gaps": gaps, "listed_count": len(listed)}
 
 
+def _can_serve(entry: Dict[str, Any], bank: Bank, name: str, task_coords: Dict[str, str]) -> bool:
+    """Whether one loaded bank serves a card by name: held, in a servable
+    state, not quarantined, and within the bank's scope for the task."""
+    card = bank.cards.get(name)
+    if card is None or card.state not in SERVABLE_STATES or name in bank.decoy_names:
+        return False
+    return entry["scope"] == SCOPE_ALL or card.eligible_for(task_coords)
+
+
 def render_sources_cards(
     banks: List[Tuple[Dict[str, Any], Bank]],
     task_coords: Dict[str, str],
@@ -419,11 +388,15 @@ def render_sources_cards(
     by_source: Dict[str, List[str]] = {}
     unknown: List[str] = []
     for name in card_names:
-        holder = next((entry["reference"] for entry, bank in chosen if name in bank.cards), None)
+        # The first loaded bank that can serve the name under its scope;
+        # when none can, the first that holds it, whose refusal says why.
+        holders = [entry for entry, bank in chosen if name in bank.cards]
+        serving = [entry for entry, bank in chosen if _can_serve(entry, bank, name, task_coords)]
+        holder = (serving or holders or [None])[0]
         if holder is None:
             unknown.append(name)
         else:
-            by_source.setdefault(holder, []).append(name)
+            by_source.setdefault(holder["reference"], []).append(name)
     texts: List[str] = []
     served: List[Dict[str, Any]] = []
     refused: List[Dict[str, str]] = []
@@ -539,7 +512,7 @@ def append_pull_event(log_path: str, event: Dict[str, Any]) -> None:
         handle.write(json.dumps(stamped) + "\n")
 
 
-EXPOSURE_LEVELS = ("indexed", "read", "evidence-read")
+EXPOSURE_LEVELS = (INDEXED_ONLY, "read", "evidence-read")
 
 
 def exposure_ladder(log_path) -> Dict[str, Dict[str, str]]:

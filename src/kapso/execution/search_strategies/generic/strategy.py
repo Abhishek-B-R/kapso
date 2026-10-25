@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from pathlib import Path
-from kapso.gated_mcp.presets import knowledge_tools_block, user_setup_gaps
+from kapso.gated_mcp.presets import HOSTED_GATE, knowledge_tools_block, user_setup_gaps
 from kapso.execution.search_strategies.base import (
     SearchStrategy,
     SearchStrategyConfig,
@@ -356,8 +356,15 @@ class GenericSearch(SearchStrategy):
             self.ideation_ensemble,
             self.ideation_selector,
         )
-        # Include experiment_history and repo_memory by default for ideation; the hosted source mounts leeroopedia below
-        self.ideation_gates = self.params.get("ideation_gates", ["research", "experiment_history", "repo_memory"])
+        # Include experiment_history and repo_memory by default for ideation.
+        # The hosted gate is an experience source: loading it mounts it
+        # (below), and a config list that names it does not — what is
+        # loaded is what is served, and the records name it.
+        self.hosted = self.params.get("hosted")
+        self.ideation_gates = [
+            gate for gate in self.params.get("ideation_gates", ["research", "experiment_history", "repo_memory"])
+            if gate != HOSTED_GATE
+        ]
         
         # Config params for implementation
         self.implementation_model = self.params.get(
@@ -400,7 +407,10 @@ class GenericSearch(SearchStrategy):
             )
         self.implementation_timeout = self.params.get("implementation_timeout")
         self.gate_failure_policy = self.params.get("gate_failure_policy", "warn")
-        self.implementation_gates = self.params.get("implementation_gates", ["research", "repo_memory"])
+        self.implementation_gates = [
+            gate for gate in self.params.get("implementation_gates", ["research", "repo_memory"])
+            if gate != HOSTED_GATE
+        ]
         # The campaign inbox (docs/research/evolve-hub-design.md v4): with
         # it on, implementation sessions get the request_from_user gate and
         # a session that asks is stopped; the campaign pauses until the
@@ -432,10 +442,9 @@ class GenericSearch(SearchStrategy):
                         gates.append(gate)
         # And for the hosted source: loading it is what mounts its server
         # (docs/plans/redesign/wp3-experience.md); no config list names it.
-        if self.params.get("hosted"):
+        if self.hosted:
             for gates in (self.ideation_gates, self.implementation_gates):
-                if "leeroopedia" not in gates:
-                    gates.append("leeroopedia")
+                gates.append(HOSTED_GATE)
         self.parent_policy = parent_policy
         
         # Experiment history path (set by orchestrator)
@@ -1070,6 +1079,7 @@ class GenericSearch(SearchStrategy):
             gate_failure_policy=self.gate_failure_policy,
             bank_serving=self.bank_serving,
             kg_index_path=self.kg_index_path,
+            hosted=self.hosted,
             ideation_web_search=self.ideation_web_search,
             ideation_ensemble=self.ideation_ensemble,
             idea_generation_model=self.idea_generation_model,
@@ -1290,6 +1300,7 @@ class GenericSearch(SearchStrategy):
             gate_failure_policy=self.gate_failure_policy,
             bank_serving=self.bank_serving,
             kg_index_path=self.kg_index_path,
+            hosted=self.hosted,
             implementation_cli=self.implementation_cli,
             implementation_model=self.implementation_model,
             implementation_fallback_model=self.implementation_fallback_model,

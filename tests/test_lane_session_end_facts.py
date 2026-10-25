@@ -48,7 +48,7 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch):
         workspace=None, workspace_dir="", llm=None,
         registered_evaluation_manifest=None, registered_evaluation_command=None,
         registered_evaluator_id=None, implementation_gates=[],
-        gate_failure_policy="skip", bank_serving=None, kg_index_path=None,
+        gate_failure_policy="skip", bank_serving=None, kg_index_path=None, hosted=None,
         implementation_cli="claude_code", implementation_model="m",
         implementation_fallback_model=None, implementation_web=False,
         _claude_auth_settings={}, env_strip=[], env_defaults={},

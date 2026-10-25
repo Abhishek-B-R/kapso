@@ -16,6 +16,7 @@ import kapso.experience.ingest as ingest_module
 from kapso.experience import ExperienceError, IngestError
 from kapso.experience.ingest import collection_name
 from kapso.kapso import Kapso
+from kapso.knowledge_base.types import ResearchFindings
 from tests.handles_support import facade
 from tests.test_experience_reference import settings_for
 from tests.test_kapso_facade_learn import _git_workspace, facade_config
@@ -117,11 +118,13 @@ def test_a_question_is_researched_then_ingested(tmp_path, ingestion, monkeypatch
 
         def research(self, question, *, mode, depth):
             asked.append((question, mode, depth))
-            return [["idea-a", "idea-b"], "implementation-c"]
+            return ResearchFindings(query=question, ideas=["idea-a", "idea-b"], implementations=["implementation-c"])
 
     monkeypatch.setattr(ingest_module, "Researcher", FakeResearcher)
     kapso = _kapso(tmp_path)
     assert kapso.add_experience(research="QLoRA memory", name="qlora") == "qlora"
+    # the modes and the depth are the config's; the findings' typed
+    # sources, not the wrapper, reach the pipeline
     assert asked == [("init", kapso.config_path), ("QLoRA memory", ["idea", "implementation"], "deep")]
     assert ingestion["sources"] == ("idea-a", "idea-b", "implementation-c")
     assert ingestion["preflight"] == [{"research": True}]
@@ -140,7 +143,9 @@ def test_the_bank_and_the_hosted_gate_are_added_by_reference(tmp_path, monkeypat
     with pytest.raises(ExperienceError, match="LEEROOPEDIA_API_KEY"):
         kapso.add_experience("leeroopedia")
     monkeypatch.setenv("LEEROOPEDIA_API_KEY", "kpsk_test")
+    monkeypatch.setattr("kapso.kapso.probe_hosted_gate", lambda settings: "Leeroopedia")
     assert kapso.add_experience("leeroopedia") == "leeroopedia"
+    assert "the gate answers as Leeroopedia" in capsys.readouterr().out
 
 
 def test_what_cannot_be_added_is_refused_by_name(tmp_path, ingestion):
@@ -214,6 +219,21 @@ def test_a_build_refuses_an_index_whose_stores_were_wiped(tmp_path, monkeypatch,
     kapso.add_experience(repo="https://github.com/org/x", name="org-x")
     kapso.load_experience("org-x")
     with pytest.raises(ExperienceError, match="has no pages in its stores"):
+        kapso.build("test goal", output=str(tmp_path / "ws"))
+
+
+def test_a_build_refuses_an_index_re_ingested_since_it_was_loaded(tmp_path, monkeypatch, ingestion):
+    # Regression: the handle pinned index A, the name was removed and
+    # ingested again as B before the build, and the build connected B
+    # while recording A. The pin holds at the build: the record on disk
+    # must be the index that was loaded.
+    kapso, _captured = _build_with(tmp_path, monkeypatch, FakeSearch({"weaviate_collection": "c", "corpus": "i"}))
+    kapso.add_experience(repo="https://github.com/org/x", name="org-x")
+    loaded = kapso.load_experience("org-x")
+    record_path = Path(settings_for(tmp_path)["indexes"]) / "org-x" / "index.json"
+    record = json.loads(record_path.read_text())
+    record_path.write_text(json.dumps({**record, "id": "b" * 12}))
+    with pytest.raises(ExperienceError, match=f"org-x was re-ingested since it was loaded \\(index {loaded.head} then, bbbbbbbbbbbb now\\)"):
         kapso.build("test goal", output=str(tmp_path / "ws"))
 
 

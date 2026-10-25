@@ -91,6 +91,7 @@ def run_implementation(
     gate_failure_policy: str,
     bank_serving: Optional[Dict[str, str]] = None,
     kg_index_path: Optional[str] = None,
+    hosted: Optional[Dict[str, Any]] = None,
     implementation_cli: str,
     implementation_model: str,
     implementation_fallback_model: Optional[str],
@@ -195,6 +196,7 @@ def run_implementation(
         gate_failure_policy=gate_failure_policy,
         bank_serving=bank_serving,
         kg_index_path=kg_index_path,
+        hosted=hosted,
         **({"inbox": inbox_context} if inbox_on else {}),
     )
     

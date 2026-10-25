@@ -29,6 +29,7 @@ from kapso.experience.sources import (
     has_origin,
     hosted_key_missing,
     hosted_key_present,
+    probe_hosted_gate,
     pull_home,
     resolve_source,
 )
@@ -59,6 +60,7 @@ __all__ = [
     "has_origin",
     "hosted_key_missing",
     "hosted_key_present",
+    "probe_hosted_gate",
     "parse_experience_reference",
     "pull_home",
     "recorded_reference",

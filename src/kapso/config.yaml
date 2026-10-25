@@ -108,6 +108,11 @@ harness:
 experience:
   banks: ~/.kapso/experience/banks      # banks you read, one clone per <slug>@<rev> with a fetch record beside
   indexes: ~/.kapso/experience/indexes  # corpora you ingested with `kapso experience add --name <n>`, one directory each
+  # `kapso experience add --research "<question>"`: the modes the web
+  # search answers in (idea, implementation, study) and its depth (light,
+  # deep); the findings are ingested as they come.
+  research_modes: [idea, implementation]
+  research_depth: deep
 
 # =============================================================================
 # Platform defaults — the base layer under every mode of every config file

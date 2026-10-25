@@ -30,7 +30,7 @@ def cmd_doctor(args) -> None:
     # here, so those verbs report their fullest requirement set.
     context = (
         {"bank_home": configured_bank_home(config)}
-        if verb in ("build", "learn") else {}
+        if verb == "learn" else {}
     )
 
     requirements = requirements_for(verb, config, **context)

@@ -86,9 +86,14 @@ def test_add_leeroopedia_is_the_keys_presence(settings, monkeypatch, capsys):
     with pytest.raises(SystemExit) as caught:
         _run(monkeypatch, "add", "leeroopedia")
     assert caught.value.code == 1 and "put LEEROOPEDIA_API_KEY=kpsk_... in .env" in capsys.readouterr().out
+    monkeypatch.setenv("LEEROOPEDIA_API_KEY", "")
+    with pytest.raises(SystemExit):
+        _run(monkeypatch, "add", "leeroopedia")   # an empty key is no key
+    capsys.readouterr()
     monkeypatch.setenv("LEEROOPEDIA_API_KEY", "kpsk_test")
+    monkeypatch.setattr(experience_cli, "probe_hosted_gate", lambda settings: "Leeroopedia")
     _run(monkeypatch, "add", "leeroopedia")
-    assert "LEEROOPEDIA_API_KEY present" in capsys.readouterr().out
+    assert "LEEROOPEDIA_API_KEY present and the gate answers as Leeroopedia" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         _run(monkeypatch, "add", "org-x")
     assert "an index is ingested with --repo <url> --name <n>" in capsys.readouterr().out

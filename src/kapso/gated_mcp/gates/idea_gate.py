@@ -127,6 +127,7 @@ Example queries:
                 parts.append(f"**Domains:** {', '.join(item.domains)}\n")
             parts.append(f"\n### Overview\n{item.overview}\n")
             if include_content and item.content:
-                preview = item.content[:800] + ("..." if len(item.content) > 800 else "")
-                parts.append(f"\n### Content\n{preview}\n")
+                # The whole page: what a session reads is never clipped
+                # on its way to the model.
+                parts.append(f"\n### Content\n{item.content}\n")
         return "".join(parts)

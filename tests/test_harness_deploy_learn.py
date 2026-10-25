@@ -344,10 +344,15 @@ def test_the_trajectory_manifest_carries_both_harness_keys(tmp_path):
     assert make_store(tmp_path / "plain").manifest(plain)["harness"] is None
 
 
-def test_a_loaded_harness_is_not_attached_to_a_campaign_built_without_one(tmp_path, harness_dir):
+def test_a_loaded_harness_is_not_attached_to_a_campaign_built_without_one(tmp_path, harness_dir, capsys):
     solution = solution_with(tmp_path, None)
     with pytest.raises(HarnessError, match="was built without a harness, and a deploy runs as its build did"):
         kapso_for(tmp_path, harness_dir)._harness_for(solution, verb="deploy")
+    # A learn may run under a harness the build did not have: its learning
+    # module shapes the crews, the lessons keep the build's coordinate.
+    learned_with = kapso_for(tmp_path, harness_dir)._harness_for(solution, verb="learn")
+    assert learned_with.name == "trading"
+    assert "for the learn; the build ran without one" in capsys.readouterr().out
 
 
 def test_a_changed_version_at_the_recorded_source_is_said_too(tmp_path, harness_dir, capsys):

@@ -53,8 +53,8 @@ Examples:
   # Ingest a repository into an index a build can load
   kapso experience add --repo https://github.com/org/x --name org-x
 
-  # Learn from a repository
-  kapso learn import --subset docs/plans/learning/d1-subset.yaml
+  # Learn from a finished campaign
+  kapso learn ../campaign
 
   # Deploy a solution
   kapso deploy ../campaign --strategy local

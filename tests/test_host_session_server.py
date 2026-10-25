@@ -141,8 +141,9 @@ def test_the_bank_is_staged_for_the_session_when_one_is_loaded(tmp_path, codex_o
     env = gates.env
     session_dir = tmp_path / "sessions" / "s1"
     [entry] = json.loads(env["KAPSO_BANKS"])
-    assert Path(entry["dir"]) == session_dir / "banks" / "mine"
-    assert (session_dir / "banks" / "mine" / "insights" / "a-card.md").is_file()
+    clone = Path(entry["dir"])
+    assert clone.parent == session_dir / "banks" and clone.name.startswith("mine-")
+    assert (clone / "insights" / "a-card.md").is_file()
     assert (session_dir / "serving-record.yaml").is_file()
     assert env["KAPSO_SERVING_PULL_LOG"] == str(session_dir / "serving-pull.jsonl")
     # a host session has no harness: its coordinate is `none`
@@ -185,7 +186,12 @@ def test_an_index_adds_the_search_gates(tmp_path, codex_on_path):
     source = _index(tmp_path, "org-x")
     gates = _prepare(tmp_path, tmp_path, requested=list(INDEX_GATES), sources=[source])
     assert gates.enabled == ["idea", "code"]
-    assert gates.env == {"KG_INDEX_PATH": str(Path(_settings(tmp_path)["indexes"]) / "org-x" / "index.json")}
+    assert gates.env["KG_INDEX_PATH"] == str(Path(_settings(tmp_path)["indexes"]) / "org-x" / "index.json")
+    # the intro names the corpus and rides as the server's instructions,
+    # bank or no bank
+    intro = Path(gates.env["KAPSO_SERVING_INTRO"]).read_text()
+    assert "the `org-x` corpus (3 pages), reported by others" in intro and "bank_index()" not in intro
+    assert set(gates.env) == {"KG_INDEX_PATH", "KAPSO_SERVING_INTRO"}
     without = _prepare(tmp_path, tmp_path, requested=list(INDEX_GATES))
     assert without.enabled == [] and without.notes == [
         "idea: off (no index loaded; kapso-mcp --experience <name>)",
@@ -196,7 +202,8 @@ def test_an_index_adds_the_search_gates(tmp_path, codex_on_path):
 def test_the_hosted_source_is_a_reminder_not_a_gate(tmp_path, codex_on_path, monkeypatch):
     monkeypatch.setenv("LEEROOPEDIA_API_KEY", "kpsk_test")
     gates = _prepare(tmp_path, tmp_path, requested=["research"], sources=[_source(tmp_path, "leeroopedia")])
-    assert gates.enabled == ["research"] and gates.env == {}
+    assert gates.enabled == ["research"] and set(gates.env) == {"KAPSO_SERVING_INTRO"}
+    assert "Leeroopedia's pages, reported by others" in Path(gates.env["KAPSO_SERVING_INTRO"]).read_text()
     assert gates.notes == [
         "leeroopedia: a hosted server, not a bundled gate — add it to the host "
         "as an HTTP MCP server with your key on the URL"

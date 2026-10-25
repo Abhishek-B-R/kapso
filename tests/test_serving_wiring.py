@@ -23,6 +23,7 @@ from kapso.execution.search_strategies.generic.feedback_generator.feedback_gener
 )
 from kapso.experience import (
     ExperienceError,
+    ExperienceSource,
     ExperienceStore,
     IndexRecord,
     parse_experience_reference,
@@ -37,7 +38,7 @@ from kapso.learning.serving_launch import (
 from kapso.learning.update_frame import init_bank
 from tests.handles_support import git
 from tests.test_bank_retriever import card_text
-from tests.test_experience_reference import settings_for
+from tests.test_experience_reference import bank_home, settings_for
 
 TASK = task_coordinates("trading")
 
@@ -135,6 +136,20 @@ def test_two_banks_are_two_clones_and_one_intro(tmp_path):
     assert serving["counts"] == {"mine": 1, str(team): 2}
 
 
+def test_two_banks_that_read_alike_as_names_never_share_a_clone(tmp_path):
+    # Regression: `/x/team/a-b.git` and `/x/team-a/b.git` made the same
+    # directory name, and the second staging removed the first's clone.
+    sources = [
+        ExperienceSource(reference=reference, kind="bank", resolved=reference, head="a" * 40,
+                         provenance="measured by others", scope="all", path=Path(reference))
+        for reference in ("/x/team/a-b.git", "/x/team-a/b.git")
+    ]
+    plan = plan_campaign_serving(sources, TASK, tmp_path / "work", 1)
+    dirs = [Path(entry["dir"]) for entry in plan["banks"]]
+    assert len(set(dirs)) == 2
+    assert all(d.parent == tmp_path / "work" / ".kapso" / "serving" / "banks" and d.name.startswith("x-team") for d in dirs)
+
+
 def test_nothing_loaded_is_nothing_staged(tmp_path):
     assert prepare_campaign_serving([], TASK, tmp_path / "w", 1) is None
     assert not (tmp_path / "w").exists()
@@ -144,7 +159,10 @@ def test_the_hosted_gate_and_an_index_ride_without_a_bank(tmp_path, monkeypatch)
     monkeypatch.setenv("LEEROOPEDIA_API_KEY", "kpsk_test")
     sources = [load(tmp_path, "leeroopedia"), index_source(tmp_path, "org-x")]
     plan = plan_campaign_serving(sources, TASK, tmp_path / "work", 1)
-    assert plan["hosted"] is True and plan["banks"] == [] and plan["bank_serving"] == {}
+    # the hosted gate rides as loaded: its URL (the key's placeholder in
+    # it) and timeout from the config the source was loaded with
+    assert plan["hosted"] == {"url": settings_for(tmp_path)["hosted"]["url"], "tool_timeout_seconds": 600}
+    assert plan["banks"] == [] and plan["bank_serving"] == {}
     assert plan["kg_index_path"] == str(Path(settings_for(tmp_path)["indexes"]) / "org-x" / "index.json")
     staged = prepare_campaign_serving(sources, TASK, tmp_path / "work", 1)
     assert "Leeroopedia's pages, reported by others" in staged["intro"]

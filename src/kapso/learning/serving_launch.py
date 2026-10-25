@@ -15,13 +15,14 @@ import json
 import re
 import shutil
 import subprocess
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
 
-from kapso.experience.reference import MINE
-from kapso.experience.sources import SCOPE_ALL, ExperienceError, ExperienceSource
+from kapso.experience.reference import MINE, SCOPE_HARNESS
+from kapso.experience.sources import PROVENANCE_MINE, SCOPE_ALL, ExperienceError, ExperienceSource
 from kapso.harness.manifest import RESERVED_HARNESS_NAME as NO_HARNESS
 from kapso.learning.bank import Bank
 from kapso.learning.retriever import BANK_TOOLS_TEXT
@@ -48,7 +49,7 @@ def plan_serving(
     serving, computed WITHOUT touching `serve_dir` (a campaign's may not
     exist yet). None without a source. `bank_serving` is exactly the
     environment stage will make true; `kg_index_path` the one index's
-    record; `hosted` whether the hosted gate rides; `intro_path` where
+    record; `hosted` the hosted gate's URL and timeout as loaded, or None; `intro_path` where
     stage writes the intro the ideation and implementation prompts read
     (the engine reads it at session time, never at construction)."""
     if not sources:
@@ -76,11 +77,17 @@ def plan_serving(
             "KAPSO_TASK_HARNESS": task_coords[HARNESS_COORDINATE],
             "KAPSO_PROBE_BUDGET": str(probe_budget),
         }
+    hosted = next((s for s in sources if s.kind == "hosted"), None)
     return {
         "serve_dir": str(serve_dir),
         "task": dict(task_coords),
         "banks": entries,
-        "hosted": any(s.kind == "hosted" for s in sources),
+        # The hosted gate as loaded: its URL (the key's placeholder in it)
+        # and per-call timeout from the config the source was loaded with,
+        # what the sessions mount; None when it is not loaded.
+        "hosted": (
+            {"url": hosted.url, "tool_timeout_seconds": hosted.tool_timeout_seconds} if hosted is not None else None
+        ),
         "kg_index_path": str(Path(indexes[0].path) / INDEX_RECORD) if indexes else None,
         "bank_serving": bank_serving,
         "intro_path": str(serve_dir / INTRO_FILE),
@@ -198,4 +205,23 @@ def compile_sources_intro(sources: List[ExperienceSource], lines: List[str]) -> 
 
 
 def _dir_name(source: ExperienceSource) -> str:
-    return _UNSAFE.sub("-", source.reference).strip("-") or "bank"
+    """One clone directory per reference: the reference made a file name,
+    plus a digest of it, so two references that read alike as names
+    (`/tmp/team/a-b.git`, `/tmp/team-a/b.git`) never share a clone."""
+    safe = _UNSAFE.sub("-", source.reference).strip("-") or "bank"
+    return f"{safe}-{sha256(source.reference.encode('utf-8')).hexdigest()[:8]}"
+
+
+def compile_intro(bank: Bank, task_coords: Dict[str, str], bank_head: str) -> Dict[str, Any]:
+    """The serving surface a hindcast or a behaviour scenario replays for
+    one bank: `mine` at its default scope under the task's coordinate,
+    exactly what a campaign loading `mine` is served. Returns the intro
+    text and a serving record in the campaign's shape (its sources with
+    the count served); availability is index membership."""
+    source = ExperienceSource(
+        reference=MINE, kind="bank", resolved=str(bank.root), head=bank_head, provenance=PROVENANCE_MINE,
+        scope=SCOPE_HARNESS, path=Path(bank.root),
+    )
+    count = served_count(bank, SCOPE_HARNESS, task_coords)
+    intro = compile_sources_intro([source], source_lines([source], {MINE: count}, task_coords))
+    return {"intro": intro, "record": {"task": dict(task_coords), "sources": [{**vars(source.ref()), "cards": count}]}}

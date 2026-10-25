@@ -229,6 +229,7 @@ def generate_solution(
     gate_failure_policy: str,
     bank_serving: Optional[Dict[str, str]] = None,
     kg_index_path: Optional[str] = None,
+    hosted: Optional[Dict[str, Any]] = None,
     ideation_web_search: bool,
     ideation_ensemble: Optional[List[Dict[str, str]]],
     idea_generation_model: str,
@@ -290,6 +291,7 @@ def generate_solution(
             gate_failure_policy=gate_failure_policy,
             bank_serving=bank_serving,
             kg_index_path=kg_index_path,
+            hosted=hosted,
         )
 
         # 3. Build restricted tool set (read-only for ideation). Claude

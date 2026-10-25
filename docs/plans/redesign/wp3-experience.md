@@ -548,3 +548,100 @@ WP3). The pull-request review follows the build.
 | Q1 | Does `mine` pull on a resume? | No: loading never pulls; a resume re-pins at the recorded head from the local home. |
 | Q2 | Which card does a lesson's evidence credit when two banks hold the name? | The source the pull log shows it was read from; a name read from both is an ambiguity finding. |
 | Q3 | Is `experience` campaign identity or a dial? | Identity: fingerprinted; a resume that names a different list is refused by name. |
+
+### The pull request
+
+The branch was reviewed at `e957ef8a` by Codex (`gpt-6-astra`, xhigh)
+and Claude Code (`claude-opus-5`) over the diff against `redesign`; the
+briefs and the reviews are kept with the run records. Every finding and
+its answer; the fixes are one commit after `e957ef8a`, the decisions in
+DECISIONS.md under 2026-10-25 WP3.
+
+#### Codex
+
+| # | Finding | Answer |
+|---|---|---|
+| P1-1 | `research_sources` passes the `ResearchFindings` wrapper to the pipeline | Fixed: the findings' ideas, implementations and report are the pipeline's input; the test fake returns the wrapper. |
+| P1-2 | A bank at a tag is pinned and served at `main` | Fixed: `bank_head` reads `HEAD` (the checked-out revision in a clone, `main` in a bare home); a test pins a tag whose `main` moved on. |
+| P1-3 | Two references that read alike as names share one clone | Fixed: the clone directory's name carries a digest of the reference. |
+| P1-4 | An index pin does not constrain the index opened at the build | Fixed: the build refuses an index whose record id is not the handle's head (`re-ingested since it was loaded`); the local that held the launch record is no longer rebound. |
+| P2-1 | The evidence check treats a listing as a read | Fixed: credit requires `read` or `evidence-read`; a copy only listed is a finding; ambiguity means opened from both; independence is refuted by any exposure (a decision). |
+| P2-2 | The hindcast grades a surface the engine does not serve | Fixed: the hindcast and the behaviour scenarios render the index at scope `harness` and the intro `compile_intro` now composes from the sources module (`mine` at its default scope). |
+| P2-3 | A mining run with a real adapter leaves `.claude_mcp` in the bundle | Fixed: the frames call the adapter's `cleanup`; `.claude_mcp` is among the staging directories the harvest leaves out and the mining crew owns. An exception before the unstage leaves the staging for the next run's leftover handling, as before. |
+| P2-4 | A resume ignores the recorded location; a reply loses `Kapso(bank=)` | Fixed: a bank read by path re-loads from `resolved`, named as the launch named it; a reply rebuilds the object with the record's `mine` home. |
+| P2-5 | The hosted gate mounts the packaged address whatever the config | Fixed: the loaded source carries the config's URL and timeout; the plan carries them; `get_mcp_config(hosted=)` mounts them. |
+| P2-6 | A config gate list can mount the hosted gate with nothing loaded | Fixed: the strategy drops the hosted gate from any config list; only the loaded source appends it. The configuration page's example no longer lists it. |
+| P2-7 | `clear()` swallows a store's refusal | Fixed: the backend's `clear` raises; the Weaviate collection is deleted when the store holds it. |
+| P2-8 | The `idea` and `code` gates clip pages | Fixed: the whole page reaches the model. |
+| P2-9 | A lesson admitting nothing still commits and reads as admitted | Fixed: no bank change, no commit, tag or push; the report carries one head; `learn()` says the lesson admitted nothing (a decision). |
+| P2-10 | The campaign-directory learn drops the record's outcome | Fixed: the opened record feeds the generated report and log. |
+| P2-11 | `learn --harness` on a harness-less campaign is refused | Fixed: a learn takes the loaded harness for the crews; the lessons keep the build's coordinate; a deploy still refuses (a decision). |
+| P2-12 | An index-only host session gets no intro | Fixed: the host session stages once for whatever is loaded; the intro rides for an index or the hosted gate too. |
+| P2-13 | An empty key passes as present; the promised probe is missing | Fixed: an empty value is absent; `add leeroopedia` sends one MCP `initialize` and reports the server's name, a refusal stops the add. |
+| P2-14 | The full-loop example clashes on `name=` | Fixed: `index_name=` and `index_id=`; the resume script reads them. |
+| P2-15 | The manifest's `experience` differs in shape and null-ness | Fixed: `[]` when unserved; the six record fields, the serving record's count dropped. |
+| P2-16 | The no-backend test replaces the orchestrator | Kept with the orchestrator's own line (`knowledge_search or create_null()`) as the contract; constructing the real orchestrator needs a workspace and a handler the fake stands in for. Noted as a WP6 test to write when the orchestrator gains a construction fixture. |
+| P3-1 | Research modes and depth as literals; the bot's env config; test-local imports | Fixed: `experience.research_modes` and `.research_depth` in the config; the two test-local imports moved to the top. The bot reads `KAPSO_CONFIG_PATH` outside `src/kapso` and stays as it is. |
+| P3-2 | The CLI epilog and the configuration page name the old learn forms; manual tests call removed APIs | Fixed: the epilog's learn line and the page's command; the five manual scripts on the retired verbs are gone and the drift test scans `tests/manual`. |
+| P3-3 | The record-inspection snippet crashes for the hosted gate | Fixed: the snippet prints `head` as it is and says what it holds per kind. |
+
+#### Claude Code
+
+| # | Finding | Answer |
+|---|---|---|
+| H1 | A bank at a tag is served `main` | As Codex P1-2. |
+| H2 | Any directory beside the run shadows an index name | Fixed: a bare name is never a path (a decision); the forms table and the error wording follow. |
+| H3 | A resume or a reply from another directory re-resolves a path source | As Codex P2-4. |
+| M1 | An unqualified `bank_get_card` goes to a holder that cannot serve the name | Fixed: the first loaded bank that can serve the name under its scope; when none can, the first holder's refusal says why. |
+| M2 | An index-only or hosted-only host session gets no intro | As Codex P2-12. |
+| M3 | The loaded hosted settings never reach the gate | As Codex P2-5. |
+| M4 | The exam grades availability at scope `all`; the intro is the retired text; `behavior.py` untouched | As Codex P2-2, both call sites. |
+| M5 | The judge is told to look for a "Knowledge bank brief" | Fixed: the judge's prompt names the "Experience (measured before)" section and the bank tools. |
+| M6 | The evidence check reads the bundle path directly | Fixed: through the store's resolver. |
+| M7 | The count a load prints is not the count served | The handle's `cards` is what the source holds (a bank's card files at the head); the intro says what the scope serves. The reference says so; the label stays. |
+| L1 | `kapso watch` does not show the sources | Docs corrected: the status file carries them and `--json` prints it; the rendered header is WP6's. |
+| L2 | `add.mdx` claims a doctor row this package removed | Docs corrected: the gate is an experience source, not a doctor row. |
+| L3 | A test asserts against an attribute that does not exist | Fixed: the judge's agent config is asserted to mount no server. |
+| L4 | Two research knobs became module literals | As Codex P3-1. |
+| L5 | `build_requirements` keeps a dead `bank_home` | Fixed: dropped from the build verb and the union. |
+| L6 | `record` is rebound inside `build()` | Fixed: `index_record`. |
+| L7 | `or gate == "kg"` unreachable; the staging survives a SIGTERM; a removal needs the stores; the detach fixture's shape; drift patterns missing | Fixed: the branch, a SIGTERM handler that exits through the registration, the fixture's `kind` and provenance, the patterns (`KAPSO_BANK_HEAD`, `KAPSO_TASK_DATASET`, `kapso-mcp --gates`). A removal needs the stores by design: the namespace is cleared, not abandoned. |
+| Q | Are the behaviour fixtures re-recorded or retired? | Retired until WP8 ports the RelBench harness and re-records them; they stay exempt from the drift test (a decision). |
+
+## Findings for later packages
+
+- **The mining lead's first turn can be refused by the model's
+  safeguards** (the learning crews; WP6 for the status). On the proof's
+  learn (2026-10-25 15:44 UTC, Claude Code on `claude-fable-5`) the
+  lead's first request came back as `API Error: Fable 5's safeguards
+  flagged this message … Details: [reasoning_extraction]`: the session's
+  final message was that text, the frame filed it as
+  `mined/mining-report.md`, the validator found the view missing, and the
+  one repair round (`learning.mining.repair_rounds: 1`) launched the lead
+  again, which mined the whole bundle under the repair prompt in
+  thirty-three minutes. The crew reads session streams, which carry the
+  models' own `[thinking]` lines; the classifier reads that as reasoning
+  extraction, intermittently. A refused first turn is not a mined view:
+  the frame should recognise the refusal (the adapter sees
+  `model_refusal_no_fallback`) and relaunch without spending the repair
+  round. Pre-existing; not a path this package changed.
+- **The orchestrator has no construction fixture** (WP6). The contract
+  that a build with nothing loaded builds no knowledge backend and needs
+  no embeddings key is pinned at the facade (the orchestrator receives
+  `knowledge_search=None` and its own line takes the null search); a test
+  constructing the real orchestrator without a key wants a fixture the
+  observability package can give it.
+- **`kapso watch` does not render the sources or the harness** (WP6).
+  The status file carries both from the first second; the rendered
+  screen's header is the observability package's.
+- **The behaviour scenarios' fixtures carry the earlier coordinates**
+  (WP8). `benchmarks/relbench/data/learning_behavior/` was recorded with
+  `family:` scopes; under the harness coordinate those cards are not
+  eligible at the default scope, so `b4-generalization` and its kin are
+  re-recorded when the RelBench harness is ported, and stay exempt from
+  the drift test until then.
+- **A solution record of an earlier schema cannot be learned from**
+  (by design, pre-release). The proof's campaign was built by WP2's code
+  (record schema 3); its record was lifted to schema 4 by hand before the
+  learn. Once released, a schema change needs the migration the master
+  reserves for then.

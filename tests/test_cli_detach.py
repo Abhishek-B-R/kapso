@@ -189,8 +189,8 @@ def test_build_detach_loads_the_experience_before_it_forks(tmp_path, monkeypatch
     campaign.mkdir()
     write_launch_record(campaign, {
         "schema_version": LAUNCH_SCHEMA_VERSION,
-        "experience": [{"reference": str(tmp_path / "gone.git"), "kind": "path", "resolved": str(tmp_path / "gone.git"),
-                        "head": "0" * 40, "provenance": "measured by another team", "scope": "all"}],
+        "experience": [{"reference": str(tmp_path / "gone.git"), "kind": "bank", "resolved": str(tmp_path / "gone.git"),
+                        "head": "0" * 40, "provenance": "measured by others", "scope": "all"}],
     })
     with pytest.raises(ExperienceReferenceError):
         _run(monkeypatch, "build", "--output", "resumed", "--resume", "--detach")

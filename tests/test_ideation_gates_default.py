@@ -36,6 +36,24 @@ def test_default_gates_include_research(tmp_path):
     assert strategy.implementation_gates == ["research", "repo_memory"]
 
 
+def test_the_hosted_gate_rides_on_the_loaded_source_never_on_a_config_list(tmp_path):
+    # Regression: a config list naming leeroopedia mounted it with no
+    # source loaded, so a campaign was served what its records did not
+    # name. What is loaded is what is served: the list's entry is dropped,
+    # the loaded source appends the gate with its own address.
+    with _patched_super_init(str(tmp_path)):
+        listed = GenericSearch(SimpleNamespace(params={
+            "ideation_gates": ["research", "leeroopedia"], "implementation_gates": ["leeroopedia", "repo_memory"],
+        }), str(tmp_path))
+    assert listed.ideation_gates == ["research"] and listed.implementation_gates == ["repo_memory"]
+    assert listed.hosted is None
+    hosted = {"url": "https://staging.example/mcp?token={LEEROOPEDIA_API_KEY}", "tool_timeout_seconds": 45}
+    with _patched_super_init(str(tmp_path)):
+        loaded = GenericSearch(SimpleNamespace(params={"hosted": hosted}), str(tmp_path))
+    assert loaded.ideation_gates[-1] == "leeroopedia" and loaded.implementation_gates[-1] == "leeroopedia"
+    assert loaded.hosted == hosted
+
+
 def test_staged_memory_stores_mount_their_own_gates(tmp_path):
     # Regression (E2E review 2026-08-24, blockers 1+2): serving injects an
     # intro naming bank_index / bank_get_card / bank_get_card_with_evidence

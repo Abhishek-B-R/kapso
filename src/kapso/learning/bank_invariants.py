@@ -16,6 +16,11 @@ import re
 from typing import Any, Dict, List, Optional
 
 from kapso.experience.reference import MINE
+
+# The exposure ladder's first rung (kapso.learning.retriever.EXPOSURE_LEVELS):
+# a card listed by `bank_index` and never opened. Attribution starts at
+# the next rung.
+INDEXED_ONLY = "indexed"
 from kapso.learning.bank import (
     EVIDENCE_VERDICTS,
     Bank,
@@ -507,28 +512,42 @@ def evidence_admission_findings(
                                 )
 
             # The campaign's pull log, read back as {card: {source: level}}:
-            # a usage claim is credited to the source the card was served
-            # from, and this card lives in your own bank (`mine`).
+            # attribution starts at reading. A usage claim is credited to
+            # the source the card was opened from (`read` or
+            # `evidence-read`); a name that was only listed (`indexed`)
+            # was never read, and this card lives in your own bank (`mine`).
             sources = (exposures.get(str(trajectory)) or {}).get(card.name) or {}
-            others = sorted(source for source in sources if source != MINE)
+            read_from = {source for source, level in sources.items() if level != INDEXED_ONLY}
+            others_read = sorted(source for source in read_from if source != MINE)
             claims_use = usage_claims_serving(usage)
             claims_independence = (
                 usage_negates_serving(usage) or "independen" in usage.lower()
             )
-            if claims_use and MINE not in sources:
+            if claims_use and MINE not in read_from:
+                if MINE in sources:
+                    findings.append(
+                        f"{label}: usage claims serving/citation but {card.name} was "
+                        f"listed from your bank and never opened"
+                        + (f" (it was read from {', '.join(others_read)})" if others_read else "")
+                    )
+                elif others_read:
+                    findings.append(
+                        f"{label}: usage claims serving/citation but {card.name} was "
+                        f"served from {', '.join(others_read)}, not from your bank"
+                    )
+                else:
+                    findings.append(
+                        f"{label}: usage claims serving/citation but the pull log "
+                        f"does not carry a read of {card.name}"
+                    )
+            if claims_use and MINE in read_from and others_read:
                 findings.append(
-                    f"{label}: usage claims serving/citation but {card.name} was "
-                    f"served from {', '.join(others)}, not from your bank"
-                    if others else
-                    f"{label}: usage claims serving/citation but the pull log "
-                    f"does not carry {card.name}"
-                )
-            if claims_use and MINE in sources and others:
-                findings.append(
-                    f"{label}: {card.name} was served from your bank and from "
-                    f"{', '.join(others)}; a citation cannot tell the copies "
+                    f"{label}: {card.name} was read from your bank and from "
+                    f"{', '.join(others_read)}; a citation cannot tell the copies "
                     f"apart — say which copy the campaign used, or drop the claim"
                 )
+            # Independence is refuted by any exposure: a name listed in
+            # front of the session was not rediscovered on its own.
             if claims_independence and MINE in sources:
                 findings.append(
                     f"{label}: usage claims independence but {card.name} was "

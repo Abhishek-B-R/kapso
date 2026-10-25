@@ -174,6 +174,36 @@ def test_sources_index_groups_by_source_and_one_bank_reads_plain(tmp_path):
     assert [row["source"] for row in alone["listed"]] == ["mine", "mine"]
 
 
+def test_an_unqualified_read_goes_to_the_bank_that_can_serve_the_name(tmp_path):
+    # Regression: with two banks holding one name, a plain read goes to
+    # the first bank that can SERVE it — not the first that holds a copy
+    # the scope filters out or the quarantine hides — so what the index
+    # advertises, a plain read opens. When no bank can, the first
+    # holder's refusal says why.
+    first_root = build_bank(tmp_path / "first", {
+        "shared-card": card_text("shared-card", scope=["harness:lending"]),
+        "hidden-card": card_text("hidden-card"),
+        "lending-only": card_text("lending-only", scope=["harness:lending"]),
+    })
+    (first_root / ".decoys.yaml").write_text("- hidden-card\n")
+    second_root = build_bank(tmp_path / "second", {
+        "shared-card": card_text("shared-card"),
+        "hidden-card": card_text("hidden-card"),
+    })
+    banks = [
+        ({"reference": "mine", "head": "aaa", "dir": str(first_root), "provenance": "measured by you", "scope": "harness"}, Bank(str(first_root))),
+        ({"reference": "acme/kapso-bank", "head": "bbb", "dir": str(second_root), "provenance": "measured by others", "scope": "all"}, Bank(str(second_root))),
+    ]
+    served = render_sources_cards(banks, TASK, ["shared-card", "hidden-card"], False, {})
+    assert [(row["card"], row["source"]) for row in served["served"]] == [
+        ("shared-card", "acme/kapso-bank"), ("hidden-card", "acme/kapso-bank"),
+    ]
+    assert served["refused"] == []
+    refused = render_sources_cards(banks, TASK, ["lending-only"], False, {})
+    assert refused["served"] == []
+    assert refused["refused"][0]["card"] == "lending-only" and "out of scope under harness:trading" in refused["refused"][0]["reason"]
+
+
 def test_sources_cards_read_from_the_holder_or_the_named_source(tmp_path):
     banks = make_two_banks(tmp_path)
     # a name held by both reads from the first loaded bank unless a source is named

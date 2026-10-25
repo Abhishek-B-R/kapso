@@ -180,6 +180,13 @@ def test_hosted_gate_is_an_http_server_carrying_the_key_and_spawns_no_bundled_se
         "timeout": 600_000,
     }
     assert "mcp__leeroopedia__search_knowledge" in tools
+    # A campaign mounts the gate as it loaded it: the URL and timeout of
+    # the config the source came from, not the packaged address.
+    servers, _ = get_mcp_config(
+        ["leeroopedia"], project_root=tmp_path, gate_failure_policy="error", include_base_tools=False,
+        hosted={"url": "https://staging.example/mcp?token={LEEROOPEDIA_API_KEY}", "tool_timeout_seconds": 45},
+    )
+    assert servers["leeroopedia"] == {"type": "http", "url": "https://staging.example/mcp?token=secret", "timeout": 45_000}
 
 
 def test_skipping_all_gates_returns_only_requested_base_tools(tmp_path):

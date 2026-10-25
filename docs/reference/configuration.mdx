@@ -20,7 +20,7 @@ kapso = Kapso(config="./my-config.yaml")  # yours
 
 ```bash
 kapso doctor --config ./my-config.yaml
-kapso learn mine --all --config ./my-config.yaml
+kapso learn dev mine --all --config ./my-config.yaml
 ```
 
 <Note>
@@ -205,8 +205,8 @@ search_strategy:
     implementation_model: claude-opus-5
     auth_mode: oauth
     gate_failure_policy: warn
-    ideation_gates: [research, experiment_history, repo_memory, leeroopedia]
-    implementation_gates: [research, repo_memory, leeroopedia]
+    ideation_gates: [research, experiment_history, repo_memory]
+    implementation_gates: [research, repo_memory]
     cost:
       enabled: false
       estimator: null
@@ -224,7 +224,7 @@ search_strategy:
 | `params.auth_mode` | `oauth`, `api_key`, `auto` or `bedrock` |
 | `params.gate_failure_policy` | What to do when an MCP gate is unavailable. `warn` continues |
 | `params.ideation_gates` | MCP tools offered while designing a candidate |
-| `params.implementation_gates` | MCP tools offered while implementing it |
+| `params.implementation_gates` | MCP tools offered while implementing it. Neither list names the hosted Leeroopedia gate or the bank: those are [experience](/docs/experience) sources, mounted when a build loads them and never from a list |
 | `params.cost.enabled` | Enable platform-cost estimation, admission checks, and selection; default `false` |
 | `params.cost.estimator` | Module-qualified caller-owned estimator; required when enabled |
 | `params.cost.cap_per_candidate` | Maximum estimate accepted for one candidate, in `unit`; `null` is unlimited |

@@ -339,6 +339,7 @@ class MiningFrame:
             result = agent.generate_code(repair_prompt, timeout_seconds=timeout)
             self._write_report(mined_dir, result.output)
             findings = MinedViewValidator(bundle_dir, manifest).validate()
+        agent.cleanup()
         self._unstage(bundle_dir)
         if findings:
             raise RuntimeError(

@@ -33,8 +33,9 @@ from kapso.learning.graders.scorecard import (
     validate_verdict,
 )
 from kapso.learning.graders.split import held_out_ids
-from kapso.learning.retriever import compile_intro, render_index
-from kapso.learning.serving_launch import task_coordinates
+from kapso.experience.reference import SCOPE_HARNESS
+from kapso.learning.retriever import render_index
+from kapso.learning.serving_launch import compile_intro, task_coordinates
 from kapso.learning.trajectory_store import TrajectoryStore
 
 CREW_DIR = Path(__file__).parent.parent / "crews" / "grading"
@@ -121,11 +122,12 @@ class GradingFrame:
 
         slot = run_dir / "hindcast" / trajectory_id.replace("/", "--")
         slot.mkdir(parents=True, exist_ok=True)
-        # The would-have-been serving surface (serving v2): the intro plus
-        # the full index — deterministic, so the hindcast replays it at
+        # The would-have-been serving surface: the intro plus the index a
+        # campaign loading `mine` is served under this coordinate (its
+        # default scope) — deterministic, so the hindcast replays it at
         # historical heads byte-identical. Availability is index membership.
         intro = compile_intro(bank, task_coords, bank_head)
-        index = render_index(bank, task_coords)
+        index = render_index(bank, task_coords, scope=SCOPE_HARNESS)
         (slot / "index.md").write_text(intro["intro"] + "\n\n" + index["text"])
         with open(slot / "serving-record.yaml", "w") as handle:
             yaml.safe_dump(intro["record"], handle, sort_keys=False)

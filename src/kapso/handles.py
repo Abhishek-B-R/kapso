@@ -505,6 +505,11 @@ class ExperienceRef:
     scope: str          # "harness" or "all": what of the source the campaign was served
 
 
+# The record's six fields, the shape every record carries (the serving
+# record adds the count served beside them).
+EXPERIENCE_RECORD_FIELDS = ("reference", "kind", "resolved", "head", "provenance", "scope")
+
+
 _RECORD = Path(".kapso") / "solution.json"
 _RECORD_SCHEMA = 4
 _LABEL = 15   # the column explain()'s values start at: the longest label, "Goal achieved:", and a space

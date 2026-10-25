@@ -35,7 +35,7 @@ solution = kapso.build(Brief.read("kapso-brief.md"), repo="repo", output="campai
 | your bank | `mine` | the cards your harness's scope covers, from the bank `learn()` writes |
 | your bank, every scope | `mine:all` | every card you measured, whatever the harness |
 | the hosted gate | `leeroopedia` | Leeroopedia's pages, with `LEEROOPEDIA_API_KEY` in `.env` |
-| a bank by path | `./team/bank.git`, `~/banks/acme.git` | a bank home read in place, every scope |
+| a bank by path | `./team/bank.git`, `~/banks/acme.git` | a bank home read in place, every scope; a path is written as one, a bare name is an index's |
 | a bank by git reference | `acme/kapso-bank`, `acme/kapso-bank@v2`, `git+https://github.com/acme/kapso-bank@main` | a bank cloned once into the store, every scope |
 | an index name | `org-x` | the corpus ingested under that name |
 
@@ -89,14 +89,14 @@ The same list, in every record:
 | `solution.experience`, `.kapso/solution.json` | one entry per source: `reference`, `kind`, `resolved`, `head`, `provenance`, `scope` |
 | `.kapso/run_state.json` | the same list, fingerprinted: a resume with a different one is refused |
 | `.kapso/launch.json` | the same list, what a bare resume re-loads |
-| `.kapso/status.json` | the sources, named from the first second; `kapso watch` shows them |
+| `.kapso/status.json` | the sources, named from the first second; `kapso watch --json` prints them with the file |
 | `.kapso/serving/serving-record.yaml` | the task's coordinate and each source with the count it served |
 | `.kapso/serving/serving-pull.jsonl` | one event per tool call: the tool, what was asked, the source, the heads, what was served and refused |
 
 ```python
 solution = Solution.open("campaign")
 for source in solution.experience:
-    print(source.reference, source.head[:12], source.provenance, source.scope)
+    print(source.reference, source.head, source.provenance, source.scope)   # head: a bank's commit, an index's id, None for the hosted gate
 ```
 
 `learn()` harvests the serving record and the pull log with the campaign, so a lesson is credited to the source its card was read from, and `kapso experience list` shows your bank's head beside what a campaign was served.

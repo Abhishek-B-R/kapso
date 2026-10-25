@@ -4,12 +4,14 @@ docs/research/onboarding.md section 2; the plan:
 docs/plans/redesign/wp3-experience.md ("The reference").
 
 Five forms, tried in this order: the two reserved names (`mine` with or
-without `:all`, which lifts the scope rule); a path — written as one
-(`./`, `../`, `/`, `~`) it must exist, a bare name that is a directory is
-used in place; a string with a scheme, `git+`, an `@` or a `#`, or an
-`owner/repo` shorthand, as a git reference; an index name that exists
-under the indexes home. A string that matches none lists the forms;
-loading never ingests and never creates.
+without `:all`, which lifts the scope rule); a path, written as one
+(`./`, `../`, `/`, `~`), which must exist; a string with a scheme,
+`git+`, an `@` or a `#`, or an `owner/repo` shorthand, as a git
+reference; an index name that exists under the indexes home. A bare
+name is never a path: a directory of the same name beside the run (the
+checkout an index was made from, say) cannot shadow the index. A string
+that matches none lists the forms; loading never ingests and never
+creates.
 """
 
 import re
@@ -80,11 +82,16 @@ def valid_index_name(name: str) -> bool:
 
 def recorded_reference(record: dict) -> str:
     """The reference string that re-loads a recorded source (a campaign's
-    launch record): `mine` at every scope is `mine:all`; every other
-    source is its reference as recorded."""
-    if record["reference"] == MINE and record["scope"] == SCOPE_ALL:
+    launch record): `mine` at every scope is `mine:all`; a bank read by
+    path is its recorded location, absolute, so a resume or a reply from
+    another directory finds the same bank; every other source is its
+    reference as recorded."""
+    reference = record["reference"]
+    if reference == MINE and record["scope"] == SCOPE_ALL:
         return MINE_ALL
-    return record["reference"]
+    if record["kind"] == "bank" and reference != MINE and not looks_like_git(reference) and not is_shorthand(reference):
+        return record["resolved"]
+    return reference
 
 
 def parse_experience_reference(
@@ -102,15 +109,15 @@ def parse_experience_reference(
             f"`{ALL_SUFFIX}` is for `mine` alone: a bank you read, the hosted gate and an index are always every "
             f"scope (`{raw[:-len(ALL_SUFFIX)]}` loads it)"
         )
-    base = Path(cwd) if cwd is not None else Path.cwd()
-    candidate = Path(raw).expanduser()
-    directory = (candidate if candidate.is_absolute() else base / candidate).resolve()
-    if directory.is_dir():
-        return ExperienceReference(raw=raw, kind="path", path=directory, scope=SCOPE_ALL)
     if raw.startswith(PATH_PREFIXES):
-        raise ExperienceReferenceError(
-            f"no directory {directory}: a reference written as a path must exist; the forms are:\n{FORMS}"
-        )
+        base = Path(cwd) if cwd is not None else Path.cwd()
+        candidate = Path(raw).expanduser()
+        directory = (candidate if candidate.is_absolute() else base / candidate).resolve()
+        if not directory.is_dir():
+            raise ExperienceReferenceError(
+                f"no directory {directory}: a reference written as a path must exist; the forms are:\n{FORMS}"
+            )
+        return ExperienceReference(raw=raw, kind="path", path=directory, scope=SCOPE_ALL)
     if looks_like_git(raw):
         parsed = parse_git_reference(raw[4:] if raw.startswith("git+") else raw)
         return ExperienceReference(raw=raw, kind="git", url=parsed.url, rev=parsed.rev, scope=SCOPE_ALL)
@@ -122,11 +129,11 @@ def parse_experience_reference(
         return ExperienceReference(raw=raw, kind="index", path=index, name=raw, scope=SCOPE_ALL)
     if valid_index_name(raw):
         raise ExperienceReferenceError(
-            f"`{raw}` is not a reserved name, a directory, a git reference, or an index under {indexes_root} "
+            f"`{raw}` is not a reserved name, a path, a git reference, or an index under {indexes_root} "
             f"(`kapso experience add --repo <url> --name {raw}` ingests one; `kapso experience list` shows what "
             f"exists); the forms are:\n{FORMS}"
         )
     raise ExperienceReferenceError(
-        f"no directory {directory}, and `{raw}` is not a reserved name, a git reference or an index name; "
-        f"the forms are:\n{FORMS}"
+        f"`{raw}` is not a reserved name, a git reference or an index name, and a path is written as one "
+        f"(`./`, `../`, `/`, `~`); the forms are:\n{FORMS}"
     )

@@ -161,12 +161,12 @@ def main() -> None:
     (sandbox / "memory-0-start.txt").write_text(kapso.memory.explain())
 
     # --- 1. experience: the web researched for the question, ingested ---
-    stage(status_path, "experience", "running", name=index_name)
+    stage(status_path, "experience", "running", index_name=index_name)
     kapso.add_experience(research=RESEARCH_QUESTION, name=index_name)
     corpus = kapso.load_experience(index_name)
     if not corpus.cards:
         raise RuntimeError(f"the index {index_name} holds no pages — not a usable corpus")
-    stage(status_path, "experience", "done", name=index_name, index=corpus.head, pages=corpus.cards)
+    stage(status_path, "experience", "done", index_name=index_name, index_id=corpus.head, pages=corpus.cards)
 
     # --- 2. build #1: served the corpus ---
     stage(status_path, "build1", "running")

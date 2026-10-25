@@ -4,11 +4,13 @@ read. Loading confirms a source exists and is readable; it never ingests
 and never creates (onboarding.md section 2).
 """
 
+import json
 import os
 import subprocess
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from dotenv import dotenv_values, find_dotenv
 
@@ -30,6 +32,7 @@ PROVENANCE_BANK = "measured by others"
 PROVENANCE_REPORTED = "reported by others"
 YOURS = (PROVENANCE_MINE, PROVENANCE_TEAM)
 HOSTED_KEY = "LEEROOPEDIA_API_KEY"
+MCP_PROTOCOL_VERSION = "2025-03-26"   # the streamable-HTTP MCP revision the probe speaks
 _CARD_DIRS = ("insights/", "procedures/")
 
 
@@ -47,6 +50,7 @@ class ExperienceSource:
     scope: str                  # "harness" | "all"
     path: Optional[Path] = None
     url: Optional[str] = None
+    tool_timeout_seconds: Optional[int] = None   # the hosted gate's per-call timeout, from the config it was loaded with
     cards: Optional[int] = None
 
     def ref(self) -> ExperienceRef:
@@ -117,7 +121,7 @@ def resolve_source(
             raise ExperienceError(hosted_key_missing())
         return ExperienceSource(
             reference=reference.raw, kind="hosted", resolved=hosted["url"], head=None, provenance=PROVENANCE_REPORTED,
-            scope=SCOPE_ALL, url=hosted["url"],
+            scope=SCOPE_ALL, url=hosted["url"], tool_timeout_seconds=int(hosted["tool_timeout_seconds"]),
         )
     record = store.index_record(reference.name)
     return ExperienceSource(
@@ -126,12 +130,60 @@ def resolve_source(
     )
 
 
-def hosted_key_present(dotenv_path: Optional[str] = None) -> bool:
-    """The hosted gate's key, in the environment or in `.env` beside the
-    run: a presence probe, never a read of the value."""
-    return bool(os.environ.get(HOSTED_KEY)) or HOSTED_KEY in dotenv_values(
+def hosted_key_value(dotenv_path: Optional[str] = None) -> str:
+    """The hosted gate's key, from the environment or `.env` beside the
+    run; "" when absent or empty. Read to be sent to the gate, never
+    printed or stored."""
+    value = os.environ.get(HOSTED_KEY) or dotenv_values(
         dotenv_path if dotenv_path is not None else find_dotenv(usecwd=True)
+    ).get(HOSTED_KEY)
+    return value or ""
+
+
+def hosted_key_present(dotenv_path: Optional[str] = None) -> bool:
+    """Whether the hosted gate's key is set to something: a presence
+    probe (an empty `LEEROOPEDIA_API_KEY=` is absent)."""
+    return bool(hosted_key_value(dotenv_path))
+
+
+def _post_json(url: str, payload: Dict[str, Any], timeout_seconds: int) -> Tuple[int, str, str]:
+    """One HTTP POST of a JSON body; (status, content type, body text)."""
+    request = urllib.request.Request(
+        url, data=json.dumps(payload).encode("utf-8"), method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
     )
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        return response.status, response.headers.get("Content-Type", ""), response.read().decode("utf-8")
+
+
+def probe_hosted_gate(
+    settings: Dict[str, Any], dotenv_path: Optional[str] = None, post: Callable[..., Tuple[int, str, str]] = _post_json,
+) -> str:
+    """`kapso experience add leeroopedia`'s one-time probe: an MCP
+    `initialize` against the hosted server with the key on its URL.
+    Returns the server's name; a refusal or an unreachable server raises
+    with the status. The key goes on the wire and nowhere else."""
+    hosted = settings["hosted"]
+    key = hosted_key_value(dotenv_path)
+    if not key:
+        raise ExperienceError(hosted_key_missing())
+    payload = {
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": MCP_PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "kapso", "version": "probe"}},
+    }
+    status, content_type, body = post(hosted["url"].format(**{HOSTED_KEY: key}), payload, int(hosted["tool_timeout_seconds"]))
+    if status != 200:
+        raise ExperienceError(f"{HOSTED} refused the probe (HTTP {status}): check {HOSTED_KEY} in .env")
+    text = body
+    if "text/event-stream" in content_type:
+        data = [line[5:].strip() for line in body.splitlines() if line.startswith("data:")]
+        if not data:
+            raise ExperienceError(f"{HOSTED} answered the probe with no message")
+        text = data[0]
+    answer = json.loads(text)
+    if "result" not in answer:
+        raise ExperienceError(f"{HOSTED} answered the probe with an error: {answer.get('error')}")
+    return str((answer["result"].get("serverInfo") or {}).get("name") or HOSTED)
 
 
 def hosted_key_missing() -> str:
@@ -156,8 +208,10 @@ def require_bank(home: Path, raw: str) -> None:
 
 
 def bank_head(home: Path) -> str:
+    """The commit a bank is at: `main` in a bare home, the checked-out
+    revision in a clone (a bank read at a tag is pinned at the tag)."""
     return subprocess.run(
-        ["git", "-C", str(home), "rev-parse", "main"], capture_output=True, text=True, check=True,
+        ["git", "-C", str(home), "rev-parse", "HEAD"], capture_output=True, text=True, check=True,
     ).stdout.strip()
 
 

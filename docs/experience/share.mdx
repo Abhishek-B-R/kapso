@@ -37,7 +37,7 @@ kapso build --experience ./team/bank.git ...                   # a bank home on 
 
 A git reference is cloned once into `experience.banks` (`~/.kapso/experience/banks/<slug>@<rev>/`, with a fetch record beside the clone) and read from there after; a path is read where it is. Either way the bank is pinned at its head for the campaign, its cards are served under every scope, and the intro calls them *measured by others*. Your own bank keeps its scope rule; `mine:all` lifts it.
 
-When two sources hold a card of one name, the sessions see both with their source, `bank_get_card(cards, source=)` opens the one asked for, the pull log names the source of every row served, and a lesson that cites the card is credited to the source it was read from; a name read from two sources is reported as an ambiguity rather than credited to either.
+When two sources hold a card of one name, the sessions see both with their source, a plain `bank_get_card(cards)` opens it from the first loaded bank that can serve it under its scope, `bank_get_card(cards, source=)` opens the one asked for, the pull log names the source of every row served, and a lesson that cites the card is credited to the source it was opened from; a copy only listed was never read, and a name opened from two sources is reported as an ambiguity rather than credited to either.
 
 ## Update and remove
 

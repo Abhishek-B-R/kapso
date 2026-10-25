@@ -16,6 +16,7 @@ from kapso.experience import (
     count_cards,
     hosted_key_missing,
     hosted_key_present,
+    probe_hosted_gate,
 )
 from kapso.kapso import Kapso
 from kapso.learning.bank_remote import bank_origin, connect_bank
@@ -58,7 +59,8 @@ def _add(args) -> None:
         # record); it reads the config itself.
         Kapso(config=args.config).add_experience(repo=args.repo, research=args.research, name=args.name)
         return
-    home = Path(load_experience_defaults(args.config)["bank_home"]).expanduser()
+    settings = load_experience_defaults(args.config)
+    home = Path(settings["bank_home"]).expanduser()
     if args.ref == MINE:
         if home.exists():
             head = bank_head(home)
@@ -71,7 +73,11 @@ def _add(args) -> None:
         if not hosted_key_present():
             print(f"Error: {hosted_key_missing()}")
             sys.exit(1)
-        print(f"{HOSTED}: {HOSTED_KEY} present; `--experience {HOSTED}` mounts the gate in ideation and implementation")
+        server = probe_hosted_gate(settings)
+        print(
+            f"{HOSTED}: {HOSTED_KEY} present and the gate answers as {server}; "
+            f"`--experience {HOSTED}` mounts it in ideation and implementation"
+        )
         return
     print(
         f"Error: `add` creates what must exist before it is loaded: `{MINE}` or `{HOSTED}`; a bank by path "

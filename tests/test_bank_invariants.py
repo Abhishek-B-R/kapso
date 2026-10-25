@@ -276,7 +276,7 @@ def test_evidence_admission_usage_vs_pull_log(tmp_path):
     card = Bank(str(bank_root)).cards["a-card"]
     served = entry(usage="The card was served and cited by the spec.")
     findings = evidence_admission_findings(card, [served], store, {})
-    assert any("the pull log does not carry a-card" in f for f in findings)
+    assert any("the pull log does not carry a read of a-card" in f for f in findings)
     findings = evidence_admission_findings(
         card, [entry(usage="Independent rediscovery — never served.")],
         store, {TRAJECTORY_ID: {"a-card": {"mine": "read"}}},
@@ -289,9 +289,25 @@ def test_evidence_admission_usage_vs_pull_log(tmp_path):
         card, [served], store, {TRAJECTORY_ID: {"a-card": {"acme/kapso-bank": "read"}}},
     )
     assert any("served from acme/kapso-bank, not from your bank" in f for f in findings)
+    # Attribution starts at reading: a copy only listed was never read, so
+    # a citation is credited to the copy opened, and ambiguity needs both
+    # copies opened.
     findings = evidence_admission_findings(
         card, [served], store,
         {TRAJECTORY_ID: {"a-card": {"mine": "indexed", "acme/kapso-bank": "read"}}},
+    )
+    assert any("listed from your bank and never opened (it was read from acme/kapso-bank)" in f for f in findings)
+    assert evidence_admission_findings(
+        card, [served], store,
+        {TRAJECTORY_ID: {"a-card": {"mine": "evidence-read", "acme/kapso-bank": "indexed"}}},
+    ) == []
+    findings = evidence_admission_findings(
+        card, [served], store, {TRAJECTORY_ID: {"a-card": {"mine": "indexed"}}},
+    )
+    assert any("listed from your bank and never opened" in f for f in findings)
+    findings = evidence_admission_findings(
+        card, [served], store,
+        {TRAJECTORY_ID: {"a-card": {"mine": "read", "acme/kapso-bank": "read"}}},
     )
     assert any("cannot tell the copies apart" in f for f in findings)
 

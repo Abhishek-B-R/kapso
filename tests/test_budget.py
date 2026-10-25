@@ -326,6 +326,7 @@ def test_budget_status_block_renders_in_all_modes():
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
     strategy.experience_intro_path = None
+    strategy.hosted = None
     strategy.iteration_count = 4
 
     strategy.budget_snapshot = None

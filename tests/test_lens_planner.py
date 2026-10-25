@@ -161,6 +161,7 @@ def make_stub(tmp_path, planner=PLANNER, iteration=1, node_history=()):
     strategy.bank_serving = None
     strategy.kg_index_path = None
     strategy.experience_intro_path = None
+    strategy.hosted = None
     return strategy
 
 

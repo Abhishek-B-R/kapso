@@ -2124,26 +2124,19 @@ Only include pages that would actually help answer the query.
     # =========================================================================
     
     def clear(self) -> None:
-        """Clear all indexed data from Weaviate and Neo4j."""
-        # Clear Weaviate collection
+        """Delete this index's namespace from both stores: its Weaviate
+        collection (when the store holds it) and its Neo4j nodes. A store
+        that refuses raises; a removal never reports a namespace cleared
+        that is still there."""
         if self._weaviate_client:
-            try:
-                # Use default collection name if not set
-                collection_name = self.weaviate_collection or "KGWikiPages"
+            collection_name = self.weaviate_collection
+            if self._weaviate_client.collections.exists(collection_name):
                 self._weaviate_client.collections.delete(collection_name)
                 logger.info(f"Deleted Weaviate collection '{collection_name}'")
-            except Exception as e:
-                logger.warning(f"Could not delete Weaviate collection: {e}")
-        
-        # Clear Neo4j data
         if self._neo4j_driver:
-            try:
-                with self._neo4j_driver.session() as session:
-                    session.run("MATCH (n:WikiPage {corpus: $corpus}) DETACH DELETE n", corpus=self.corpus)
-                logger.info(f"Cleared Neo4j WikiPage nodes of corpus {self.corpus}")
-            except Exception as e:
-                logger.warning(f"Could not clear Neo4j: {e}")
-        
+            with self._neo4j_driver.session() as session:
+                session.run("MATCH (n:WikiPage {corpus: $corpus}) DETACH DELETE n", corpus=self.corpus)
+            logger.info(f"Cleared Neo4j WikiPage nodes of corpus {self.corpus}")
         self._pages = []
     
     def close(self) -> None:

@@ -175,6 +175,85 @@ build's; a build writes the statement before its sessions, and the setup
 session, which writes the domain statement the task statement is composed
 from, has the path in its own prompt.
 
+**A bare name is never a path.** The plan let a bare name that is a
+directory be read in place, and the reviewers showed the trap: the
+checkout an index was made from, beside the run, shadowed the index of
+the same name, and the name could then neither be loaded nor removed. A
+path is written as one (`./`, `../`, `/`, `~`) and must exist; a bare
+name is a reserved name, a git shorthand or an index. The forms table is
+corrected.
+
+**A bank read by path is re-loaded from its recorded location, named as
+the launch named it.** A resume or an inbox reply may run far from the
+launch directory; the record's `resolved` is absolute, so that is what a
+resume re-loads, and the source keeps the launch's spelling of its
+reference so every record and the fingerprint agree. A reply rebuilds
+the object with the bank the launch had (`Kapso(bank=)` is the record's
+`mine` entry).
+
+**A bank at a tag is pinned at the tag.** `bank_head` reads the commit a
+bank is at (`HEAD`: `main` in a bare home, the checked-out revision in a
+clone), not `main`, so `acme/kapso-bank@v1` records, counts and serves
+the tag's commit. One clone directory per reference: the directory's
+name carries a digest of the reference, so two references that read
+alike as names never share a clone.
+
+**An index pin holds at the build.** A handle that loaded index A while
+the name was removed and ingested again as B before the build is refused
+at the build, as a resume with a stale record is: a campaign is served
+the index it loaded, never one that happens to carry the name now.
+
+**Attribution starts at reading.** The exposure ladder carries three
+rungs; a citation is credited to your bank when the card was opened from
+it (`read` or `evidence-read`), a copy only listed by `bank_index` was
+never read, and ambiguity means opened from both sources. A claim of
+independence is refuted by any exposure, a listing included. An
+unqualified `bank_get_card` with two banks goes to the first bank that
+can serve the name under its scope, so what the index advertises a plain
+read opens.
+
+**The hindcast and the behaviour scenarios replay the surface a campaign
+loading `mine` is served.** `compile_intro` moved to the serving module
+and composes the same intro, for `mine` at its default scope under the
+task's coordinate; the index they grade is rendered under that scope. A
+card of another harness is not availability the grader can charge a
+campaign with. The behaviour fixtures recorded with the earlier
+coordinates stay exempt from the drift test and are re-recorded when WP8
+ports the RelBench harness.
+
+**A lesson that admits nothing moves nothing.** A crew that changed no
+card, sighting or quarantine entry used to commit the rebuilt log alone,
+so the bank's head moved and the lesson read as admitted. The frame now
+commits, tags and pushes only when the bank's content changed; otherwise
+the report carries one head before and after and `learn()` says the
+lesson admitted nothing.
+
+**`kapso experience add leeroopedia` probes the gate once.** The plan's
+Interface promised it: the add sends the hosted server one MCP
+`initialize` with the key on its URL and reports the server's name; a
+refusal or an unreachable server stops the add with the status; an empty
+`LEEROOPEDIA_API_KEY=` is no key. Loading stays a presence check. The
+loaded source carries the URL and timeout of the config it came from,
+and the sessions mount exactly those (`get_mcp_config(hosted=)`), never
+the packaged address; a config gate list naming the hosted gate does not
+mount it, since what is loaded is what is served and the records name it.
+
+**A learn may run under a harness the build did not have.** `kapso learn
+<campaign> --harness <ref>` on a campaign whose record names none loads
+the harness for the crews (its learning module shapes their sessions)
+while the lessons keep the build's own coordinate (`none`); a deploy
+still runs as its build did.
+
+**The hosts' staging names include the adapter's MCP directory.** The
+Claude Code adapter writes `.claude_mcp/` beside a session; the frames
+call the adapter's cleanup after the lead's session, and the harvest
+leaves the directory out with the other staging directories.
+
+**The research ingest's modes and depth are config.** `experience.
+research_modes` and `experience.research_depth` replace two module
+literals; the researcher's findings are unwrapped into the typed
+sources the pipeline ingests.
+
 ## 2026-10-25, WP2 (taken while building)
 
 **A harness's Python requirements are checked against `python3` on PATH,

@@ -29,6 +29,7 @@ from kapso.kapso import Kapso
 from tests.handles_support import facade, make_solution
 from tests.test_bank_retriever import card_text
 from tests.test_experience_reference import settings_for
+from tests.test_inbox_cli import _paused_campaign
 from tests.test_update_frame import seed_bank_home
 
 MINE = ExperienceRef(
@@ -226,6 +227,44 @@ def test_a_resume_that_names_a_different_list_is_refused_by_name(tmp_path, monke
     kapso.load_experience("mine:all")
     with pytest.raises(RunCheckpointIncompatibleError, match="experience was"):
         kapso.build(output=str(workspace), resume=True)
+
+
+def test_a_resume_from_another_directory_finds_a_bank_read_by_path(tmp_path, monkeypatch):
+    # Regression: the launch recorded `./team/bank.git` and a resume from
+    # elsewhere resolved it against the new directory. The record's
+    # absolute location is what a resume re-loads.
+    home = seed_bank_home(tmp_path / "team", {"a-card": card_text("a-card")})
+    recorded = {"reference": "./team/bank-home.git", "kind": "bank", "resolved": str(home), "head": _head(home),
+                "provenance": "measured by others", "scope": "all"}
+    workspace, captured = _campaign(tmp_path, monkeypatch, [recorded])
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    kapso = _kapso(tmp_path, home)
+    kapso.build(output=str(workspace), resume=True)
+    assert [(s.resolved, s.head) for s in kapso.experience] == [(str(home), _head(home))]
+    assert captured["experience"][0]["resolved"] == str(home)
+
+
+def test_a_reply_rebuilds_the_object_with_the_launchs_bank(tmp_path, monkeypatch):
+    # Regression: a reply constructed a default Kapso, so a launch whose
+    # bank lived elsewhere (`Kapso(bank=)`) resumed on the default home.
+    # The record's `mine` entry names the home, and the reply uses it.
+    home = seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
+    workspace = _paused_campaign(tmp_path)
+    write_launch_record(workspace, {
+        "config_path": None, "mode": None, "coding_agent": None,
+        "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": None,
+        "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
+        "data_dir": None, "additional_context": "", "context": None, "harness": None,
+        "experience": [{"reference": "mine", "kind": "bank", "resolved": str(home), "head": _head(home),
+                        "provenance": "measured by you", "scope": "harness"}],
+        "resumable_from_inbox": True, "dotenv_path": "",
+    })
+    built = {}
+    monkeypatch.setattr(Kapso, "build", lambda self, **kwargs: built.update(bank=self._bank_home, **kwargs))
+    Kapso.reply(str(workspace), 1, "done")
+    assert built["bank"] == home and built["resume"] is True
 
 
 def test_a_resume_refuses_a_gone_source_and_a_re_ingested_index(tmp_path, monkeypatch):

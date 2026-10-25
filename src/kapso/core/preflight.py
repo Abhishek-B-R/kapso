@@ -632,13 +632,12 @@ def build_requirements(
     mode: Optional[str] = None,
     coding_agent: Optional[str] = None,
     index: Optional[str] = None,
-    bank_home: Optional[Path] = None,
 ) -> List[Requirement]:
     """`build()` runs a campaign: ideation, implementation, evaluation and
     feedback sessions, plus whatever MCP gates the strategy names. `index`
     is the name of a loaded index, whose search needs the embeddings key
-    and the graph stores; `bank_home` is the bank the doctor's union
-    reports on."""
+    and the graph stores; a bank a build loads is read from its home and
+    needs nothing of this machine."""
     mode_name, block = _mode_block(config, mode)
     prefix = f"modes.{mode_name}"
     strategy = block.get("search_strategy") or {}
@@ -925,7 +924,7 @@ def requirements_for(
         for name in VERBS:
             merged.extend(
                 _BUILDERS[name](config, bank_home=bank_home)
-                if name in ("build", "learn")
+                if name == "learn"
                 else _BUILDERS[name](config)
             )
         return dedupe(merged)

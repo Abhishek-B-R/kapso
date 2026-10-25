@@ -27,7 +27,7 @@ runs and the semantic suite.
 | labels | `purpose=kapso-fresh,run=<run-id>`; `status` lists them |
 | lifetime | created with `--max-run-duration 4h --instance-termination-action DELETE`, so an orphan deletes itself even if this script never runs again |
 | install | `fresh_machine_install.sh` over ssh: uv, Node 22, `claude` and `codex` CLIs, the wheel as a `uv tool` |
-| secrets | `claude-oauth-token-3` and `openai-api-key` from Secret Manager, written over ssh stdin into `~/.secrets/env` (mode 600); never on a command line, in instance metadata or in a log; Codex logs in with the API key |
+| secrets | `claude-oauth-token-3` (another login's secret with `KAPSO_FRESH_CLAUDE_SECRET`, when the token rule says so) and `openai-api-key` from Secret Manager, written over ssh stdin into `~/.secrets/env` (mode 600); never on a command line, in instance metadata or in a log; Codex logs in with the API key |
 | run | `run <id> "<command>"` sources `~/.secrets/env` and runs the command; output is tee'd to `scripts/redesign/runs/<id>/run-N.log` |
 | delete | idempotent; verifies the instance and its disk are gone; prints the elapsed hours and the estimated cost |
 

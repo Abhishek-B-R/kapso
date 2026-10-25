@@ -25,6 +25,7 @@ import asyncio
 import atexit
 import os
 import shutil
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -120,6 +121,13 @@ def prepare_host_gates(
     enabled: List[str] = []
     notes: List[str] = []
     seen = set()
+    # Whatever is loaded is staged once: the banks' pinned clones, the
+    # intro naming every source (the server's instructions, so the session
+    # sees what it is served on connect, a corpus or the hosted gate
+    # included), the serving record and the pull log.
+    staged = stage_serving(plan, list(sources)) if plan is not None else None
+    if staged is not None:
+        env["KAPSO_SERVING_INTRO"] = staged["intro_path"]
     for gate in requested:
         if gate in seen:
             continue
@@ -160,13 +168,11 @@ def prepare_host_gates(
             if embedding:
                 env["EXPERIMENT_EMBEDDING_MODEL"] = str(embedding)
         elif gate == "bank":
-            if plan is None or not plan["banks"]:
+            if staged is None or not plan["banks"]:
                 notes.append(f"bank: off (no bank loaded; {LOAD_HINT} mine)")
                 continue
-            staged = stage_serving(plan, list(sources))
             env.update(staged["bank_serving"])
-            env["KAPSO_SERVING_INTRO"] = staged["intro_path"]
-        elif gate in INDEX_GATES or gate == "kg":
+        elif gate in INDEX_GATES:
             if plan is None or not plan["kg_index_path"]:
                 notes.append(f"{gate}: off (no index loaded; {LOAD_HINT} <name>)")
                 continue
@@ -244,7 +250,11 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         requested.extend(INDEX_GATES)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     session_dir = Path(settings["session_root"]).expanduser() / f"{stamp}-{os.getpid()}"
+    # The staging goes when the server does: at a normal exit, and at the
+    # SIGTERM a host sends its MCP servers on shutdown (an exit through
+    # the handler runs the same registration).
     atexit.register(remove_session_dir, session_dir)
+    signal.signal(signal.SIGTERM, lambda _signum, _frame: sys.exit(0))
     gates = prepare_host_gates(
         root=root,
         requested=requested,

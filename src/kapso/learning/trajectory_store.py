@@ -42,13 +42,15 @@ REQUIRED_FILES_HISTORICAL = (
 )
 CONTRACTS = ("strict", "historical")
 
-# The directories a host reads a session's staging from (the skills, hooks
-# and delegates kapso.harness.staging writes). A harvest leaves them out at
-# every level: they are the harness's files, recoverable from the hash the
-# manifest records, and the session records under `.kapso/sessions` keep
-# what each session ran with; the mining crew owns these names at a bundle
-# root for the length of its session.
-STAGING_DIRECTORIES = (".claude", ".agents", ".codex")
+# The directories a session's staging writes: the skills, hooks and
+# delegates kapso.harness.staging writes for a host, and the MCP
+# configuration the Claude Code adapter writes beside a session. A harvest
+# leaves them out at every level: they are the harness's and the engine's
+# files, recoverable from the hash the manifest records and the config,
+# and the session records under `.kapso/sessions` keep what each session
+# ran with; the mining crew owns these names at a bundle root for the
+# length of its session.
+STAGING_DIRECTORIES = (".claude", ".agents", ".codex", ".claude_mcp")
 # Left out at gather time: derived caches are noise, not evidence; the
 # staging directories are the harness's, not the campaign's.
 GATHER_EXCLUDED_DIR_NAMES = ("__pycache__", *STAGING_DIRECTORIES)

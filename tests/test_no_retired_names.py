@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCOPE = ("src", "tests", "skills", "examples", "benchmarks", "moltbook_bot", "docs", "README.md", "docs.json")
 SUFFIXES = {".py", ".md", ".mdx", ".yaml", ".yml", ".json", ".toml", ".txt", ".sh"}
-EXCLUDED_PARTS = ("__pycache__", ".kapso", "plans", "research", "manual")
+EXCLUDED_PARTS = ("__pycache__", ".kapso", "plans", "research")
 RETIRED = re.compile(
     r"serving\.enabled"
     r"|kapso bank\b"
@@ -30,7 +30,10 @@ RETIRED = re.compile(
     r"|kg_index="
     r"|--kg-index"
     r"|KAPSO_BANK_DIR"
+    r"|KAPSO_BANK_HEAD"
     r"|KAPSO_TASK_FAMILY"
+    r"|KAPSO_TASK_DATASET"
+    r"|kapso-mcp --gates"
     r"|serving_scope"
     r"|\bfamily:\w"
 )

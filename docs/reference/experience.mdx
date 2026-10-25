@@ -15,8 +15,8 @@ A source is named by one string, on `kapso build --experience` (comma-separated)
 |---|---|---|---|
 | your bank | `mine` | `learning.bank.local_path` (`~/.kapso/bank.git`), which must exist (`kapso experience add mine`, or a first `learn()`) | `harness` |
 | your bank, every card | `mine:all` | the same bank | `all` |
-| the hosted gate | `leeroopedia` | `gates.leeroopedia.url`, with `LEEROOPEDIA_API_KEY` present in the environment or in `.env` beside the run | `all` |
-| a bank by path | `./team/bank.git`, `../banks/acme.git`, `/srv/banks/acme.git`, `~/banks/acme.git` | read in place; a string written as a path (`./`, `../`, `/`, `~`) must exist; a bare name that is a directory is used in place | `all` |
+| the hosted gate | `leeroopedia` | `gates.leeroopedia.url` and `.tool_timeout_seconds` from the config the source is loaded with (what the sessions mount), with `LEEROOPEDIA_API_KEY` set to something in the environment or in `.env` beside the run; `kapso experience add leeroopedia` sends the gate one MCP `initialize` with the key and reports the server's name, loading only checks the key is there | `all` |
+| a bank by path | `./team/bank.git`, `../banks/acme.git`, `/srv/banks/acme.git`, `~/banks/acme.git` | read in place; a path is written as one (`./`, `../`, `/`, `~`) and must exist. A bare name is never a path, so a directory beside the run (the checkout an index was made from, say) cannot shadow an index of the same name | `all` |
 | a bank by git reference | `acme/kapso-bank`, `acme/kapso-bank@v2`, `git+https://github.com/acme/kapso-bank@main`, `git@github.com:acme/kapso-bank@v2` | cloned once into `<experience.banks>/<slug>@<rev>/` with a fetch record (`remote`, `rev`, `commit`, `fetched_at`) beside the clone; `@rev` a branch, a tag or a commit, `main` unless given | `all` |
 | an index name | `org-x` | `<experience.indexes>/<name>/index.json`, written by `kapso experience add --repo` or `--research` | `all` |
 
@@ -38,7 +38,7 @@ A card's `scope` is `domain` or a list of `harness:<name>` coordinates; a lesson
 | `head` | a bank's pinned commit, an index's id, `None` for the hosted gate |
 | `provenance` | `measured by you`, `measured by you and your team` (`mine` with a remote), `measured by others` (a bank you read), `reported by others` (the hosted gate, an index) |
 | `scope` | `harness` or `all` |
-| `cards` | the count served, once a build staged it |
+| `cards` | a bank's card files at the pinned head, an index's pages: what the source holds. What a campaign is served from a bank is the count under the task's scope, the number the intro says |
 | `label()` | the line loading prints: `mine at 3f9c1a2b, 12 cards, measured by you`, `org-x (index 7c2d9e1f, 84 pages), reported by others`, `leeroopedia (hosted), reported by others` |
 
 ## The records
@@ -50,7 +50,7 @@ Every record of a campaign carries the same list, one `ExperienceRef` per source
 | the solution | `solution.experience`, `<campaign>/.kapso/solution.json` (schema 4) | what the campaign was served, read back by `Solution.open` |
 | the checkpoint | `<campaign>/.kapso/run_state.json` (schema 5), `experience` required | fingerprinted by `(reference, scope)`: a resume with a different list is refused by name |
 | the launch record | `<campaign>/.kapso/launch.json` | what a bare resume re-loads, each bank re-pinned at its `head`, each index checked at its id |
-| the status file | `<campaign>/.kapso/status.json` | the sources, from the first second; `kapso watch` shows them |
+| the status file | `<campaign>/.kapso/status.json` | the sources, from the first second; `kapso watch --json` prints them with the file (the rendered screen leaves them to WP6's header) |
 | the trajectory manifest | `trajectory.yaml`, `experience` | what the campaign a lesson is mined from was served, with each pinned head |
 
 The campaign's serving directory, `<campaign>/.kapso/serving/`:
@@ -62,7 +62,7 @@ The campaign's serving directory, `<campaign>/.kapso/serving/`:
 | `serving-record.yaml` | `task` (the coordinate) and `sources`, each `ExperienceRef` with the `cards` it served |
 | `serving-pull.jsonl` | one event per tool call: `tool`, `task`, `sources` (each head); for `bank_index` the `section`, `listed_count` and `listed`; for a card read the `requested` names, the `source` asked for, the `served`, the `refused` with reasons, the `tensions` named |
 
-A harvest archives the directory with the campaign, so a card cited in a lesson is credited to the source it was read from (`mine`), and a card read from another source only, or from two, is a finding of the lesson's evidence check.
+A harvest archives the directory with the campaign, and attribution starts at reading: a card cited in a lesson is credited when it was opened from your bank (`bank_get_card`, with or without evidence), a copy only listed by `bank_index` was never read, and a card read from another source only, or opened from two, is a finding of the lesson's evidence check; a claim of independence is refuted by any exposure, a listing included.
 
 ## What the sessions get
 
@@ -121,6 +121,7 @@ An index owns its namespace in both stores: a name removed and added again never
 |---|---|---|
 | `experience.banks` | `~/.kapso/experience/banks` | banks you read, one clone per `<slug>@<rev>` with a fetch record beside |
 | `experience.indexes` | `~/.kapso/experience/indexes` | indexes, one directory per name |
+| `experience.research_modes`, `.research_depth` | `[idea, implementation]`, `deep` | what `kapso experience add --research` asks the web for, and how deep |
 | `learning.bank.local_path` | `~/.kapso/bank.git` | your bank, `mine` (`Kapso(bank=)` overrides it) |
 | `learning.serving.session_root` | `~/.kapso/serving` | where `kapso-mcp` stages a host session, one directory per process, removed at exit |
 | `learning.retriever.probe_budget` | `1` | measurement offers riding card reads, per campaign |

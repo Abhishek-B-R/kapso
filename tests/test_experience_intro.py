@@ -121,7 +121,9 @@ def test_the_strategy_reads_the_staged_intro_lazily_and_fails_loud_when_it_is_mi
     intro_path.write_text(INTRO)
     assert INTRO.strip() in strategy._build_ideation_prompt("p", "m")
     assert "bank" in strategy.ideation_gates and "bank" in strategy.implementation_gates
-    assert "bank" not in getattr(strategy, "feedback_gates", [])
+    # The judge is a session with no gate list at all: its agent config
+    # mounts no server, so no bank can reach it.
+    assert "mcp_servers" not in FeedbackGenerator().coding_agent_config.agent_specific
     with _patched_super_init(str(tmp_path)):
         plain = GenericSearch(SimpleNamespace(params={}), str(tmp_path))
     assert plain.experience_intro() == ""

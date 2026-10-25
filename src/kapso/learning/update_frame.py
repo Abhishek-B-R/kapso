@@ -26,7 +26,7 @@ from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.harness.load import Harness
 from kapso.harness.staging import CODEX_HOST, StagedHarness, host_for, stage_harness
-from kapso.learning.bank import Bank
+from kapso.learning.bank import DECOY_REGISTRY_NAME, Bank
 from kapso.learning.bank_invariants import (
     BankTransactionValidator,
     body_contract_gaps,
@@ -35,7 +35,7 @@ from kapso.learning.bank_invariants import (
 from kapso.learning.graders.hindcast import HindcastReport
 from kapso.learning.refs import extract_refs
 from kapso.learning.retriever import compile_probe_queue, exposure_ladder
-from kapso.learning.trajectory_store import TrajectoryStore
+from kapso.learning.trajectory_store import MANIFEST_NAME, TrajectoryStore
 
 CREW_DIR = Path(__file__).parent / "crews" / "update"
 # The two sessions a run stages the harness's learning module into, as
@@ -45,6 +45,9 @@ CREW_DIR = Path(__file__).parent / "crews" / "update"
 LEAD_SESSION = "lead"
 WORKERS_SESSION = "workers"
 WORKERS_GUIDANCE_FILE = "harness-guidance.md"
+# The campaign's pull log inside its archived bundle: the exposure the
+# evidence check credits usage claims against.
+PULL_LOG_REL = ".kapso/serving/serving-pull.jsonl"
 # NOTE is the acknowledgment verdict for serving-feedback rows (journal-only,
 # no bank edit) — a small vocabulary extension over the update-crew doc,
 # discovered at implementation: feedback rows need a verdict that is neither a
@@ -186,16 +189,32 @@ class UpdateFrame:
                 timeout_seconds=timeout,
             )
             findings = self._validate(run_dir, before_dir, batch)
+        agent.cleanup()
         if findings:
             raise RuntimeError(
                 f"update run {lr_id} failed validation after {rounds_used} "
                 f"repair round(s): " + "; ".join(findings)
             )
 
-        self._rebuild_derived(run_dir, lr_id)
-        self._commit(run_dir, lr_id, batch)
+        # A lesson that admits nothing moves nothing: no card, sighting or
+        # quarantine changed, so there is no commit, no tag and no push —
+        # the report says so, and the bank stays at the head it was.
+        if self._bank_changed(run_dir):
+            self._rebuild_derived(run_dir, lr_id)
+            self._commit(run_dir, lr_id, batch)
         self._assemble_report(run_dir, lr_id, batch, learner_version, before_dir)
         return run_dir
+
+    def _bank_changed(self, run_dir: Path) -> bool:
+        """Whether the crew changed the bank's content: the cards, the
+        retired cards, the sightings, the quarantine registry — not the
+        derived index or the log, which the frame rebuilds."""
+        status = subprocess.run(
+            ["git", "-C", str(run_dir / "bank"), "status", "--porcelain", "--",
+             "insights", "procedures", "retired", "sightings.md", DECOY_REGISTRY_NAME],
+            check=True, capture_output=True, text=True,
+        )
+        return bool(status.stdout.strip())
 
     # ------------------------------------------------------------- staging
 
@@ -651,9 +670,15 @@ ROLE="$1"; ASSIGNMENT="$2"; OUT="$3"
         # is a finding.
         exposures: Dict[str, Dict[str, Dict[str, str]]] = {}
         for item in batch:
-            log_path = self.store.local / item["trajectory"] / ".kapso" / "serving" / "serving-pull.jsonl"
-            if log_path.is_file():
-                exposures[item["trajectory"]] = exposure_ladder(log_path)
+            # Through the store's resolver when the bundle is here or a
+            # remote store can bring it: a served campaign is never read
+            # as unserved for want of a local copy. A trap batch the
+            # gauntlet names without a bundle has no exposure.
+            trajectory = item["trajectory"]
+            if not (self.store.local / trajectory / MANIFEST_NAME).is_file() and self.store.remote is None:
+                continue
+            if PULL_LOG_REL in self.store.manifest(trajectory)["inventory"]["sha256"]:
+                exposures[trajectory] = exposure_ladder(self.store.resolve(trajectory, PULL_LOG_REL))
         findings: List[str] = []
         for name, card in after.cards.items():
             previous = before.cards.get(name)

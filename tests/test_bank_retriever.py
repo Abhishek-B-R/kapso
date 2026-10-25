@@ -11,11 +11,11 @@ import pytest
 
 from kapso.learning.bank import Bank, Card, split_card_text
 from kapso.learning.retriever import (
-    compile_intro,
     probe_offers,
     render_cards,
     render_index,
 )
+from kapso.learning.serving_launch import compile_intro
 
 TASK = {"harness": "trading"}
 
@@ -233,17 +233,23 @@ def test_quarantine_is_law(tmp_path):
 
 
 def test_intro_and_launch_record(tmp_path):
-    # Regression: the intro is the whole push surface — head stamp + the
-    # three tool names, never card content; the launch record is v2 shape.
-    root = build_bank(tmp_path, {"a-card": card_text("a-card")})
+    # Regression: the surface a hindcast or a scenario replays is the one
+    # a campaign loading `mine` is served under the task's coordinate at
+    # its default scope — the head, the count the scope serves, the three
+    # tool names, never card content; the record is the campaign's shape.
+    root = build_bank(tmp_path, {
+        "a-card": card_text("a-card"),
+        "elsewhere-card": card_text("elsewhere-card", scope=["harness:lending"]),
+    })
     result = compile_intro(Bank(str(root)), TASK, "lr_head")
-    assert "lr_head" in result["intro"]
+    assert "1 card measured by you, under the trading harness, from your bank at head `lr_head`" in result["intro"]
     for tool in ("bank_index()", "bank_get_card(", "bank_get_card_with_evidence("):
         assert tool in result["intro"]
     assert "[card:a-card]" not in result["intro"]  # no card content pushed
     assert result["record"] == {
-        "mode": "agentic", "task": dict(TASK), "bank_head": "lr_head",
-        "gaps": ["no procedure in the bank covers this task's scope"],
+        "task": dict(TASK),
+        "sources": [{"reference": "mine", "kind": "bank", "resolved": str(root), "head": "lr_head",
+                     "provenance": "measured by you", "scope": "harness", "cards": 1}],
     }
 
 

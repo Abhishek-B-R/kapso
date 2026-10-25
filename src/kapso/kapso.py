@@ -52,7 +52,7 @@ from kapso.execution.observability import (
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.evaluation_maintainer.registry import EvaluationRegistry
 from kapso.execution.iteration_evaluator import IterationEvaluator
-from kapso.handles import Brief, Budget, EvaluatorRef, Solution
+from kapso.handles import EXPERIENCE_RECORD_FIELDS, Brief, Budget, EvaluatorRef, ExperienceRef, Solution
 from kapso.execution.evaluation_integrity import build_evaluation_manifest
 from kapso.environment.handlers.generic import GenericProblemHandler
 from kapso.knowledge_base.search import KnowledgeSearchFactory
@@ -72,8 +72,7 @@ from kapso.experience import (
     ExperienceStore,
     bank_head,
     has_origin,
-    hosted_key_missing,
-    hosted_key_present,
+    probe_hosted_gate,
     parse_experience_reference,
     pull_home,
     recorded_reference,
@@ -204,7 +203,7 @@ def _memory_overrides(serving_plan: Optional[Dict[str, Any]]) -> Optional[Dict[s
     if serving_plan["bank_serving"]:
         overrides["bank_serving"] = serving_plan["bank_serving"]
     if serving_plan["hosted"]:
-        overrides["hosted"] = True
+        overrides["hosted"] = serving_plan["hosted"]
     if serving_plan["kg_index_path"]:
         overrides["kg_index_path"] = serving_plan["kg_index_path"]
     return overrides
@@ -378,9 +377,8 @@ class Kapso:
                 print(f"created your bank at {home} (empty; learn() fills it, `mine` serves it)")
             return MINE
         if ref == HOSTED:
-            if not hosted_key_present():
-                raise ExperienceError(hosted_key_missing())
-            print(f"{HOSTED}: its key is present; `{HOSTED}` loads the gate")
+            server = probe_hosted_gate(self._experience_settings)
+            print(f"{HOSTED}: its key is present and the gate answers as {server}; `{HOSTED}` loads it")
             return HOSTED
         if ref is not None:
             raise ValueError(
@@ -390,7 +388,10 @@ class Kapso:
         store = ExperienceStore(self._experience_settings["banks"], self._experience_settings["indexes"])
         name = check_name(name, store)
         run_preflight("experience", self._config, research=research is not None)
-        sources = repository_source(repo) if repo else research_sources(research, self.config_path)
+        sources = (
+            repository_source(repo) if repo
+            else research_sources(research, self._experience_settings, self.config_path)
+        )
         heartbeat_seconds = self._status_heartbeat_seconds()
         status = KnowledgeStatus(
             self._status_file("experience"),
@@ -723,23 +724,25 @@ class Kapso:
                 }, indent=1))
             report_path = campaign_dir / "final_report.json"
             if not report_path.is_file():
+                # The outcome from the solution's record, whether the
+                # object or the campaign directory's own was given.
                 report: Dict[str, Any] = {"generated_by": "Kapso.learn"}
-                if isinstance(source, Solution):
+                if record is not None:
                     report.update({
-                        "goal": source.brief.objective,
-                        "goal_achieved": source.goal_achieved,
-                        "final_score": source.score,
-                        "stopped_reason": source.stopped_reason,
-                        "experiments": source.experiments,
-                        "experiments_total": source.experiments_total,
-                        "cost_usd": source.cost_usd,
+                        "goal": record.brief.objective,
+                        "goal_achieved": record.goal_achieved,
+                        "final_score": record.score,
+                        "stopped_reason": record.stopped_reason,
+                        "experiments": record.experiments,
+                        "experiments_total": record.experiments_total,
+                        "cost_usd": record.cost_usd,
                     })
                 report_path.write_text(json.dumps(report, indent=1, default=str))
             log_path = campaign_dir / ".kapso" / "campaign.log"
             if not log_path.is_file():
                 lines = ["# facade-generated harvest log (Kapso.learn)"]
-                if isinstance(source, Solution):
-                    lines.append(source.explain())
+                if record is not None:
+                    lines.append(record.explain())
                 log_path.write_text("\n".join(lines) + "\n")
             # The store contract requires registered runs. A bare build
             # workspace records its experiments in the history store, not
@@ -783,10 +786,15 @@ class Kapso:
                 campaign_dir / ".kapso" / "serving" / "serving-record.yaml"
             )
             # The sources the campaign was served, each at its pinned
-            # head: the launcher wrote them; sessions never stamp anything.
-            experience: Optional[List[Dict[str, Any]]] = None
+            # head, in the records' own shape (the serving record adds the
+            # count served); the launcher wrote them, sessions never stamp
+            # anything. Unserved: the empty list, as every other record.
+            experience: List[Dict[str, Any]] = []
             if serving_record.is_file():
-                experience = yaml.safe_load(serving_record.read_text())["sources"]
+                experience = [
+                    vars(ExperienceRef(**{key: source[key] for key in EXPERIENCE_RECORD_FIELDS}))
+                    for source in yaml.safe_load(serving_record.read_text())["sources"]
+                ]
             save_trajectory(
                 store,
                 trajectory_id,
@@ -910,16 +918,19 @@ class Kapso:
                 elif change_status.startswith("M"):
                     cards_updated.append(name)
 
+        admitted = bank_head_after != bank_head_before
         status.note(
             f"lesson landed: {len(cards_created)} created, "
             f"{len(cards_updated)} updated; bank "
             f"{bank_head_before[:8]} -> {bank_head_after[:8]}"
+            if admitted else
+            f"lesson admitted nothing: the bank stays at {bank_head_before[:8]}"
         )
 
         # --- push (to the bank's own origin; preflighted at learn() start) ---
         status.phase("push")
         pushed = False
-        if should_push:
+        if should_push and admitted:
             subprocess.run(
                 ["git", "--git-dir", str(self._bank_home), "push", "origin",
                  "main", "--tags"],
@@ -936,7 +947,9 @@ class Kapso:
             bank_head_after=bank_head_after,
             pushed=pushed,
         )
-        if pushed:
+        if not admitted:
+            print(f"lesson admitted nothing: the bank stays at {bank_head_before[:12]} (the report says why)")
+        elif pushed:
             print(f"lesson banked and pushed to {origin}")
         else:
             print("lesson banked locally · to share: kapso experience share <url>")
@@ -1100,7 +1113,10 @@ class Kapso:
                 # different list is refused by name below.
                 if not self._experience and record.get("experience"):
                     for recorded in record["experience"]:
-                        self.load_experience(recorded_reference(recorded))
+                        # Re-loaded from where the launch recorded it, and
+                        # named as the launch named it (a bank read by a
+                        # relative path keeps that spelling in every record).
+                        self.load_experience(recorded_reference(recorded)).reference = recorded["reference"]
                 for source in self._experience:
                     recorded = next(
                         (r for r in record.get("experience", []) if r["reference"] == source.reference), None,
@@ -1155,7 +1171,6 @@ class Kapso:
             mode=mode,
             coding_agent=coding_agent,
             index=next((source.reference for source in self._experience if source.kind == "index"), None),
-            bank_home=self._bank_home,
         )
 
         print(f"\n{'='*60}")
@@ -1277,14 +1292,22 @@ class Kapso:
             indexes = [source for source in self._experience if source.kind == "index"]
             if indexes:
                 store = ExperienceStore(self._experience_settings["banks"], self._experience_settings["indexes"])
-                record = store.index_record(indexes[0].reference)
+                index_record = store.index_record(indexes[0].reference)
+                # The pin holds: the record on disk is the index the
+                # handle loaded, not one ingested under the name since.
+                if index_record.id != indexes[0].head:
+                    raise ExperienceError(
+                        f"{indexes[0].reference} was re-ingested since it was loaded (index {indexes[0].head} "
+                        f"then, {index_record.id} now); load it again to serve the new index"
+                    )
                 self._close_knowledge_search()
-                self.knowledge_search = search_for(record, self._config, self.config_path)
+                self.knowledge_search = search_for(index_record, self._config, self.config_path)
                 if not self.knowledge_search.validate_backend_data():
                     raise ExperienceError(
-                        f"the index `{record.name}` has no pages in its stores (collection "
-                        f"{record.backend_refs.get('weaviate_collection')} at {record.backend_refs.get('weaviate_url')}); "
-                        f"the stores were wiped since it was added — `kapso experience remove {record.name}` and add it again"
+                        f"the index `{index_record.name}` has no pages in its stores (collection "
+                        f"{index_record.backend_refs.get('weaviate_collection')} at "
+                        f"{index_record.backend_refs.get('weaviate_url')}); the stores were wiped since it was "
+                        f"added — `kapso experience remove {index_record.name}` and add it again"
                     )
 
         # Create problem handler with all options
@@ -1569,7 +1592,10 @@ class Kapso:
         # its .env included: a reply may run far from the launch directory.
         if record.get("dotenv_path"):
             load_dotenv(record["dotenv_path"])
-        kapso = cls(config=record["config_path"])
+        # Your bank where the launch had it (`Kapso(bank=)`): the record's
+        # `mine` entry names its home, absolute.
+        mine = next((entry for entry in record.get("experience", []) if entry["reference"] == MINE), None)
+        kapso = cls(config=record["config_path"], bank=mine["resolved"] if mine is not None else None)
         return kapso.build(
             output=campaign_dir,
             budget=Budget(experiments=remaining),
@@ -1710,6 +1736,12 @@ class Kapso:
         if loaded is not None:
             loaded = reload_harness(loaded, settings=self._harness_settings)
             self._harness = loaded
+            if recorded is None and verb == "learn":
+                # A learn may run under a harness the build did not have:
+                # its learning module shapes the crews' sessions, and the
+                # lessons stay scoped to the build's own coordinate (none).
+                print(f"  Harness: {loaded.label()} for the learn; the build ran without one")
+                return self._ready_for(loaded, verb)
             if recorded is None:
                 raise HarnessError(
                     f"{solution.campaign} was built without a harness, and a {verb} runs as its build "
@@ -1743,6 +1775,11 @@ class Kapso:
                 f"  Harness: {harness.label()} for the {verb}; the build ran with "
                 f"{recorded.name} {recorded.version} ({recorded.hash[:12]})"
             )
+        return self._ready_for(harness, verb)
+
+    def _ready_for(self, harness: Harness, verb: str) -> Harness:
+        """The harness a verb runs with, its own module's requirements met
+        and its advisories printed."""
         modules = DEPLOY_MODULES if verb == "deploy" else LEARN_MODULES
         unmet = harness.missing_for(modules)
         if unmet:

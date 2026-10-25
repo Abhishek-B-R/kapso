@@ -36,6 +36,9 @@ class CompositeFake:
     def initialize(self, workspace):
         self.cwd = workspace
 
+    def cleanup(self):
+        pass
+
     def generate_code(self, prompt, debug_mode=False, timeout_seconds=None):
         class Result:
             success = True
