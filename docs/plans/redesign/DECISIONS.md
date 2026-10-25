@@ -6,6 +6,117 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-25, WP3 (taken after the sub-plan's review, while building)
+
+**Scope is a filter again, on the harness coordinate.** The 2026-08
+amendment made scope displayed information ("the index lists the whole
+bank; the reading agent selects") because the `family:`/`dataset:`
+coordinates were too fine: a card scoped to one dataset was useful on the
+next. The coordinate is now the harness, which is the domain itself, so a
+card measured under the predictive-modelling harness is noise in a
+trading build. `mine` loaded at the default scope lists and reads only the
+cards whose scope covers the coordinate (`domain`, or `harness:<name>`);
+`mine:all` lifts that; a bank you read serves everything it holds;
+quarantine is law under every scope. Alternative rejected: keep scope
+displayed and delete the `scope` knob, which would have made the harness
+coordinate decorative. Shows in `retriever.py` (the index and both reads
+take the scope), the intro's count, `docs/experience/`.
+
+**Loading never touches the network beyond a first fetch; `kapso
+experience update` does.** The sub-plan had `mine` pull from its remote
+on every load. Both reviewers showed what that does to a host session
+(`kapso-mcp --experience mine` on a machine whose remote is unreachable
+exits at every session start) and to a resume (the pin and the pull
+compete). A load pins the local state; `update [ref]` pulls `mine`
+fast-forward from its origin and re-fetches a bank you read at a moving
+reference; `remove <ref>` deletes a clone or an index. A pinned commit
+never moves; a campaign keeps its pin whatever `update` does later.
+Alternative rejected: pull on load with a fallback to the local head when
+the remote fails — a silent fallback (rule 2).
+
+**`mine:all` is the lift's syntax everywhere.** `scope="all"` existed only
+in Python; the CLI and the brief had no way to say it. `--experience
+mine:all`, the brief's `Experience: mine:all`, `kapso-mcp --experience
+mine:all` and `load_experience("mine:all")` are one form; `scope=` on
+`load_experience` goes. A suffix on any other reference is refused by
+name (a bank you read, the hosted gate and an index are always every
+scope).
+
+**The coordinate is the harness alone.** `build(serving_scope=)`, its
+launch-record key and the `dataset` coordinate are retired with
+`family:`; `KAPSO_TASK_HARNESS` is the one coordinate the gate reads.
+Alternative rejected: keep `dataset` as a benchmark's extra coordinate —
+a benchmark is a harness now (WP8), and a second coordinate would need
+its own scope grammar, writer rule and tests for one caller.
+
+**`none` is a reserved harness name.** `harness:none` is the coordinate of
+a campaign with no harness, and WP2's name grammar allowed a harness
+called `none`; `check` refuses the name. Alternative rejected: an
+unnameable coordinate such as `harness:-`, which reads worse in a card.
+
+**A card is identified by its source and its name; the citation grammar
+stays `[card:name]`.** With two loaded banks holding one name, the gate
+reads from the named source or the first that holds it and the pull log
+records the source of every served row; the learning side credits a cited
+name to the source the pull log shows it was read from, and reports a
+name read from two sources as an ambiguity instead of guessing. The
+evidence tool takes `source=` as the read does. Alternative rejected: a
+qualified citation `[card:name@source]` — every prompt, parser and grader
+that reads citations would change for the rare collision.
+
+**One index per campaign.** The search gates hold one backend; two loaded
+indexes are refused by name at planning. Alternative rejected: federated
+search across indexes with result provenance, which no backend supports
+today and which WP4 may revisit with the config.
+
+**The loaded experience is campaign identity.** The references and their
+scope enter the checkpoint's fingerprint; a resume loads the record's list
+and re-pins each bank at the recorded head, and a resume that names a
+different list is refused by name, as a changed harness is. Alternative
+rejected: an operator dial like the budget — a campaign served a different
+bank in its second half would be measuring two things.
+
+**`kapso-mcp` serves the bundled gates only, by what is loaded and what
+the directory holds.** `--gates` does not come back (the three
+directory-driven gates turn themselves off with a reason; `kg` carries
+write tools and never rode on a host); `--harness <ref>` gives the
+session its coordinate, as a build has one; the intro rides as the MCP
+server's `instructions`, so the session names its sources on connect;
+`leeroopedia` loaded on the host prints the reminder to add it as the
+host's own HTTP server; the session's staging directory is removed when
+the server exits; a source that cannot be loaded stops the server with
+the line that would fix it (no partial serving).
+
+**The intro has its own slot.** `handler.additional_context` is frozen at
+construction, so the intro appended after it never reached a session (WP2
+recorded this). `{{experience_intro}}` is threaded into the ideation and
+implementation prompts the way WP2 threads the harness guidance, and into
+no other session; the test renders the prompts.
+
+**Probe offers ride only your own bank.** A probe is a measurement you pay
+for whose evidence lands in a bank you can write; a colleague's open
+probes are not yours to run. The gate builds offers from `mine` alone.
+
+**No `--experience` on `deploy` or `learn`.** Deploy's sessions mount no
+gates at all (`deployment/selector`, `deployment/adapter`), so there is
+nothing to serve; WP5 revisits when it adds staging. `learn` writes `mine`
+whatever is loaded; `Kapso(bank=)` points `mine` elsewhere and is threaded
+through every crew. The master plan's "on the three verbs" was the
+harness interface's line.
+
+**Team banks: `share` stays push-only.** Joining a team bank that already
+has history, bare-repository synchronisation and divergence recovery are a
+later package; `share` refuses a push the remote rejects, in git's words,
+and the intro says "measured by you and your team" when `mine` has a
+remote. Papers stay out the same way: no ingestor reads one; the
+onboarding grammar marks `--paper` as not shipped, owner: the experience
+package's second iteration.
+
+**No `family:` knowledge anywhere.** The sub-plan had `kapso experience
+list` mark a bank whose cards carry the retired coordinate; that needs
+every card parsed on every `list` and keeps the old grammar alive in code
+(rule 7). `list` is silent; a pre-release bank is re-learned.
+
 ## 2026-10-25, WP2 (taken while building)
 
 **A harness's Python requirements are checked against `python3` on PATH,
