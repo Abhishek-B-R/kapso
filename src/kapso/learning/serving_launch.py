@@ -28,6 +28,8 @@ from kapso.learning.retriever import BANK_TOOLS_TEXT
 
 HARNESS_COORDINATE = "harness"
 INDEX_RECORD = "index.json"
+INTRO_FILE = "intro.md"
+INTRO_HEADING = "## Experience (measured before)"
 _UNSAFE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
@@ -46,7 +48,9 @@ def plan_serving(
     serving, computed WITHOUT touching `serve_dir` (a campaign's may not
     exist yet). None without a source. `bank_serving` is exactly the
     environment stage will make true; `kg_index_path` the one index's
-    record; `hosted` whether the hosted gate rides."""
+    record; `hosted` whether the hosted gate rides; `intro_path` where
+    stage writes the intro the ideation and implementation prompts read
+    (the engine reads it at session time, never at construction)."""
     if not sources:
         return None
     serve_dir = Path(serve_dir).expanduser()
@@ -79,6 +83,7 @@ def plan_serving(
         "hosted": any(s.kind == "hosted" for s in sources),
         "kg_index_path": str(Path(indexes[0].path) / INDEX_RECORD) if indexes else None,
         "bank_serving": bank_serving,
+        "intro_path": str(serve_dir / INTRO_FILE),
         "sources": [vars(s.ref()) for s in sources],
     }
 
@@ -112,6 +117,7 @@ def stage_serving(plan: Dict[str, Any], sources: List[ExperienceSource]) -> Dict
         counts[entry["reference"]] = served_count(Bank(str(checkout)), entry["scope"], plan["task"])
     lines = source_lines(sources, counts, plan["task"])
     intro = compile_sources_intro(sources, lines)
+    Path(plan["intro_path"]).write_text(intro + "\n")
     record_path = serve_dir / "serving-record.yaml"
     record = {
         "task": dict(plan["task"]),
@@ -124,6 +130,7 @@ def stage_serving(plan: Dict[str, Any], sources: List[ExperienceSource]) -> Dict
         yaml.safe_dump(record, handle, sort_keys=False)
     return {
         "intro": intro,
+        "intro_path": plan["intro_path"],
         "lines": lines,
         "bank_serving": plan["bank_serving"],
         "kg_index_path": plan["kg_index_path"],
@@ -182,7 +189,7 @@ def source_lines(sources: List[ExperienceSource], counts: Dict[str, int], task_c
 def compile_sources_intro(sources: List[ExperienceSource], lines: List[str]) -> str:
     """The intro the sessions read: the source lines, then how to read a
     bank and how a corpus is searched, for the kinds that are loaded."""
-    text = ["## Experience (measured before)", "", "You are served:"] + [f"- {line}" for line in lines]
+    text = [INTRO_HEADING, "", "You are served:"] + [f"- {line}" for line in lines]
     if any(s.kind == "bank" for s in sources):
         text += ["", BANK_TOOLS_TEXT]
     if any(s.kind == "index" for s in sources):

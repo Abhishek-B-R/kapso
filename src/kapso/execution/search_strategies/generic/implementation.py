@@ -512,6 +512,7 @@ def build_implementation_prompt(
     inbox_section: str = "",
     knowledge_tools: str = "",
     domain_guidance: str = "",
+    experience_intro: str = "",
 ) -> str:
     """Build the implementation prompt for Claude Code from the one template.
     ``evaluation_instructions`` is the mode's evaluation contract (build and
@@ -541,6 +542,7 @@ def build_implementation_prompt(
             "knowledge_tools": knowledge_tools,
             "inbox_checklist_note": CHECKLIST_NOTE_WITH_INBOX if inbox_on else "",
             "domain_guidance": optional_block(domain_guidance),
+            "experience_intro": optional_block(experience_intro),
             "closing_line": (
                 CLOSING_LINE_WITH_INBOX if inbox_on else CLOSING_LINE_WITHOUT_INBOX
             ),

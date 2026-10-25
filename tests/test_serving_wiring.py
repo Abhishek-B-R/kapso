@@ -92,8 +92,11 @@ def test_one_bank_is_staged_pinned_with_its_intro(tmp_path):
     assert "bank_index()" in serving["intro"]
     assert "bank_get_card_with_evidence(" in serving["intro"]
     assert "[card:a-card]" not in serving["intro"]
-    # the banner lines are the intro's source lines
+    # the banner lines are the intro's source lines; the intro is staged
+    # where the prompts read it
     assert len(serving["lines"]) == 1 and f"- {serving['lines'][0]}" in serving["intro"]
+    assert Path(serving["intro_path"]) == work_dir / ".kapso" / "serving" / "intro.md"
+    assert Path(serving["intro_path"]).read_text() == serving["intro"] + "\n"
     # the record carries the task and the sources, inside the harvested tree
     record = yaml.safe_load(Path(serving["record_path"]).read_text())
     assert record["task"] == TASK

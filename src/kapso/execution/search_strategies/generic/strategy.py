@@ -284,6 +284,12 @@ class GenericSearch(SearchStrategy):
         # into ideation, implementation, and lens-planner sessions — never
         # the feedback judge.
         self.bank_serving = self.params.get("bank_serving")
+        # The experience intro's path (wp3-experience.md): what the
+        # campaign is served, compiled from the loaded sources and staged
+        # into the serving directory AFTER construction (a seeded
+        # workspace must be empty then), so it is read when a prompt is
+        # built, never here. None = nothing loaded.
+        self.experience_intro_path = self.params.get("experience_intro_path")
         # Knowledge-store index for the wiki-search gates (learn_knowledge
         # / index_kg write it; the facade threads it per campaign).
         self.kg_index_path = self.params.get("kg_index_path")
@@ -1121,6 +1127,7 @@ class GenericSearch(SearchStrategy):
             get_best_experiment=self.get_best_experiment,
             run_planner_session=self._run_lens_planner_session,
             domain_guidance=self.stage_harness_for("ideation", ideation_dir, "lens_planner", "claude_code").guidance,
+            experience_intro=self.experience_intro(),
         )
 
     def _generate_solution_ensemble(
@@ -1206,7 +1213,17 @@ class GenericSearch(SearchStrategy):
             inbox_ideation=self._render_inbox_ideation(),
             knowledge_tools=knowledge_tools_block("ideation", allowed_tools),
             domain_guidance=domain_guidance,
+            experience_intro=self.experience_intro(),
         )
+
+    def experience_intro(self) -> str:
+        """The intro the campaign's sessions read — what it is served,
+        measured before — from the serving directory the launcher staged;
+        "" when nothing is loaded. Read at prompt time: a path with no file
+        behind it is a staging failure, and raises."""
+        if not self.experience_intro_path:
+            return ""
+        return Path(self.experience_intro_path).read_text()
 
     def _render_inbox_ideation(self) -> str:
         """The inbox block for ideation: the rule against designing around
@@ -1343,6 +1360,7 @@ class GenericSearch(SearchStrategy):
             inbox_section=inbox_section,
             knowledge_tools=knowledge_tools_block("implementation", allowed_tools),
             domain_guidance=domain_guidance,
+            experience_intro=self.experience_intro(),
         )
 
     def _manifest_of_record(self, node: SearchNode) -> Optional[Dict[str, Any]]:

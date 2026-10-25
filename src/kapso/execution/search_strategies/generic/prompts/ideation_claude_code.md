@@ -26,7 +26,7 @@ did the work, not the surface recipe.
   usage; search wherever you judge best.
 
 ## Knowledge bank (when served)
-If the problem context carries a "Knowledge bank" section and the
+If this prompt carries an "Experience (measured before)" section and the
 `bank_index` / `bank_get_card` / `bank_get_card_with_evidence` tools are
 available: before writing ideas, call `bank_index()` once and scan it
 against the task — open (`bank_get_card`) any card whose applies-when
@@ -63,7 +63,7 @@ If artifacts above are usable (after verification), your candidate solutions
 may ASSUME them and spend the budget on what they enable instead of
 rebuilding them — say so explicitly in the solution.{{inbox_ideation}}
 
-{{domain_guidance}}## Your Process
+{{domain_guidance}}{{experience_intro}}## Your Process
 1. **Check experiment history FIRST** (when its tools are offered above): what
    worked best, what was tried recently; learn from past successes and failures.
 2. **Understand the codebase**: Read key files and use the repository memory

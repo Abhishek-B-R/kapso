@@ -378,12 +378,17 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
     kapso = Kapso(config=config_path)
     kapso.load_experience("mine")
     solution = kapso.build("test goal", output=str(tmp_path / "out2"))
-    on_context = captured["handler"].additional_context
-    assert "## Experience (measured before)" in on_context
-    assert "1 card measured by you, under no harness" in on_context
-    assert "bank_index()" in on_context
+    # the context is untouched (it is frozen at construction and never
+    # was a seam): the intro is staged for the prompts to read
+    assert captured["handler"].additional_context == off_context
     override = captured["kwargs"]["strategy_params_overrides"]
     assert "KAPSO_BANKS" in override["bank_serving"]
+    intro_path = Path(override["experience_intro_path"])
+    assert intro_path == tmp_path / "out2" / ".kapso" / "serving" / "intro.md"
+    intro = intro_path.read_text()
+    assert "## Experience (measured before)" in intro
+    assert "1 card measured by you, under no harness" in intro
+    assert "bank_index()" in intro
     assert solution.experience_head == kapso.experience[0].head
     # the serving record landed inside the campaign workspace
     record = tmp_path / "out2" / ".kapso" / "serving" / "serving-record.yaml"

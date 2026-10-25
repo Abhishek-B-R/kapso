@@ -926,13 +926,15 @@ def build_ideation_prompt(
     inbox_ideation: str = "",
     knowledge_tools: str = "",
     domain_guidance: str = "",
+    experience_intro: str = "",
 ) -> str:
     """Build the ideation prompt for Claude Code. ``inbox_ideation`` is
     the rendered inbox block — the rule against designing around a
     person-only gap and what the person already answered (empty keeps
     the prompt byte-identical to before the inbox). ``knowledge_tools``
     is the guidance of the gates this session mounted (empty for a
-    session with no gates)."""
+    session with no gates); ``experience_intro`` what the campaign is
+    served, measured before (empty when nothing is loaded)."""
     # Load and render the prompt template
     template = load_prompt("execution/search_strategies/generic/prompts/ideation_claude_code.md")
     return render_prompt(
@@ -945,6 +947,7 @@ def build_ideation_prompt(
             "inbox_ideation": inbox_ideation,
             "knowledge_tools": knowledge_tools,
             "domain_guidance": optional_block(domain_guidance),
+            "experience_intro": optional_block(experience_intro),
         },
     )
 

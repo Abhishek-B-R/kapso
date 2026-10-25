@@ -203,6 +203,11 @@ def _memory_overrides(
     package retires it.
     """
     overrides: Dict[str, Any] = {}
+    if serving_plan:
+        # The intro's path, read by the engine when it builds the
+        # ideation and implementation prompts: staged after construction,
+        # so a seeded workspace is still empty here.
+        overrides["experience_intro_path"] = serving_plan["intro_path"]
     if serving_plan and serving_plan["bank_serving"]:
         overrides["bank_serving"] = serving_plan["bank_serving"]
     if serving_plan and serving_plan["hosted"]:
@@ -1619,8 +1624,10 @@ class Kapso:
         )
 
         # Stage serving now that the workspace exists (see the plan/stage
-        # note above), and inject the intro into the problem context —
-        # the handler reads additional_context lazily at solve time.
+        # note above): the clones, the record and the intro file the
+        # ideation and implementation prompts read at session time
+        # (`handler.additional_context` is frozen at construction and
+        # never was a seam).
         if serving_plan is not None:
             serving = stage_serving(serving_plan, self._experience)
             # Fail loud rather than lie: the intro instructs sessions to
@@ -1635,9 +1642,6 @@ class Kapso:
                     f"ideation gates {mounted} — the intro would advertise "
                     "tools the sessions do not have"
                 )
-            handler.additional_context = "\n\n".join(
-                [c for c in [handler.additional_context, serving["intro"]] if c]
-            )
             for line in serving["lines"]:
                 print(f"  Experience: {line}")
             print(f"  Gates mounted: {mounted}")
