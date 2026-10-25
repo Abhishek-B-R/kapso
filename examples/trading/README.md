@@ -37,7 +37,7 @@ same way. Both campaigns and their records are described in
 
 ```bash
 cd examples/trading
-pip install numpy pandas pyarrow mcp   # the generator, the evaluator, the harness's servers
+pip install numpy pandas pyarrow "mcp<2"   # the generator, the evaluator, the harness's servers (written on the mcp 1.x API)
 python generate.py                      # 2021-2023 under data/, 2024 under private/, seeded
 kapso harness check ../harnesses/trading
 kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
