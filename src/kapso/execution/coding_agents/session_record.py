@@ -1,0 +1,148 @@
+"""The run entries a session's record carries (wp6-observability.md,
+change 3): one per host invocation, appended by the adapter in its own
+`finally`, so a session that raises, resumes or retries is recorded as it
+happened. The entry joins the host's transcript (the digest of the lines
+this invocation appended to the stream) with the adapter's own result
+(how it ended, the files it changed, the host's session id)."""
+import json
+import os
+import time
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from kapso.execution.coding_agents.base import CodingResult
+from kapso.execution.coding_agents.transcripts import digest_stream
+
+EXIT_SUCCESS = "success"
+EXIT_ERROR = "error"
+EXIT_TIMEOUT = "timeout"
+EXIT_PAUSED = "paused"
+EXIT_REFUSED = "refused"
+
+
+@dataclass
+class RunRecorder:
+    """One invocation in flight: where the stream stood when it started
+    and when; `record_path` None means the session keeps no record."""
+
+    host: str
+    model: str
+    record_path: Optional[Path]
+    stream_path: Optional[Path]
+    offset: int
+    started_at: str
+    started_monotonic: float
+
+
+def start_run(host: str, model: str, record_path: Optional[str], stream_path: Optional[str]) -> RunRecorder:
+    stream = Path(stream_path) if stream_path else None
+    offset = stream.stat().st_size if stream is not None and stream.exists() else 0
+    return RunRecorder(
+        host=host, model=model,
+        record_path=Path(record_path) if record_path else None,
+        stream_path=stream, offset=offset,
+        started_at=_utcnow(), started_monotonic=time.monotonic(),
+    )
+
+
+def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Optional[BaseException]) -> Optional[Dict[str, Any]]:
+    """Append this invocation's entry to the session's record and return
+    it; nothing without a record. `error` is the exception in flight when
+    the invocation raised (the caller lets it propagate)."""
+    if recorder.record_path is None:
+        return None
+    digest = digest_stream(recorder.host, _appended_lines(recorder))
+    record = json.loads(recorder.record_path.read_text(encoding="utf-8"))
+    previous = record["runs"][-1] if record["runs"] else None
+    metadata = result.metadata if result is not None else {}
+    cli_session_id = metadata.get("cli_session_id") or digest["cli_session_id"]
+    entry = {
+        "started": recorder.started_at,
+        "ended": _utcnow(),
+        "duration_seconds": round(time.monotonic() - recorder.started_monotonic, 3),
+        "model": recorder.model,
+        "cli_session_id": cli_session_id,
+        "exit": run_exit(result, error),
+        "error": _error_text(result, error),
+        "cost_usd": _cost_of_run(digest["cost_cumulative"], previous, cli_session_id),
+        "cost_cumulative": digest["cost_cumulative"],
+        "turns": digest["turns"],
+        "usage": digest["usage"],
+        "tools": digest["tools"],
+        "gates": digest["gates"],
+        "hooks": digest["hooks"],
+        "delegates": digest["delegates"],
+        "host_errors": digest["errors"],
+        "files_changed": list(result.files_changed) if result is not None else [],
+        "last_message": digest["last_message"],
+    }
+    record["runs"].append(entry)
+    write_whole(recorder.record_path, json.dumps(record, indent=2) + "\n")
+    return entry
+
+
+def run_exit(result: Optional[CodingResult], error: Optional[BaseException]) -> str:
+    """How the invocation ended: an exception in flight or no result is
+    an error; the model's refusal; the inbox stop (a pause, not a
+    failure); the deadline kill of a turn that had not completed; a
+    failed turn; else success."""
+    if error is not None or result is None:
+        return EXIT_ERROR
+    if result.refused:
+        return EXIT_REFUSED
+    if result.metadata.get("stopped_for_inbox"):
+        return EXIT_PAUSED
+    if result.metadata.get("deadline_exceeded") and not result.metadata.get("completed_before_kill"):
+        return EXIT_TIMEOUT
+    if not result.success:
+        return EXIT_ERROR
+    return EXIT_SUCCESS
+
+
+def _error_text(result: Optional[CodingResult], error: Optional[BaseException]) -> Optional[str]:
+    if error is not None:
+        return f"{type(error).__name__}: {error}"
+    if result is None:
+        return "the invocation returned no result"
+    return result.error
+
+
+def _cost_of_run(cumulative: Optional[float], previous: Optional[Dict[str, Any]], cli_session_id: Optional[str]) -> Optional[float]:
+    """The host reports the session's cumulative cost: a run that continues
+    the previous entry's host session costs the difference; a fresh host
+    session costs its own figure; a host that reports none, nothing."""
+    if cumulative is None:
+        return None
+    if (
+        previous is not None
+        and previous.get("cli_session_id") == cli_session_id
+        and previous.get("cost_cumulative") is not None
+    ):
+        return round(max(cumulative - float(previous["cost_cumulative"]), 0.0), 6)
+    return round(cumulative, 6)
+
+
+def _appended_lines(recorder: RunRecorder):
+    if recorder.stream_path is None or not recorder.stream_path.exists():
+        return []
+    with open(recorder.stream_path, "rb") as handle:
+        handle.seek(recorder.offset)
+        text = handle.read().decode("utf-8", errors="replace")
+    return text.splitlines(keepends=True)
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def write_whole(file: Path, text: str) -> None:
+    """Written to a sibling and renamed into place, so a concurrent reader
+    never sees a half file and a second writer of the same content is
+    harmless."""
+    file.parent.mkdir(parents=True, exist_ok=True)
+    temporary = file.with_name(f".{file.name}.{uuid.uuid4().hex}.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    os.replace(temporary, file)

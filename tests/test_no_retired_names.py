@@ -36,6 +36,9 @@ RETIRED = re.compile(
     r"|kapso-mcp --gates"
     r"|serving_scope"
     r"|\bfamily:\w"
+    # The observability package (wp6-observability.md): the session
+    # record is session.json, with the host's runs in it.
+    r"|harness\.json"
 )
 ALLOWED_PATHS = (
     "benchmarks/relbench/data/learning_behavior/",

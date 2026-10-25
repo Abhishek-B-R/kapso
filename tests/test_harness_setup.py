@@ -118,7 +118,7 @@ def test_setup_fills_the_statement_and_is_recorded_everywhere(engine, tmp_path):
     status = json.loads((workspace / ".kapso" / "status.json").read_text())
     assert status["harness_setup"] == {"prepared": ["market-data"]}
     assert "harness_setup" in strategies[0].phases
-    assert (workspace / ".kapso" / "sessions" / "harness_setup" / "harness.json").is_file()
+    assert (workspace / ".kapso" / "sessions" / "harness_setup" / "session.json").is_file()
     assert solution.harness.name == "trading"
 
 

@@ -310,9 +310,10 @@ def test_invalid_evaluations_cannot_win_strategy_or_history_selection(
     assert persisted[0]["evaluation_provenance"] == PROVIDED
 
 
-def test_feedback_invalidity_cannot_stop_or_retain_a_score() -> None:
+def test_feedback_invalidity_cannot_stop_or_retain_a_score(tmp_path: Path) -> None:
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
+    strategy.workspace_dir = str(tmp_path)   # the judge's session record goes under it
     strategy.goal = "Improve support"
     strategy.budget_snapshot = None
     strategy.budget_snapshot_monotonic = None

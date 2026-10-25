@@ -54,10 +54,12 @@ the line.
 - `campaign/kapso_task.md`: the brief, the budget, the references, the
   setup session's domain statement and the prepared resources, as every
   session saw them.
-- `campaign/.kapso/sessions/<session>/harness.json` and `stream.jsonl`:
-  what each session was staged with, and the host's own event stream,
-  where a hook's denial (`web fetches are off in this harness`) and a
-  delegate's report are.
+- `campaign/.kapso/sessions/<session>/session.json` and `stream.jsonl`:
+  what each session was staged with and each run the host made for it
+  (the hooks that fired and what they decided, the delegates and their
+  reports, the tools, the cost), and the host's own event stream, where
+  a hook's denial (`web fetches are off in this harness`) and a
+  delegate's report are in full.
 - `campaign/.kapso/verification/<branch>/verdict.json`: the verifier's
   verdict with its findings; a void one is why a scored attempt was not
   delivered.

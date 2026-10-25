@@ -84,7 +84,7 @@ from kapso.execution.inbox import (
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
-from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, no_harness, stage_harness
+from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, stage_harness
 from kapso.harness.verdict import VERDICT_FILE, is_deliverable, is_void, read_verdict, verification_dir
 from kapso.execution.search_strategies.generic.lens_planning import (
     design_axes_brief,
@@ -1554,18 +1554,20 @@ class GenericSearch(SearchStrategy):
 
     def stage_harness_for(self, module: str, session_dir: str, label: str, agent_type: str) -> StagedHarness:
         """What the loaded harness gives one session of a module, staged
-        into the session's directory (nothing without a harness). An
-        ideation session's id is prefixed with the iteration, so the
-        staging records sit beside the ideation artifacts."""
+        into the session's directory (nothing without a harness, the
+        session's record all the same). An ideation session's id is
+        prefixed with the iteration, so the staging records sit beside the
+        ideation artifacts."""
         session_id = f"ideation/iter{self.iteration_count}/{label}" if module == "ideation" else label
-        if self.harness is None:
-            return no_harness(module, agent_type, Path(session_dir), session_id)
-        if not session_dir:
+        if self.harness is not None and not session_dir:
             raise ValueError(f"the {module} session {session_id} has no directory to stage into")
         return stage_harness(
             self.harness, module,
-            session_dir=Path(session_dir), campaign_dir=Path(self.workspace_dir),
-            session_id=session_id, host=host_for(agent_type),
+            # A session with no directory of its own (the judge's) runs in
+            # the campaign; nothing is staged into it without a harness.
+            session_dir=Path(session_dir) if session_dir else Path(self.workspace_dir),
+            campaign_dir=Path(self.workspace_dir),
+            session_id=session_id, host=host_for(agent_type) if self.harness is not None else agent_type,
         )
 
     def _ideation_artifacts_dir(self) -> str:

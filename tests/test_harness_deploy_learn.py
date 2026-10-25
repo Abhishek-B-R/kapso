@@ -161,7 +161,7 @@ def test_the_selector_and_the_adapter_carry_the_deployment_module(tmp_path, harn
     specific = call["config"].agent_specific
     assert set(specific["mcp_servers"]) >= {"market-data", "broker"} and specific["settings_path"].endswith(".claude/harness-hooks.json")
     assert (campaign / ".claude" / "skills" / "paper-trading" / "SKILL.md").is_file()
-    assert (campaign / ".kapso" / "sessions" / "deployment" / "selector" / "harness.json").is_file()
+    assert (campaign / ".kapso" / "sessions" / "deployment" / "selector" / "session.json").is_file()
 
     adapted = tmp_path / "campaign_adapted_local"
     adapted.mkdir()
@@ -171,7 +171,7 @@ def test_the_selector_and_the_adapter_carry_the_deployment_module(tmp_path, harn
     call = RecordingAgent.calls[-1]
     assert page in call["prompt"] and call["prompt"].startswith("Adapt the winner for local.")
     assert (adapted / ".claude" / "skills" / "market-data" / "SKILL.md").is_file()
-    assert (campaign / ".kapso" / "sessions" / "deployment" / "adapter" / "claude_code" / "harness.json").is_file()
+    assert (campaign / ".kapso" / "sessions" / "deployment" / "adapter" / "claude_code" / "session.json").is_file()
 
 
 def test_without_a_harness_the_deploy_sessions_are_unchanged(tmp_path, monkeypatch):
@@ -245,7 +245,7 @@ def test_the_mining_lead_is_staged_with_the_learning_module_and_the_bundle_is_le
     assert not (bundle / ".kapso").exists()
     assert store.manifest(TRAJECTORY_ID)["derived"]["mined"]["files"] > 0
     record_dir = tmp_path / "mining" / TRAJECTORY_ID.replace("/", "--") / ".kapso" / "sessions" / "lead"
-    record = json.loads((record_dir / "harness.json").read_text())
+    record = json.loads((record_dir / "session.json").read_text())
     assert record["module"] == "learning" and record["host"] == "claude_code" and record["skills"] == ["backtesting"]
     assert specific["stream_artifact_path"] == str(record_dir / "stream.jsonl")
 
@@ -297,7 +297,7 @@ def test_the_update_lead_and_its_workers_are_staged_with_the_learning_module(tmp
     assert page in guidance and "`$backtesting`" in guidance and "- risk-reviewer — " in guidance
     assert "Task statement" not in guidance
     for session, host in (("lead", "claude_code"), ("workers", "codex")):
-        record = json.loads((run_dir / ".kapso" / "sessions" / session / "harness.json").read_text())
+        record = json.loads((run_dir / ".kapso" / "sessions" / session / "session.json").read_text())
         assert record["module"] == "learning" and record["host"] == host
 
 
@@ -313,16 +313,28 @@ def test_without_a_harness_the_crews_sessions_are_unchanged(tmp_path):
     launcher = (run_dir / "run-role.sh").read_text()
     assert 'cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec' in launcher
     assert "export" not in launcher and launcher.endswith("-c 'model_reasoning_effort=\"xhigh\"'\n")
-    assert not (run_dir / ".kapso").exists() and not (run_dir / ".agents").exists()
+    # Nothing staged; the sessions' records exist all the same, with no harness.
+    assert not (run_dir / ".agents").exists() and not (run_dir / ".claude" / "skills").exists()
+    for session in ("lead", "workers"):
+        record = json.loads((run_dir / ".kapso" / "sessions" / session / "session.json").read_text())
+        assert record["harness"] is None and record["skills"] == [] and record["runs"] == []
     [config_used] = factory.configs
-    assert set(config_used.agent_specific) == {"auth_mode", "effort", "append_system_prompt", "streaming"}
+    assert set(config_used.agent_specific) == {
+        "auth_mode", "effort", "append_system_prompt", "streaming", "stream_artifact_path", "session_record_path",
+    }
 
     mining = FakeFactory(FakeLead([write_valid_mined]))
     MiningFrame(store, {**MINING_CONFIG, "run_root": str(tmp_path / "mining")}, agent_factory=mining).mine(TRAJECTORY_ID)
     bundle = store.resolve(TRAJECTORY_ID)
-    assert not (tmp_path / "mining").exists() and not (bundle / ".claude").exists()
+    assert not (bundle / ".claude").exists()
+    lead_record = json.loads(
+        (tmp_path / "mining" / TRAJECTORY_ID.replace("/", "--") / ".kapso" / "sessions" / "lead" / "session.json").read_text()
+    )
+    assert lead_record["harness"] is None and lead_record["module"] == "learning"
     [config_used] = mining.configs
-    assert set(config_used.agent_specific) == {"auth_mode", "effort", "append_system_prompt", "streaming"}
+    assert set(config_used.agent_specific) == {
+        "auth_mode", "effort", "append_system_prompt", "streaming", "stream_artifact_path", "session_record_path",
+    }
 
 
 def test_the_trajectory_manifest_carries_both_harness_keys(tmp_path):
