@@ -197,6 +197,7 @@ def run_implementation(
         bank_serving=bank_serving,
         kg_index_path=kg_index_path,
         hosted=hosted,
+        session=staged.session_id,
         **({"inbox": inbox_context} if inbox_on else {}),
     )
     

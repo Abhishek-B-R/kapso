@@ -1093,6 +1093,7 @@ class GenericSearch(SearchStrategy):
             build_prompt=self._build_ideation_prompt,
             run_ensemble=self._generate_solution_ensemble,
             stage_harness_for=self.stage_harness_for,
+            session=f"ideation/iter{self.iteration_count}",
         )
 
     def _run_lens_planner_session(self, prompt: str, ideation_dir: str):

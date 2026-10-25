@@ -243,6 +243,7 @@ def generate_solution(
     build_prompt: Callable[..., str],
     run_ensemble: Callable[..., Tuple[List[str], List[str], Dict[str, float]]],
     stage_harness_for: Callable[..., StagedHarness],
+    session: str,
 ) -> Tuple[List[str], List[str], Dict[str, float]]:
     """
     Generate solution using Claude Code with MCP gates.
@@ -292,6 +293,9 @@ def generate_solution(
             bank_serving=bank_serving,
             kg_index_path=kg_index_path,
             hosted=hosted,
+            # One config for the phase's sessions: its members' reads are
+            # attributed to the phase (`ideation/iter<n>`).
+            session=session,
         )
 
         # 3. Build restricted tool set (read-only for ideation). Claude
@@ -489,6 +493,11 @@ def generate_solution_ensemble(
         # their reasoning survived just in whatever wrapper happened to
         # capture stdout.
         if member["cli"] == "codex":
+            # The member streams beside the ideation artifacts, as every
+            # member does; its record says so, and its runs land there.
+            staged.merged_agent_specific({
+                "stream_artifact_path": codex_ideation.ideation_stream_path(artifacts_dir, "codex", member["model"]),
+            })
 
             def run_codex_once(attempt_deadline: float) -> tuple:
                 return codex_ideation.run_codex_ideation(
@@ -501,6 +510,7 @@ def generate_solution_ensemble(
                     web_search=ideation_web_search,
                     extra_args=staged.codex_exec_args(),
                     extra_env=staged.env,
+                    record_path=staged.agent_specific.get("session_record_path"),
                 )
 
             def extract(output: str) -> list:
@@ -820,6 +830,9 @@ def select_from_candidates(
             # Artifacts go to the WORKSPACE, not ideation_dir: the latter is
             # a materialized ref released after the phase, which silently
             # discarded every selector transcript.
+            staged.merged_agent_specific({
+                "stream_artifact_path": codex_ideation.ideation_stream_path(artifacts_dir, "codex", selector["model"]),
+            })
             output, timed_out, _duration, _meta = run_codex_ideation(
                 prompt=session_prompt,
                 model=selector["model"],
@@ -830,6 +843,7 @@ def select_from_candidates(
                 web_search=True,
                 extra_args=staged.codex_exec_args(),
                 extra_env=staged.env,
+                record_path=staged.agent_specific.get("session_record_path"),
             )
             return CodingResult(
                 success=not timed_out and bool(output.strip()),

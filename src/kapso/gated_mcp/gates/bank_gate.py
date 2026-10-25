@@ -20,6 +20,7 @@ runner, never read by core kapso code):
 - KAPSO_SERVING_PULL_LOG  JSONL pull-log path inside the campaign workspace
 - KAPSO_TASK_HARNESS      the task's coordinate: the loaded harness's name, or `none`
 - KAPSO_PROBE_BUDGET      max probe offers riding card reads this campaign
+- KAPSO_SESSION           the label of the session served, stamped on every pull event
 
 The feedback judge never gets this gate — a judge reading the bank couples
 the evaluator to the thing under evaluation (§6).
@@ -163,12 +164,14 @@ class BankGate(ToolGate):
         banks = self._get_banks()
         coords = self._task_coords()
         log_path = os.environ["KAPSO_SERVING_PULL_LOG"]
+        session = os.environ["KAPSO_SESSION"]
         heads = {entry["reference"]: entry["head"] for entry, _bank in banks}
         if tool_name == "bank_index":
             section = arguments.get("section") or None
             result = render_sources_index(banks, coords, section)
             append_pull_event(log_path, {
                 "tool": "bank_index",
+                "session": session,
                 "section": section,
                 "task": coords,
                 "sources": heads,
@@ -183,6 +186,7 @@ class BankGate(ToolGate):
             result = render_sources_cards(banks, coords, card_names, with_evidence, self._probe_offers(), source)
             append_pull_event(log_path, {
                 "tool": tool_name,
+                "session": session,
                 "requested": card_names,
                 "source": source,
                 "task": coords,

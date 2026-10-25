@@ -54,6 +54,9 @@ DEFAULT_GATES = ("research", "repo_memory", "experiment_history", "bank")
 INDEX_GATES = ("idea", "code")
 EXPERIMENT_HISTORY_NAME = "experiment_history.json"
 LOAD_HINT = "kapso-mcp --experience"
+# The label the host session's pull events carry: the session is the
+# engineer's own, not one of a campaign's.
+HOST_SESSION = "host"
 
 
 @dataclass
@@ -172,6 +175,7 @@ def prepare_host_gates(
                 notes.append(f"bank: off (no bank loaded; {LOAD_HINT} mine)")
                 continue
             env.update(staged["bank_serving"])
+            env["KAPSO_SESSION"] = HOST_SESSION
         elif gate in INDEX_GATES:
             if plan is None or not plan["kg_index_path"]:
                 notes.append(f"{gate}: off (no index loaded; {LOAD_HINT} <name>)")

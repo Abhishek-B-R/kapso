@@ -55,19 +55,39 @@ def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Opt
     if recorder.record_path is None:
         return None
     digest = digest_stream(recorder.host, _appended_lines(recorder))
-    record = json.loads(recorder.record_path.read_text(encoding="utf-8"))
-    previous = record["runs"][-1] if record["runs"] else None
     metadata = result.metadata if result is not None else {}
-    cli_session_id = metadata.get("cli_session_id") or digest["cli_session_id"]
-    entry = {
-        "started": recorder.started_at,
-        "ended": _utcnow(),
-        "duration_seconds": round(time.monotonic() - recorder.started_monotonic, 3),
-        "model": recorder.model,
+    entry = run_entry(
+        digest,
+        model=recorder.model,
+        cli_session_id=metadata.get("cli_session_id") or digest["cli_session_id"],
+        exit=run_exit(result, error),
+        error=_error_text(result, error),
+        files_changed=list(result.files_changed) if result is not None else [],
+        started=recorder.started_at,
+        ended=_utcnow(),
+        duration_seconds=round(time.monotonic() - recorder.started_monotonic, 3),
+    )
+    append_run(recorder.record_path, entry)
+    return entry
+
+
+def run_entry(
+    digest: Dict[str, Any], *, model: str, cli_session_id: Optional[str], exit: str,
+    error: Optional[str], files_changed: list, started: Optional[str], ended: Optional[str],
+    duration_seconds: Optional[float],
+) -> Dict[str, Any]:
+    """One run entry's shape: the digest's fields under their own keys,
+    with how the run ended and when. `cost_usd` is filled by `append_run`
+    against the entry before it."""
+    return {
+        "started": started,
+        "ended": ended,
+        "duration_seconds": duration_seconds,
+        "model": model,
         "cli_session_id": cli_session_id,
-        "exit": run_exit(result, error),
-        "error": _error_text(result, error),
-        "cost_usd": _cost_of_run(digest["cost_cumulative"], previous, cli_session_id),
+        "exit": exit,
+        "error": error,
+        "cost_usd": None,
         "cost_cumulative": digest["cost_cumulative"],
         "turns": digest["turns"],
         "usage": digest["usage"],
@@ -76,12 +96,19 @@ def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Opt
         "hooks": digest["hooks"],
         "delegates": digest["delegates"],
         "host_errors": digest["errors"],
-        "files_changed": list(result.files_changed) if result is not None else [],
+        "files_changed": list(files_changed),
         "last_message": digest["last_message"],
     }
+
+
+def append_run(record_path: Path, entry: Dict[str, Any]) -> None:
+    """Append one entry to the record's `runs`, pricing it against the
+    entry before it, and write the record whole."""
+    record = json.loads(Path(record_path).read_text(encoding="utf-8"))
+    previous = record["runs"][-1] if record["runs"] else None
+    entry["cost_usd"] = _cost_of_run(entry["cost_cumulative"], previous, entry["cli_session_id"])
     record["runs"].append(entry)
-    write_whole(recorder.record_path, json.dumps(record, indent=2) + "\n")
-    return entry
+    write_whole(Path(record_path), json.dumps(record, indent=2) + "\n")
 
 
 def run_exit(result: Optional[CodingResult], error: Optional[BaseException]) -> str:

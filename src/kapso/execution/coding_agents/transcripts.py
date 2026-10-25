@@ -182,6 +182,33 @@ def _result_text(content: Any) -> str:
     return ""
 
 
+CODEX_THREAD_HEAD = '{"type":"thread.started"'
+# The line a launcher appends after each `codex exec` it ran: the exit code
+# that closes the thread's lines (kapso.learning.update_frame's workers).
+EXIT_LINE_HEAD = '{"type":"kapso.exit"'
+
+
+def codex_threads(lines: Iterable[str]) -> List[Dict[str, Any]]:
+    """A stream several `codex exec` invocations appended to, split into
+    its threads: each starts at a `thread.started` event and is closed by
+    the launcher's exit line (`{"type":"kapso.exit","code":N}`), or by
+    the next thread with no exit recorded. Returns `[{"lines", "code"}]`
+    in order; lines before the first thread are nobody's."""
+    threads: List[Dict[str, Any]] = []
+    current: Optional[Dict[str, Any]] = None
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith(CODEX_THREAD_HEAD):
+            current = {"lines": [raw], "code": None}
+            threads.append(current)
+        elif line.startswith(EXIT_LINE_HEAD) and current is not None:
+            current["code"] = int(json.loads(line)["code"])
+            current = None
+        elif current is not None:
+            current["lines"].append(raw)
+    return threads
+
+
 def digest_codex(lines: Iterable[str]) -> Dict[str, Any]:
     """Codex's `exec --json`: `thread.started` for the thread (the
     session), `item.completed` for the commands, the file changes, the

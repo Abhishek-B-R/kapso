@@ -160,7 +160,7 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
             pass
 
     def fake_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None,
-                   web_search=True, extra_args=None, extra_env=None):
+                   web_search=True, extra_args=None, extra_env=None, record_path=None):
         events["codex_calls"].append(
             {"model": model, "cwd": cwd, "timeout": timeout_seconds,
              "effort": effort, "artifacts_dir": artifacts_dir, "prompt": prompt,
@@ -535,8 +535,8 @@ def test_codex_runner_builds_command_and_strips_openai_key(tmp_path, monkeypatch
     assert timed_out is False
     assert duration >= 0
     assert meta["last_message_empty"] is False
-    assert captured["cmd"][:6] == [
-        "codex", "--search", "exec", "--sandbox", "read-only",
+    assert captured["cmd"][:7] == [
+        "codex", "--search", "exec", "--json", "--sandbox", "read-only",
         "--skip-git-repo-check",
     ]
     assert "--output-last-message" in captured["cmd"]
@@ -594,7 +594,7 @@ def test_codex_zero_candidates_retries_once(tmp_path, monkeypatch):
         selector_output="unused",
     )
 
-    def flaky_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None):
+    def flaky_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None):
         calls["n"] += 1
         meta = {"last_message_empty": calls["n"] == 1, "stream_tail": "boom",
                 "stream_path": None, "last_path": None}
@@ -619,7 +619,7 @@ def test_codex_timeout_does_not_retry(tmp_path, monkeypatch):
         selector_output="unused",
     )
 
-    def timing_out_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None):
+    def timing_out_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None):
         calls["n"] += 1
         return "short", True, 1.0, {"last_message_empty": True, "stream_tail": "",
                                     "stream_path": None, "last_path": None}
@@ -643,7 +643,7 @@ def test_prompt_echo_candidates_are_dropped(tmp_path, monkeypatch):
     )
     real = _plan("genuine")
 
-    def echoing_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None):
+    def echoing_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None):
         # echo a large verbatim chunk of the prompt inside solution tags,
         # plus one genuine candidate
         echo = prompt[100:600]
@@ -784,7 +784,7 @@ def test_codex_selector_runs_web_on_and_choice_wins(tmp_path, monkeypatch):
     selector_calls = []
 
     def prompt_aware_codex(prompt, model, cwd, timeout_seconds, effort=None,
-                           artifacts_dir=None, web_search=True, extra_args=None, extra_env=None):
+                           artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None):
         meta = {"last_message_empty": False, "stream_tail": "",
                 "stream_path": None, "last_path": None}
         if "### Candidate" in prompt:

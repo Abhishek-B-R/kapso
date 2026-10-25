@@ -228,12 +228,14 @@ GATES: Dict[str, GateDefinition] = {
             "KAPSO_SERVING_PULL_LOG",
             "KAPSO_TASK_HARNESS",
             "KAPSO_PROBE_BUDGET",
+            "KAPSO_SESSION",
         ],
         injected_env=[
             "KAPSO_BANKS",
             "KAPSO_SERVING_PULL_LOG",
             "KAPSO_TASK_HARNESS",
             "KAPSO_PROBE_BUDGET",
+            "KAPSO_SESSION",
         ],
     ),
     # The campaign inbox (docs/research/evolve-hub-design.md v4): one
@@ -489,12 +491,17 @@ def get_mcp_config(
     bank_serving: Optional[Dict[str, str]] = None,
     inbox: Optional[Dict[str, str]] = None,
     hosted: Optional[Dict[str, Any]] = None,
+    session: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], List[str]]:
     """
     Get MCP server config and allowed tools for the given gates.
 
     Args:
         gates: List of gate names (e.g., ["idea", "research", "experiment_history"])
+        session: The label of the session this config serves (its record's
+                name under `.kapso/sessions`), stamped on every pull event
+                the bank gate writes so a read is attributed to the session
+                that made it; the ideation phase's members share one.
         hosted: The hosted gate as a campaign loaded it: `url` (the key's
                 placeholder in it) and `tool_timeout_seconds`, from the
                 config the source was loaded with. None mounts the
@@ -543,6 +550,7 @@ def get_mcp_config(
         "REPO_MEMORY_ROOT": repo_root,
         **(bank_serving or {}),
         **(inbox or {}),
+        "KAPSO_SESSION": session,
     }
     effective_env.update(
         {key: str(value) for key, value in explicit_env.items() if value}

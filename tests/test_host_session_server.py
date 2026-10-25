@@ -146,8 +146,10 @@ def test_the_bank_is_staged_for_the_session_when_one_is_loaded(tmp_path, codex_o
     assert (clone / "insights" / "a-card.md").is_file()
     assert (session_dir / "serving-record.yaml").is_file()
     assert env["KAPSO_SERVING_PULL_LOG"] == str(session_dir / "serving-pull.jsonl")
-    # a host session has no harness: its coordinate is `none`
+    # a host session has no harness: its coordinate is `none`; its pull
+    # events carry the host's own label
     assert env["KAPSO_TASK_HARNESS"] == "none" and env["KAPSO_PROBE_BUDGET"] == "1"
+    assert env["KAPSO_SESSION"] == "host"
     head = subprocess.run(
         ["git", "-C", entry["dir"], "rev-parse", "HEAD"],
         check=True, capture_output=True, text=True,

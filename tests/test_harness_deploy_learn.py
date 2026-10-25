@@ -290,7 +290,7 @@ def test_the_update_lead_and_its_workers_are_staged_with_the_learning_module(tmp
     assert (run_dir / ".codex" / "harness-agents" / "risk-reviewer.toml").is_file()
     launcher = (run_dir / "run-role.sh").read_text()
     assert f"export {HARNESS_ROOT_VARIABLE}={harness.path}\n" in launcher
-    assert 'cat "role-prompts/$ROLE.md" harness-guidance.md "$ASSIGNMENT" | codex exec' in launcher
+    assert 'cat "role-prompts/$ROLE.md" harness-guidance.md "$ASSIGNMENT" | codex exec --json' in launcher
     assert "--dangerously-bypass-hook-trust" in launcher
     assert "mcp_servers.market-data.command=" in launcher and "agents.risk-reviewer.description=" in launcher
     guidance = (run_dir / "harness-guidance.md").read_text()
@@ -311,8 +311,8 @@ def test_without_a_harness_the_crews_sessions_are_unchanged(tmp_path):
         batch, config["learning"]["update_crew"]["run_root"], "crew_v1",
     )
     launcher = (run_dir / "run-role.sh").read_text()
-    assert 'cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec' in launcher
-    assert "export" not in launcher and launcher.endswith("-c 'model_reasoning_effort=\"xhigh\"'\n")
+    assert 'cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec --json' in launcher
+    assert "export" not in launcher and "-c 'model_reasoning_effort=\"xhigh\"' | tee -a \"$STREAM\"" in launcher
     # Nothing staged; the sessions' records exist all the same, with no harness.
     assert not (run_dir / ".agents").exists() and not (run_dir / ".claude" / "skills").exists()
     for session in ("lead", "workers"):

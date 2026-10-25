@@ -212,6 +212,7 @@ def run_lens_planner_session(
         include_base_tools=False,
         gate_failure_policy="skip",
         bank_serving=bank_serving,
+        session=staged.session_id if staged is not None else None,
     )
     print(
         f"[GenericSearch] Lens planner starting: {planner['model']} "

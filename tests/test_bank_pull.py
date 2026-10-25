@@ -125,11 +125,13 @@ def test_bank_gate_resolves_only_with_campaign_env():
     missing = resolution.diagnostics[0].missing_env
     assert "KAPSO_BANKS" in missing and "KAPSO_SERVING_PULL_LOG" in missing
     assert "KAPSO_TASK_HARNESS" in missing and "KAPSO_PROBE_BUDGET" in missing
+    assert "KAPSO_SESSION" in missing
     resolution = resolve_gates(["bank"], policy="skip", env={
         "KAPSO_BANKS": "[]",
         "KAPSO_SERVING_PULL_LOG": "/tmp/pull.jsonl",
         "KAPSO_TASK_HARNESS": "none",
         "KAPSO_PROBE_BUDGET": "1",
+        "KAPSO_SESSION": "generic_exp_0",
     })
     assert resolution.enabled_gates == ("bank",)
 
