@@ -382,7 +382,10 @@ index needs: WP4 and later decide their fate).
     `knowledge_base/learners/__main__.py`, the ML full-loop example, the
     manual tests.
 13. The record of this package: the proof runs, the review, the decisions,
-    the findings; the master's status.
+    the findings; the master's status. Built 2026-10-25: the Proof run
+    section below (the learn, three builds, two fresh-machine refusals),
+    the Review section's four tables, the decisions in `DECISIONS.md`,
+    the findings below, the master's row.
 14. The intro's seam: `{{experience_intro}}` threaded into the ideation
     and implementation prompts as WP2 threads the harness guidance, and
     into no other session. Tests render the two prompts with the intro
@@ -611,6 +614,191 @@ DECISIONS.md under 2026-10-25 WP3.
 | L7 | `or gate == "kg"` unreachable; the staging survives a SIGTERM; a removal needs the stores; the detach fixture's shape; drift patterns missing | Fixed: the branch, a SIGTERM handler that exits through the registration, the fixture's `kind` and provenance, the patterns (`KAPSO_BANK_HEAD`, `KAPSO_TASK_DATASET`, `kapso-mcp --gates`). A removal needs the stores by design: the namespace is cleared, not abandoned. |
 | Q | Are the behaviour fixtures re-recorded or retired? | Retired until WP8 ports the RelBench harness and re-records them; they stay exempt from the drift test (a decision). |
 
+## Proof run
+
+**The learn, on the development box, 2026-10-25 15:44 to 17:48 UTC.**
+The campaign is WP2's first fresh-machine build of the trading example
+(`wp2-claude`, Sharpe 1.9336, one experiment), its record lifted by hand
+from schema 3 to 4 (a finding below); the config a copy with every home
+under a scratch directory (the bank, the trajectory store, the mining,
+exam and update run roots), Claude on the shared token (Fable weekly 0.69
+at launch), the Codex workers on the ChatGPT login. The command was
+`kapso learn <campaign> --harness examples/harnesses/trading --config
+<copy>`, 123.8 minutes end to end, exit 0.
+
+| phase | what the record shows |
+|---|---|
+| harvest, 15:44 | the bundle in the store with its five sessions' streams; no `.claude`, `.agents`, `.codex` or `.claude_mcp` in it (change 11) |
+| mine, 15:44 to 16:18 | the lead's first turn refused by the model's safeguards (a finding below); the repair round mined the whole bundle in 33 minutes: `index`, `strategy`, `operations`, `artifacts` and `it-1/{index,flow-1}`, 156 references verified by its own check. The run's directory under `learning.mining.run_root` holds `.kapso/sessions/lead/{harness.json,stream.jsonl}` (module `learning`, host `claude_code`) and nothing else: the staging went with the session |
+| exam, 16:19 to 16:26 | the hindcast at the bank's founding head `79e93044`: 21 discoveries, every one MISS-NOVEL, the four scores null (an empty bank; the campaign served nothing, so no exposure ladder) |
+| lesson, 16:27 to 17:48 | the lead on Claude Code; six `codex exec` workers (`gpt-5.6-sol`, xhigh) through the generated `run-role.sh`, whose pipe reads the role prompt, then `harness-guidance.md` (the trading harness's learning guidance, "Domain guidance (harness trading 0.1.0)"), then the assignment; the assessor and a repair worker; then the frame's validation found six violations and the lead repaired them in place (three cards' second events re-ledgered from `confirm` to `exercise`, their reliability rederived 0.85 to 0.60). Fifteen cards created, six insights and nine procedures, every one `scope: [harness:trading]`, every one candidate at 0.60. The run's directory after: `.kapso/sessions/lead/harness.json` and `.kapso/sessions/workers/harness.json` (module `learning`, hosts `claude_code` and `codex`), the crew's own `.claude/agents/critic.md`, no `.agents` or `.codex` |
+| push, 17:48 | `Bank: 79e930443 -> a9ddad3d3 (admitted: True)`, `pushed: False` (no remote), `lesson banked locally · to share: kapso experience share <url>` |
+
+**The fresh machine, `kapso-fresh-wp3`** (`e2-standard-4`, Ubuntu 24.04,
+created 16:47 UTC, the wheel as a `uv` tool, Claude on the shared token,
+Codex on the API key), the trading harness and the trading and churn
+examples copied over with their data generated on the machine, the
+examples' requirements on the system `python3`. `kapso harness check
+../harnesses/trading` printed `check ok (7 skills, 2 agents, 2 servers, 6
+hooks)`; `kapso doctor build` passed its six checks; `kapso experience
+add leeroopedia` with no `.env` refused with `leeroopedia needs
+LEEROOPEDIA_API_KEY: put LEEROOPEDIA_API_KEY=kpsk_... in .env beside the
+run (sign up at https://app.leeroopedia.com/dashboard); nothing to
+install` (exit 1); `kapso experience list` printed the empty state, `no
+experience yet: kapso experience add mine creates your bank (a first
+learn() does too); ...`. The learned bank was carried over as a bare
+tarball into `~/.kapso/bank.git` with no remote, and `list` then printed
+`mine  /home/ubuntu/.kapso/bank.git  head a9ddad3d302d  15 cards  no
+remote (kapso experience share <url>)` over `leeroopedia  hosted  no key:
+put LEEROOPEDIA_API_KEY=... in .env`.
+
+**The first launches died at construction.** The trading build on the
+machine (17:49) and the hosted-gate build on the development box (17:50)
+both printed their banner (`Harness: trading 0.1.0 (83b6c0b60d6a) ...`,
+`Experience: mine at a9ddad3d302d, 15 cards, measured by you`) and the
+detached session's pid, then died in a second: `TypeError:
+SearchStrategyFactory.create() got an unexpected keyword argument
+'experience'`. The orchestrator hands the factory the loaded sources
+(change 6) and the factory had never been given the parameter; the gate
+had not caught it because the facade tests fake the orchestrator and the
+harness tests fake its strategy creation, the gap the findings below
+record for WP6. Fixed in `13fcb610`: the factory takes `experience` as it
+takes `harness`, and a test drives the real orchestrator's strategy
+creation against the factory's own signature. `kapso watch` on the dead
+campaign said `no status yet at campaign — the campaign is still starting
+(seeding its workspace), or nothing runs there` with the traceback in
+the log only (WP6's finding from WP2 again). The wheel was rebuilt from
+the fix (sha256 `cdeb16e9…`), reinstalled on the machine at 17:55, and
+both builds relaunched at 17:56.
+
+**The second launch on the machine died at ideation**, by design and for
+a reason of its own: the harness setup session found the market-data
+server failing to start (`mcp` 2.3.0 on the machine, the example's
+install line unpinned, the harness's servers written on the 1.x
+`FastMCP` import), patched the two server files in the harness directory
+to import either way, prepared `market-data`, and the ideation staging
+refused the campaign: `the harness changed since launch: trading 0.1.0
+(83b6c0b60d6a) recorded, trading now hashes fb161459743f; restore the
+recorded content ... or start a new campaign with a new --output`. WP2's
+proof had met the same drift and its setup session had installed `mcp<2`
+instead of editing the harness. The example's install line now names the
+bound (`19ec4ae3`); that a session can edit the harness directory at all
+is a finding below. The harness was restored from the fixture, `mcp`
+pinned at 1.30.0, and the build launched a third time at 18:06.
+
+**The third launch served, and its first attempt was rejected by the
+integrity check.** The harness setup prepared `market-data` through the
+server; ideation read the bank (`bank_index` listing 15 cards, then
+`bank_get_card` on five of them, in the pull log with the source and its
+head) and wrote a plan citing the cards by name
+(`[card:sealed-holdout-redirects-uncertain-score-gains]`,
+`[card:robustness-evidence-justifies-transfer]`); the implementer scored
+a Sharpe of 2.1934 out of sample and reported it; the engine rejected the
+attempt: `Provided evaluation integrity check failed (changed:
+result.json)`. The proof's fixture had carried the development box's
+`evaluation/result.json`, written by a run of the evaluator weeks
+before, into the provided suite, where it was protected with the rest;
+the evaluator's own write then counted as a change. The trap is any
+user's who runs their evaluator once before building: fixed in
+`dcb0bdc0`, the launch refuses the leftover by name (a decision in
+`DECISIONS.md`; the contract's own output path is a finding for WP4).
+That build was stopped, the stale file removed, and the build launched a
+fourth time at 18:22 on the wheel from `19ec4ae3`, forty minutes and two
+experiments; the churn build after it ran on the wheel from `dcb0bdc0`.
+
+**The trading build on the machine, 18:22 to 19:07 UTC**, `kapso build
+--harness ../harnesses/trading --experience mine`, forty minutes and two
+experiments, on the wheel from `19ec4ae3`. The launch banner:
+`Harness: trading 0.1.0 (83b6c0b60d6a) ...`, `Experience: mine at
+a9ddad3d302d, 15 cards, measured by you`; after staging, `Experience: 15
+cards measured by you, under the trading harness, from your bank at head
+a9ddad3d302d, pinned for this campaign` and `Gates mounted: ['research',
+'experiment_history', 'repo_memory', 'bank']`. Every item of the proof
+list holds in the archive (`scripts/redesign/runs/wp3/campaign1.tgz`,
+read by `check_wp3.py`):
+
+| | |
+|---|---|
+| the intro | `.kapso/serving/intro.md`: the heading, `You are served: - 15 cards measured by you, under the trading harness, from your bank at head a9ddad3d302d, pinned for this campaign`, then the three bank tools in reading order; the same text in the prompts of the ideation, lens-planning and implementation sessions, in its slot after the inbox section (seven of Claude Code's own transcripts of the machine carry it) |
+| the pull log | three reads, each stamped with the task's coordinate `{"harness": "trading"}` and `"sources": {"mine": "a9ddad3d30…"}`: `bank_index` listing 15 at 18:26, `bank_get_card` of five named cards at 18:26 (ideation, iteration 1: its plan cites `[card:sealed-holdout-redirects-uncertain-score-gains]` and `[card:robustness-evidence-justifies-transfer]`), `bank_index` at 18:56 (iteration 2) |
+| the serving record | `task: {harness: trading}`, one source with the six fields and `cards: 15`; the clone at `.kapso/serving/banks/mine-3fd30542` |
+| the records | `launch.json`, `status.json`, `run_state.json`, `solution.json` carry one `experience` list, `[{reference: mine, kind: bank, resolved: /home/ubuntu/.kapso/bank.git, head: a9ddad3d302d…, provenance: measured by you, scope: harness}]`, and one harness identity |
+| `kapso experience list` | `mine  /home/ubuntu/.kapso/bank.git  head a9ddad3d302d  15 cards  no remote (kapso experience share <url>)` |
+| a second process | `Solution.open("campaign").experience` → `[ExperienceRef(reference='mine', kind='bank', resolved='/home/ubuntu/.kapso/bank.git', head='a9ddad3d302d…', provenance='measured by you', scope='harness')]` |
+| the sessions | nine with `harness.json` and a stream: `harness_setup` (the three market-data tools), `ideation/iter1` (`bank_index`, `bank_get_card`, `get_top_experiments`), `ideation/iter2` (`bank_index`), two implementations, two verifications, two feedbacks |
+
+What the campaign delivered: nothing, by the harness's rule and the
+budget's end. Iteration 1 (18:25 to 18:56) scored on its first
+evaluation, and the verification session voided it: a development script
+of the implementer's had read the private 2024 bars (self-disclosed,
+removed in a later commit, but the per-instrument figures it derived had
+reached the campaign's shared profile), so the attempt was `void` on the
+rule with the measurement itself sound, its score cleared, `1 rejected`.
+Iteration 2 (18:56 to 19:07, launched at 84% of the budget) scored and
+its verification was cut by the budget, so it stayed unverified and
+undeliverable. `budget_exhausted`, two experiments, $13.17. At the
+budget's end the judge's retry failed as WP2's had, the finding below.
+
+**The churn build on the machine, 19:09 to 19:24 UTC**, on the wheel
+from `dcb0bdc0`, with the refusal demonstrated first: a `result.json`
+written into the churn example's `evaluation/` and `kapso build
+--experience mine` launched against it ended before any session with
+`EvaluationIntegrityError: /home/ubuntu/fixture/examples/churn-first-build/evaluation/result.json
+is the evaluator's own output, left by an earlier run; it would be
+protected as part of the suite and the first evaluation would change
+it, rejecting every candidate. Remove it and launch again` (exit 1, the
+traceback above it as every refused launch prints). The file removed,
+the build ran with no harness, fifteen minutes and one experiment. The
+load line said `Experience: mine at a9ddad3d302d, 15 cards, measured by
+you` (the bank's size) and the serving line `Experience: 0 cards
+measured by you, under no harness, from your bank at head
+a9ddad3d302d, pinned for this campaign` (what the task's coordinate
+admits); the intro the same; the pull log one `bank_index` with
+`"task": {"harness": "none"}`, `"sources": {"mine": "a9ddad3d30…"}`,
+`"listed_count": 0`. The index rendered on the machine by the gate's own
+code under no harness: `mine` lists 0, `mine:all` lists all 15 with
+`source: mine`. The campaign scored **0.846** on its one experiment
+(target 0.85, `max_iterations`, $2.81), with the judge's feedback
+substantive this time; the four records carry the same `experience`
+list as the trading build's, and `Solution.open` in a second process
+returned the score and the `ExperienceRef`. Archive:
+`scripts/redesign/runs/wp3/campaign2.tgz`.
+
+The machine was deleted at 19:27 UTC after 2.64 hours ($0.35); the run's local
+record (`scripts/redesign/runs/wp3/`) holds the create and install logs,
+both wheels' hashes, thirty-six run logs and the three archives.
+
+**The hosted gate, on the development box, 17:56 to 18:16 UTC.** The
+churn example copied to a scratch directory with a `.env` holding the
+Leeroopedia key; `kapso experience add leeroopedia` printed
+`LEEROOPEDIA_API_KEY present and the gate answers as leeroopedia;
+--experience leeroopedia mounts it in ideation and implementation` (the
+`initialize` probe, change 14 as reviewed); then `kapso build
+--experience leeroopedia` with no harness, fifteen minutes and one
+experiment. The launch banner read `Experience: leeroopedia (hosted),
+reported by others`; the log's gate lines `ideation_gates: ['research',
+'experiment_history', 'repo_memory', 'leeroopedia']` and
+`implementation_gates: ['research', 'repo_memory', 'inbox',
+'leeroopedia']`, the bundled gates from the config and the hosted one
+from the loaded source; the ideation tools list carried the server's
+eight tools (`mcp__leeroopedia__search_knowledge` ...
+`mcp__leeroopedia__get_page`) beside the bundled gates'; the intro
+`You are served: - Leeroopedia's pages, reported by others`, with no
+bank-tool text since no bank was loaded, and the ideation session's
+transcript (Claude Code's own record of the prompt) shows it in its slot,
+after the inbox section and before `## Your Process`, as the
+implementation session's does. The ideation session called
+`query_hyperparameter_priors` once (`Knowledge consulted: ...
+leeroopedia 1 (query_hyperparameter_priors)`, `Knowledge credits:
+leeroopedia 749 → 749 remaining`). The budget ended the campaign after
+one rejected experiment ($2.12): the judge, on the sixty-second floor,
+answered that it had no iteration to report on, the budget's-end finding
+WP2 left for WP4. The four records carry one identity, `reference:
+leeroopedia, kind: hosted, resolved: https://mcp.leeroopedia.com/mcp?token={LEEROOPEDIA_API_KEY},
+head: null, provenance: reported by others, scope: all`, the key's
+placeholder and never the key; no pull log, since no bank was served.
+Archive: `scripts/redesign/runs/wp3/hosted-campaign.tgz`.
+
 ## Findings for later packages
 
 - **The mining lead's first turn can be refused by the model's
@@ -633,7 +821,14 @@ DECISIONS.md under 2026-10-25 WP3.
   no embeddings key is pinned at the facade (the orchestrator receives
   `knowledge_search=None` and its own line takes the null search); a test
   constructing the real orchestrator without a key wants a fixture the
-  observability package can give it.
+  observability package can give it. The proof run showed the cost of the
+  gap: the orchestrator's call into the strategy factory carried a keyword
+  the factory lacked, every build died at construction, and no test had
+  walked that seam (the facade tests fake the orchestrator, the harness
+  tests fake its strategy creation). `13fcb610` fixed it and pinned the
+  seam (the real orchestrator's strategy creation bound against the
+  factory's own signature); the fixture that constructs the real strategy
+  is still WP6's.
 - **`kapso watch` does not render the sources or the harness** (WP6).
   The status file carries both from the first second; the rendered
   screen's header is the observability package's.
@@ -643,6 +838,39 @@ DECISIONS.md under 2026-10-25 WP3.
   eligible at the default scope, so `b4-generalization` and its kin are
   re-recorded when the RelBench harness is ported, and stay exempt from
   the drift test until then.
+- **A session can edit the harness directory, and the campaign dies at
+  the next staging** (WP4, the harness package; WP6 for how it shows).
+  On the proof run's fresh machine the harness setup session found the
+  market-data server failing on an `mcp` 2.x install and patched the two
+  server files under the harness's own directory, which the sessions
+  reach by path (`KAPSO_HARNESS_ROOT`, the servers' commands); the hash
+  moved and the ideation staging refused the campaign by design, after
+  the setup's minutes and dollars. The identity check is right; what is
+  missing is the rule before it: the harness directory is the author's,
+  read-only to every session (the servers staged from a copy, or a hook
+  the staging adds that denies writes under the harness root, and a line
+  of the setup session's guidance saying to fix the environment, never
+  the harness). The watch screen should also say what the log says, that
+  the harness changed, rather than `failed` alone.
+- **The example evaluators write their result into the protected
+  directory** (the examples; WP4 for the contract). `kapso_evaluation/
+  result.json` is the contract's own output path, allowed as a new runtime
+  artifact; a copy left in the caller's directory by an earlier run was
+  protected with the suite and the first evaluation changed it, rejecting
+  every candidate of the proof's third launch. Fixed in this package by
+  refusing the leftover at launch, by name and with the way out; whether
+  the contract should move the result out of the protected tree is WP4's
+  question.
+- **The judge's retry runs in a fresh session with the nudge alone**
+  (WP4, with the budget's end). The feedback generator's "one in-session
+  nudge" sends `RETRY_PROMPT` through `agent.generate_code`, which the
+  Claude Code adapter runs as a new process: the judge answers that it is
+  "the first turn of this conversation" with "no iteration, attempt, or
+  rubric" to report on, and the iteration's verdict is lost (both proof
+  builds, at the budget's end, after the first call was cut by the
+  clamp). A retry has to carry the whole prompt again, or resume the
+  session; and what the judge may do in the budget's last minute is
+  WP4's question with the rest of the budget's end.
 - **A solution record of an earlier schema cannot be learned from**
   (by design, pre-release). The proof's campaign was built by WP2's code
   (record schema 3); its record was lifted to schema 4 by hand before the
