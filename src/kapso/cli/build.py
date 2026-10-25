@@ -27,7 +27,7 @@ def cmd_build(args) -> None:
     if args.brief:
         brief_path = Path(args.brief).expanduser()
         if not brief_path.is_file():
-            print(f"Error: brief not found: {brief_path}")
+            print(f"Error: brief not found: {brief_path}", file=sys.stderr)
             sys.exit(1)
         brief = Brief.read(brief_path)
     elif args.goal_file:

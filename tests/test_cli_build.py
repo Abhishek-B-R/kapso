@@ -105,7 +105,7 @@ def test_a_missing_brief_exits_one(monkeypatch, capsys, tmp_path):
     with pytest.raises(SystemExit) as stop:
         _run(monkeypatch, "--brief", str(tmp_path / "none.md"), "--output", "out")
     assert stop.value.code == 1
-    assert "brief not found" in capsys.readouterr().out
+    assert "brief not found" in capsys.readouterr().err
 
 
 def test_abbreviated_flags_are_refused(monkeypatch, capsys):

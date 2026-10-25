@@ -23,6 +23,7 @@ load_dotenv(find_dotenv(usecwd=True))
 
 from kapso.cli import build, deploy, doctor, experience, harness, inbox, learn, watch
 from kapso.cli.common import list_agents
+from kapso.cli.errors import install_error_hook
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 # The verbs, in the order `kapso --help` lists them.
@@ -30,6 +31,8 @@ VERB_MODULES = (build, harness, experience, learn, deploy, watch, inbox, doctor)
 
 
 def main():
+    # The engine's own errors print their message alone (cli/errors.py).
+    install_error_hook()
     CodingAgentFactory.register_quiet_exit()
     # Main parser
     parser = argparse.ArgumentParser(
@@ -87,5 +90,5 @@ Examples:
         handlers[args.command](args)
     else:
         parser.print_help()
-        print("\nError: Please specify a command (build, harness, experience, learn, deploy, watch, inbox, doctor)")
+        print("\nError: Please specify a command (build, harness, experience, learn, deploy, watch, inbox, doctor)", file=sys.stderr)
         sys.exit(1)

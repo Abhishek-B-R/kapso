@@ -154,7 +154,7 @@ def test_reply_needs_the_id_when_several_are_open(tmp_path, monkeypatch, capsys)
     monkeypatch.chdir(workspace)
     with pytest.raises(SystemExit):
         _run(monkeypatch, "inbox", "reply", "done")
-    assert "which request?" in capsys.readouterr().out and calls == []
+    assert "which request?" in capsys.readouterr().err and calls == []
 
     _run(monkeypatch, "inbox", "reply", "2", "done")
     assert calls == [(str(workspace.resolve()), 2, "done", False)]
@@ -165,7 +165,7 @@ def test_reply_outside_a_campaign_must_name_it(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit):
         _run(monkeypatch, "inbox", "reply", "1", "done")
-    assert "not inside a campaign" in capsys.readouterr().out and calls == []
+    assert "not inside a campaign" in capsys.readouterr().err and calls == []
 
 
 def test_reply_refuses_a_credential_without_yes(tmp_path, monkeypatch, capsys):

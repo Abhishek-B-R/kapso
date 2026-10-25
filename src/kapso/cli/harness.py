@@ -56,11 +56,11 @@ def cmd_harness(args) -> None:
 def _new(name: str, parent: Path) -> None:
     """The two-file starter the authoring guide begins with."""
     if not valid_name(name):
-        print(f"Error: a harness name matches [a-z0-9][a-z0-9-]*, not {name!r}")
+        print(f"Error: a harness name matches [a-z0-9][a-z0-9-]*, not {name!r}", file=sys.stderr)
         sys.exit(1)
     root = parent / name
     if root.exists():
-        print(f"Error: {root} exists; choose another name or directory")
+        print(f"Error: {root} exists; choose another name or directory", file=sys.stderr)
         sys.exit(1)
     (root / "instructions").mkdir(parents=True)
     (root / MANIFEST_FILE).write_text(

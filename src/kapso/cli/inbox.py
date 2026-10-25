@@ -93,7 +93,7 @@ def cmd_inbox(args) -> None:
         cmd_inbox_reply(words[1:], yes=args.yes, detach=args.detach, log=args.log)
         return
     if len(words) > 1:
-        print("Error: kapso inbox takes at most a campaign directory")
+        print("Error: kapso inbox takes at most a campaign directory", file=sys.stderr)
         sys.exit(1)
     campaign = _inbox_campaign(words[0] if words else None)
     if campaign is not None:
@@ -124,14 +124,14 @@ def cmd_inbox_reply(
         explicit = words.pop(0)
     campaign = _inbox_campaign(explicit)
     if campaign is None:
-        print("Error: not inside a campaign — name it: kapso inbox reply <campaign> [id] [note]")
+        print("Error: not inside a campaign — name it: kapso inbox reply <campaign> [id] [note]", file=sys.stderr)
         sys.exit(1)
     if words and words[0].isdigit():
         request_id = int(words.pop(0))
     else:
         open_requests = Kapso.inbox(str(campaign))
         if len(open_requests) != 1:
-            print("Error: which request? kapso inbox reply <id> [note]")
+            print("Error: which request? kapso inbox reply <id> [note]", file=sys.stderr)
             sys.exit(1)
         request_id = open_requests[0].id
     note = " ".join(words)
@@ -145,7 +145,7 @@ def cmd_inbox_reply(
         sys.exit(1)
     if detach:
         if log and _inside(Path(log).expanduser().resolve(), campaign):
-            print("Error: --log must be outside the campaign directory")
+            print("Error: --log must be outside the campaign directory", file=sys.stderr)
             sys.exit(1)
         located = OperationStatusView.locate(campaign)
         if located is not None and OperationStatusView(located).alive:
