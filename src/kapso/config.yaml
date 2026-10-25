@@ -103,6 +103,12 @@ harness:
   verification_attempts: 2           # sessions run for one attempt before it is recorded unverified
   server_tool_timeout_seconds: 600   # a harness server's per-call timeout where the host takes one (Codex)
 
+# The experience homes (docs/plans/redesign/wp3-experience.md). Your own
+# bank is learning.bank.local_path; the hosted gate is gates.leeroopedia.
+experience:
+  banks: ~/.kapso/experience/banks      # banks you read, one clone per <slug>@<rev> with a fetch record beside
+  indexes: ~/.kapso/experience/indexes  # corpora you ingested with `kapso experience add --name <n>`, one directory each
+
 # =============================================================================
 # Platform defaults — the base layer under every mode of every config file
 # =============================================================================

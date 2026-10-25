@@ -62,6 +62,31 @@ def load_deployment_defaults() -> Dict[str, Any]:
     return platform_config['deployment']
 
 
+def load_experience_defaults(config_path: Optional[str] = None) -> Dict[str, Any]:
+    """The platform config's `experience:` mapping (the two homes), with a
+    user config's own keys over it, plus what the sources need from the
+    other blocks: `bank_home` (`learning.bank.local_path`, where `mine`
+    lives), `hosted` (`gates.leeroopedia`), `session_root`
+    (`learning.serving.session_root`)."""
+    platform_config = load_config(str(PLATFORM_CONFIG_PATH))
+    if 'experience' not in platform_config:
+        raise ValueError(
+            f"Platform config {PLATFORM_CONFIG_PATH} has no 'experience' section"
+        )
+    merged = dict(platform_config)
+    if config_path is not None and Path(config_path).resolve() != PLATFORM_CONFIG_PATH:
+        own = load_config(config_path)
+        merged['experience'] = {**platform_config['experience'], **(own.get('experience') or {})}
+        for block in ('learning', 'gates'):
+            if block in own:
+                merged[block] = {**platform_config.get(block, {}), **own[block]}
+    settings = dict(merged['experience'])
+    settings['bank_home'] = merged['learning']['bank']['local_path']
+    settings['session_root'] = merged['learning']['serving']['session_root']
+    settings['hosted'] = dict(merged['gates']['leeroopedia'])
+    return settings
+
+
 def load_harness_defaults(config_path: Optional[str] = None) -> Dict[str, Any]:
     """The platform config's `harness:` mapping (the store, the page
     warning threshold, the two session timeouts), with a user config's
