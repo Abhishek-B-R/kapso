@@ -254,6 +254,21 @@ research_modes` and `experience.research_depth` replace two module
 literals; the researcher's findings are unwrapped into the typed
 sources the pipeline ingests.
 
+**A `result.json` left in the evaluation directory is refused at
+launch, not skipped.** (Taken during the proof run.) The evaluator
+writes `kapso_evaluation/result.json` by contract, allowed as a new
+runtime artifact; a copy an earlier run left at the root of the caller's
+directory was protected with the suite, and the first evaluation changed
+it and rejected every candidate. The launch now refuses the leftover by
+name, with the way out in the message, at the facade's input check and
+at the orchestrator's manifest. Alternative rejected: leaving the file
+out of the manifest and the copy silently, which would split the
+integrity rule ("every file in the suite is protected") with a special
+case, reach the vendored archive sandbox and its byte-identical copies
+in the benchmark suites, and still leave a stale result in the
+workspace for a session to read. Whether the contract should move the
+result out of the protected tree altogether is WP4's.
+
 ## 2026-10-25, WP2 (taken while building)
 
 **A harness's Python requirements are checked against `python3` on PATH,

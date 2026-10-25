@@ -68,6 +68,7 @@ from kapso.execution.iteration_evaluator import (
 )
 from kapso.execution.evaluation_integrity import (
     build_evaluation_manifest,
+    launch_evaluation_manifest,
     manifest_fingerprint,
     verify_data_manifest,
 )
@@ -291,7 +292,7 @@ class OrchestratorAgent:
         }
         self._provided_evaluation_manifest: Optional[Dict[str, str]] = None
         if eval_dir:
-            self._provided_evaluation_manifest = build_evaluation_manifest(
+            self._provided_evaluation_manifest = launch_evaluation_manifest(
                 eval_dir
             )
             fingerprint_config["provided_evaluation_fingerprint"] = (

@@ -17,6 +17,7 @@ from kapso.execution.evaluation_integrity import (
     EvaluationIntegrityError,
     build_data_manifest,
     build_evaluation_manifest,
+    launch_evaluation_manifest,
     manifest_fingerprint,
     verify_evaluation_tree,
 )
@@ -195,6 +196,27 @@ def test_runtime_outputs_are_allowed_but_evaluator_changes_are_rejected(
     assert "unexpected evaluator source:" in injected.error
     assert "alternate.py" in injected.error
     assert "alternate" in injected.error
+
+
+def test_a_result_file_left_in_the_provided_suite_is_refused_at_launch(
+    tmp_path: Path,
+) -> None:
+    """A `result.json` an earlier run left at the suite's root would be
+    protected with the suite and changed by the first evaluation, so the
+    launch refuses it by name; one deeper in the tree is a fixture and
+    stays protected like any other file."""
+    suite = tmp_path / "suite"
+    _write_suite(suite)
+    assert launch_evaluation_manifest(suite) == build_evaluation_manifest(suite)
+
+    suite.joinpath("result.json").write_text('{"score": 1}\n')
+    with pytest.raises(EvaluationIntegrityError, match="left by an earlier run"):
+        launch_evaluation_manifest(suite)
+
+    suite.joinpath("result.json").unlink()
+    suite.joinpath("data").mkdir()
+    suite.joinpath("data", "result.json").write_text("{}\n")
+    assert "data/result.json" in launch_evaluation_manifest(suite)
 
 
 def test_candidate_tampering_clears_score_and_stop_state(

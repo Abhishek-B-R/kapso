@@ -40,7 +40,9 @@ fingerprinted, file by file. A candidate that modifies, deletes, replaces or
 extends it is rejected: its score is cleared, the judge never sees it, and
 it is never chosen as a parent or delivered. The count of such candidates is
 `solution.rejected_candidates`. New runtime artifacts (`result.json`, logs,
-predictions) are allowed; new evaluator source is not. The mechanics are
+predictions) are allowed; new evaluator source is not. A `result.json` an
+earlier run left in your evaluation directory is refused at launch, since
+it would be protected with the suite. The mechanics are
 on [Evaluation integrity](/docs/evolve/evaluation-integrity).
 
 Data goes the same way: `--data` (Python: `data=`) is copied to

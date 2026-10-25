@@ -53,7 +53,7 @@ from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.evaluation_maintainer.registry import EvaluationRegistry
 from kapso.execution.iteration_evaluator import IterationEvaluator
 from kapso.handles import EXPERIENCE_RECORD_FIELDS, Brief, Budget, EvaluatorRef, ExperienceRef, Solution
-from kapso.execution.evaluation_integrity import build_evaluation_manifest
+from kapso.execution.evaluation_integrity import launch_evaluation_manifest
 from kapso.environment.handlers.generic import GenericProblemHandler
 from kapso.knowledge_base.search import KnowledgeSearchFactory
 from kapso.knowledge_base.search.workflow_search import WorkflowRepoSearch
@@ -1161,8 +1161,9 @@ class Kapso:
             max_iterations = DEFAULT_MAX_ITERATIONS
         if eval_dir:
             # Validate caller-owned evaluation inputs before resolving an
-            # initial repository or initializing the experiment workspace.
-            build_evaluation_manifest(eval_dir)
+            # initial repository or initializing the experiment workspace
+            # (a result.json an earlier run left there is refused here).
+            launch_evaluation_manifest(eval_dir)
         # Preflight before the first session is spawned: the campaign's
         # own CLIs and credentials, the gates the strategy names, and the
         # stores this agent's knowledge/experience actually connect to.
