@@ -5,7 +5,7 @@ description: Static scan of a diff for look-ahead patterns (negative shifts, cen
 # Look-ahead scan
 
 ```
-git diff main...HEAD | python $KAPSO_HARNESS_ROOT/skills/lookahead-scan/scripts/scan.py
+git diff main...HEAD | python3 $KAPSO_HARNESS_ROOT/skills/lookahead-scan/scripts/scan.py
 ```
 
 Prints the findings as JSON, one per added line that matches a rule, and

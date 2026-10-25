@@ -87,7 +87,7 @@ def test_the_implementation_module_on_claude_code(harness, tmp_path):
         "agents_path": str(session_dir / ".claude" / "harness-agents.json"),
     }
     assert staged.mcp_servers == {"market-data": {
-        "command": "python",
+        "command": "python3",
         "args": [str(harness.path / "servers" / "market_data.py")],
         "cwd": str(session_dir),
         "env": {HARNESS_ROOT_VARIABLE: str(harness.path)},

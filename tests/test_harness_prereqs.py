@@ -91,8 +91,8 @@ def test_a_program_every_module_runs_refuses_with_its_fix(tmp_path, monkeypatch)
     git_workspace(workspace)
     fake_orchestrator(monkeypatch, workspace, solve_result())
     kapso = loaded_facade(tmp_path, TRADING)
-    monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: None if name == "python" else "/usr/bin/" + name)
+    monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: None if name == "python3" else "/usr/bin/" + name)
 
     with pytest.raises(HarnessError) as caught:
         kapso.build("g", output=str(workspace), budget=Budget(experiments=1))
-    assert "python (command, for the SessionStart hook): install python and put it on PATH; on a stock Ubuntu" in str(caught.value)
+    assert "python3 (command, for the SessionStart hook): install python3 and put it on PATH" in str(caught.value)

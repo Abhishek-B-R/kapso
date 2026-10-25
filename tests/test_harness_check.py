@@ -232,12 +232,13 @@ def test_the_page_length_threshold_comes_from_the_caller(harness):
 # --------------------------------------------------------- what is missing
 
 def test_a_program_a_hook_runs_must_be_on_path(harness, monkeypatch):
+    edit(harness / "hooks" / "session-brief" / "hook.json", "python3 ${PLUGIN_ROOT}", "python ${PLUGIN_ROOT}")
     monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: None if name == "python" else "/usr/bin/" + name)
     report = check(harness)
     assert report.failures == []
     rows = [row for row in report.missing if row.label.startswith("python (command")]
     assert rows, [row.label for row in report.missing]
-    assert "python3" in rows[0].fix and rows[0].ok is False
+    assert "`python` is absent and `python3` is not" in rows[0].fix and rows[0].ok is False
     # The hooks that name `python` are listed on every module, so the row
     # binds a build and a deploy alike.
     assert report.missing_for(("deployment",)) and report.missing_for(BUILD_MODULES)
@@ -280,9 +281,9 @@ def test_a_gpu_and_a_command_are_prerequisites_of_every_module(harness, monkeypa
 
 def test_render_shows_the_summary_then_each_kind(harness, monkeypatch):
     unlisted_hook(harness)
-    monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: None if name == "python" else "/usr/bin/" + name)
+    monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: None if name == "python3" else "/usr/bin/" + name)
     text = check(harness).render()
     lines = text.splitlines()
     assert lines[0] == "check ok (7 skills, 2 agents, 2 servers, 7 hooks)"
     assert any(line.startswith("  warn   hooks/extra/") for line in lines)
-    assert any(line.startswith("  needs  python (command") and line.endswith("]") for line in lines)
+    assert any(line.startswith("  needs  python3 (command") and line.endswith("]") for line in lines)
