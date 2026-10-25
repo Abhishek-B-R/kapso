@@ -66,7 +66,7 @@ Failures, each with the file and, when it has one, the line:
 
 Warnings: a skill, agent, server or hook directory no module lists; a skill its module's page never mentions; a page over `harness.page_warning_lines` lines; a long opaque value in a server's `env` or `headers`.
 
-Needs, each tagged with the modules that need it: a program a hook or a server runs, or `environment.commands` names, that is not on PATH; a requirements pin that is not installed or too old, with the `pip install` line; a `${NAME}` reference that is set nowhere, tagged with the modules that mount the server; a GPU. `check` exits 1 on a failure and 0 otherwise; a need never fails `check` or `add`.
+Needs, each tagged with the modules that need it: a program a hook or a server runs, or `environment.commands` names, that is not on PATH; a requirements pin that `python3` on PATH does not have, or has too old, with the `python3 -m pip install -r` line (the harness's servers, hooks and scripts run on that interpreter, so its requirements are checked there, not in the engine's); a `${NAME}` reference that is set nowhere, tagged with the modules that mount the server; a GPU. `check` exits 1 on a failure and 0 otherwise; a need never fails `check` or `add`.
 
 ## Staging
 

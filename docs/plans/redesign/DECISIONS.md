@@ -6,6 +6,28 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-25, WP2 (taken while building)
+
+**A harness's Python requirements are checked against `python3` on PATH,
+not the engine's interpreter.** The sub-plan said `importlib.metadata` in
+the engine's process. The harness's servers, hooks and scripts run on the
+`python3` the authoring guide tells the author to name, which is the
+engine's interpreter only when Kapso is installed into an activated
+environment; a `uv tool` install (the fresh machine, the install skill)
+runs the engine in a venv of its own with no `pip`, so the fix line
+`<sys.executable> -m pip install -r` could not even run there, and a user
+who followed it would have installed into the interpreter nothing of the
+harness uses. `check` now asks `python3` on PATH for its distributions in
+a subprocess, reports its absence as a need of every module, and the fix
+line is `python3 -m pip install -r <file>`. Alternative rejected: checking
+both interpreters, which doubles the rows and still names the wrong one.
+
+**A session that names no directory is refused, not staged into the
+working directory.** Found by a test whose nodes had no directory and
+left `.claude/` and `kapso_task.md` in the repository root; production
+nodes always carry one. The guard sits after the no-harness path, which
+writes nothing, so a build without a harness is untouched.
+
 ## 2026-10-24, WP1 (after the third proof run)
 
 **`solution.feedback` is the judge's words on the delivered candidate; the

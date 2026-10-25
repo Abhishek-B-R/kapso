@@ -10,7 +10,6 @@ value: an environment reference is probed for presence by name, the
 precedent being core/preflight.py's credential rows.
 """
 
-import importlib.metadata
 import io
 import json
 import os
@@ -18,7 +17,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -48,6 +46,13 @@ HOOK_EVENTS = (
 SECRET_NAME_WORDS = ("KEY", "TOKEN", "SECRET", "PASSWORD")
 SECRET_PREFIXES = ("sk-", "kpsk_", "ghp_", "xoxb-")
 HTTP_TYPES = ("streamable-http", "http")
+# The interpreter a harness's own commands name: its servers, hooks and
+# scripts run on it, so its requirements are checked there.
+PYTHON_COMMAND = "python3"
+_INSTALLED_DISTRIBUTIONS = (
+    "import importlib.metadata, json; "
+    "print(json.dumps({d.metadata['Name']: d.version for d in importlib.metadata.distributions() if d.metadata['Name']}))"
+)
 _SERVER_NAME = re.compile(r"[A-Za-z0-9_-]+$")
 _REFERENCE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 _OPAQUE = re.compile(r"^[A-Za-z0-9_-]{24,}$")
@@ -432,12 +437,19 @@ class _Checker:
                 self.need(label="a GPU (environment.gpu)", fix="run on a machine with an NVIDIA GPU and its driver", modules=MODULES)
 
     def requirements(self, file: Path) -> None:
-        """Each pin against the interpreter the engine runs; a malformed
-        line raises the packaging library's own error."""
-        installed = {
-            canonicalize_name(d.metadata["Name"]): d.version
-            for d in importlib.metadata.distributions() if d.metadata["Name"]
-        }
+        """Each pin against `python3` on PATH, the interpreter the harness's
+        own commands name (its servers, hooks and scripts run there, not in
+        the engine's interpreter); a malformed line raises the packaging
+        library's own error."""
+        interpreter = shutil.which(PYTHON_COMMAND)
+        if interpreter is None:
+            self.need(
+                label=f"{PYTHON_COMMAND} (command, for environment.python)",
+                fix=f"install {PYTHON_COMMAND} and put it on PATH", modules=MODULES,
+            )
+            return
+        listing = subprocess.run([interpreter, "-c", _INSTALLED_DISTRIBUTIONS], capture_output=True, text=True, check=True)
+        installed = {canonicalize_name(name): version for name, version in json.loads(listing.stdout).items()}
         for raw in file.read_text(encoding="utf-8").splitlines():
             line = raw.split("#", 1)[0].strip()
             if not line or line.startswith("-"):
@@ -446,7 +458,7 @@ class _Checker:
             if pin.marker is not None and not pin.marker.evaluate():
                 continue
             name = canonicalize_name(pin.name)
-            fix = f"{sys.executable} -m pip install -r {file}"
+            fix = f"{PYTHON_COMMAND} -m pip install -r {file}"
             if name not in installed:
                 self.need(label=f"python: {pin.name}", fix=fix, modules=MODULES)
             elif pin.specifier and not pin.specifier.contains(installed[name], prereleases=True):

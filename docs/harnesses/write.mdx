@@ -49,7 +49,7 @@ version: 0.1.0                      # bump when behaviour changes; recorded with
 description: Research, implement, verify and deploy systematic trading strategies.
 
 environment:                        # prerequisites of the machine; reported, never installed
-  python: requirements.txt          # a requirements file, checked against the engine's interpreter
+  python: requirements.txt          # a requirements file, checked against python3 on PATH
   commands: []                      # programs that must be on PATH
   gpu: false
 
@@ -165,7 +165,7 @@ A file hook reads both shapes, as the trading harness's `protect-prepared` and `
 
 ## Environment
 
-`environment.python` names a requirements file; `check` reads each pin against the engine's interpreter and reports what is missing or too old, with the `pip install` line. `environment.commands` are programs that must be on PATH, `environment.gpu` asks for an NVIDIA GPU. A program a hook or a server runs is checked without being listed. Nothing is installed by the engine: a need is reported by `check`, printed by `kapso harness list`, and refused by a verb whose modules need it.
+`environment.python` names a requirements file; `check` reads each pin against `python3` on PATH, the interpreter the harness's own commands name, and reports what is missing or too old, with the `python3 -m pip install` line. `environment.commands` are programs that must be on PATH, `environment.gpu` asks for an NVIDIA GPU. A program a hook or a server runs is checked without being listed. Nothing is installed by the engine: a need is reported by `check`, printed by `kapso harness list`, and refused by a verb whose modules need it.
 
 ## Check, run, read
 

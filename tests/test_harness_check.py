@@ -4,6 +4,7 @@ the example itself is clean."""
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -260,14 +261,19 @@ def test_an_env_reference_is_a_prerequisite_of_the_modules_that_mount_the_server
     assert not [row for row in check(harness, dotenv_path=str(dotenv)).missing if row.label.startswith("BROKER_API_KEY")]
 
 
-def test_requirements_are_checked_against_the_engines_interpreter(harness):
+def test_requirements_are_checked_against_python3_on_path(harness, monkeypatch):
+    monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: sys.executable if name == "python3" else "/usr/bin/" + name)
     requirements = harness / "requirements.txt"
     requirements.write_text('pyyaml>=5\nnonexistent-dist-xyz>=1\nalso-absent; python_version < "3"\n')
     report = check(harness)
-    labels = [row.label for row in report.missing if row.label.startswith("python:")]
+    labels = [row.label for row in report.missing if row.label.startswith("python")]
     assert labels == ["python: nonexistent-dist-xyz"]
     row = next(row for row in report.missing if row.label == "python: nonexistent-dist-xyz")
-    assert "-m pip install -r " in row.fix and row.modules == tuple(__import__("kapso.harness").harness.MODULES)
+    assert row.fix == f"python3 -m pip install -r {requirements}" and row.modules == tuple(__import__("kapso.harness").harness.MODULES)
+
+    monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: None if name == "python3" else "/usr/bin/" + name)
+    labels = [row.label for row in check(harness).missing if row.label.startswith("python")]
+    assert "python3 (command, for environment.python)" in labels and not any(label.startswith("python:") for label in labels)
 
 
 def test_a_gpu_and_a_command_are_prerequisites_of_every_module(harness, monkeypatch):
