@@ -44,7 +44,33 @@ def test_every_subcommand_and_flag_is_accounted_for():
         "add": {"ref", "repo", "research", "name", "config"},
         "list": {"config"},
         "share": {"url", "config"},
+        "update": {"ref", "config"},
+        "remove": {"ref", "config"},
     }
+
+
+def test_update_and_remove_go_through_the_facade(settings, monkeypatch):
+    calls = []
+
+    class FakeKapso:
+        def __init__(self, config=None):
+            calls.append(("init", config))
+
+        def update_experience(self, ref=None):
+            calls.append(("update", ref))
+
+        def remove_experience(self, ref):
+            calls.append(("remove", ref))
+
+    monkeypatch.setattr(experience_cli, "Kapso", FakeKapso)
+    _run(monkeypatch, "update")
+    _run(monkeypatch, "update", "acme/kapso-bank", "--config", "c.yaml")
+    _run(monkeypatch, "remove", "org-x")
+    assert calls == [
+        ("init", None), ("update", None),
+        ("init", "c.yaml"), ("update", "acme/kapso-bank"),
+        ("init", None), ("remove", "org-x"),
+    ]
 
 
 def test_add_mine_creates_the_bank_once(settings, monkeypatch, capsys):

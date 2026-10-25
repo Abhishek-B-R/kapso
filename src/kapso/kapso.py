@@ -70,9 +70,12 @@ from kapso.experience import (
     ExperienceError,
     ExperienceSource,
     ExperienceStore,
+    bank_head,
+    has_origin,
     hosted_key_missing,
     hosted_key_present,
     parse_experience_reference,
+    pull_home,
     recorded_reference,
     resolve_source,
 )
@@ -410,6 +413,70 @@ class Kapso:
         )
         print(f"Experience added: {name} (index {record.id}, {record.page_count} pages); `{name}` loads it")
         return name
+
+    def update_experience(self, ref: Optional[str] = None) -> None:
+        """The network step loading never takes: `mine` takes its remote's
+        main (fast-forward; a history that does not is an error in git's
+        words), a bank you read at a moving reference is fetched again,
+        a tag or a commit never moves. `None` updates every bank on this
+        machine. A campaign keeps the pin it launched with whatever moves
+        here; an index is what `add` made (remove it and add it again)."""
+        store = ExperienceStore(self._experience_settings["banks"], self._experience_settings["indexes"])
+        if ref is None:
+            references = [parse_experience_reference(MINE, indexes_root=Path(self._experience_settings["indexes"]))]
+            references += [
+                parse_experience_reference(
+                    f"git+{bank['remote']}@{bank['rev']}", indexes_root=Path(self._experience_settings["indexes"]),
+                )
+                for bank in store.banks()
+            ]
+        else:
+            references = [parse_experience_reference(ref, indexes_root=Path(self._experience_settings["indexes"]))]
+        for reference in references:
+            if reference.kind == MINE:
+                home = Path(self._experience_settings["bank_home"]).expanduser()
+                if not home.exists():
+                    print(f"{MINE}: no bank yet (`kapso experience add {MINE}`)")
+                elif not has_origin(home):
+                    print(f"{MINE}: no remote (`kapso experience share <url>`), nothing to pull")
+                else:
+                    before = bank_head(home)
+                    pull_home(home)
+                    after = bank_head(home)
+                    print(f"{MINE}: {'at ' + after[:12] + ', up to date' if after == before else f'now at {after[:12]} (was {before[:12]})'}")
+            elif reference.kind == "git":
+                moved = store.update(reference)
+                if moved["before"] == moved["after"]:
+                    print(f"{reference.raw}: at {moved['after'][:12]}: a tag or a commit never moves")
+                else:
+                    print(f"{reference.raw}: now at {moved['after'][:12]} (was {moved['before'][:12]})")
+            else:
+                raise ExperienceError(
+                    f"`{reference.raw}` has nothing to update: the hosted gate and a bank by path are read in place, "
+                    "and an index is what `add` made (`remove` it and add it again)"
+                )
+
+    def remove_experience(self, ref: str) -> None:
+        """Delete what `load` fetched or `add` made: a bank you read by git
+        reference (its clone and record) or an index by name (its backend
+        namespace, its pages and its record). Your bank, the hosted gate
+        and a bank by path are not the store's to remove."""
+        store = ExperienceStore(self._experience_settings["banks"], self._experience_settings["indexes"])
+        reference = parse_experience_reference(ref, indexes_root=Path(self._experience_settings["indexes"]))
+        if reference.kind == "index":
+            record = store.index_record(reference.name)
+            search = search_for(record, self._config, self.config_path)
+            search.clear()
+            search.close()
+            print(f"removed {store.remove_index(reference.name)} (index {record.id}; its collection and corpus cleared)")
+        elif reference.kind == "git":
+            print(f"removed {store.remove_bank(reference)}")
+        else:
+            raise ExperienceError(
+                f"`{ref}` is not something to remove: your bank is yours (delete its directory yourself), "
+                "the hosted gate is a key in .env, a bank by path is read in place"
+            )
+        self._experience = [source for source in self._experience if source.reference != reference.raw]
 
     # =========================================================================
     # Knowledge search

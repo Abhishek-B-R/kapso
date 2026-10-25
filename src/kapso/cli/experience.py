@@ -28,6 +28,12 @@ def cmd_experience(args) -> None:
     if args.experience_command == "add":
         _add(args)
         return
+    if args.experience_command == "update":
+        Kapso(config=args.config).update_experience(args.ref)
+        return
+    if args.experience_command == "remove":
+        Kapso(config=args.config).remove_experience(args.ref)
+        return
     settings = load_experience_defaults(args.config)
     home = Path(settings["bank_home"]).expanduser()
     if args.experience_command == "list":
@@ -136,6 +142,8 @@ Examples:
   kapso experience add --research "QLoRA memory tricks" --name qlora     # researches the web, ingests the findings
   kapso experience list                                       # mine, the hosted gate, banks you read, indexes
   kapso experience share https://github.com/acme/kapso-bank.git
+  kapso experience update                                     # pulls mine from its remote, re-fetches every bank you read
+  kapso experience remove acme/kapso-bank                     # a bank you read, or an index by name
   kapso build --experience mine,org-x --brief kapso-brief.md ...
 """,
     )
@@ -154,4 +162,12 @@ Examples:
     share = experience_sub.add_parser("share", help="Attach a git remote to your bank and push it")
     share.add_argument("url", type=str, help="Git URL of the bank repository (https or ssh)")
     share.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
+    update = experience_sub.add_parser(
+        "update", help="Pull mine from its remote and re-fetch a bank you read at a moving reference; every bank when none is named",
+    )
+    update.add_argument("ref", type=str, nargs="?", default=None, help="`mine` or a bank's git reference (default: every bank)")
+    update.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
+    remove = experience_sub.add_parser("remove", help="Delete a bank you read (its clone) or an index (its namespace, pages and record)")
+    remove.add_argument("ref", type=str, help="A bank's git reference, or an index name")
+    remove.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
     return cmd_experience

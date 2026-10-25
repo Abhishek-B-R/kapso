@@ -63,8 +63,8 @@ class ExperienceStore:
         if record["remote"] != reference.url or record["rev"] != reference.rev:
             raise ExperienceReferenceError(
                 f"{self.clone_dir(reference)} holds {record['remote']}@{record['rev']}, fetched for another "
-                f"reference that names the same directory; `kapso experience remove` is not a verb, so remove "
-                f"the directory and its record by hand, or name the revision another way"
+                f"reference that names the same directory; `kapso experience remove {record['remote']}@{record['rev']}` "
+                f"frees it, or name the revision another way"
             )
         return True
 
@@ -116,6 +116,29 @@ class ExperienceStore:
             return True
         head = repo.head.commit.hexsha
         return len(rev) >= 7 and set(rev.lower()) <= _SHA and head.startswith(rev.lower())
+
+    def remove_bank(self, reference: ExperienceReference) -> Path:
+        """Delete a fetched bank's clone and its record (`kapso experience
+        remove`); only what `load` fetched is the store's to remove."""
+        if reference.kind != "git":
+            raise ExperienceReferenceError(
+                f"{reference.raw} is not a fetched bank: `remove` deletes a bank you read by git reference, "
+                "or an index by name"
+            )
+        if not self.is_fetched(reference):
+            raise ExperienceReferenceError(f"{reference.raw} was never fetched; nothing to remove")
+        clone = self.clone_dir(reference)
+        shutil.rmtree(clone)
+        self.record_path(reference).unlink()
+        return clone
+
+    def remove_index(self, name: str) -> Path:
+        """Delete an index's directory with its pages and record; the
+        backend namespace is the caller's to clear first."""
+        self.index_record(name)
+        directory = self.index_dir(name)
+        shutil.rmtree(directory)
+        return directory
 
     def banks(self) -> List[Dict[str, Any]]:
         """Every fetched bank: its record with the clone's path."""

@@ -26,8 +26,10 @@ from kapso.experience.sources import (
     ExperienceSource,
     bank_head,
     count_cards,
+    has_origin,
     hosted_key_missing,
     hosted_key_present,
+    pull_home,
     resolve_source,
 )
 from kapso.experience.ingest import IngestError
@@ -54,9 +56,11 @@ __all__ = [
     "IngestError",
     "bank_head",
     "count_cards",
+    "has_origin",
     "hosted_key_missing",
     "hosted_key_present",
     "parse_experience_reference",
+    "pull_home",
     "recorded_reference",
     "resolve_source",
     "valid_index_name",

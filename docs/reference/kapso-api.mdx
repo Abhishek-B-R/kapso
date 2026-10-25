@@ -38,6 +38,8 @@ Kapso(
 | [`load_experience()`](#load-experience) | `ExperienceSource` | Load a source a build is served: your bank, the hosted gate, a bank you read, an index |
 | [`experience`](#load-experience) | `list[ExperienceSource]` | The loaded sources, in load order |
 | [`add_experience()`](#add-experience) | `str` | Make a source that must exist before it is loaded: your bank, the hosted gate's key check, a corpus ingested into an index |
+| [`update_experience()`](#update-experience-and-remove-experience) | `None` | Pull your bank from its remote and re-fetch the banks you read at moving references |
+| [`remove_experience()`](#update-experience-and-remove-experience) | `None` | Delete a bank you read or an index, with its backend namespace |
 | [`share_experience()`](#load-experience) | `None` | Attach a git remote to your bank and push it |
 | [`build()`](#build) | `Solution` | Run an experiment campaign that meets a brief |
 | [`learn()`](#learn) | `LessonResult` | Mine one finished campaign into the lesson bank |
@@ -116,6 +118,23 @@ Exactly one of `ref`, `repo` and `research` is given. Ingesting runs the knowled
 kapso.add_experience(repo="https://github.com/org/x", name="org-x")
 kapso.add_experience(research="QLoRA memory optimizations", name="qlora")
 kapso.load_experience("org-x")        # a build then mounts the search gates over it
+```
+
+## update_experience and remove_experience
+
+Loading never touches the network beyond a first fetch; these two do the rest.
+
+```python
+update_experience(ref: str | None = None) -> None
+remove_experience(ref: str) -> None
+```
+
+`update_experience` is the network step: `mine` takes its remote's main (fast-forward; a history that does not is an error in git's words), a bank you read at a branch or `HEAD` is fetched again, a tag or a commit never moves; with no `ref` every bank on this machine is updated. A running campaign keeps the pin it launched with. An index is what `add_experience` made: remove it and add it again. `remove_experience` deletes what `load` fetched or `add` made — a bank you read by git reference (its clone and record), or an index by name (its backend namespace, its pages and its record) — and refuses the rest: your bank is yours, the hosted gate is a key in `.env`, a bank by path is read in place.
+
+```python
+kapso.update_experience()                      # every bank
+kapso.update_experience("acme/kapso-bank")     # one
+kapso.remove_experience("org-x")
 ```
 
 ## build
