@@ -35,10 +35,14 @@ class CandidateWorkspace:
 
 class FeedbackProvider:
     configured_timeout_seconds = None
+    agent_type = "claude_code"
 
     def __init__(self):
         self.outputs = []
         self.end_facts = []
+
+    def attach_harness(self, staged):
+        """No harness in these tests: nothing to attach."""
 
     def generate(self, **kwargs):
         self.outputs.append(kwargs["evaluation_result"])
@@ -68,6 +72,7 @@ def candidate_strategy(tmp_path, count=1):
             parent_branch_name="main", code_diff="candidate changes",
         ))
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.cost_config = {"enabled": True, "unit": "credits", "weight": 1.0}
     strategy.node_history = []
     strategy.workspace = CandidateWorkspace(folders)
@@ -393,6 +398,7 @@ def test_corrupt_cost_manifest_fails_loud():
 
 def test_cost_build_prompt_defers_all_evaluation_to_orchestrator():
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.cost_config = {"enabled": True}
     strategy.registered_evaluation_command = "python kapso_evaluation/kapso_eval.py"
     registered = strategy._evaluation_instructions()

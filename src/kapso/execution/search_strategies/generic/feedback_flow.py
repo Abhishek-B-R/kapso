@@ -50,6 +50,7 @@ def generate_feedback(
     manifest_of_record: Callable[[SearchNode], Optional[Dict[str, Any]]],
     finalize_run_selection: Callable[[Dict[str, Any], bool], None],
     execution_valid: bool = True,
+    stage_harness_for: Callable[..., Any],
 ) -> SearchNode:
     """
     Generate feedback for a node using the FeedbackGenerator.
@@ -72,6 +73,10 @@ def generate_feedback(
     
     print(f"[GenericSearch] Generating feedback for node {node.node_id}...")
     
+    # The harness's feedback module: its pages in the judge's prompt, its
+    # delegates and skills beside the judge (attached once per campaign).
+    staged = stage_harness_for("feedback", node.workspace_dir, f"feedback/{node.branch_name}", feedback_generator.agent_type)
+    feedback_generator.attach_harness(staged)
     try:
         feedback_result = feedback_generator.generate(
             goal=goal,
@@ -84,6 +89,7 @@ def generate_feedback(
             workspace_dir=node.workspace_dir,
             design_axes=design_axes,
             session_end_facts=session_end_facts,
+            domain_guidance=staged.guidance,
             timeout_seconds=clamped_timeout(
                 feedback_generator.configured_timeout_seconds
             ),

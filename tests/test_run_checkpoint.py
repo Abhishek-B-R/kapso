@@ -385,6 +385,7 @@ def test_failed_atomic_replace_preserves_previous_checkpoint(
 
 def test_generic_strategy_state_round_trip() -> None:
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.node_history = [
         SearchNode(
             node_id=0,
@@ -399,6 +400,7 @@ def test_generic_strategy_state_round_trip() -> None:
     source.evaluator_transition = None
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.load_state(source.dump_state())
 
     assert restored.node_history[0].branch_name == "generic_exp_0"

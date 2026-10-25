@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import git
 
+from kapso.execution.coding_agents.adapters.codex_agent import agent_role_overrides, mcp_config_overrides
 from kapso.harness.check import read_front_matter
 from kapso.harness.hash import harness_hash
 from kapso.harness.hooks import expand_plugin_root, merge_hooks
@@ -77,9 +78,23 @@ class StagedHarness:
         """The session's own keys over the staged ones; `env_overrides` and
         `mcp_servers` are merged, not replaced."""
         merged = {**self.agent_specific, **own}
-        merged["env_overrides"] = {**self.env, **(own.get("env_overrides") or {})}
-        merged["mcp_servers"] = {**(own.get("mcp_servers") or {}), **self.mcp_servers}
+        # A key appears only when something is there to merge, so a session
+        # without a harness keeps exactly the keys it had.
+        if self.env or own.get("env_overrides"):
+            merged["env_overrides"] = {**self.env, **(own.get("env_overrides") or {})}
+        if self.mcp_servers or own.get("mcp_servers"):
+            merged["mcp_servers"] = {**(own.get("mcp_servers") or {}), **self.mcp_servers}
         return merged
+
+    def codex_exec_args(self) -> List[str]:
+        """The `codex exec` arguments a raw codex runner adds for this
+        staging: the servers, the agent roles, the hook trust bypass (the
+        adapter builds the same from the keys)."""
+        args = list(mcp_config_overrides(self.mcp_servers))
+        args += agent_role_overrides(self.agent_specific.get("agents") or {})
+        if self.agent_specific.get("hooks_trust_bypass"):
+            args.append("--dangerously-bypass-hook-trust")
+        return args
 
 
 def no_harness(module: str, host: str, session_dir: Path, session_id: str) -> StagedHarness:

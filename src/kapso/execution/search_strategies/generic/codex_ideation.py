@@ -51,6 +51,7 @@ def run_codex_ideation(
     effort: str | None = None,
     artifacts_dir: str | None = None,
     web_search: bool = True,
+    extra_args: list[str] | None = None,
 ) -> tuple[str, bool, float, dict]:
     """Run one read-only `codex exec` ideation call.
 
@@ -101,6 +102,9 @@ def run_codex_ideation(
     ])
     if effort:
         cmd.extend(["-c", f'model_reasoning_effort="{effort}"'])
+    # A harness's servers, agent roles and hook trust for this session
+    # (kapso.harness.staging.StagedHarness.codex_exec_args).
+    cmd.extend(extra_args or [])
     # Prompt via stdin, never argv (same self-pkill hazard as the Claude
     # adapter: argv-borne prompt text makes kill patterns match ancestors).
 

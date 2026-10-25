@@ -7,6 +7,7 @@ sessions on BOTH CLIs — WebSearch/WebFetch in the claude whitelist and
 """
 
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +20,13 @@ from kapso.execution.search_strategies.generic.implementation import (
     run_implementation,
 )
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from kapso.harness.staging import no_harness
+
+
+def no_staging(module, session_dir, label, agent_type):
+    """What a session gets without a harness: nothing (the strategy's
+    stage_harness_for, for tests that call the session functions directly)."""
+    return no_harness(module, agent_type, Path(session_dir), label)
 
 MCP_TOOL = "mcp__repo_memory__get_repo_memory_summary"
 
@@ -89,6 +97,7 @@ def run_fake_implementation(tmp_path, monkeypatch, *, implementation_cli,
     )
 
     run_implementation(
+        stage_harness_for=no_staging,
         solution="the plan",
         problem="the problem",
         branch_name="candidate-1",

@@ -575,6 +575,9 @@ class SearchStrategy(ABC):
             # watcher renders it in the header (WP6).
             harness=config.harness.ref_dict() if config.harness is not None else None,
         )
+        # The loaded harness, staged into every session this strategy
+        # constructs (None: today's generic behaviour).
+        self.harness = config.harness
 
         # Setup kapso directories (eval_dir -> kapso_evaluation/, data_dir -> kapso_datasets/)
         if not import_from_checkpoint:

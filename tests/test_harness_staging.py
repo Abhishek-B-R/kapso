@@ -179,7 +179,8 @@ def test_no_harness_stages_nothing(tmp_path):
     staged = stage_harness(None, "implementation", session_dir=tmp_path, campaign_dir=tmp_path, session_id="x", host="codex")
     assert staged.guidance == "" and staged.agent_specific == {} and staged.mcp_servers == {}
     assert tree(tmp_path) == []
-    assert staged.merged_agent_specific({"timeout": 5}) == {"timeout": 5, "env_overrides": {}, "mcp_servers": {}}
+    # Without a harness a session keeps exactly the keys it had.
+    assert staged.merged_agent_specific({"timeout": 5}) == {"timeout": 5}
 
 
 def test_the_statement_and_prepared_resources_reach_a_session_directory(harness, tmp_path):

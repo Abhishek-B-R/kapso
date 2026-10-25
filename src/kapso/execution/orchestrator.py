@@ -32,6 +32,7 @@ from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.search_strategies.generic import FeedbackGenerator, FeedbackResult
 from kapso.environment.handlers.base import ProblemHandler
 from kapso.execution.inbox import idea_line, render_pause_block, request_payload
+from kapso.harness.task_statement import write_task_statement
 from kapso.core.cli_inference import CliInference, resolve_inference_config
 from kapso.core.config import load_mode_config
 from kapso.execution.search_strategies.base import ExperimentResult, SearchNode
@@ -695,6 +696,31 @@ class OrchestratorAgent:
             self.evaluation_maintainer.record_run
         )
 
+    def _write_task_statement(self, **budget: Any) -> None:
+        """`<campaign>/kapso_task.md`, rendered by the engine from the brief,
+        the effective budget, the references, the setup session's statement
+        and the prepared resources; nothing without a harness."""
+        if self.harness is None:
+            return
+        write_task_statement(
+            Path(self.search_strategy.workspace_dir),
+            brief_text=self.goal,
+            harness=self.harness,
+            budget=budget,
+            evaluation_dir=self.eval_dir,
+            data_dir=self.data_dir,
+        )
+
+    def _stage_maintainer(self, module: str, label: str):
+        """The harness's module for one maintainer session at the campaign
+        root; None without a harness."""
+        if self.harness is None:
+            return None
+        return self.search_strategy.stage_harness_for(
+            module, self.search_strategy.workspace_dir, label,
+            self.evaluation_maintainer.coding_agent_config.agent_type,
+        )
+
     def _ensure_evaluation_registered(self) -> None:
         """Run the maintainer's setup once; validate consistency on resume."""
         if self.evaluation_maintainer is None:
@@ -724,6 +750,7 @@ class OrchestratorAgent:
                 goal=self.goal,
                 eval_dir=self.eval_dir,
                 data_dir=self.data_dir,
+                staged=self._stage_maintainer("setup", "evaluation_setup"),
             )
             self._record_maintainer_spend()
         self._adopt_registered_evaluation()
@@ -949,7 +976,8 @@ class OrchestratorAgent:
                     requested_by="implementation",
                     summary=match.group(1).strip(),
                     evidence=candidate.evaluation_output or "",
-                )
+                ),
+                staged=self._stage_maintainer("verification", f"evaluation/change_{candidate.node_id}"),
             )
             self._record_maintainer_spend()
             print(
@@ -1327,6 +1355,12 @@ class OrchestratorAgent:
         # evaluator-transition bridge derives its deadline from it).
         self.budget_spec = budget_spec
         self.budget_ledger.start_clock()
+        # With a harness, the task statement every session reads first is
+        # written before any session runs (and again after harness setup).
+        self._write_task_statement(
+            experiments=experiment_max_iter, minutes=time_budget_minutes,
+            usd=cost_budget, reserve_minutes=finalization_reserve_minutes,
+        )
         # The maintainer's setup transaction runs inside the budgeted clock,
         # before iteration 1; on resume it validates registry consistency.
         self._ensure_evaluation_registered()

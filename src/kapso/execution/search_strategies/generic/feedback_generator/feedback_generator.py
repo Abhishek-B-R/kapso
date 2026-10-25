@@ -19,7 +19,7 @@ from typing import List, Optional
 
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.coding_agents.base import CodingAgentConfig
-from kapso.core.prompt_loader import load_prompt, render_prompt
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 
 
 @dataclass
@@ -110,6 +110,23 @@ class FeedbackGenerator:
 
         # Create the coding agent
         self.agent = CodingAgentFactory.create(coding_agent_config)
+        self._harness_attached = False
+
+    @property
+    def agent_type(self) -> str:
+        return self.coding_agent_config.agent_type
+
+    def attach_harness(self, staged) -> None:
+        """The harness's feedback module for every judgment of this
+        campaign: the staged keys (delegates, hooks, skills, servers) join
+        the judge's agent once; nothing happens without a harness."""
+        if self._harness_attached or not staged.guidance:
+            return
+        self.coding_agent_config.agent_specific = staged.merged_agent_specific(
+            self.coding_agent_config.agent_specific
+        )
+        self.agent = CodingAgentFactory.create(self.coding_agent_config)
+        self._harness_attached = True
 
     @property
     def configured_timeout_seconds(self) -> Optional[float]:
@@ -130,6 +147,7 @@ class FeedbackGenerator:
         design_axes: str = "",
         session_end_facts: str = "",
         timeout_seconds: Optional[float] = None,
+        domain_guidance: str = "",
     ) -> FeedbackResult:
         """
         Generate feedback for the iteration.
@@ -170,6 +188,7 @@ class FeedbackGenerator:
             workspace_dir=workspace_dir,
             design_axes=design_axes,
             session_end_facts=session_end_facts,
+            domain_guidance=domain_guidance,
         )
         
         # Run the coding agent to analyze and generate feedback. The agent is
@@ -222,6 +241,7 @@ class FeedbackGenerator:
         workspace_dir: str,
         design_axes: str = "",
         session_end_facts: str = "",
+        domain_guidance: str = "",
     ) -> str:
         """Build the prompt for the feedback generator."""
         template = load_prompt(self.PROMPT_PATH)
@@ -240,6 +260,7 @@ class FeedbackGenerator:
                 "design_axes": design_axes or "(none declared)",
                 "session_end_facts": session_end_facts
                 or "(not recorded)",
+                "domain_guidance": optional_block(domain_guidance),
             }
         )
     

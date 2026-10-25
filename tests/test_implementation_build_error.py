@@ -13,7 +13,7 @@ from kapso.execution.search_strategies.generic.implementation import (
     run_implementation,
 )
 
-from test_implementation_web import MCP_TOOL, FakeWorkspace
+from test_implementation_web import MCP_TOOL, FakeWorkspace, no_staging
 
 
 def run_session(tmp_path, monkeypatch, result):
@@ -50,6 +50,7 @@ def run_session(tmp_path, monkeypatch, result):
         classmethod(lambda cls, doc, max_chars=2500: "memory"),
     )
     return run_implementation(
+        stage_harness_for=no_staging,
         solution="the plan",
         problem="the problem",
         branch_name="candidate-1",

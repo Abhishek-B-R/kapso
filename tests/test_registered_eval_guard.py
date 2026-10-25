@@ -18,6 +18,7 @@ from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
 def make_stub(tmp_path, archive_glob):
     s = GenericSearch.__new__(GenericSearch)
+    s.harness = None
     s.registered_evaluation_command = (
         "python kapso_evaluation/kapso_eval.py --fidelity full"
     )

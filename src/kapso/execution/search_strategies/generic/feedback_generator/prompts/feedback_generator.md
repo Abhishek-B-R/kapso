@@ -54,7 +54,7 @@ You can read this file in the workspace to see the full evaluation code.
 {{evaluation_result}}
 ```
 
-## Your Task
+{{domain_guidance}}## Your Task
 
 1. **Read the evaluation script** at `{{evaluation_script_path}}` to understand what it tests
 2. **Analyze the evaluation result** to determine if the goal was achieved

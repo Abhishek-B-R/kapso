@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from pathlib import Path
 from kapso.gated_mcp.presets import knowledge_tools_block, user_setup_gaps
 from kapso.execution.search_strategies.base import (
     SearchStrategy,
@@ -80,6 +81,7 @@ from kapso.execution.inbox import (
     record_continued,
     requests_for_ids,
 )
+from kapso.harness.staging import StagedHarness, host_for, no_harness, stage_harness
 from kapso.execution.search_strategies.generic.lens_planning import (
     design_axes_brief,
     normalize_design_axes,
@@ -970,6 +972,7 @@ class GenericSearch(SearchStrategy):
             session_effort=self.session_effort,
             build_prompt=self._build_ideation_prompt,
             run_ensemble=self._generate_solution_ensemble,
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _run_lens_planner_session(self, prompt: str, ideation_dir: str):
@@ -987,6 +990,7 @@ class GenericSearch(SearchStrategy):
             ideation_web_search=self.ideation_web_search,
             session_effort=self.session_effort,
             artifacts_dir=self._ideation_artifacts_dir(),
+            staged=self.stage_harness_for("ideation", ideation_dir, "lens_planner", "claude_code"),
         )
         # Planning runs inside the ideation step; flip the live phase back
         # so the sessions that follow are not reported as still planning.
@@ -1012,6 +1016,7 @@ class GenericSearch(SearchStrategy):
             campaign_state_brief=self._campaign_state_brief,
             get_best_experiment=self.get_best_experiment,
             run_planner_session=self._run_lens_planner_session,
+            domain_guidance=self.stage_harness_for("ideation", ideation_dir, "lens_planner", "claude_code").guidance,
         )
 
     def _generate_solution_ensemble(
@@ -1044,6 +1049,7 @@ class GenericSearch(SearchStrategy):
             build_prompt=self._build_ideation_prompt,
             resolve_lenses=self._resolve_member_lenses,
             select_candidates=self._select_from_candidates,
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _campaign_state_brief(self) -> str:
@@ -1075,6 +1081,7 @@ class GenericSearch(SearchStrategy):
             env_defaults=self.env_defaults,
             session_effort=self.session_effort,
             artifacts_dir=self._ideation_artifacts_dir(),
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _build_ideation_prompt(
@@ -1082,6 +1089,7 @@ class GenericSearch(SearchStrategy):
         problem: str,
         repo_memory_brief: str,
         allowed_tools: Sequence[str] = (),
+        domain_guidance: str = "",
     ) -> str:
         """Build the ideation prompt for Claude Code; ``allowed_tools`` is
         the session's whitelist, which decides whose gate guidance the
@@ -1093,6 +1101,7 @@ class GenericSearch(SearchStrategy):
             shared_artifacts_brief=self.shared_artifacts_brief,
             inbox_ideation=self._render_inbox_ideation(),
             knowledge_tools=knowledge_tools_block("ideation", allowed_tools),
+            domain_guidance=domain_guidance,
         )
 
     def _render_inbox_ideation(self) -> str:
@@ -1195,6 +1204,7 @@ class GenericSearch(SearchStrategy):
             inbox_settings=getattr(self, "inbox_settings", None),
             continuation=continuation,
             defer_evaluation=self._cost_enabled(),
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _build_implementation_prompt(
@@ -1208,6 +1218,7 @@ class GenericSearch(SearchStrategy):
         lane_brief: str = "",
         inbox_section: str = "",
         allowed_tools: Sequence[str] = (),
+        domain_guidance: str = "",
     ) -> str:
         """Build the implementation prompt for Claude Code; ``allowed_tools``
         is the session's whitelist, which decides whose gate guidance the
@@ -1227,6 +1238,7 @@ class GenericSearch(SearchStrategy):
             lane_brief=lane_brief,
             inbox_section=inbox_section,
             knowledge_tools=knowledge_tools_block("implementation", allowed_tools),
+            domain_guidance=domain_guidance,
         )
 
     def _manifest_of_record(self, node: SearchNode) -> Optional[Dict[str, Any]]:
@@ -1404,6 +1416,20 @@ class GenericSearch(SearchStrategy):
             session_started_ts=getattr(
                 self, "_last_session_started_ts", 0.0
             ),
+        )
+
+    def stage_harness_for(self, module: str, session_dir: str, label: str, agent_type: str) -> StagedHarness:
+        """What the loaded harness gives one session of a module, staged
+        into the session's directory (nothing without a harness). An
+        ideation session's id is prefixed with the iteration, so the
+        staging records sit beside the ideation artifacts."""
+        session_id = f"ideation/iter{self.iteration_count}/{label}" if module == "ideation" else label
+        if self.harness is None:
+            return no_harness(module, agent_type, Path(session_dir), session_id)
+        return stage_harness(
+            self.harness, module,
+            session_dir=Path(session_dir), campaign_dir=Path(self.workspace_dir),
+            session_id=session_id, host=host_for(agent_type),
         )
 
     def _ideation_artifacts_dir(self) -> str:
@@ -1647,6 +1673,7 @@ class GenericSearch(SearchStrategy):
             # The frame run's verdict: in cost mode a session's own claim
             # of validity never reaches the judge.
             execution_valid=node.evaluation_valid if self._cost_enabled() else True,
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _extract_agent_result(self, agent_output: str) -> dict:

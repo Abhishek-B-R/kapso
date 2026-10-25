@@ -337,6 +337,7 @@ def test_validate_grant_short_circuits_and_appends_a_full_attempt(
     target.branch_name = "generic_exp_0"
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.iteration_count = 0
     strategy.node_history = [target]
     strategy.registered_evaluator_id = "ev-1"
@@ -530,6 +531,7 @@ def test_frame_run_overrun_is_a_failed_attempt_not_a_crash(
     target.branch_name = "generic_exp_0"
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.node_history = [target]
     strategy.registered_evaluator_id = "ev-1"
     strategy.registered_subsample_seed = 1337
@@ -613,6 +615,7 @@ def test_frame_run_refuses_tampered_data(tmp_path, monkeypatch):
     target.branch_name = "generic_exp_0"
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.node_history = [target]
     strategy.registered_evaluator_id = "ev-1"
     strategy.registered_subsample_seed = 1337
@@ -791,6 +794,7 @@ def test_frame_run_reports_its_duration_to_the_recorder(
     target.branch_name = "generic_exp_0"
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.node_history = [target]
     strategy.registered_evaluator_id = "ev-1"
     strategy.registered_subsample_seed = 1337

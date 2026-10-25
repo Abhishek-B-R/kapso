@@ -13,7 +13,8 @@ import os
 import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from kapso.core.prompt_loader import load_prompt, render_prompt
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.harness.staging import StagedHarness
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic import codex_ideation
 
@@ -195,6 +196,7 @@ def run_lens_planner_session(
     ideation_web_search: bool,
     session_effort: Optional[str],
     artifacts_dir: str,
+    staged: Optional[StagedHarness] = None,
 ):
     """One planner/replanner claude session; returns (result, cost_usd)."""
     from kapso.execution.coding_agents.base import CodingAgentConfig
@@ -216,11 +218,7 @@ def run_lens_planner_session(
         f"({'web-enabled' if ideation_web_search else 'web-OFF'}"
         f"{', bank-served' if mcp_servers else ''})"
     )
-    config = CodingAgentConfig(
-        agent_type="claude_code",
-        model=planner["model"],
-        debug_model=planner["model"],
-        agent_specific={
+    own = {
             **claude_auth_settings,
             "env_strip": env_strip,
             "env_defaults": env_defaults,
@@ -228,6 +226,7 @@ def run_lens_planner_session(
             "allowed_tools": [
                 "Read", "WebSearch", "WebFetch",
                 *[t for t in mcp_tools if t.startswith("mcp__")],
+                *(staged.allowed_tools if staged is not None else []),
             ],
             "disallowed_tools": web_disallowed_tools,
             "timeout": planner.get("timeout", 600),
@@ -238,7 +237,12 @@ def run_lens_planner_session(
                 artifacts_dir, "lens_planner",
                 planner["model"],
             ),
-        },
+    }
+    config = CodingAgentConfig(
+        agent_type="claude_code",
+        model=planner["model"],
+        debug_model=planner["model"],
+        agent_specific=staged.merged_agent_specific(own) if staged is not None else own,
     )
     agent = ClaudeCodeCodingAgent(config)
     agent.initialize(ideation_dir)
@@ -274,6 +278,7 @@ def resolve_member_lenses(
     campaign_state_brief: Callable[[], str],
     get_best_experiment: Callable[[], Optional[SearchNode]],
     run_planner_session: Callable[[str, str], tuple],
+    domain_guidance: str = "",
 ) -> tuple:
     """Task-aware lenses, replanned per iteration; returns (lenses, cost).
 
@@ -323,6 +328,7 @@ def resolve_member_lenses(
                 "lens_count": str(expected),
                 "shared_artifacts_brief": shared_artifacts_brief,
                 "design_axes": design_axes_brief(design_axes),
+                "domain_guidance": optional_block(domain_guidance),
             },
         )
         result, cost = run_planner_session(prompt, ideation_dir)
@@ -384,6 +390,7 @@ def resolve_member_lenses(
             "previous_rationale": plan.get("rationale") or "(none recorded)",
             "recent_feedback": recent_feedback,
             "champion_solution": champion_solution,
+            "domain_guidance": optional_block(domain_guidance),
         },
     )
     result, cost = run_planner_session(prompt, ideation_dir)

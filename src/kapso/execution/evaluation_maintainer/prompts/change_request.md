@@ -59,7 +59,7 @@ touching anything.
     produced — every prior run becomes unmeasurable. Take this road only
     when no lower tier fixes the defect, and say so in your reason.
 
-## Your output
+{{domain_guidance}}## Your output
 If you reject: change nothing.
 If you accept: implement the fix now, inside `kapso_evaluation/` only.
 

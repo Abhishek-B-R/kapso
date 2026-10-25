@@ -89,6 +89,7 @@ def test_telemetry_round_trips_through_to_dict():
 
 def test_run_sums_attributed_phase_costs_onto_the_node():
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.parent_policy = "baseline"
     strategy.registered_evaluator_id = ""
     strategy.fidelity_decision = None

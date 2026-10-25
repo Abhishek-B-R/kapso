@@ -53,6 +53,7 @@ class Harness:
         self.ask_again_on_continue = False
 
         strategy = GenericSearch.__new__(GenericSearch)
+        strategy.harness = None
         strategy.parent_policy = "best"
         strategy.registered_evaluator_id = ""
         strategy.fidelity_decision = None

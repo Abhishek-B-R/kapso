@@ -139,10 +139,12 @@ class FakePlannerAgent:
 
 def make_stub(tmp_path, planner=PLANNER, iteration=1, node_history=()):
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.workspace_dir = str(tmp_path)
     strategy.ideation_ensemble = [dict(m) for m in MEMBERS]
     strategy.ideation_lens_planner = dict(planner) if planner else None
     strategy.iteration_count = iteration
+    strategy.harness = None
     strategy.shared_artifacts_brief = "No shared-cache artifacts registered yet."
     # Mirror __init__-set attributes the planner-session path reads (stub
     # gotcha: new GenericSearch instance attributes must be added here too).

@@ -15,6 +15,7 @@ post-condition in this frame — never an instruction to the agent:
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 import shlex
@@ -26,7 +27,8 @@ from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import git
 
-from kapso.core.prompt_loader import load_prompt, render_prompt
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.harness.staging import StagedHarness
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.evaluation_integrity import (
@@ -163,8 +165,10 @@ class EvaluationMaintainer:
         goal: str,
         eval_dir: Optional[str],
         data_dir: Optional[str],
+        staged: Optional[StagedHarness] = None,
     ) -> EvaluatorVersion:
-        """Verify-or-build the evaluator, time it, register v1, commit."""
+        """Verify-or-build the evaluator, time it, register v1, commit.
+        ``staged`` is the harness's setup module for this session, or None."""
         transaction_started = time.monotonic()
 
         provided = eval_dir is not None
@@ -185,6 +189,7 @@ class EvaluationMaintainer:
                     "manifest_marker": MANIFEST_MARKER,
                     "fast_fraction": str(self.fast_fraction),
                     "subsample_seed": str(self.subsample_seed),
+                    "domain_guidance": optional_block(staged.guidance if staged is not None else ""),
                 },
             )
         else:
@@ -200,10 +205,11 @@ class EvaluationMaintainer:
                     "manifest_marker": MANIFEST_MARKER,
                     "fast_fraction": str(self.fast_fraction),
                     "subsample_seed": str(self.subsample_seed),
+                    "domain_guidance": optional_block(staged.guidance if staged is not None else ""),
                 },
             )
 
-        agent_cost = self._run_agent(prompt)
+        agent_cost = self._run_agent(prompt, staged)
         self._enforce_provided_immutable()
 
         timing, calibration_manifest = self._run_calibration()
@@ -246,9 +252,10 @@ class EvaluationMaintainer:
     # =====================================================================
 
     def handle_change_request(
-        self, request: EvaluationChangeRequest
+        self, request: EvaluationChangeRequest, staged: Optional[StagedHarness] = None
     ) -> ChangeOutcome:
-        """Triage and, if accepted, implement + register a new version."""
+        """Triage and, if accepted, implement + register a new version;
+        ``staged`` is the harness's verification module for this session."""
         transaction_started = time.monotonic()
         head = self.registry.head()
         if head is None:
@@ -269,9 +276,10 @@ class EvaluationMaintainer:
                 ),
                 "entrypoint_name": ENTRYPOINT_NAME,
                 "manifest_marker": MANIFEST_MARKER,
+                "domain_guidance": optional_block(staged.guidance if staged is not None else ""),
             },
         )
-        agent = CodingAgentFactory.create(self.coding_agent_config)
+        agent = CodingAgentFactory.create(self._config_for(staged))
         agent.initialize(str(self.workspace_dir))
         result = agent.generate_code(prompt)
         agent_cost = agent.get_cumulative_cost()
@@ -438,12 +446,21 @@ class EvaluationMaintainer:
     # Frame mechanics (mechanical post-conditions)
     # =====================================================================
 
-    def _run_agent(self, prompt: str) -> float:
-        _, cost = self._run_agent_with_output(prompt)
+    def _config_for(self, staged: Optional[StagedHarness]) -> CodingAgentConfig:
+        """The maintainer's agent config, with the harness's staged keys
+        when a module was staged for this session."""
+        if staged is None or not staged.guidance:
+            return self.coding_agent_config
+        config = copy.deepcopy(self.coding_agent_config)
+        config.agent_specific = staged.merged_agent_specific(config.agent_specific)
+        return config
+
+    def _run_agent(self, prompt: str, staged: Optional[StagedHarness] = None) -> float:
+        _, cost = self._run_agent_with_output(prompt, staged)
         return cost
 
-    def _run_agent_with_output(self, prompt: str) -> tuple:
-        agent = CodingAgentFactory.create(self.coding_agent_config)
+    def _run_agent_with_output(self, prompt: str, staged: Optional[StagedHarness] = None) -> tuple:
+        agent = CodingAgentFactory.create(self._config_for(staged))
         agent.initialize(str(self.workspace_dir))
         result = agent.generate_code(prompt)
         cost = agent.get_cumulative_cost()

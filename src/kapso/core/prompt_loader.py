@@ -55,6 +55,16 @@ def load_prompt(relative_path: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def optional_block(text: str) -> str:
+    """A template variable that is a whole block when present and nothing
+    when empty: the text, ending in one newline, followed by a blank line,
+    so the section after it keeps its heading; "" leaves the template
+    byte-identical to a render without it."""
+    if not text:
+        return ""
+    return text.rstrip("\n") + "\n\n"
+
+
 def render_prompt(template: str, variables: Dict[str, str]) -> str:
     """
     Render a prompt template using a tiny `{{var}}` replacement scheme.

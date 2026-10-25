@@ -16,7 +16,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from kapso.core.prompt_loader import load_prompt, render_prompt
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.harness.staging import StagedHarness
 from kapso.execution.inbox import Request, load_requests
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.generic.difficulties_generator import (
@@ -108,6 +109,7 @@ def run_implementation(
     note_session_started: Callable[[], None],
     note_session_end_facts: Callable[[str], None],
     await_registered_evaluation: Callable[[str], Optional[str]],
+    stage_harness_for: Callable[..., StagedHarness],
     node_id: int = 0,
     inbox_settings: Optional[Dict[str, Any]] = None,
     continuation: Optional[Continuation] = None,
@@ -181,6 +183,10 @@ def run_implementation(
     repo_memory_doc = RepoMemoryManager.ensure_exists_in_worktree(session.session_folder)
     repo_memory_brief = RepoMemoryManager.render_summary_and_toc(repo_memory_doc, max_chars=2500)
     
+    # The harness's implementation module, staged into the clone after the
+    # checkout and before the executing agent is built.
+    staged = stage_harness_for("implementation", session.session_folder, branch_name, implementation_cli)
+
     # 2. Get MCP config for code + research + repo_memory gates (not idea)
     mcp_servers, mcp_tools = get_mcp_config(
         gates=implementation_gates,
@@ -201,6 +207,7 @@ def run_implementation(
         "Read", "Write", "Edit", "Bash",
         *(["WebSearch", "WebFetch"] if implementation_web else []),
         *[t for t in mcp_tools if t.startswith("mcp__")],
+        *staged.allowed_tools,
     ]
     
     logger.info(f"[GenericSearch] Implementation tools: {implementation_allowed_tools}")
@@ -211,7 +218,7 @@ def run_implementation(
             agent_type="codex",
             model=implementation_model,
             debug_model=implementation_model,
-            agent_specific={
+            agent_specific=staged.merged_agent_specific({
                 **({"env_overrides": lane_env} if lane_env else {}),
                 "env_strip": env_strip,
                 "env_defaults": env_defaults,
@@ -228,14 +235,14 @@ def run_implementation(
                 # fallback's forensics, same as the claude path.
                 "stream_artifact_path": session_stream_path(branch_name),
                 **inbox_agent_settings,
-            },
+            }),
         )
     else:
         config = CodingAgentConfig(
             agent_type="claude_code",
             model=implementation_model,
             debug_model=implementation_model,
-            agent_specific={
+            agent_specific=staged.merged_agent_specific({
                 **claude_auth_settings,
                 **({"env_overrides": lane_env} if lane_env else {}),
                 "env_strip": env_strip,
@@ -256,7 +263,7 @@ def run_implementation(
                 # that delivered its full final report but lingers alive.
                 "completion_markers": IMPLEMENTATION_COMPLETION_MARKERS,
                 **inbox_agent_settings,
-            }
+            }),
         )
 
     # 5. Build implementation prompt
@@ -287,6 +294,7 @@ def run_implementation(
             previous_errors=previous_errors_text,
             lane_brief=lane_brief,
             allowed_tools=implementation_allowed_tools,
+            domain_guidance=staged.guidance,
             **(
                 {"inbox_section": render_inbox_section(
                     load_requests(inbox_settings["path"]),
@@ -503,6 +511,7 @@ def build_implementation_prompt(
     lane_brief: str = "",
     inbox_section: str = "",
     knowledge_tools: str = "",
+    domain_guidance: str = "",
 ) -> str:
     """Build the implementation prompt for Claude Code from the one template.
     ``evaluation_instructions`` is the mode's evaluation contract (build and
@@ -531,6 +540,7 @@ def build_implementation_prompt(
             "inbox_tool_line": INBOX_TOOL_LINE if inbox_on else "",
             "knowledge_tools": knowledge_tools,
             "inbox_checklist_note": CHECKLIST_NOTE_WITH_INBOX if inbox_on else "",
+            "domain_guidance": optional_block(domain_guidance),
             "closing_line": (
                 CLOSING_LINE_WITH_INBOX if inbox_on else CLOSING_LINE_WITHOUT_INBOX
             ),
