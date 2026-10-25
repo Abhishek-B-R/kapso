@@ -945,7 +945,36 @@ the wheel from `f0a81497` with a config copy that sets
 implementation and, since the review moved it to the attempt's host,
 verification on Codex; its outcome is recorded below as it lands.
 
-CODEX_PROOF_RESULT
+That third campaign did not run on the machine. Its first launch died in
+the setup session because the config copy kept the default
+`implementation_model: claude-opus-5`, which Codex cannot serve (a
+finding below); the second, with `gpt-5.6-sol`, died the same way with
+`Quota exceeded. Check your plan and billing details.` from Codex, and a
+probe of three model names on the machine answered the same: the
+OpenAI key the fresh machine logs Codex in with has no quota. Every
+fresh-machine proof so far, WP1's included, had its ideation ensemble's
+Codex member and the Codex repo-memory bootstrap fail the same way and
+fall back with one warning line. So the Codex-host campaign ran on the
+development box instead, where Codex bills a ChatGPT login: the same
+config copy, the worktree's code at `83d4f8fb`, thirty-five minutes and
+one experiment, the fresh install not being what it tests.
+
+It delivered at 13:03 UTC: the setup session on Codex (`gpt-5.6-sol`)
+pinned `prepared/market-data` in 59 seconds through the `market-data`
+server (six calls to it across the campaign); the implementation session
+on Codex (16 commands, 6 file changes, two `collab_tool_call` spawns of
+the `lookahead-auditor` role) scored **2.0144**; the verification session
+on Codex wrote `valid` after the scans and "an independent audit";
+the judge, on Claude Code with the `risk-reviewer` delegate, called the
+target met; one experiment, `goal_achieved`, $5.38 of Claude spend (Codex
+reports none). The records hold as on the machines: one identity, the
+task statement with the domain statement, `harness.json` and a stream
+for each of the five sessions, the Codex ones under `.agents/skills`,
+`.codex/hooks.json` and `.codex/harness-agents/`. Two things a Codex
+stream does not show: the hooks' decisions (Codex's event stream has no
+hook events, so the canary for Codex hooks stays the host-facts probe)
+and the cost. The Codex rows of the host table are exercised by this
+run; the fresh-install part of the proof is the two machines' above.
 
 What the judge noticed on the second machine and the engine did not: the
 implementer wrote a new file, `kapso_evaluation/eval_profile.md`, under the
@@ -1047,6 +1076,15 @@ harnesses are kept with the run records (`scripts/redesign/runs/wp2-s3/`).
   login; the preflight should pair every CLI with its model before a
   session runs, and the config without modes should make the pair one
   setting.
+- **The fresh machine's OpenAI key has no quota, and a session that
+  cannot run on it fails quietly** (the owner; WP6). Codex answers
+  `Quota exceeded` for every model on the machine, so no Codex session
+  ran in any fresh-machine proof; the ensemble member's and the
+  repo-memory bootstrap's failures are one warning line each in a long
+  log, and the campaign goes on without them. The key needs funding (or
+  another secret) before a fresh-machine proof can cover Codex; and a
+  session kind that fails every time it is tried should reach the
+  campaign's summary, not only its log.
 - **A new file under `kapso_evaluation/` passes the integrity check**
   (WP6, evaluation governance). The second machine's implementer wrote
   `kapso_evaluation/eval_profile.md`; the check rejects a modified
