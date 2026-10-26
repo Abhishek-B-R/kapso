@@ -1,0 +1,102 @@
+{
+  "module": "feedback",
+  "host": "claude_code",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "8fbc403632afe85c95fd15470afbe12b1f324026cb62a1a1bbb9aea6b06984ae",
+    "source": "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp4/devbox/examples/harnesses/trading"
+  },
+  "session_dir": "/campaign",
+  "pages": [
+    "guardrails.md",
+    "feedback.md"
+  ],
+  "skills": [
+    "risk-limits"
+  ],
+  "mcp_servers": [],
+  "agents": [
+    "risk-reviewer"
+  ],
+  "hooks": [
+    "protect-harness",
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared"
+  ],
+  "prepared": [
+    "market-data"
+  ],
+  "stream": "/campaign/.kapso/sessions/feedback/generic_exp_0/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-26T14:31:34+00:00",
+      "ended": "2026-10-26T14:38:16+00:00",
+      "duration_seconds": 401.967,
+      "model": "claude-opus-5",
+      "cli_session_id": "80efef3c-71df-4ba0-a15f-d7dad5bc9d91",
+      "exit": "success",
+      "error": null,
+      "retry_reason": null,
+      "cost_usd": 3.543078,
+      "cost_cumulative": 3.543078499999999,
+      "turns": 46,
+      "usage": null,
+      "tools": {
+        "Bash": 37,
+        "Agent": 1,
+        "Read": 1,
+        "Skill": 1,
+        "ToolSearch": 2,
+        "ListAgents": 5,
+        "TaskStop": 5
+      },
+      "gates": {},
+      "hooks": [
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": null,
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        },
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": "context",
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        },
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": null,
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        }
+      ],
+      "delegates": [
+        {
+          "name": "risk-reviewer",
+          "tool_use_id": "toolu_01K5yJgqzHEWXWN5FCwYAh7H",
+          "background": true,
+          "status": "stopped",
+          "summary": "Risk review of attempt",
+          "usage": {
+            "total_tokens": 47151,
+            "tool_uses": 9,
+            "duration_ms": 166273
+          },
+          "report": "Risk review of attempt"
+        }
+      ],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": "<stop>false</stop>\n\n<evaluation_valid>false</evaluation_valid>\n\n<score>null</score>\n\n<feedback>\n## Status: VOID \u2014 nothing was banked. The champion is still the 0.14 baseline.\n\nThe harness verdict is **void**, so this attempt is invalid whatever its score and the evaluation is **not valid** for this iteration. The printed `sharpe: 2.4002` cannot be credited. Treat the campaign as still sitting at the shipped baseline (0.14) with the full gap to the 1.0 target open.\n\nCause, precisely: `evaluate.py` and `private_dir.txt` were **not** touched and no evaluation logic was tampered with \u2014 but commit `f0b29ad` (\"docs: profile trading evaluation\") added a hand-authored file, `kapso_evaluation/eval_profile.md`, inside the protected directory. `kapso_task.md` states: \"`kapso_evaluation/`, provided by the person and protected: a candidate that modifies it is rejected.\" Adding a file to that directory is modifying it. The branch tracks two extra files there (`eval_profile.md`, `result.json`) where `main` tracks only the original two.\n\n## FIRST ACTION of the next iteration: bank the artifact that already exists\n\nThis is orphaned value of the highest possible kind \u2014 a measured, fully-verified 2.4002 that no one can collect. The artifact is intact and recoverable:\n\n- `git show generic_exp_0:strategy.py` \u2014 the frozen SoftRisk TSMOM signal\n- `git show generic_exp_0:test_strategy.py` \u2014 3 passing contract tests (type/length/index/finite/bounds, prefix invariance over every prefix, zero-volatility \u2192 flat)\n\nRe-ship those **byte-identical** on a clean branch off `main`, with zero files written under `kapso_evaluation/`, and run the one remaining registered evaluation. The evaluator is deterministic and `signal` reads only `bars[\"close\"]`, so the clean run should reproduce the same number. Do not redesign, do not re-tune, do not \"improve\" anything first.\n\nThis is not validation-polishing and it is not consolidation-for-its-own-sake: the champion is at 0.14, far below the bar, and re-shipping is the only path that converts an unbankable measurement into a scored result. It is the single highest-return action available.\n\n### How not to repeat the violation\n- Profiling notes, plans, and attempt notes belong at the **workspace root** (`eval_profile.md`, `attempt_notes.md`, `PLAN.md`, `changes.log`, `test_strategy.py`, `results/`, `output_data_*/` were all fine where they were). Only `kapso_evaluation/` is off-limits.\n- Never `git add kapso_evaluation/`. The evaluator writes `kapso_evaluation/result.json` itself; leave it untracked. Adding `kapso_evaluation/result.json` to the root `.gitignore` is safe \u2014 `.gitignore` is at the workspace root, not inside the protected directory.\n- Gate before committing: `git diff --stat main..HEAD -- kapso_evaluation/` must print nothing, and `git status --porcelain kapso_evaluation/` must show nothing staged. Make that check the last step before the commit, not an afterthought.\n\n### Budget reality\nOne of two experiments is spent (on the void run). **One registered evaluation remains.** Do not spend it on an unmeasured variant. Freeze the parameters exactly as they are: lookbacks (15, 20), momentum-vol window 20, `tanh`, equal 0.5/0.5 weights, EMA span 5 `adjust=False`, EWM-std span 60 / min 20 obs, 0.15 annualised risk target, leverage cap 1.0, clip [-1, 1], warm-up 0.0.\n\n## Risk line and robustness read\n\nThe risk-reviewer delegate did not return within the module's time, so I computed the line myself from the evaluator-owned artifacts on the branch, using the risk-limits definitions:\n\n```\nsharpe 2.4003 | max_dd 2.42% | gross 0.4266 | turnover 11.9x | worst_month -1.76%\n```\n\nEvery task limit is respected, with margin: max |position| on any instrument-bar was 0.9926 (bound 1.0), and mean portfolio gross exposure 0.4266 against the equal-weight implied cap of 1.0 (peak daily 0.6324). No limit is breached, so nothing caps the score on risk grounds.\n\nRobustness, which matters more here than the headline:\n- 9 of 12 months and 3 of 4 quarters positive; daily hit rate 55.7%. Losing periods exist, so the signal can fail \u2014 it is not a leak signature.\n- Concentration is real but not fatal: the top 5 days are 34% of total P&L and the top 10 are 61%. Stress cuts still clear the bar \u2014 Sharpe excluding the top 5 days 1.71, excluding the best month 1.50, excluding both best and worst month 2.02. The result survives removal of its luckiest stretch.\n- Cost robustness is strong: at 2x cost 2.29, at 4x 2.06, at 8x 1.62. Annual cost drag is only 0.59% at the evaluator's 5bp against 11.9x turnover, so the 63% turnover reduction from the 5-day smoothing was well spent.\n- Development replay (2021\u20132023) was 2.12 with calendar-year Sharpes 1.78 / 3.28 / 1.28; the OOS 2.40 is consistent with it rather than an outlier. The margin over 1.0 is not within noise of the bar even granting ~1 Sharpe unit of sampling error on 262 days.\n\n**Do not tune on the 2024 diagnostics.** `attempt_notes.md` on the branch now carries a month-by-month 2024 table derived from the evaluator's artifacts. Invariant: the 2024 bars are read by the evaluation alone; parameter choices come from 2021\u20132023. Adjusting anything in light of that table is selection on the out-of-sample window. Re-ship unchanged.\n\n## Exploration axis\n\n**Move on no new axis this iteration.** With one experiment left and a measured-but-unbanked result, the axis question is secondary to banking the score. Status of the ideation axes against this attempt's evidence:\n\n1. **Signal construction \u2014 active, and carrying the result.** Replacing the binary 20/100 long-only cross with a continuous, bounded, dual-horizon vol-normalised TSMOM is where the entire 0.14 \u2192 2.4 move came from. Already harvested; do not churn it.\n2. **Feature representation \u2014 the only genuinely open axis.** The strategy uses `close` alone; `high`, `low`, `open`, and `volume` are unused, and the volatility normaliser is a close-to-close estimator. A range-based estimator (Parkinson / Garman-Klass) from the untouched high/low is the obvious next probe. Only if a third experiment is granted, and validated on 2021\u20132023 only.\n3. **Portfolio construction \u2014 structurally closed to the candidate.** The evaluator equal-weights the three instruments and `signal` sees one instrument at a time, so cross-sectional sizing is not reachable through the contract. Reopens only if the contract changes.\n4. **Execution and costs \u2014 saturated with evidence.** 2.06 at 4x costs and 1.62 at 8x leaves no cost-side risk worth buying down.\n\n## Time allocation (contest economics)\n\nThe implementation session ran 324.7s \u2014 **5.4 minutes** of a 40\u201375 minute budget \u2014 in a single turn: 18 commands, 5 file writes, 4 market-data calls. (The task statement is still internally inconsistent on time: the Brief says `minutes=75`, the Budget section `minutes=40.0`. The setup flagged this and it remains uncanonicalised; plan against the conservative 40.)\n\n- **Time-to-first-strong-score: A.** The first and only registered score landed at ~5 minutes and cleared the 1.0 bar by 2.4x on the first attempt. Bold, correct allocation \u2014 explicit credit for going straight at a substantive family change instead of sweeping parameters around the baseline.\n- **Critical-path velocity: A.** One validated artifact \u2014 causal position series, 3 passing contract tests, a 2,340-row evaluator-equivalent dev replay \u2014 in about 5 minutes, with no wasted exploration branches.\n- **Confirmation overhead: cheap in volume, catastrophic in composition.** The confirmations themselves (static look-ahead scan, independent look-ahead auditor, 3 contract tests, post-eval scan and risk accounting) all fit inside 5.4 minutes and were the right insurance to carry. The failure is *which* extra artifact got written: `eval_profile.md`, a 39-line restatement of an evaluator the agent had already read in full, added nothing the session didn't already know \u2014 and it is the single thing that voided a 2.4002.\n- **Counterfactual ledger:** ~1 compute-min writing a redundant profile doc into the protected directory \u2248 the whole 2.4002 result left unbanked \u2248 \u22122.26 final against the 0.14 champion: the worst return on a confirmation minute available in this task. Every other minute in the allocation was net-positive.\n- **PLAN.md adherence: adherent, no undeclared drift.** All three declared TIME ALLOCATION lines were met \u2014 implementation plus the 2,340-row replay inside the 6-minute target, confirmations at the three declared checkpoints, and parameters frozen before the sole full evaluation and not changed after seeing the result. The \"reserve the final 12 minutes\" line was moot because the session finished in 5.4 minutes total; over-provisioned, not drifted.\n- **Integrity note:** this was not a speed-for-integrity trade. The violation bought no speed whatsoever \u2014 it was pure avoidable overhead that happened to land in a protected path. Keep every fidelity gate and the freeze-time confirmation; just stop writing anything into `kapso_evaluation/`.\n\n## Invariant rules (carry forward verbatim)\n- a signal at bar t uses only bars at or before t; the position decided at t earns from t+1\n- the 2024 bars are read by the evaluation alone; develop on 2021 to 2023\n- every price comes from the pinned snapshot the setup session builds; no live fetches\n- the evaluator is never modified\n- `kapso_evaluation/` is protected: a candidate that modifies it \u2014 including adding a file to it \u2014 is rejected\n\n## Next-attempt checklist\n1. Branch from `main`. Restore `strategy.py` and `test_strategy.py` from `generic_exp_0` unchanged.\n2. Run the 3 contract tests; confirm all pass. Re-run the look-ahead scan on the diff.\n3. Keep all notes/profiles at the workspace root. Write nothing under `kapso_evaluation/`.\n4. Verify `git diff --stat main..HEAD -- kapso_evaluation/` is empty and nothing under it is staged.\n5. Run `python kapso_evaluation/evaluate.py` once (full score; `--fast` is not comparable). Save `results/` and the printed output to the attempt's output dir.\n6. Report the risk line in the standard order and change nothing after seeing the number.\n</feedback>\n\n<cards_load_bearing>none</cards_load_bearing>"
+    }
+  ]
+}

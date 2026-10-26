@@ -1,0 +1,5 @@
+instruments: ALPHA, BETA, GAMMA
+days: 262
+max_drawdown: 0.0242
+turnover: 11.9
+sharpe: 2.4002

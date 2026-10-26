@@ -1,0 +1,65 @@
+{
+  "module": "ideation",
+  "host": "codex",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "8fbc403632afe85c95fd15470afbe12b1f324026cb62a1a1bbb9aea6b06984ae",
+    "source": "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp4/devbox/examples/harnesses/trading"
+  },
+  "session_dir": "/tmp/kapso_candidate_zu3al8a1",
+  "pages": [
+    "guardrails.md",
+    "ideation.md"
+  ],
+  "skills": [
+    "strategy-families",
+    "market-structure"
+  ],
+  "mcp_servers": [],
+  "agents": [],
+  "hooks": [
+    "protect-harness",
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared"
+  ],
+  "prepared": [
+    "market-data"
+  ],
+  "stream": "/campaign/.kapso/ideation/iter1/codex_gpt-5.6-sol.stream.txt",
+  "runs": [
+    {
+      "started": "2026-10-26T14:17:58+00:00",
+      "ended": "2026-10-26T14:22:49+00:00",
+      "duration_seconds": 291.108,
+      "model": "gpt-5.6-sol",
+      "cli_session_id": "01a17893-4216-7893-a03c-4fc342e56d48",
+      "exit": "success",
+      "error": null,
+      "retry_reason": null,
+      "cost_usd": null,
+      "cost_cumulative": null,
+      "turns": 1,
+      "usage": {
+        "input_tokens": 898903,
+        "cached_input_tokens": 813440,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 16052,
+        "reasoning_output_tokens": 8513
+      },
+      "tools": {
+        "command_execution": 9
+      },
+      "gates": {},
+      "hooks": null,
+      "delegates": [],
+      "host_errors": [
+        "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.",
+        "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."
+      ],
+      "files_changed": [],
+      "last_message": "<solution>\n# Core Idea\nReplace the slow long-only MA cross with \u201cSoftRisk TSMOM\u201d: a causal long/short ensemble of 15- and 20-day volatility-normalized momentum, softly bounded with `tanh`, smoothed over five days, and capped to a 15% annualized per-instrument risk target.\n\n# Why This Approach\nNo experiment-history IDs or prior evaluation profile were available, so the shipped strategy is the only prior result. It uses a binary 20/100-day long/flat signal and scores 0.14 OOS ([strategy.py](/tmp/kapso_candidate_zu3al8a1/strategy.py:16), [task](/tmp/kapso_candidate_zu3al8a1/kapso_task.md:15)).\n\nA causal development replay using the evaluator\u2019s exact shift and 5 bp cost equations produced Sharpe 2.13, max drawdown 0.03, and annual turnover 12.1 for SoftRisk TSMOM. Calendar-year Sharpes were 1.79, 3.28, and 1.28 for 2021\u20132023. The result was stable across 15\u201320-day lookbacks and 3\u20138-day smoothing spans, unlike longer 40\u201360-day signals. This is a substantive family change from a slow MA cross, not parameter retuning.\n\n# Solution Steps\n1. Retain `signal(bars) -> pandas.Series`; use only `bars[\"close\"]`. Do not shift inside `signal`, because the evaluator already shifts positions once ([evaluate.py](/tmp/kapso_candidate_zu3al8a1/kapso_evaluation/evaluate.py:65)).\n2. Calculate daily returns and a causal 20-day rolling standard deviation.\n3. For each lookback \\(L\\in\\{15,20\\}\\), calculate `z_L = log(close / close.shift(L)) / (rolling_vol_20 * sqrt(L))`.\n4. Form `raw = 0.5 * (tanh(z_15) + tanh(z_20))`. This preserves signal strength near zero while preventing extreme historical moves from forcing discontinuous full-sized trades.\n5. Smooth `raw` with a five-day exponential moving average using `adjust=False`.\n6. Estimate annualized risk as the 60-day-span exponentially weighted standard deviation of daily returns times `sqrt(252)`. Multiply the smoothed trend by `min(1, 0.15 / annualized_vol)`, so volatile instruments are de-risked but quiet instruments are never levered.\n7. Replace zero-volatility and warm-up values with zero, then clip the result to `[-1, 1]` and preserve the input index.\n8. Add contract tests for output type, length, finite values, bounds, and prefix invariance: recomputing on every tested prefix must reproduce the corresponding full-history position exactly.\n9. Replay 2021\u20132023 with the evaluator\u2019s exact turnover accounting and confirm approximately Sharpe 2.13, max drawdown 0.03, and turnover 12.1. Then spend the remaining registered experiment on one full 2024 evaluation; do not inspect private bars or tune after observing them.\n\n# Hyperparameters\n- momentum lookbacks: `(15, 20)` trading days\n- momentum-volatility window: `20` days\n- signal transform: `tanh`\n- lookback weights: `0.5, 0.5`\n- signal smoothing: EMA span `5`, `adjust=False`\n- risk estimator: EWM standard deviation, span `60`, minimum `20` observations\n- annualized risk target: `0.15`\n- leverage multiplier cap: `1.0`\n- position bounds: `[-1.0, 1.0]`\n- warm-up and invalid-value position: `0.0`\n- transaction cost: evaluator-owned `0.0005` per unit turnover\n\n# Coverage\n- **Input distribution \u2014 MEASURED:** Three instruments, each with 780 ascending daily OHLCV bars from 2021\u20132023, are documented in the [task](/tmp/kapso_candidate_zu3al8a1/kapso_task.md:42). The development data have no missing or duplicate rows; annualized instrument volatility ranges approximately 0.15\u20130.29 and pairwise daily-return correlations are near zero. The volatility cap therefore prevents BETA-like high-volatility series from dominating the equal-weight P&L.\n- **Regime coverage \u2014 MEASURED:** Development includes positive and negative calendar-year trends across all three instruments. The proposed strategy remained above Sharpe 1.28 in each calendar year, while half-year losses demonstrate that it can fail in abrupt or choppy regimes rather than benefiting from an implausibly universal edge.\n- **2024 regime \u2014 ASSUMED:** Its trend persistence, volatility, and correlation structure are unknown and must remain evaluation-only. Stability across instruments, years, neighboring lookbacks, and doubled costs is the available defense against this uncertainty.\n- **Instrument/market structure \u2014 ASSUMED:** Venue, asset class, session close, corporate-action treatment, funding, tick size, and lot size are undocumented ([task](/tmp/kapso_candidate_zu3al8a1/kapso_task.md:52)). Consequently, the proposal makes no intraday, carry, auction, or fill assumptions beyond the evaluator\u2019s specified close-to-close return and 5 bp cost.\n- **Output register \u2014 MEASURED:** The artifact must return exactly one numeric `Series` value per input row in `[-1,1]`; malformed outputs are rejected ([evaluate.py](/tmp/kapso_candidate_zu3al8a1/kapso_evaluation/evaluate.py:65)). SoftRisk TSMOM emits continuous positions in that register.\n- **Metric mechanics \u2014 MEASURED:** Positions are delayed one bar, turnover costs include the initial entry, instrument P&Ls are equally averaged, and Sharpe uses 252 days ([evaluate.py](/tmp/kapso_candidate_zu3al8a1/kapso_evaluation/evaluate.py:97)). Drawdown and mean annualized per-instrument turnover are reported but not separate score penalties.\n- **Noise floor \u2014 ASSUMED:** A single roughly 252-day OOS Sharpe has sampling uncertainty on the order of one Sharpe unit. The development result therefore needs substantial headroom over 1.0; 2.13 provides that headroom but cannot guarantee the private-year result.\n- **Harness controls \u2014 MEASURED:** The evaluator owns private-data loading, execution lag, costs, aggregation, and scoring. `strategy.py` owns only the causal per-instrument position.\n- **Permitted-data geometry \u2014 MEASURED:** Only the pinned 2021\u20132023 snapshot was profiled; no private path was read and no external prices were used.\n- **Exploration axes:** signal construction, feature representation, and per-instrument risk construction are **active**; execution/cost handling is **saturated** by smoothing plus the fixed evaluator model; cross-sectional momentum, carry, and market-specific execution are **deferred** because `signal` sees one instrument at a time and the required metadata is absent.\n\n# Rationale\nThis is a time-series momentum strategy. The economic hypothesis is gradual information diffusion and under-reaction: hedgers or constrained investors accept the other side for risk transfer, while trend followers are paid for absorbing it. It should lose in range-bound markets, rapid reversals, or structural breaks because its 15\u201320-day memory and five-day smoothing react late.\n\nMoskowitz, Ooi, and Pedersen find continuation over one-to-twelve-month horizons, identify hedgers as the opposing side, and use lagged volatility for comparable risk sizing ([primary paper](https://fairmodel.econ.yale.edu/ec439/mosk.pdf)). Lemp\u00e9ri\u00e8re et al. report saturation of trend returns at large signal magnitudes, motivating the bounded `tanh` representation rather than a brittle sign switch ([paper](https://arxiv.org/abs/1404.3274)). As an implementation reference, [`pysystemtrade`\u2019s EWMAC rule](https://github.com/pst-group/pysystemtrade/blob/master/systems/provided/rules/ewmac.py) demonstrates the useful underlying technique\u2014continuous causal trend divided by lagged volatility\u2014although this proposal implements the small formula directly with existing NumPy/Pandas rather than adding that GPL package.\n\nExpected turnover is approximately 12.1 per year, versus 3.5 for the baseline, costing about 61 basis points annually at the evaluator\u2019s rate. Five-day smoothing cuts unsmoothed turnover by roughly 63%, while the measured development Sharpe remains 2.13 and max drawdown remains approximately 0.03.\n</solution>"
+    }
+  ]
+}
