@@ -9,7 +9,7 @@ GenericSearch assembles arguments from its state and delegates here.
 
 import json
 import re
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.harness.verdict import is_void, render_verification
@@ -48,6 +48,7 @@ def generate_feedback(
     axes: str,
     session_end_facts: str,
     deadline_seconds: Optional[float],
+    retry_deadline: Callable[[], Tuple[Optional[float], Optional[str]]],
     manifest_of_record: Callable[[SearchNode], Optional[Dict[str, Any]]],
     finalize_run_selection: Callable[[Dict[str, Any], bool], None],
     execution_valid: bool = True,
@@ -94,7 +95,18 @@ def generate_feedback(
             domain_guidance=staged.guidance,
             verification=render_verification(verification),
             timeout_seconds=deadline_seconds,
+            retry_deadline=retry_deadline,
         )
+        if feedback_result.unjudged:
+            # No verdict: the attempt is unjudged, by reason, keeping its
+            # score; the judge's spend and time are still the attempt's.
+            node.unjudged = feedback_result.unjudged
+            node.phase_telemetry["feedback"] = {
+                "cost_usd": feedback_result.cost_usd,
+                "duration_seconds": feedback_result.duration_seconds,
+            }
+            print(f"[GenericSearch] node {node.node_id} unjudged: {node.unjudged}")
+            return node
 
         # Update node with feedback results. A harness verdict of void is
         # ANDed in after the judge, so the judge's default cannot

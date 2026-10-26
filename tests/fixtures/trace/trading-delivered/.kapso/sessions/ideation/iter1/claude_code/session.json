@@ -36,6 +36,7 @@
       "cli_session_id": "4f6a3dcc-5da6-4e6b-bff6-dad32c379f15",
       "exit": "success",
       "error": null,
+      "retry_reason": null,
       "cost_usd": 1.520507,
       "cost_cumulative": 1.5205065000000002,
       "turns": 18,

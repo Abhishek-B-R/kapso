@@ -95,6 +95,7 @@
           "verdict": "void"
         },
         "unjudged": "",
+        "commit": null,
         "cards_load_bearing": [
           "horizon-grid-locates-live-band",
           "continuous-forecasts-recover-binary-sizing-edge",
@@ -178,6 +179,7 @@
           "verdict": "unverified"
         },
         "unjudged": "",
+        "commit": null,
         "cards_load_bearing": [],
         "estimated_cost": null,
         "measured_cost": null,

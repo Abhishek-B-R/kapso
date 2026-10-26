@@ -156,7 +156,7 @@ def test_json_round_trips_through_the_view():
     view = read_trace(FIXTURES / "trading")
     again = TraceView(json.loads(json.dumps(view.data)))
     assert again.explain() == view.explain() and again.data == view.data
-    with pytest.raises(ValueError, match="not a trace of schema 1"):
+    with pytest.raises(ValueError, match="not a trace of schema 2"):
         TraceView({"schema_version": 0})
 
 

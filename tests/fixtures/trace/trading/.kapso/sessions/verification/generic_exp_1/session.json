@@ -38,6 +38,7 @@
       "cli_session_id": "5c38e4f5-539f-426f-81af-056f2b2f3a46",
       "exit": "timeout",
       "error": "Claude Code CLI exceeded its deadline and was terminated",
+      "retry_reason": null,
       "cost_usd": null,
       "cost_cumulative": null,
       "turns": 0,

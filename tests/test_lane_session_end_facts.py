@@ -38,7 +38,7 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch, tmp_path):
             judged[kwargs["head_branch"]] = kwargs["session_end_facts"]
             return SimpleNamespace(
                 feedback="ok", evaluation_valid=True, score=1.0, stop=False,
-                duration_seconds=None, cost_usd=0.0, cards_load_bearing=[],
+                duration_seconds=None, cost_usd=0.0, cards_load_bearing=[], unjudged="",
             )
 
     monkeypatch.setattr(strategy_module, "run_implementation", fake_run_implementation)
@@ -62,6 +62,7 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch, tmp_path):
     monkeypatch.setattr(strategy, "_status_phase", lambda phase: None)
     monkeypatch.setattr(strategy, "_clamped_timeout", lambda seconds: seconds)
     monkeypatch.setattr(strategy, "_get_code_diff", lambda branch, parent: "diff")
+    monkeypatch.setattr(strategy, "_attempt_commit", lambda branch_name: "c" * 40)
     monkeypatch.setattr(strategy, "_ensure_technical_difficulties", lambda node: None)
     monkeypatch.setattr(strategy, "enforce_evaluation_integrity", lambda node: True)
 

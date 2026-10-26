@@ -46,6 +46,7 @@ from kapso.execution.search_strategies.generic.expansion_lanes import (
     render_lane_brief,
     validate_node_expansion_config,
 )
+from kapso.execution.search_strategies.generic.feedback_generator import FeedbackGenerator
 from kapso.execution.search_strategies.generic.feedback_flow import (
     extract_agent_result,
     generate_feedback,
@@ -816,6 +817,7 @@ class GenericSearch(SearchStrategy):
                 )
             elif self.enforce_evaluation_integrity(node):
                 if self._evaluate_admitted_candidate(node, lane_index=lane_index):
+                    node.commit = self._attempt_commit(node.branch_name)
                     self._verify_attempt(node)
                     self._generate_feedback(node)
                     self._record_evaluation_attempt(node)
@@ -1769,6 +1771,11 @@ class GenericSearch(SearchStrategy):
     # Feedback and Result Extraction (Generic-specific)
     # =========================================================================
 
+    def _attempt_commit(self, branch_name: str) -> str:
+        """The branch's head when the attempt is evaluated: the commit the
+        record names for it."""
+        return self.workspace.repo.commit(branch_name).hexsha
+
     def _judge_end_facts(self, node: SearchNode) -> str:
         """Harness ground truth for the judge: how the build session ended
         and, when Kapso frame-ran the evaluator, how that run ended; the
@@ -1793,13 +1800,15 @@ class GenericSearch(SearchStrategy):
             self._note_finishing_cut(f"node {node.node_id} unjudged: {not_launched}")
             print(f"[GenericSearch] node {node.node_id} unjudged: {node.unjudged}")
             return node
-        return generate_feedback(
+        budget_set = deadline is not None and (configured is None or deadline < configured)
+        generate_feedback(
             node,
             feedback_generator=self.feedback_generator,
             goal=self.goal,
             axes=axes_brief(current_plan_axes(self.workspace_dir)),
             session_end_facts=self._judge_end_facts(node),
             deadline_seconds=deadline,
+            retry_deadline=lambda: self._finishing_deadline("judge", configured),
             manifest_of_record=self._manifest_of_record,
             finalize_run_selection=(
                 lambda manifest, valid:
@@ -1811,6 +1820,13 @@ class GenericSearch(SearchStrategy):
             stage_harness_for=self.stage_harness_for,
             verification=node.verification,
         )
+        if node.unjudged == FeedbackGenerator.DEADLINE_REASON and budget_set:
+            # The budget, not the judge's own timeout, set the deadline
+            # that cut it: the attempt says so, and the round reports the
+            # finishing cut.
+            node.unjudged = "the judge's session ended at the budget's deadline"
+            self._note_finishing_cut(f"node {node.node_id} unjudged: {node.unjudged}")
+        return node
 
     def _extract_agent_result(self, agent_output: str) -> dict:
         """Extract the structured XML-tag result from agent output

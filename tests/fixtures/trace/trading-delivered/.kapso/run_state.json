@@ -76,6 +76,7 @@
           "verdict": "valid"
         },
         "unjudged": "",
+        "commit": null,
         "cards_load_bearing": [],
         "estimated_cost": null,
         "measured_cost": null,

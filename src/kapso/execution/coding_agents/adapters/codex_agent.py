@@ -274,16 +274,18 @@ class CodexCodingAgent(CodingAgentInterface):
         cli_session_id: str,
         follow_up: str,
         timeout_seconds: Optional[float] = None,
+        reason: Optional[str] = None,
     ) -> CodingResult:
         """Continue a stored thread with one more user message (the inbox
-        continuation): `codex exec <options> resume <thread> -`, the
-        message on stdin. Exec options precede `resume` (verified on
-        codex-cli 0.144.1)."""
+        continuation, the judge's retry): `codex exec <options> resume
+        <thread> -`, the message on stdin. Exec options precede `resume`
+        (verified on codex-cli 0.144.1). ``reason`` is recorded on the run
+        entry (`retry_reason`)."""
         if not self._workspace:
             raise RuntimeError("CodexCodingAgent used before initialize()")
         timeout = float(timeout_seconds) if timeout_seconds is not None else self._timeout
         return self._run_session(
-            self.config.model, ["resume", cli_session_id, "-"], follow_up, timeout
+            self.config.model, ["resume", cli_session_id, "-"], follow_up, timeout, reason=reason,
         )
 
     def _exec_command(self, model: str, last_message_path: str) -> List[str]:
@@ -318,13 +320,13 @@ class CodexCodingAgent(CodingAgentInterface):
         return cmd
 
     def _run_session(
-        self, model: str, tail: List[str], prompt: str, timeout: float
+        self, model: str, tail: List[str], prompt: str, timeout: float, reason: Optional[str] = None,
     ) -> CodingResult:
         """One host invocation, recorded in the session's record whatever
         way it ends (wp6-observability.md): the turn runs, and its run
         entry is appended in a `finally`, with the exception in flight
         when there is one, which then propagates."""
-        recorder = start_run(CODEX_HOST, model, self._session_record_path, self._stream_artifact_path)
+        recorder = start_run(CODEX_HOST, model, self._session_record_path, self._stream_artifact_path, reason=reason)
         result: Optional[CodingResult] = None
         try:
             result = self._run_session_turn(model, tail, prompt, timeout)

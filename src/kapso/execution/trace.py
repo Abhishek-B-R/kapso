@@ -32,7 +32,7 @@ from kapso.harness.verdict import VOID
 from kapso.learning.bank_invariants import INDEXED_ONLY
 from kapso.learning.serving_launch import PULL_LOG_FILE, SERVING_DIR, SERVING_RECORD_FILE
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 COMPLETE = "complete"
 PARTIAL = "partial"
 # Where the campaign's cost figure comes from: every session, or the
@@ -46,6 +46,7 @@ FAILED_EXITS = (EXIT_ERROR, EXIT_TIMEOUT, EXIT_REFUSED)
 IDEATION = "ideation"
 VERIFICATION = "verification"
 FEEDBACK = "feedback"
+DIFFICULTIES = "difficulties"
 IMPLEMENTATION = "implementation"
 ITERATION_PREFIX = "iter"
 PHASE_ORDER = {IDEATION: 0, IMPLEMENTATION: 1, VERIFICATION: 2, FEEDBACK: 3}
@@ -290,7 +291,7 @@ def _owner(label: str) -> Tuple[str, Any]:
     if head == IDEATION:
         iteration, _, _ = rest.partition("/")
         return ("iteration", int(iteration[len(ITERATION_PREFIX):]))
-    if head in (VERIFICATION, FEEDBACK):
+    if head in (VERIFICATION, FEEDBACK, DIFFICULTIES):
         return ("branch", rest)
     return ("branch", head)
 
@@ -322,6 +323,7 @@ def _attempts(nodes, sessions, pulls) -> Tuple[List[Dict[str, Any]], Set[str]]:
                 "integrity_error": node["evaluation_integrity_error"] or None,
                 "output": node["evaluation_output"],
             },
+            "commit": node["commit"],
             "verification": node["verification"],
             "unjudged": node["unjudged"],
             "judge": {"stop": node["should_stop"], "valid": node["evaluation_valid"], "feedback": node["feedback"]},
@@ -600,7 +602,10 @@ def _state_line(data: Dict[str, Any]) -> str:
 
 
 def _attempt_lines(attempt: Dict[str, Any], full: bool) -> List[str]:
-    head = f"node {attempt['node']}  {attempt['branch']}  from {attempt['parent']}"
+    head = f"node {attempt['node']}  {attempt['branch']}"
+    if attempt["commit"]:
+        head += f" @ {attempt['commit'][:12]}"
+    head += f"  from {attempt['parent']}"
     if attempt["duration_seconds"] is not None:
         head += f"  {attempt['duration_seconds'] / 60:.1f} min"
     if attempt["cost_usd"] is not None:
@@ -672,6 +677,8 @@ def _session_lines(session: Dict[str, Any], full: bool, indent: str = "  ") -> L
 def _run_summary(run: Dict[str, Any]) -> str:
     parts = [f"{run['exit']:<8}"]
     parts.append(f"{run['duration_seconds'] / 60:5.1f} min" if run["duration_seconds"] is not None else "    - min")
+    if run["retry_reason"]:
+        parts.append(f"retry: {run['retry_reason']}")
     if run["cost_usd"] is not None:
         parts.append(f"${run['cost_usd']:.3f}")
     elif run["usage"]:

@@ -35,9 +35,17 @@ class RunRecorder:
     offset: int
     started_at: str
     started_monotonic: float
+    # Why this invocation resumed the session, when it did for a reason
+    # the record should carry (the judge's "tags missing"); None else.
+    reason: Optional[str] = None
 
 
-def start_run(host: str, model: str, record_path: Optional[str], stream_path: Optional[str]) -> RunRecorder:
+def start_run(
+    host: str, model: str, record_path: Optional[str], stream_path: Optional[str],
+    reason: Optional[str] = None,
+) -> RunRecorder:
+    """The recorder of one invocation, made before the launch so an
+    invocation that raises still records why it was made."""
     stream = Path(stream_path) if stream_path else None
     offset = stream.stat().st_size if stream is not None and stream.exists() else 0
     return RunRecorder(
@@ -45,6 +53,7 @@ def start_run(host: str, model: str, record_path: Optional[str], stream_path: Op
         record_path=Path(record_path) if record_path else None,
         stream_path=stream, offset=offset,
         started_at=_utcnow(), started_monotonic=time.monotonic(),
+        reason=reason,
     )
 
 
@@ -72,6 +81,7 @@ def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Opt
         started=recorder.started_at,
         ended=_utcnow(),
         duration_seconds=round(time.monotonic() - recorder.started_monotonic, 3),
+        retry_reason=recorder.reason,
     )
     append_run(recorder.record_path, entry)
     return entry
@@ -80,7 +90,7 @@ def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Opt
 def run_entry(
     digest: Dict[str, Any], *, model: str, cli_session_id: Optional[str], exit: str,
     error: Optional[str], files_changed: list, started: Optional[str], ended: Optional[str],
-    duration_seconds: Optional[float],
+    duration_seconds: Optional[float], retry_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
     """One run entry's shape: the digest's fields under their own keys,
     with how the run ended and when. `cost_usd` is filled by `append_run`
@@ -93,6 +103,7 @@ def run_entry(
         "cli_session_id": cli_session_id,
         "exit": exit,
         "error": error,
+        "retry_reason": retry_reason,
         "cost_usd": None,
         "cost_cumulative": digest["cost_cumulative"],
         "turns": digest["turns"],

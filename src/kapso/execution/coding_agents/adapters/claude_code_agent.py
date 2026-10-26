@@ -216,6 +216,9 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
 
         # Optional reasoning-effort level forwarded to the CLI (--effort).
         self._effort: Optional[str] = config.agent_specific.get("effort")
+        # The host reports a session's cumulative cost: what each host
+        # session has reported so far, so a resumed session adds its delta.
+        self._session_cost_reported: Dict[str, float] = {}
 
         # A harness's staged files (kapso.harness.staging): a settings file
         # whose hooks the CLI runs (--settings) and the delegates it may
@@ -505,10 +508,12 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         cli_session_id: str,
         follow_up: str,
         timeout_seconds: Optional[float] = None,
+        reason: Optional[str] = None,
     ) -> CodingResult:
         """Continue a stored session with one more user message (the inbox
-        continuation). Always the streaming runner: the continuation needs
-        the stream to capture how the session ends."""
+        continuation, the judge's retry). Always the streaming runner: the
+        continuation needs the stream to capture how the session ends.
+        ``reason`` is recorded on the run entry (`retry_reason`)."""
         if self.workspace is None:
             raise RuntimeError("Agent not initialized. Call initialize() first.")
         effective_timeout = (
@@ -519,7 +524,18 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
             self.config.model,
             effective_timeout,
             resume_session_id=cli_session_id,
+            reason=reason,
         )
+
+    def _cost_delta(self, cli_session_id: Optional[str], reported: float) -> float:
+        """The host reports a session's cumulative cost: a resumed session
+        spends the delta against the figure last reported for it, not the
+        figure twice (host totals 1.0 then 1.4 give 1.4 in all)."""
+        if cli_session_id is None:
+            return reported
+        before = self._session_cost_reported.get(cli_session_id, 0.0)
+        self._session_cost_reported[cli_session_id] = max(before, reported)
+        return max(reported - before, 0.0)
 
     def _run_streaming(
         self,
@@ -528,6 +544,7 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         timeout_seconds: Optional[float],
         resume_session_id: Optional[str] = None,
         convert: bool = False,
+        reason: Optional[str] = None,
     ) -> CodingResult:
         """One host invocation, recorded in the session's record whatever
         way it ends (wp6-observability.md): the turn runs, and its run
@@ -538,7 +555,7 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         inbox continuation, and a wiring error that must not pass as a
         failed turn). The recording's own failure (a stream that is not
         evidence) propagates past either."""
-        recorder = start_run(CLAUDE_HOST, model, self._session_record_path, self._stream_artifact_path)
+        recorder = start_run(CLAUDE_HOST, model, self._session_record_path, self._stream_artifact_path, reason=reason)
         result: Optional[CodingResult] = None
         try:
             try:
@@ -943,7 +960,7 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
                 # failure however the process ended (its own turn end, our
                 # grace kill, or the deadline in between): the node is
                 # suspended and the CLI keeps the transcript for the resume.
-                self._cumulative_cost += total_cost
+                self._cumulative_cost += self._cost_delta(cli_session_id, total_cost)
                 return CodingResult(
                     success=True,
                     output="\n".join(assistant_texts),
@@ -969,7 +986,7 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
                 )
 
             if completed_reaped:
-                self._cumulative_cost += total_cost
+                self._cumulative_cost += self._cost_delta(cli_session_id, total_cost)
                 return CodingResult(
                     success=True,
                     output="\n".join(assistant_texts),
@@ -994,7 +1011,7 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
             if deadline_exceeded:
                 # A terminated call still spent real money and real time —
                 # record both instead of dropping them with the failure.
-                self._cumulative_cost += total_cost
+                self._cumulative_cost += self._cost_delta(cli_session_id, total_cost)
                 return CodingResult(
                     success=completed_before_kill,
                     output="\n".join(assistant_texts),
@@ -1032,7 +1049,7 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
                 )
                 # Failed calls report their parsed cost like successful ones do;
                 # expensive failures are exactly what a cost budget must see.
-                self._cumulative_cost += total_cost
+                self._cumulative_cost += self._cost_delta(cli_session_id, total_cost)
                 return CodingResult(
                     success=False,
                     output="\n".join(assistant_texts),
@@ -1054,7 +1071,7 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
                 )
             
             files_changed = self._get_changed_files()
-            self._cumulative_cost += total_cost
+            self._cumulative_cost += self._cost_delta(cli_session_id, total_cost)
             
             output = result_text or "\n".join(assistant_texts)
             # The model's safeguards refused the turn: the CLI answers with

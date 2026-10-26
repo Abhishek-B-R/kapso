@@ -31,7 +31,14 @@ class ScriptedFeedbackAgent:
             {"prompt": prompt, "timeout_seconds": timeout_seconds}
         )
         self.cost += 0.1
-        return SimpleNamespace(output=self.outputs.pop(0))
+        return SimpleNamespace(output=self.outputs.pop(0), metadata={"cli_session_id": "judge-1"})
+
+    def resume(self, cli_session_id, follow_up, timeout_seconds=None, reason=None):
+        self.calls.append(
+            {"prompt": follow_up, "timeout_seconds": timeout_seconds, "resumed": cli_session_id, "reason": reason}
+        )
+        self.cost += 0.1
+        return SimpleNamespace(output=self.outputs.pop(0), metadata={"cli_session_id": cli_session_id})
 
     def get_cumulative_cost(self):
         return self.cost
@@ -93,12 +100,11 @@ def test_tagless_response_retries_once_then_fails_explicitly(
 
     assert len(agent.calls) == 2
     assert "required tags" in agent.calls[1]["prompt"]
-    assert result.score is None
-    assert result.stop is False
-    assert "Feedback generation failed" in result.feedback
-    # The raw output flows into the next iteration's prompt: never
-    # truncated (the old path clipped it to 500 characters).
-    assert raw in result.feedback
+    # The retry resumes the judge's own session, and says why.
+    assert agent.calls[1]["resumed"] == "judge-1" and agent.calls[1]["reason"] == "tags missing"
+    # Still tagless: the attempt is unjudged, never a fabricated verdict.
+    assert result.unjudged == "no tags after a retry"
+    assert result.score is None and result.stop is False and result.feedback == ""
 
 
 def test_retry_recovers_a_tagged_response(monkeypatch):

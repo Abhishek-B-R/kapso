@@ -96,6 +96,9 @@ class SearchNode:
     # the budget's reason (the budget's end, wp4-config.md). An unjudged
     # attempt keeps its score, is not a parent and is never delivered.
     unjudged: str = ""
+    # The branch's head when the attempt was evaluated; None for an
+    # attempt never evaluated (suspended, rejected before evaluation).
+    commit: Optional[str] = None
     # The served cards the judge found load-bearing for this result (the
     # citation contract's attribution, kept on the node so the trajectory
     # carries it); empty when none or when nothing was served.

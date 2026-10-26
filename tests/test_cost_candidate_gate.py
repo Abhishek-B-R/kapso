@@ -52,7 +52,7 @@ class FeedbackProvider:
         self.end_facts.append(kwargs["session_end_facts"])
         return SimpleNamespace(
             feedback="Evaluation succeeded", evaluation_valid=True,
-            score=0.8, stop=False, duration_seconds=None, cards_load_bearing=[],
+            score=0.8, stop=False, duration_seconds=None, cards_load_bearing=[], unjudged="",
         )
 
 
@@ -95,6 +95,7 @@ def candidate_strategy(tmp_path, count=1):
     strategy.provided_evaluation_manifest = {}
     strategy.last_round_seconds = None
     strategy.finishing_cut = None
+    strategy._attempt_commit = lambda branch_name: "c" * 40
     strategy.budget_snapshot = None
     strategy.parent_policy = "best"
     strategy.env_strip = []
@@ -408,6 +409,7 @@ def test_cost_build_prompt_defers_all_evaluation_to_orchestrator():
     strategy.provided_evaluation_manifest = {}
     strategy.last_round_seconds = None
     strategy.finishing_cut = None
+    strategy._attempt_commit = lambda branch_name: "c" * 40
     strategy.registered_evaluation_command = "python kapso_evaluation/kapso_eval.py"
     registered = strategy._evaluation_instructions()
     assert "Do not run the candidate or evaluation" in registered

@@ -127,6 +127,7 @@ def test_iteration_uses_the_same_selected_parent_everywhere(
     strategy = strategy_with_history(policy)
     strategy.iteration_count = 0
     strategy.workspace_dir = "/workspace"
+    strategy._attempt_commit = lambda branch_name: "c" * 40
     calls = {}
 
     def generate(problem, parent_branch):

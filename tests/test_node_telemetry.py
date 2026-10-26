@@ -112,6 +112,7 @@ def test_run_sums_attributed_phase_costs_onto_the_node():
         None,
     )
     strategy._get_code_diff = lambda branch_name, parent_branch: ""
+    strategy._attempt_commit = lambda branch_name: "c" * 40
     strategy._extract_agent_result = lambda output: {}
     strategy.enforce_evaluation_integrity = lambda node: True
 
@@ -155,6 +156,7 @@ class CountingAgent:
     def generate_code(self, prompt, debug_mode=False, timeout_seconds=None):
         self.cumulative += self.delta
         return SimpleNamespace(
+            metadata={"cli_session_id": "judge-1"},
             output=(
                 "<stop>false</stop>"
                 "<evaluation_valid>true</evaluation_valid>"
