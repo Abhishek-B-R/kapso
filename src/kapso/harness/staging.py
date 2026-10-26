@@ -21,7 +21,7 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import git
 
@@ -63,6 +63,15 @@ _ASK_AGENT = {
     CODEX_HOST: 'spawn the agent role "{name}" and wait for its reply',
 }
 GUIDANCE_HEADING = "## Domain guidance"
+
+
+def open_skill_instruction(host: str, name: str) -> str:
+    """How a session on this host opens a staged skill by name: `/name`
+    on Claude Code, `$name` on Codex. A prompt that lists skills of its
+    own (the deployment session's targets) renders each line with it."""
+    if host not in _OPEN_SKILL:
+        raise HarnessError(f"unknown host {host!r}; the hosts are {', '.join(_SKILLS_DIR)}")
+    return _OPEN_SKILL[host].format(name=name)
 
 
 def host_for(agent_type: str) -> str:
@@ -118,10 +127,16 @@ class StagedHarness:
 
 def record_without_harness(
     module: str, host: str, session_dir: Path, session_id: str, records_dir: Path,
+    engine_skills: Sequence[Path] = (),
 ) -> StagedHarness:
-    """What a session gets without a harness: nothing staged, and the
-    record written all the same (`harness: null`), so every session of a
-    campaign has one for its runs to land in."""
+    """What a session gets without a harness: the engine's own skills when
+    it has any (the deployment session's targets), nothing else staged,
+    and the record written all the same (`harness: null`), so every
+    session of a campaign has one for its runs to land in."""
+    if engine_skills and host not in _SKILLS_DIR:
+        raise HarnessError(f"unknown host {host!r}; the hosts are {', '.join(_SKILLS_DIR)}")
+    for skill in engine_skills:
+        shutil.copytree(skill, session_dir / _SKILLS_DIR[host] / Path(skill).name, dirs_exist_ok=True)
     record_dir = records_dir / session_id
     staged = StagedHarness(
         module=module, host=host, session_dir=session_dir, session_id=session_id, guidance="",
@@ -137,6 +152,7 @@ def record_without_harness(
         "session_dir": str(session_dir),
         "pages": [],
         "skills": [],
+        "engine_skills": [Path(skill).name for skill in engine_skills],
         "mcp_servers": [],
         "agents": [],
         "hooks": [],
@@ -187,17 +203,21 @@ def stage_harness(
     session_id: str,
     host: str,
     records_dir: Optional[Path] = None,
+    engine_skills: Sequence[Path] = (),
 ) -> StagedHarness:
     """Stage one module of the harness into one session directory. The
     session's record and stream go under `<campaign>/.kapso/sessions`, or
     under `records_dir` when the campaign directory takes no writes (an
-    archived bundle a learning crew reads). Without a harness nothing is
-    staged and the record is written all the same."""
+    archived bundle a learning crew reads). `engine_skills` are the
+    engine's own skill directories (the deployment session's targets),
+    staged beside the module's on either host, with or without a harness.
+    Without a harness nothing else is staged and the record is written
+    all the same."""
     session_dir = Path(session_dir)
     campaign_dir = Path(campaign_dir)
     records = Path(records_dir) if records_dir is not None else campaign_dir / SESSIONS_DIR
     if harness is None:
-        return record_without_harness(module, host, session_dir, session_id, records)
+        return record_without_harness(module, host, session_dir, session_id, records, engine_skills)
     if module not in MODULES:
         raise ValueError(f"unknown module {module!r}; the modules are {', '.join(MODULES)}")
     if host not in _SKILLS_DIR:
@@ -211,7 +231,7 @@ def stage_harness(
             f"the harness changed since launch: {harness.label()} recorded, now {short(current)} "
             f"({describe_change(harness.files, harness_files(harness.path))}); {harness.restore_hint()}"
         )
-    stager = _Stager(harness, module, session_dir, campaign_dir, session_id, host, records)
+    stager = _Stager(harness, module, session_dir, campaign_dir, session_id, host, records, engine_skills)
     # Ensemble members stage into one directory from several threads; the
     # files are written one staging at a time.
     with _STAGING_LOCK:
@@ -231,11 +251,12 @@ _STAGING_LOCK = threading.Lock()
 class _Stager:
     def __init__(
         self, harness: Harness, module: str, session_dir: Path, campaign_dir: Path,
-        session_id: str, host: str, records_dir: Path,
+        session_id: str, host: str, records_dir: Path, engine_skills: Sequence[Path] = (),
     ):
         self.harness = harness
         self.module = module
         self.attachments = harness.module(module)
+        self.engine_skills = [Path(skill) for skill in engine_skills]
         self.session_dir = session_dir
         self.campaign_dir = campaign_dir
         self.session_id = session_id
@@ -260,6 +281,7 @@ class _Stager:
     def writes(self) -> List[Path]:
         """Every path under the session directory this staging writes."""
         paths = [self.session_dir / _SKILLS_DIR[self.host] / name for name in self.attachments.skills]
+        paths.extend(self.session_dir / _SKILLS_DIR[self.host] / skill.name for skill in self.engine_skills)
         paths.append(self.session_dir / _HOOKS_FILE[self.host])   # always: the engine's own hooks
         if self.attachments.agents:
             paths.append(self.session_dir / _AGENTS_PATH[self.host])
@@ -321,6 +343,10 @@ class _Stager:
             target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(self.harness.path / "skills" / name, target, dirs_exist_ok=True)
+        # The engine's own skills beside the module's; not the manifest's,
+        # so another module's staging of the directory leaves them.
+        for skill in self.engine_skills:
+            shutil.copytree(skill, root / skill.name, dirs_exist_ok=True)
 
     def servers(self) -> None:
         if not self.attachments.mcp_servers:
@@ -397,6 +423,7 @@ class _Stager:
             "session_dir": str(self.session_dir),
             "pages": self.page_names(),
             "skills": list(self.attachments.skills),
+            "engine_skills": [skill.name for skill in self.engine_skills],
             "mcp_servers": list(self.attachments.mcp_servers),
             "agents": list(self.attachments.agents),
             "hooks": [*ENGINE_HOOKS, *self.attachments.hooks],
