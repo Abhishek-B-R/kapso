@@ -8,6 +8,18 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**`deny-web` is the implementation module's; `deny-web-fetch` stays
+everywhere.** The trading example already denied the shell's fetchers
+(`curl`, `wget`, `aria2c`) on every module; the plan's `deny-web` is a
+second hook, on the native web tools (`WebSearch|WebFetch`), listed on
+implementation alone: ideation's web research is the example's intent
+(the engine's `ideation.web` default), the implementation's web is the
+leak the protocol forbids. Why two hooks: two rules, two reasons, each
+placed where it applies by the manifest. Alternative rejected: folding
+both into one hook on every module, which would take the web from
+ideation. Codex's native web search is not a tool call its hooks see;
+the engine's switch is the boundary there, and the page says so.
+
 **The axes live in one tag, status included.** The planner's first plan
 names the axes in an `<axes>` block (a list numbered from 1); a revision
 restates every one in the same block as `N. <axis> — <status>`, and the
