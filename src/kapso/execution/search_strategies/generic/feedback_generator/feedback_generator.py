@@ -67,6 +67,9 @@ class FeedbackGenerator:
     
     # Default prompt path
     PROMPT_PATH = "execution/search_strategies/generic/feedback_generator/prompts/feedback_generator.md"
+    # The axes section and the frontier duty, rendered only while the
+    # campaign has a lens plan (the planner names the axes).
+    AXIS_FRONTIER_PROMPT_PATH = "execution/search_strategies/generic/feedback_generator/prompts/axis_frontier.md"
 
     RETRY_PROMPT = (
         "Your previous response did not contain the required tags. Respond "
@@ -125,7 +128,7 @@ class FeedbackGenerator:
         evaluation_script_path: str,
         evaluation_result: str,
         workspace_dir: str,
-        design_axes: str = "",
+        axes: str = "",
         session_end_facts: str = "",
         timeout_seconds: Optional[float] = None,
         domain_guidance: str = "",
@@ -168,7 +171,7 @@ class FeedbackGenerator:
             evaluation_script_path=evaluation_script_path,
             evaluation_result=evaluation_result,
             workspace_dir=workspace_dir,
-            design_axes=design_axes,
+            axes=axes,
             session_end_facts=session_end_facts,
             domain_guidance=domain_guidance,
             verification=verification,
@@ -222,7 +225,7 @@ class FeedbackGenerator:
         evaluation_script_path: str,
         evaluation_result: str,
         workspace_dir: str,
-        design_axes: str = "",
+        axes: str = "",
         session_end_facts: str = "",
         domain_guidance: str = "",
         verification: str = "",
@@ -241,7 +244,10 @@ class FeedbackGenerator:
                 "evaluation_script_path": evaluation_script_path,
                 "evaluation_result": evaluation_result,
                 "workspace_dir": workspace_dir,
-                "design_axes": design_axes or "(none declared)",
+                "axis_frontier": optional_block(
+                    render_prompt(load_prompt(self.AXIS_FRONTIER_PROMPT_PATH), {"axes": axes})
+                    if axes else ""
+                ),
                 "session_end_facts": session_end_facts
                 or "(not recorded)",
                 "domain_guidance": optional_block(domain_guidance),

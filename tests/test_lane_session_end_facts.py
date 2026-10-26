@@ -54,7 +54,7 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch, tmp_path):
         implementation_role=SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=600, web=False),
         implementation_fallback_model=None, env_strip=[], env_defaults={},
         previous_errors=[], recent_error_count=3, feedback_generator=Judge(),
-        goal="the goal", design_axes=(),
+        goal="the goal",
         problem_handler=SimpleNamespace(maximize_scoring=True),
         _session_end_facts={},
     )

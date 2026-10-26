@@ -189,48 +189,35 @@ def test_validation_realism_guard_in_prompt():
         assert banned not in prompt, f"task-specific wording leaked: {banned}"
 
 
-def test_axis_frontier_duty_and_design_axes_render():
-    """Anti-freeze contract (user-directed 2026-07-27): the feedback prompt
-    must carry the per-axis frontier duty (headroom evidence + untried moves
-    per non-saturated axis) and render the strategy-supplied axis map."""
+def test_axis_frontier_duty_renders_with_a_plan_and_is_omitted_without():
+    """Anti-freeze contract (user-directed 2026-07-27; the axes the lens
+    planner's since WP4): with a plan the prompt carries the planner's
+    axes and the per-axis frontier duty (headroom evidence + untried moves
+    per non-saturated axis); without a plan nobody consumes the report, so
+    neither appears."""
     from kapso.core.prompt_loader import load_prompt
 
     from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import (
         FeedbackGenerator,
     )
 
-    prompt = load_prompt(FeedbackGenerator.PROMPT_PATH)
-    assert "Report the axis frontier" in prompt
-    assert "Design axes of the solution space" in prompt
-    assert "saturation claim needs cited" in prompt.lower() or (
-        "saturation claim needs cited measurement" in prompt
-    )
+    duty = load_prompt(FeedbackGenerator.AXIS_FRONTIER_PROMPT_PATH)
+    assert "Report the axis frontier" in duty
+    assert "saturation claim needs cited measurement" in " ".join(duty.split())
 
-    generator = FeedbackGenerator.__new__(FeedbackGenerator)
-    rendered = FeedbackGenerator._build_prompt(
-        generator,
-        goal="g",
-        idea="i",
-        code_changes_summary="c",
-        base_branch="b",
-        head_branch="h",
-        commit_message="m",
-        evaluation_script_path="e",
-        evaluation_result="r",
-        workspace_dir="w",
-        design_axes="1. input representation — features",
-    )
+    def render(**axes):
+        return FeedbackGenerator._build_prompt(
+            FeedbackGenerator.__new__(FeedbackGenerator),
+            goal="g", idea="i", code_changes_summary="c", base_branch="b", head_branch="h",
+            commit_message="m", evaluation_script_path="e", evaluation_result="r", workspace_dir="w",
+            **axes,
+        )
+
+    rendered = render(axes="1. input representation — features")
+    assert "Design axes of the solution space" in rendered
     assert "1. input representation — features" in rendered
-    rendered_default = FeedbackGenerator._build_prompt(
-        generator,
-        goal="g",
-        idea="i",
-        code_changes_summary="c",
-        base_branch="b",
-        head_branch="h",
-        commit_message="m",
-        evaluation_script_path="e",
-        evaluation_result="r",
-        workspace_dir="w",
-    )
-    assert "(none declared)" in rendered_default
+    assert "Report the axis frontier" in rendered
+    assert rendered.index("1. input representation") < rendered.index("## Code Changes Summary")
+    without = render()
+    assert "Design axes" not in without and "axis frontier" not in without
+    assert "{{" not in without

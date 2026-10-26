@@ -84,8 +84,8 @@ from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, stage_harness
 from kapso.harness.verdict import VERDICT_FILE, is_deliverable, is_void, read_verdict, verification_dir
 from kapso.execution.search_strategies.generic.lens_planning import (
-    design_axes_brief,
-    normalize_design_axes,
+    axes_brief,
+    current_plan_axes,
     resolve_member_lenses,
     run_lens_planner_session,
     validate_lens_planner,
@@ -303,10 +303,6 @@ class GenericSearch(SearchStrategy):
             self.hosts, self.params, ideation["lens_planner"], name="lens_planner",
         )
         validate_lens_planner(self.ideation_lens_planner, self.ideation_ensemble)
-        # Design axes of the solution space (anti-freeze contract): the lens
-        # replanner must status every axis each iteration and the feedback
-        # generator reports the per-axis frontier.
-        self.design_axes = normalize_design_axes(self.params.get("design_axes"))
         # K-way node expansion: the selector emits top-K solutions and each
         # is implemented/evaluated/fed-back on its own branch, in parallel,
         # with a barrier before the next iteration. K=1 is today's path.
@@ -1039,7 +1035,6 @@ class GenericSearch(SearchStrategy):
             workspace_dir=self.workspace_dir,
             iteration_count=self.iteration_count,
             shared_artifacts_brief=self.shared_artifacts_brief,
-            design_axes=self.design_axes,
             node_history=self.node_history,
             campaign_state_brief=self._campaign_state_brief,
             get_best_experiment=self.get_best_experiment,
@@ -1702,7 +1697,7 @@ class GenericSearch(SearchStrategy):
             node,
             feedback_generator=self.feedback_generator,
             goal=self.goal,
-            design_axes=design_axes_brief(self.design_axes),
+            axes=axes_brief(current_plan_axes(self.workspace_dir)),
             session_end_facts=self._judge_end_facts(node),
             clamped_timeout=self._clamped_timeout,
             manifest_of_record=self._manifest_of_record,

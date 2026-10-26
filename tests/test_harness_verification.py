@@ -130,7 +130,6 @@ def strategy(tmp_path, harness, monkeypatch):
     s.workspace = Workspace(campaign)
     s.feedback_generator = FakeJudge()
     s.goal = "Raise the Sharpe above 1"
-    s.design_axes = ("signal",)
     s.budget_snapshot = None
     s.budget_snapshot_monotonic = None
     s.registered_evaluation_command = ""

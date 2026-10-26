@@ -82,7 +82,6 @@ def candidate_strategy(tmp_path, count=1):
     strategy.workspace_dir = str(tmp_path)
     strategy.feedback_generator = FeedbackProvider()
     strategy.goal = "improve"
-    strategy.design_axes = []
     strategy.problem_handler = SimpleNamespace(maximize_scoring=True)
     strategy.registered_evaluation_manifest = {}
     strategy.registered_evaluation_command = ""
