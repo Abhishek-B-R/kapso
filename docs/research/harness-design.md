@@ -264,6 +264,11 @@ kapso build --config ./kapso-config.yaml --harness ./trading --goal "..." --eval
 kapso deploy --harness ./trading --target paper-trading
 ```
 
+*The deploy line above is superseded on 2026-10-26 by
+`docs/plans/redesign/wp5-deploy.md`: the campaign is the verb's positional
+argument, `kapso deploy ../btc-momentum --harness ./trading --target
+paper-trading`.*
+
 The Python surface is three steps on one object: construct with engine
 knobs, load what the run should use, call the verbs.
 

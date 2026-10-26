@@ -100,12 +100,10 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 
 - [Deep web research](https://docs.leeroo.com/docs/research/overview) — `docs/research/overview.mdx`
 
-**Deployment**
+**Deploy**
 
-- [Deployment](https://docs.leeroo.com/docs/deployment/overview) — `docs/deployment/overview.mdx`
-- [Deployment architecture](https://docs.leeroo.com/docs/deployment/architecture) — `docs/deployment/architecture.mdx`
-- [Deployment strategies](https://docs.leeroo.com/docs/deployment/strategies) — `docs/deployment/strategies.mdx`
-- [Adding strategies](https://docs.leeroo.com/docs/deployment/adding-strategies) — `docs/deployment/adding-strategies.mdx`
+- [Targets](https://docs.leeroo.com/docs/deploy/targets) — `docs/deploy/targets.mdx`
+- [Write a target skill](https://docs.leeroo.com/docs/deploy/write-a-target-skill) — `docs/deploy/write-a-target-skill.mdx`
 
 **Benchmarks**
 
@@ -118,5 +116,4 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 
 - [CLI](https://docs.leeroo.com/docs/reference/cli) — `docs/reference/cli.mdx`
 - [Python API](https://docs.leeroo.com/docs/reference/kapso-api) — `docs/reference/kapso-api.mdx`
-- [Deployment API](https://docs.leeroo.com/docs/deployment/api-reference) — `docs/deployment/api-reference.mdx`
 - [Configuration](https://docs.leeroo.com/docs/reference/configuration) — `docs/reference/configuration.mdx`

@@ -103,7 +103,7 @@ the only way knowledge reaches a session, and every store is a plain path.
 | `learning/` | The experience memory. `trajectory_store.py` (bundles under `~/.kapso/trajectories/<task>/<stamp>_<lane>/`, manifest written last, strict contract: `campaign_meta.json`, `final_report.json`, `campaign.log`, `features_history.md`, `lens_plan_history.jsonl`, `experiment_history.json`); `harvest.py` (the evolve-to-store bridge); `mining.py` (one Claude lead session, `mined/` views); `graders/` (report writer on Codex, verifier on Claude, assessor on Codex; corridor arithmetic frame-side); `update_frame.py` (Claude lead, Codex workers, critic; validates the diff; commits `lr_<id>`); `bank.py` (card model, five states, two servable); `retriever.py` (`compile_intro`, `render_index`, `render_cards`, probe queue, pull log); `serving_launch.py` (pin the bank into `.kapso/serving/`, env for the bank gate); `bank_remote.py`; `codify_*`, `gcp_ephemeral.py`, `develop.py`, `ab.py`, `behavior.py` (the learner-development regime) | `Kapso.learn` chain: import → mine → exam → lesson → push | coding agents, git |
 | `knowledge_base/` | The imported memory. `learners/` (`KnowledgePipeline`; ingestors: `repo_ingestor/` multi-phase Claude sessions, `research_ingestor/`, `experiment_ingestor.py`; `merger/` one Claude session with the kg tools); `search/` (`kg_graph_search.py` 2160 over Weaviate + Neo4j with OpenAI or Vertex embeddings; `kg_llm_navigation_search.py`; `workflow_search.py`; `.index` files are small JSON references with `backend_refs`); `types.py` (`Source.*`, `WikiPage`, `ResearchFindings`) | `index_kg`, `learn_knowledge` | Weaviate, Neo4j, embeddings |
 | `researcher/` | One read-only Codex session with web search; returns typed ideas, implementations or a report | `Researcher`, `ResearchFindings` | CliInference `research` role |
-| `deployment/` | Selector session (AUTO) → adapter session (rewrites a copy as `<path>_adapted_<strategy>`) → validator → runner; five strategy plugins, each a directory with `runner.py`, `config.yaml` (`requires`), selector and adapter instructions | `DeploymentFactory.create`, `Software.run/stop/start/is_healthy/logs` | docker/modal/bentoml/langgraph SDKs |
+| `deployment/` | One deployment session on a copy of the solution under `<campaign>/.kapso/deployments/<n>/workspace`, staged with the target's skill (the five bundled targets under `targets/<name>/`, each a `SKILL.md` with its `scripts/`, or a harness's); the engine checks the result file, records the deployment, and `Software` runs it by its run kind and drives it through the target's scripts (`docs/plans/redesign/wp5-deploy.md`) | `DeploymentFactory.create`, `Software.run/stop/start/is_healthy/logs` | docker/modal/bentoml/langgraph SDKs |
 | `environment/handlers/` | `ProblemHandler` (problem context, `maximize_scoring`, `honor_agent_stop`, optional `final_evaluate`); `GenericProblemHandler` for evolve; benchmark handlers under `benchmarks/` | | |
 | `skills/` | `claude-code/`, `codex/` (+ `agents/openai.yaml`), `opencode/`: one `SKILL.md` each, identical except the launch line (`nohup … &` vs `setsid -f`). Tested eval-first; record in `coding-agent-skill-findings.md` | | the CLI |
 
@@ -185,10 +185,14 @@ stages under `<wiki_dir>/_staging/`; resumable per phase. `index_kg` writes a
 
 ### 3.4 deploy
 
-`deploy(solution, strategy)` runs the selector session (AUTO only), then the
-adapter session on a copy, validates (compiles, required files, import for
-LOCAL), and returns a `Software`. Minutes, foreground. The CLI prints the
-result; calling the deployed software is Python-only.
+`deploy(solution, target=None, env=None, options=None, coding_agent=None)`
+runs one session on a copy of the solution (the target's skill staged, the
+harness's deployment module beside it), checks the result it writes (the
+artifacts, the health script, the proof call run again), records the
+deployment under the campaign and returns a `Software`; `Software.open
+(campaign, number)` is the same handle from any process, and `kapso deploy
+--status|--stop|--start|--logs` drive it from the CLI. Minutes, foreground
+(WP5, `docs/plans/redesign/wp5-deploy.md`).
 
 ## 4. The session boundary
 

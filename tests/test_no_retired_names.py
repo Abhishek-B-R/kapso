@@ -72,6 +72,33 @@ RETIRED = re.compile(
     r"|strategies\.yaml"
     r"|additional_context"
     r"|design_axes"
+    # The deploy package (wp5-deploy.md): the strategy enum and its
+    # factory, the selector, the adapter and its validator, the runners
+    # and their aliases, the instruction files, the run-interface tags,
+    # the adapted copy beside the campaign, the old block's agent key, the
+    # verb's old flags (scoped to the deploy verb: RelBench's own
+    # --strategy is a search strategy).
+    r"|DeployStrategy\b"
+    r"|DeploymentFactory"
+    r"|StrategyRegistry"
+    r"|DeployStrategyConfig"
+    r"|DeploymentSetting\b"
+    r"|AdaptationResult"
+    r"|AdaptationValidator"
+    r"|DeploymentInfo\b"
+    r"|DeployConfig\b"
+    r"|DeployedSoftware"
+    r"|SelectorAgent"
+    r"|AdapterAgent"
+    r"|(?:Local|Docker|Modal|BentoML|LangGraph|Function|HTTP|BentoCloud)Runner\b"
+    r"|selector_instruction"
+    r"|adapter_instruction"
+    r"|run_interface"
+    r"|required_files"
+    r"|_adapted_"
+    r"|deployment\.coding_agent"
+    r"|kapso deploy[^\n`]*--strategy"
+    r"|kapso deploy[^\n`]*--interactive"
     + r"|[\"'](?:" + "|".join(RETIRED_KEYS) + r")[\"']\s*[\]:]"
 )
 # In every text a person or a model reads (the pages, READMEs, skills and

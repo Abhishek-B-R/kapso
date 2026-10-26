@@ -276,6 +276,13 @@ delivery is the solution's `evaluation`.
 
 ## 6. deploy and learn
 
+*Superseded on 2026-10-26 by `docs/plans/redesign/wp5-deploy.md`: `deploy`
+takes `target`, `env`, `options` and `coding_agent`; the targets are skills
+with their scripts (the bundled five, or a harness's deployment skill
+holding `scripts/deploy.sh`), one session writes `kapso_deployment.json`,
+and the deployment is recorded under the campaign; there is no
+`prompts/deploy.md` and no `deploy.interface`.*
+
 `deploy(solution, target="auto" | "local" | "docker" | "modal" | "bentoml" |
 "langgraph", env=None) -> Software` is unchanged in behaviour; the harness's
 `prompts/deploy.md` and `deploy.interface` tell the adapter what running

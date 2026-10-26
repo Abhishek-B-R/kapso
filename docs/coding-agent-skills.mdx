@@ -18,7 +18,7 @@ The file is about 270 lines of facts and rules, written for the mistakes agents 
 - `WAITING ON YOU` is a pause, not a failure. The agent reads the request with `kapso inbox <campaign>` and answers with `kapso inbox reply`, and it never restarts the campaign or puts a secret in the reply. See [the inbox](/docs/build/inbox).
 - A dead campaign resumes with `kapso build --output <campaign> --resume` and nothing else, since the checkpoint and the launch record carry the brief and the flags. See [Resuming runs](/docs/build/resume-and-budgets).
 - `learn("./campaign")` banks what a campaign taught, and a build is served the bank only when it loads it: `--experience mine`. Outside sources are ingested with `kapso experience add` and loaded the same way. See [Trajectory learning](/docs/learning/overview) and [Experience](/docs/experience).
-- `deploy()` is a minutes-long foreground operation on a real `Solution` (the object `build()` returned, or `Solution.open(path)`), not a campaign. See [Deployment](/docs/deployment/strategies).
+- `deploy()` is a minutes-long foreground operation on a real `Solution` (the object `build()` returned, or `Solution.open(path)`), not a campaign. See [Deploy](/docs/deploy/targets).
 - A one-file change with an obvious fix is faster by hand. The agent says which it is doing and never launches a campaign you did not ask for.
 
 The full text is in [`skills/claude-code/kapso/SKILL.md`](https://github.com/Leeroo-AI/kapso/blob/main/skills/claude-code/kapso/SKILL.md).

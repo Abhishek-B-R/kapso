@@ -6,6 +6,70 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-26, WP5 (taken while building)
+
+**The front-matter reader lives in `kapso.core`.** The preflight imports
+the targets' registry (for the doctor's rows), and the harness check
+imports the preflight (for its requirement rows): a registry that read
+front matter through the harness check would close a cycle. One reader,
+`kapso.core.front_matter.read_front_matter`, serves the check, the staging
+and the registry.
+
+**`KAPSO_INTERPRETER` is one of the deployment's variables.** The engine's
+own interpreter runs the function worker and every `run.py`, so the
+solution's requirements must be installed into it and the scripts must
+run it; the plan's list of variables lacked it. The recorded interpreter
+is what every later lifecycle call uses, from any process.
+
+**The deployment role is the roles module's.** `deployment_role(config,
+coding_agent)` sits beside `check_deployment` in `kapso.core.roles`, so
+the preflight's rows, the live tier and the session resolve the one spec
+from one definition.
+
+**An inference-only adapter as the deployment's host is refused by key,
+not by the preflight's inference-only row.** The hosts table never holds
+one (an adapter without a staging cannot enter it), so `deployment.cli:
+openai_compatible` is `deployment.cli: openai_compatible is not in
+hosts`, from the config or from the call; the verb's `--coding-agent`
+keeps argparse's choice of the adapters that can code.
+
+**Only the engine's targets are staged as engine skills.** A harness
+target arrives with the harness's deployment module, as every skill of
+the module does; staging it twice would list it twice in the record.
+
+**The changed-harness check runs before the record is minted.** The
+staging's hash check is shared (`check_harness_unchanged`) and the session
+calls it first, so a harness edited since its load deploys nothing and
+leaves no `deploying` record behind.
+
+**The function worker takes the env file as an argument.** The engine
+hands the worker the file's path on its command line and the worker loads
+it before the import; reading `KAPSO_ENV_FILE` from the environment inside
+the engine's own code would be configuration from the environment.
+
+**The docker scripts probe health with the interpreter, not curl.** The
+proof machine's host may lack `curl`; `urllib` in `$KAPSO_INTERPRETER` is
+always there. The `.dockerignore` lines are appended once each, the
+person's own lines kept.
+
+**`logs()` says when its script failed.** A logs script that exits
+non-zero would otherwise read as "no logs"; the line names the exit and
+the stderr.
+
+**`Software.open` takes a config path for the timeouts.** The handle
+needs `call_timeout` and `script_timeout`; `open(campaign, number,
+config=None)` reads them from the file named, the packaged defaults
+without one, as the CLI's `--config` threads it.
+
+**The cutover and the trading example's target landed in one commit.**
+The example's test needs the session, the session's harness-target test
+needs the example's scripts; one commit keeps both green (the plan listed
+them as changes 6 and 7).
+
+**The retired `--strategy` is scoped to the deploy verb.** RelBench's
+runner keeps `--strategy generic|tree` for its search strategy; the
+guard's pattern is `kapso deploy … --strategy`.
+
 ## 2026-10-26, WP5 (planned; taken while writing the sub-plan, revised after its review)
 
 **One deployment session, not a selector and an adapter.** Today's
