@@ -85,7 +85,7 @@ def test_the_implementation_module_on_claude_code(harness, tmp_path):
     hooks = json.loads(hooks_text)["hooks"]
     assert "${" not in hooks_text and str(harness.path) in hooks_text
     assert list(hooks) == ["SessionStart", "PreToolUse", "PostToolUse", "Stop"]
-    assert [entry.get("matcher") for entry in hooks["PreToolUse"]] == ["Bash", "Edit|Write|MultiEdit", "mcp__market-data__snapshot"]
+    assert [entry.get("matcher") for entry in hooks["PreToolUse"]] == ["Bash", "WebSearch|WebFetch", "Edit|Write|MultiEdit", "mcp__market-data__snapshot"]
     agents = json.loads((session_dir / ".claude" / "harness-agents.json").read_text())
     assert list(agents) == ["lookahead-auditor"]
     assert agents["lookahead-auditor"]["description"].startswith("Audits one attempt")

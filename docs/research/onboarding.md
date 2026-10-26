@@ -50,7 +50,7 @@ what a content hash makes safe.
 ```
 kapso harness add acme/harnesses@v3#trading
   fetched  ~/.kapso/harnesses/acme-harnesses@v3/trading
-  check    ok (7 skills, 2 agents, 2 servers, 6 hooks)
+  check    ok (7 skills, 2 agents, 2 servers, 7 hooks)
   needs    BROKER_API_KEY (env, for the broker server)       not set
   name     trading 0.3.0  sha256 9c1e…
 ```

@@ -52,9 +52,11 @@ The modules are `setup`, `ideation`, `implementation`, `verification`, `feedback
 
 `${PLUGIN_ROOT}` in a server's or a hook's command or arguments is the harness directory, expanded at staging; a path under it must exist. An `env` or `headers` value that is a `${NAME}` reference is read from the environment or `.env` beside the run; a literal where a reference is expected, or a value that looks like a credential, is a failure.
 
+**The web.** The engine's `search_strategy.params.ideation.web` and `implementation.web` switches are the permission boundary on both hosts: off, Claude Code's `WebSearch` and `WebFetch` leave the allow-list and are disallowed, and a Codex session runs without `--search`; the ensemble members, the selector and the lens planner follow ideation's switch. A harness whose protocol forbids the web on a module states the rule as a hook on that module, so the session meets the reason whatever the config says: the trading example's `deny-web` denies the two tools on implementation (`PreToolUse`, matcher `WebSearch|WebFetch`), and its `deny-web-fetch` denies `curl`, `wget` and `aria2c` through the shell on every module. Codex's native web search is not a tool call its hooks see; there the switch alone holds.
+
 ## check
 
-`kapso harness check <ref>` and `load_harness()` run the same checks. The report prints a summary line, `check ok (7 skills, 2 agents, 2 servers, 6 hooks)` or `check failed (...)`, then one line per finding: `fail`, `warn` or `needs`.
+`kapso harness check <ref>` and `load_harness()` run the same checks. The report prints a summary line, `check ok (7 skills, 2 agents, 2 servers, 7 hooks)` or `check failed (...)`, then one line per finding: `fail`, `warn` or `needs`.
 
 Failures, each with the file and, when it has one, the line:
 

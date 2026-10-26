@@ -30,7 +30,7 @@ modules:
     skills: [backtesting, market-data, risk-limits, lookahead-scan]
     mcp_servers: [market-data]
     agents: [lookahead-auditor]
-    hooks: [session-brief, deny-web-fetch, protect-prepared, deny-snapshot, scan-writes, require-results]
+    hooks: [session-brief, deny-web-fetch, deny-web, protect-prepared, deny-snapshot, scan-writes, require-results]
   verification:
     skills: [backtesting, lookahead-scan]
     agents: [lookahead-auditor]
@@ -55,12 +55,13 @@ modules:
 | | `risk-reviewer` | reads an attempt's risk line and equity curve for the judge |
 | hooks | `session-brief` | `SessionStart`: one context line pointing at the task statement |
 | | `deny-web-fetch` | `PreToolUse` on `Bash`: denies `curl`, `wget`, `aria2c`; all prices come from the snapshot |
+| | `deny-web` | `PreToolUse` on `WebSearch\|WebFetch`, implementation only: the evaluation window's future exists on the web; the engine's `implementation.web` switch is the boundary, the hook states the harness's rule with its reason (see [the web](/docs/reference/harness#files)) |
 | | `protect-prepared` | `PreToolUse` on the file tools: denies a file-tool write under `prepared/` (a shell write is not covered: a hook is a mistake catcher, not a boundary) |
 | | `deny-snapshot` | `PreToolUse` on `mcp__market-data__snapshot`: the snapshot is built in setup only |
 | | `scan-writes` | `PostToolUse` on the file tools: scans a written file for look-ahead patterns |
 | | `require-results` | `Stop`: an implementation session does not end before `results/equity_curve.csv` and `results/trades.csv` exist |
 
-`kapso harness check examples/harnesses/trading` prints `check ok (7 skills, 2 agents, 2 servers, 6 hooks)` and, on a machine without the harness's Python requirements, the `needs` lines for them.
+`kapso harness check examples/harnesses/trading` prints `check ok (7 skills, 2 agents, 2 servers, 7 hooks)` and, on a machine without the harness's Python requirements, the `needs` lines for them.
 
 ## The task
 

@@ -87,12 +87,12 @@ def test_check_exits_one_on_a_failure_and_zero_with_warnings(settings, monkeypat
     copy = Path.cwd() / "trading"
     shutil.copytree(TRADING, copy)
     _run(monkeypatch, "check", "./trading")
-    assert capsys.readouterr().out.startswith("check ok (7 skills, 2 agents, 2 servers, 6 hooks)")
+    assert capsys.readouterr().out.startswith("check ok (7 skills, 2 agents, 2 servers, 7 hooks)")
 
     (copy / "hooks" / "extra").mkdir()
     _run(monkeypatch, "check", "./trading")
     out = capsys.readouterr().out
-    assert out.startswith("check ok (7 skills, 2 agents, 2 servers, 7 hooks)") and "warn   hooks/extra/" in out
+    assert out.startswith("check ok (7 skills, 2 agents, 2 servers, 8 hooks)") and "warn   hooks/extra/" in out
 
     (copy / "agents" / "risk-reviewer.md").unlink()
     with pytest.raises(SystemExit) as caught:

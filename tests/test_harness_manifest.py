@@ -39,7 +39,7 @@ def test_the_trading_example_parses_to_its_listed_attachments():
         skills=("backtesting", "market-data", "risk-limits", "lookahead-scan"),
         mcp_servers=("market-data",),
         agents=("lookahead-auditor",),
-        hooks=("session-brief", "deny-web-fetch", "protect-prepared",
+        hooks=("session-brief", "deny-web-fetch", "deny-web", "protect-prepared",
                "deny-snapshot", "scan-writes", "require-results"),
     )
     # A module the file leaves out has no attachments, and is not an error.
