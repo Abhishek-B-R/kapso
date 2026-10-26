@@ -99,17 +99,21 @@ gates:
     tool_timeout_seconds: 600
 
 # =============================================================================
-# Deployment — the two sessions deploy() runs: the selector (picks a target
-# for DeployStrategy.AUTO) and the adapter (rewrites a copy of the solution
-# for the target). One coding agent and one model for both. The agent must
-# be able to serve the model: a Claude model name on the codex CLI is refused
-# by a ChatGPT login (seen 2026-09-07 with a hardcoded claude-opus-4-5).
+# Deployment (docs/plans/redesign/wp5-deploy.md) — the session deploy()
+# runs on a copy of the solution, a spec over the hosts table like the
+# build's roles, plus the target it deploys to when the call names none,
+# the deadlines, and the host ports a deployment takes.
 # =============================================================================
 deployment:
-  coding_agent: claude_code
-  model: "claude-opus-5"
+  target: auto         # what deploy() targets when the call names none: auto, a bundled target (local, docker, modal, bentoml, langgraph) or a harness's
+  cli: null            # the host the deployment session runs on, an entry of hosts; null follows search_strategy.params.host
+  model: null          # the host entry's when null
+  effort: null
+  timeout: 1800        # the deployment session's deadline, seconds, its one resume included
   call_timeout: 300    # one run() call of the deployed software, seconds
   script_timeout: 600  # one lifecycle script of its target (start, stop, health, logs), seconds
+  port_base: 8000      # the host ports a deployment takes: port_base + (hash + number) % port_span, the first free
+  port_span: 1000
 
 # =============================================================================
 # Harness — the domain layer a build loads (docs/research/harness-design.md).

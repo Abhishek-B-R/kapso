@@ -75,7 +75,7 @@ class Kapso:
     def add_experience(ref=None, *, repo=None, research=None, name=None) -> str   # make a source
     def build(brief, ...) -> Solution
     def learn(source) -> LessonResult                # mine one finished campaign into your bank
-    def deploy(solution, strategy) -> Software
+    def deploy(solution, target) -> Software
 ```
 
 ### OrchestratorAgent
@@ -206,13 +206,12 @@ src/kapso/
 │   ├── presets.py           # Gate definitions + hosted server config (Leeroopedia)
 │   └── gates/
 │
-└── deployment/              # Deployment pipeline
-    ├── base.py              # Software, DeployConfig
-    ├── factory.py           # DeploymentFactory
-    ├── software.py          # DeployedSoftware
-    ├── selector/            # Strategy selection
-    ├── adapter/             # Code adaptation
-    └── strategies/          # Deployment strategies
+└── deployment/              # Deploy (docs/deploy/targets)
+    ├── session.py           # The deployment session and the engine's acceptance
+    ├── record.py            # The record under <campaign>/.kapso/deployments/<n>/
+    ├── handle.py            # Software: run, stop, start, health, logs
+    ├── worker.py            # The function kind's worker process
+    └── targets/             # The five bundled targets, each a skill with its scripts
         ├── local/
         ├── docker/
         ├── modal/

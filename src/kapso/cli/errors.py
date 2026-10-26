@@ -9,6 +9,7 @@ from typing import Type
 from kapso.core.config import ConfigError
 from kapso.core.git_reference import GitReferenceError
 from kapso.core.preflight import PreflightError
+from kapso.deployment.errors import DeployError
 from kapso.execution.evaluation_integrity import EvaluationIntegrityError
 from kapso.execution.experiment_workspace.experiment_workspace import WorkspaceCheckoutError
 from kapso.execution.inbox import InboxOpenError
@@ -38,6 +39,7 @@ ENGINE_ERRORS = (
     RunCheckpointError,
     WorkspaceCheckoutError,
     GateCapabilityError,
+    DeployError,
 )
 
 

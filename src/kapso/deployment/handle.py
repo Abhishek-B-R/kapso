@@ -303,8 +303,8 @@ class Software:
         function's worker log."""
         parts = list(self._lines)
         if self._script(LOGS):
-            _code, out, _err = self._lifecycle(LOGS)
-            parts.append(out.rstrip("\n"))
+            code, out, err = self._lifecycle(LOGS)
+            parts.append(out.rstrip("\n") if code == 0 else f"{LOGS} exited {code}: {err.strip()}")
         if self.run_kind == FUNCTION and self._worker_log().is_file():
             parts.append(self._worker_log().read_text(encoding="utf-8").rstrip("\n"))
         return "\n".join(part for part in parts if part)

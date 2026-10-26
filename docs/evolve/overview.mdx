@@ -80,7 +80,7 @@ solution = kapso.build(
 )
 
 # Deploy and run
-deployed_program = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
+deployed_program = kapso.deploy(solution, target="local")
 result = deployed_program.run({"data_path": "./test.csv"})
 ```
 

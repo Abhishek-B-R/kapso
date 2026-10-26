@@ -34,7 +34,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 from kapso.core.config import deep_merge, load_config
-from kapso.core.roles import ROLES, SPEC_KEYS, resolve_members, resolve_optional, resolve_role, resolve_spec
+from kapso.core.roles import ROLES, SPEC_KEYS, deployment_role, resolve_members, resolve_optional, resolve_role, resolve_spec
+from kapso.deployment.targets import AUTO, bundled_targets
 from kapso.core.agent_manifest import load_agent_manifest
 from kapso.core.api_endpoint import (
     openai_compatible_options,
@@ -76,20 +77,10 @@ CLI_BINARIES = {
 }
 
 def deploy_tools() -> Dict[str, Tuple[str, str]]:
-    """Deployment targets and the tool each one needs on the box, read from
-    every strategy's config.yaml (`requires: {binary, install}`), so a new
-    strategy directory is a new doctor row with nothing to edit here. LOCAL
-    declares nothing and runs in process; AUTO is resolved by a coding-agent
-    session, so its requirement is that session's agent (added separately).
-    """
-    from kapso.deployment.strategies import StrategyRegistry
-    registry = StrategyRegistry.get()
-    tools = {}
-    for name in registry.list_strategies():
-        requires = registry.get_strategy(name).get_requires()
-        if requires and requires.get("binary"):
-            tools[name] = (requires["binary"], requires.get("install", f"install {requires['binary']}"))
-    return tools
+    """The bundled targets and the tool each one needs on the box, from
+    their skills' `metadata.requires` (binary, install); local declares
+    none and runs in the engine's worker."""
+    return {target.name: (target.requires["binary"], target.requires["install"]) for target in bundled_targets() if target.requires}
 
 VERBS = ("build", "learn", "deploy", "experience")
 
@@ -892,65 +883,51 @@ def docker_daemon_running() -> bool:
     return subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=30).returncode == 0
 
 
+def deployment_session_spec(config: Dict[str, Any], coding_agent: Optional[str] = None) -> SessionSpec:
+    """The deployment session as the doctor's rows and the live tier see it."""
+    role = deployment_role(config, coding_agent)
+    return SessionSpec(
+        cli=role.cli, model=role.model, origin=f"deployment = {role.cli}:{role.model}",
+        auth_mode=str(role.settings.get("auth_mode") or "auto"), agent_specific=dict(role.settings),
+    )
+
+
 def deploy_requirements(
     config: Dict[str, Any],
     *,
-    strategy: Optional[str] = None,
+    target: Optional[str] = None,
     coding_agent: Optional[str] = None,
 ) -> List[Requirement]:
-    """`deploy()` adapts the solution with a coding-agent session, then
-    hands it to the target's runner.
-
-    Three cases. A named target checks that target's tool. AUTO checks
-    nothing extra — the target is chosen by the selector session, so
-    demanding every tool up front would fail deploys that were only ever
-    going to run locally. `strategy=None` is the doctor's view, with no
-    call in flight: it maps which targets this machine could serve.
-    """
-    deployment = config["deployment"]
-    coding_agent = coding_agent or deployment["coding_agent"]
-    model = deployment["model"]
-    requirements = cli_requirements([SessionSpec(
-        cli=coding_agent,
-        model=str(model),
-        origin=f"deploy(coding_agent={coding_agent!r}) adapts the solution",
-    )])
-
+    """`deploy()` runs one session on the resolved host, then the target's
+    scripts. The session's host row and its pairing always; then the
+    target's tool: a named target's is required (`docker` also checks the
+    daemon), `auto` asks for none (the session is told each target's
+    readiness). `target=None` is the doctor's view, no call in flight:
+    the configured target's tool is required when it names one, the other
+    bundled targets' tools are advisory."""
+    spec = deployment_session_spec(config, coding_agent)
+    requirements = host_model_requirements([spec]) + cli_requirements([spec])
     tools = deploy_tools()
-    if strategy is None:
-        for name, (binary, fix) in sorted(tools.items()):
+    configured = config["deployment"]["target"]
+    named = target if target is not None else configured
+    if named != AUTO and named in tools:
+        binary, fix = tools[named]
+        present = shutil.which(binary) is not None
+        origin = f"deploy(target={named!r})" if target is not None else f"deployment.target = {named}"
+        requirements.append(Requirement(label=f"{binary} (deploy target)", ok=present, fix=fix, origin=origin))
+        if named == "docker" and present:
             requirements.append(Requirement(
-                label=f"deploy target {name}",
-                ok=shutil.which(binary) is not None,
-                fix=fix,
-                origin=f"only needed for deploy(strategy=DeployStrategy."
-                       f"{name.upper()})",
-                required=False,
+                label="docker daemon running", ok=docker_daemon_running(),
+                fix="start Docker Desktop, or: sudo systemctl start docker", origin=origin,
             ))
-        return requirements
-
-    target = str(strategy).lower()
-    if target not in tools:
-        return requirements
-
-    binary, fix = tools[target]
-    present = shutil.which(binary) is not None
-    requirements.append(Requirement(
-        label=f"{binary} (deploy target)",
-        ok=present,
-        fix=fix,
-        origin=f"deploy(strategy={strategy})",
-    ))
-    if target == "docker" and present:
-        daemon = subprocess.run(
-            ["docker", "info"], capture_output=True, text=True, timeout=30,
-        )
-        requirements.append(Requirement(
-            label="docker daemon running",
-            ok=daemon.returncode == 0,
-            fix="start Docker Desktop, or: sudo systemctl start docker",
-            origin=f"deploy(strategy={strategy})",
-        ))
+    if target is None:
+        for name, (binary, fix) in sorted(tools.items()):
+            if name == named:
+                continue
+            requirements.append(Requirement(
+                label=f"deploy target {name}", ok=shutil.which(binary) is not None, fix=fix,
+                origin=f"only needed for kapso deploy --target {name}", required=False,
+            ))
     return requirements
 
 
@@ -1087,7 +1064,7 @@ def _specs_for(
                 "learning.codify",
             )
         ),
-        "deploy": [],
+        "deploy": [deployment_session_spec(config, context.get("coding_agent"))],
     }
     if verb is None:
         return [spec for name in VERBS for spec in per_verb[name]]

@@ -201,6 +201,19 @@ def existing_runs(record_path: Path) -> list:
     return list(json.loads(record_path.read_text(encoding="utf-8"))["runs"])
 
 
+def check_harness_unchanged(harness: Harness) -> None:
+    """The harness on disk is the one loaded, by its hash; named
+    otherwise: a session's file-tool write is denied by the engine's
+    protect-harness hook, so what changed came through a shell or by
+    hand, and this check is what catches it."""
+    current = harness_hash(harness.path)
+    if current != harness.hash:
+        raise HarnessError(
+            f"the harness changed since launch: {harness.label()} recorded, now {short(current)} "
+            f"({describe_change(harness.files, harness_files(harness.path))}); {harness.restore_hint()}"
+        )
+
+
 def stage_harness(
     harness: Optional[Harness],
     module: str,
@@ -229,15 +242,7 @@ def stage_harness(
         raise ValueError(f"unknown module {module!r}; the modules are {', '.join(MODULES)}")
     if host not in _SKILLS_DIR:
         raise HarnessError(f"unknown host {host!r}; the hosts are {', '.join(_SKILLS_DIR)}")
-    current = harness_hash(harness.path)
-    if current != harness.hash:
-        # Named: a session's file-tool write is denied by the engine's
-        # protect-harness hook, so what changed came through a shell or
-        # by hand; this check is what catches it.
-        raise HarnessError(
-            f"the harness changed since launch: {harness.label()} recorded, now {short(current)} "
-            f"({describe_change(harness.files, harness_files(harness.path))}); {harness.restore_hint()}"
-        )
+    check_harness_unchanged(harness)
     stager = _Stager(harness, module, session_dir, campaign_dir, session_id, host, records, engine_skills)
     # Ensemble members stage into one directory from several threads; the
     # files are written one staging at a time.

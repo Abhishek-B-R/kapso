@@ -81,7 +81,7 @@ def rig(tmp_path):
     env_file.write_text("GREETING=hello\n")
 
     class Rig:
-        def run(self, target, script, *, port=0, check=True, stdin=None, **values):
+        def run(self, target, script, *, port=0, check=True, stdin=None, options=None, **values):
             env = {
                 **{k: v for k, v in os.environ.items() if k in ("HOME", "LANG")},
                 "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -93,12 +93,14 @@ def rig(tmp_path):
                 "KAPSO_NUMBER": "2",
                 "KAPSO_WORKSPACE": str(workspace),
                 "KAPSO_RECORD_DIR": str(record),
-                "KAPSO_TARGET_DIR": str(BUNDLED_DIR / target),
+                "KAPSO_TARGET_DIR": str(target if isinstance(target, Path) else BUNDLED_DIR / target),
                 "KAPSO_INTERPRETER": sys.executable,
                 "KAPSO_ENV_FILE": str(env_file),
                 **{f"KAPSO_VALUE_{key.upper()}": value for key, value in values.items()},
+                **{f"KAPSO_OPTION_{key.upper()}": value for key, value in (options or {}).items()},
             }
-            path = BUNDLED_DIR / target / "scripts" / script
+            root = target if isinstance(target, Path) else BUNDLED_DIR / target
+            path = root / "scripts" / script
             command = ["bash", str(path)] if script.endswith(".sh") else [sys.executable, str(path)]
             return subprocess.run(command, cwd=workspace, env=env, input=stdin, capture_output=True, text=True, check=check, timeout=60)
 
@@ -204,3 +206,54 @@ def test_langgraph_keeps_one_thread_across_calls_and_deletes_it_on_stop(rig):
     ]
     rig.run("langgraph", "stop.sh", deployment_url=url)
     assert rig.log()[-1] == "sdk threads.delete thread-1" and not (rig.workspace_dir / ".kapso_langgraph_thread").exists()
+
+
+# ------------------------------------------------------------ paper-trading
+
+PAPER = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading" / "skills" / "paper-trading"
+# What a session writes for the target: a runner with the two modes the
+# target's scripts drive.
+RUN_PAPER = """import json
+import os
+import sys
+import time
+
+at = sys.argv[sys.argv.index("--at") + 1] if "--at" in sys.argv else "latest"
+cycle = {"bar": at, "orders": [], "equity": float(os.environ.get("KAPSO_OPTION_CASH", "100000"))}
+if "--once" in sys.argv:
+    print(json.dumps(cycle))
+    sys.exit(0)
+while True:
+    print(json.dumps(cycle), flush=True)
+    time.sleep(0.2)
+"""
+
+
+@pytest.fixture
+def paper_runner(rig):
+    """The runner in the workspace, and whatever loop is left ended."""
+    (rig.workspace_dir / "deploy").mkdir()
+    (rig.workspace_dir / "deploy" / "run_paper.py").write_text(RUN_PAPER)
+    yield rig
+    rig.run(PAPER, "stop.sh", check=False)
+
+
+def test_paper_trading_runs_the_workspaces_runner_as_a_loop_and_one_cycle_on_demand(paper_runner):
+    rig = paper_runner
+    started = rig.run(PAPER, "deploy.sh")
+    assert started.stdout.startswith("the paper runner runs (pid ") and started.stdout.strip().endswith("its log at deploy/paper.log")
+    assert (rig.workspace_dir / "deploy" / "paper.pid").is_file()
+    assert rig.run(PAPER, "health.sh", check=False).returncode == 0
+    # One cycle on demand, as of a bar, with the call's cash option.
+    answer = rig.run(PAPER, "run.py", stdin=json.dumps({"at": "2024-01-03"}), options={"cash": "5000"})
+    assert json.loads(answer.stdout) == {"bar": "2024-01-03", "orders": [], "equity": 5000.0}
+    assert '"bar": "latest"' in rig.run(PAPER, "logs.sh").stdout
+    rig.run(PAPER, "stop.sh")
+    assert rig.run(PAPER, "health.sh", check=False).returncode == 1 and not (rig.workspace_dir / "deploy" / "paper.pid").exists()
+    assert rig.run(PAPER, "start.sh").stdout.startswith("the paper runner runs (pid ")
+    assert rig.run(PAPER, "health.sh", check=False).returncode == 0
+
+
+def test_paper_trading_refuses_to_start_without_the_runner(rig):
+    failed = rig.run(PAPER, "deploy.sh", check=False)
+    assert failed.returncode == 1 and "no deploy/run_paper.py in the workspace" in failed.stderr

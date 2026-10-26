@@ -16,8 +16,10 @@ from kapso.core.roles import (
     ENGINE_PARAMS,
     ROLES,
     SessionRole,
+    check_deployment,
     check_hosts,
     check_params,
+    deployment_role,
     resolve_members,
     resolve_optional,
     resolve_role,
@@ -156,3 +158,33 @@ def test_a_host_with_no_staging_and_a_spec_of_the_wrong_shape_are_refused():
         resolve_role(HOSTS, params(judge={"cli": ["codex"]}), "judge")
     with pytest.raises(ConfigError, match="implementation.model must be a non-empty string, got False"):
         resolve_role(HOSTS, params(implementation={"model": False}), "implementation")
+
+
+def test_the_deployment_block_is_a_spec_over_the_hosts_following_the_builds_host():
+    """`deployment.cli: null` follows search_strategy.params.host, so a
+    project that moves to Codex changes one key; the block's own model
+    wins over the host's; the call's host wins over both."""
+    config = load_config()
+    role = deployment_role(config)
+    assert (role.cli, role.model, role.effort, role.timeout) == ("claude_code", "claude-opus-5", None, 1800.0)
+    assert deployment_role(config, "codex").cli == "codex"
+    config["search_strategy"]["params"]["host"] = "codex"
+    assert deployment_role(config).label == "codex:gpt-5.6-sol"
+    config["deployment"].update(cli="claude_code", model="claude-sonnet-5", effort="low")
+    assert (deployment_role(config).model, deployment_role(config).effort) == ("claude-sonnet-5", "low")
+    check_deployment(config)
+
+
+@pytest.mark.parametrize("block, message", [
+    ({"cli": "gemini"}, r"deployment\.cli: gemini is not in hosts"),
+    ({"target": ""}, r"deployment\.target must be a non-empty string"),
+    ({"timeout": -1}, r"deployment\.timeout must be a positive number of seconds"),
+    ({"call_timeout": "soon"}, r"deployment\.call_timeout must be a positive number of seconds"),
+    ({"port_span": 0}, r"deployment\.port_span must be a positive integer"),
+    ({"coding_agent": "claude_code"}, r"deployment: unknown key coding_agent; the keys are"),
+])
+def test_the_deployment_block_is_refused_by_key(block, message):
+    config = load_config()
+    config["deployment"].update(block)
+    with pytest.raises(ConfigError, match=message):
+        check_deployment(config)

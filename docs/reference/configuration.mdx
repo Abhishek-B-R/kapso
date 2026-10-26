@@ -360,16 +360,30 @@ The hosted MCP gates (see [MCP gates](/docs/evolve/mcp-gates)), an open namespac
 
 ```yaml
 deployment:
-  coding_agent: claude_code
-  model: claude-opus-5
+  target: auto
+  cli: null
+  model: null
+  effort: null
+  timeout: 1800
+  call_timeout: 300
+  script_timeout: 600
+  port_base: 8000
+  port_span: 1000
 ```
+
+The session `deploy()` runs, a spec over the hosts table in the shape of the build's roles, with the target it deploys to when the call names none, the deadlines and the ports. See [Deploy](/docs/deploy/targets).
 
 | Key | What it does | Shipped value |
 |-----|--------------|---------------|
-| `coding_agent` | The agent that runs the selector (for `AUTO`) and the adapter that rewrites a copy of the solution for its target | `claude_code` |
-| `model` | The model that agent is asked for | `claude-opus-5` |
+| `target` | Where `deploy()` deploys when the call names no target: `auto` (the session chooses among the targets available), a bundled target or a harness's | `auto` |
+| `cli` | The host the deployment session runs on, an entry of `hosts`; null follows the build's host, `search_strategy.params.host`, so a project that moves to Codex changes one key | `null` |
+| `model`, `effort` | The host entry's when null | `null` |
+| `timeout` | The deployment session's deadline, in seconds, its one resume included | `1800` |
+| `call_timeout` | One `run()` call of the deployed software, in seconds | `300` |
+| `script_timeout` | One lifecycle script of the target (start, stop, health, logs), in seconds | `600` |
+| `port_base`, `port_span` | The host ports a deployment takes: the first free from `port_base + (hash + number) % port_span`, within the span | `8000`, `1000` |
 
-`deploy(coding_agent=..., model=...)` and `kapso deploy --coding-agent` override per call.
+`deploy(target=..., coding_agent=...)` and `kapso deploy --target --coding-agent` override per call.
 
 ## harness
 

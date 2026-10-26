@@ -5,7 +5,7 @@
 #   Kapso.build() -> Kapso.deploy() -> Software.run(); Kapso.learn()
 #
 # Usage:
-#     from kapso import Kapso, Brief, Budget, Solution, DeployStrategy
+#     from kapso import Kapso, Brief, Budget, Solution
 #
 #     kapso = Kapso(config="./kapso-config.yaml")     # engine knobs only
 #     solution = kapso.build(
@@ -13,7 +13,7 @@
 #         evaluation="./evaluation", data="./data", repo=".",
 #         output="../churn-build", budget=Budget(minutes=480),
 #     )
-#     software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
+#     software = kapso.deploy(solution, target="local")
 #     result = software.run({"input": "data"})
 #     Solution.open("../churn-build")                  # the same solution, from any process
 
@@ -128,12 +128,9 @@ from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
 from kapso.learning.bank_remote import bank_origin, connect_bank
 from kapso.learning.update_frame import UpdateFrame, init_bank
 
-from kapso.deployment import (
-    Software,
-    DeployConfig,
-    DeployStrategy,
-    DeploymentFactory,
-)
+from kapso.deployment import DeployError, Software
+from kapso.deployment.session import run_deployment
+from kapso.deployment.targets import AUTO, resolve_target
 
 
 # =============================================================================
@@ -1651,92 +1648,75 @@ class Kapso:
     def deploy(
         self,
         solution: Solution,
-        strategy: DeployStrategy = DeployStrategy.AUTO,
-        env_vars: Optional[Dict[str, str]] = None,
+        target: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        options: Optional[Dict[str, str]] = None,
         coding_agent: Optional[str] = None,
-        model: Optional[str] = None,
     ) -> Software:
-        """
-        Deploy a solution to create running software.
+        """Deploy a solution as running software (docs/plans/redesign/wp5-deploy.md).
 
-        Uses the deployment pipeline:
-        1. Selector: Analyzes solution and selects strategy (if AUTO)
-        2. Adapter: Adapts and deploys via coding agent
-        3. Runner: Creates execution backend
+        One session on a copy of the solution adapts it to the target,
+        deploys it with the target's scripts and proves one call; the
+        engine checks the result, records the deployment under the
+        campaign (`.kapso/deployments/<n>/`) and hands back the handle.
 
         Args:
-            solution: The Solution from build(), or Solution.open(path)
-            strategy: Where to deploy (AUTO, LOCAL, DOCKER, MODAL, BENTOML, LANGGRAPH)
-                - AUTO: System analyzes code and chooses best strategy
-                - LOCAL: Run as local Python process (fastest)
-                - DOCKER: Run in Docker container (isolated)
-                - MODAL: Deploy to Modal.com (serverless, GPU)
-                - BENTOML: Deploy with BentoML (BentoCloud)
-                - LANGGRAPH: Deploy as an agent on LangGraph Platform
-            env_vars: Environment variables the software needs at runtime:
-                written to `.env` in the adapted workspace, named (never
-                valued) in the adapter prompt, and set on the runtimes Kapso
-                manages (local process, Docker container)
-            coding_agent: The coding agent behind the selector and adapter
-                sessions; default from config `deployment.coding_agent`
-            model: The model that agent is asked for; default from config
-                `deployment.model`
-            
+            solution: The Solution from build(), or Solution.open(path); the
+                campaign must be checked out at the delivered candidate, its
+                tracked files unchanged
+            target: Where to deploy: `auto` (the session chooses), a bundled
+                target (`local`, `docker`, `modal`, `bentoml`, `langgraph`)
+                or a target the build's harness ships; the config's
+                `deployment.target` when None
+            env: Variables the software needs at runtime, written to `.env`
+                in the workspace, named (never valued) in the prompt, set on
+                every runtime the engine and the target's scripts manage
+            options: Options for the target's workflow (a harness target's
+                `schedule`, say), named in the prompt and exported to the
+                scripts as KAPSO_OPTION_<NAME>
+            coding_agent: The host the deployment session runs on; the
+                config's `deployment.cli`, else the build's host
+
         Returns:
-            Software instance with unified interface:
-            - .run(inputs) -> {"status": "success", "output": ...}
-            - .stop() -> cleanup resources
-            - .logs() -> execution logs
-            - .is_healthy() -> health check
-            
+            Software: run(inputs), stop(), start(), is_healthy(), logs(),
+            the record's facts; `Software.open(campaign, number)` from any
+            later process
+
         Example:
             solution = kapso.build("Create a trading bot")
-            software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
+            software = kapso.deploy(solution, target="docker")
             result = software.run({"ticker": "AAPL"})
             software.stop()
         """
         if solution.commit is None:
-            raise ValueError(
+            raise DeployError(
                 f"nothing to deploy: the build in {solution.campaign} delivered no "
                 f"candidate (stopped: {solution.stopped_reason})"
             )
         checked_out = _git_rev(solution.campaign, "HEAD")
         if checked_out != solution.commit:
-            raise ValueError(
+            raise DeployError(
                 f"{solution.campaign} is checked out at {checked_out[:12]}, not at "
                 f"the delivered candidate {solution.commit[:12]} ({solution.branch}); "
                 f"run `git -C {solution.campaign} checkout {solution.branch}` first"
             )
         # The harness: the loaded one (the build's name, any version), else
-        # the record's; its deployment module rides into the selector and
-        # adapter sessions.
+        # the record's; its deployment module rides into the session.
         harness = self._harness_for(solution, verb="deploy")
-        # The config's deployment block: the packaged defaults with the
-        # override file over them.
-        deployment = self._config["deployment"]
-        coding_agent = coding_agent or deployment["coding_agent"]
-        model = model or deployment["model"]
+        chosen, _offered = resolve_target(target, self._config["deployment"]["target"], harness)
         run_preflight(
-            "deploy", self._config,
-            strategy=getattr(strategy, "value", str(strategy)),
-            coding_agent=coding_agent,
+            "deploy", self._config, target=AUTO if chosen is None else chosen.name, coding_agent=coding_agent,
         )
         print(f"\n{'='*60}")
         print(f"DEPLOYING: {solution.brief.objective.splitlines()[0]}")
         print(f"{'='*60}")
-        print(f"  Strategy: {strategy}")
+        print(f"  Target: {AUTO if chosen is None else chosen.name}")
         print(f"  Campaign: {solution.campaign}")
         print()
-        
-        config = DeployConfig(
-            solution=solution,
-            env_vars=env_vars,
-            coding_agent=coding_agent,
-            model=model,
-            harness=harness,
+        return run_deployment(
+            solution, config=self._config, target=target, env=env, options=options,
+            coding_agent=coding_agent, harness=harness,
         )
-
-        return DeploymentFactory.create(strategy, config)
 
     def _harness_for(self, solution: Solution, *, verb: str) -> Optional[Harness]:
         """The harness a verb on a finished build runs with: the loaded one
@@ -1898,8 +1878,6 @@ __all__ = [
     "Budget",
     "Solution",
     "Software",
-    "DeployStrategy",
-    "DeployConfig",
-    "DeploymentFactory",
+    "DeployError",
     "IterationEvaluator",
 ]

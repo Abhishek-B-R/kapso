@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from kapso.core.config import load_config
+from kapso.core.config import ConfigError, load_config
 import kapso.core.preflight as preflight
 import kapso.kapso as kapso_module
 from kapso.kapso import Kapso
@@ -704,13 +704,16 @@ def test_other_non_inference_sessions_are_rejected(
 
 
 @pytest.mark.parametrize("override", [False, True])
-def test_deploy_rejects_config_and_argument(packaged, full_machine, override):
+def test_deploy_rejects_an_inference_only_host_by_key(packaged, full_machine, override):
+    """An inference-only adapter is never in the hosts table (it has no
+    staging), so the deployment session's host is refused by the key that
+    named it, from the config or the call."""
     context = {}
     if override:
         context["coding_agent"] = "openai_compatible"
     else:
-        packaged["deployment"]["coding_agent"] = "openai_compatible"
-    with pytest.raises(PreflightError, match="inference-only"):
+        packaged["deployment"]["cli"] = "openai_compatible"
+    with pytest.raises(ConfigError, match="deployment.cli: openai_compatible is not in hosts"):
         preflight.run_preflight("deploy", packaged, **context)
 
 

@@ -241,3 +241,85 @@ def test_the_session_follows_the_hosts_own_layout_on_codex(solution, agent):
     assert "Open its skill with `$local`" in call["prompt"]
     assert call["config"].agent_specific["env_overrides"]["KAPSO_TARGET_DIR"].endswith(".agents/skills/local")
     software.stop()
+
+
+# ------------------------------------------------------------ with a harness
+
+TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
+
+
+def trading(tmp_path):
+    import shutil
+    from kapso.harness import load_harness
+    copy = tmp_path / "harness" / "trading"
+    shutil.copytree(TRADING, copy)
+    return load_harness(str(copy), settings=dict(load_config()["harness"], store=str(tmp_path / "store")), say=lambda line: None)
+
+
+def test_with_a_harness_the_session_carries_its_deployment_module_beside_the_target(solution, agent, tmp_path):
+    harness = trading(tmp_path)
+    software = deploy(solution, agent, harness=harness)
+    [call] = agent.calls
+    page = (harness.path / "instructions" / "deployment.md").read_text().strip()
+    assert page in call["prompt"] and "- paper-trading — " in call["prompt"] and "- broker — " in call["prompt"]
+    assert call["prompt"].index("The target is `local`") < call["prompt"].index(page)
+    specific = call["config"].agent_specific
+    assert set(specific["mcp_servers"]) >= {"market-data", "broker"} and specific["settings_path"].endswith(".claude/harness-hooks.json")
+    assert specific["env_overrides"]["KAPSO_HARNESS_ROOT"] == str(harness.path)
+    workspace = software.workspace
+    assert sorted(p.name for p in (workspace / ".claude" / "skills").iterdir()) == ["local", "market-data", "paper-trading"]
+    record = open_record(solution.campaign)
+    assert record.data["harness"]["name"] == "trading" and record.data["harness_root"] == str(harness.path)
+    session = json.loads((solution.campaign / ".kapso" / "sessions" / "deployment" / "1" / "session.json").read_text())
+    assert session["skills"] == ["market-data", "paper-trading"] and session["engine_skills"] == ["local"]
+    assert session["hooks"][0] == "protect-harness"
+    software.stop()
+
+
+def test_a_harness_changed_since_its_load_deploys_nothing(solution, agent, tmp_path):
+    from kapso.harness import HarnessError
+    harness = trading(tmp_path)
+    page = harness.path / "instructions" / "guardrails.md"
+    page.write_text(page.read_text() + "\n- edited after the load\n")
+    with pytest.raises(HarnessError, match="the harness changed since launch"):
+        deploy(solution, agent, harness=harness)
+    assert records(solution.campaign) == [] and agent.calls == []
+
+
+def test_a_harness_target_deploys_through_its_skill_and_runs_one_cycle_on_demand(solution, agent, tmp_path):
+    """The trading example's paper-trading target: the session (faked)
+    writes the runner the skill asks for and runs the target's deploy
+    script with the deployment's variables; the engine's acceptance runs
+    the health check and the proof cycle; the handle runs a cycle on
+    demand, reads the log and stops the runner."""
+    import os
+    import subprocess
+    from tests.test_target_scripts import RUN_PAPER
+
+    def act(workspace):
+        (workspace / "deploy").mkdir()
+        (workspace / "deploy" / "run_paper.py").write_text(RUN_PAPER)
+        env = {**os.environ, **agent.calls[-1]["config"].agent_specific["env_overrides"]}
+        subprocess.run(["bash", f"{env['KAPSO_TARGET_DIR']}/scripts/deploy.sh"], cwd=workspace, env=env, check=True, capture_output=True)
+        (workspace / "kapso_deployment.json").write_text(json.dumps(result_of(
+            target="paper-trading", endpoint="deploy/paper.log", run={"kind": "script"},
+            proof={"inputs": {}, "output": {"bar": "latest", "orders": [], "equity": 100000.0}},
+            artifacts=["deploy/run_paper.py"], summary="the runner runs on the schedule",
+        )))
+
+    agent.on_generate = staticmethod(act)
+    harness = trading(tmp_path)
+    software = deploy(solution, agent, harness=harness, target="paper-trading", options={"schedule": "*/2 * * * *", "cash": "5000"})
+    [call] = agent.calls
+    env = call["config"].agent_specific["env_overrides"]
+    assert env["KAPSO_TARGET_DIR"].endswith(".claude/skills/paper-trading") and env["KAPSO_OPTION_CASH"] == "5000"
+    assert "The target is `paper-trading`. Open its skill with `/paper-trading`" in call["prompt"]
+    record = open_record(solution.campaign)
+    assert record.state == RUNNING and record.data["target"] == "paper-trading" and record.data["endpoint"] == "deploy/paper.log"
+    assert (record.target_dir / "scripts" / "run.py").is_file() and record.data["harness"]["name"] == "trading"
+    session = json.loads((solution.campaign / ".kapso" / "sessions" / "deployment" / "1" / "session.json").read_text())
+    assert session["skills"] == ["market-data", "paper-trading"] and session["engine_skills"] == []
+    assert software.run({"at": "2024-01-05"}) == {"status": "success", "output": {"bar": "2024-01-05", "orders": [], "equity": 5000.0}}
+    assert software.is_healthy() and '"bar": "latest"' in software.logs()
+    software.stop()
+    assert not software.is_healthy() and not (software.workspace / "deploy" / "paper.pid").exists()

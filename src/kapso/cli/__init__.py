@@ -61,7 +61,7 @@ Examples:
   kapso learn ../campaign
 
   # Deploy a solution
-  kapso deploy ../campaign --strategy local
+  kapso deploy ../campaign --target local
 """
     )
 

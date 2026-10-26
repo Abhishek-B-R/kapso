@@ -19,13 +19,13 @@ import git
 
 from kapso.core.preflight import docker_daemon_running
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
-from kapso.core.roles import SPEC_KEYS, SessionRole, resolve_spec
+from kapso.core.roles import deployment_role
 from kapso.deployment.errors import DeployError
 from kapso.deployment.handle import FUNCTION, HTTP, RUN_KINDS, SCRIPT, Software
 from kapso.deployment.record import DEPLOYING, FAILED, RUNNING, DeploymentRecord, now, start_record
-from kapso.deployment.targets import AUTO, TargetSkill, readiness, resolve_target
+from kapso.deployment.targets import AUTO, BUNDLED, TargetSkill, readiness, resolve_target
 from kapso.execution.coding_agents.factory import CodingAgentFactory
-from kapso.harness.staging import host_for, open_skill_instruction, skills_dir, stage_harness
+from kapso.harness.staging import check_harness_unchanged, host_for, open_skill_instruction, skills_dir, stage_harness
 
 RESULT_FILE = "kapso_deployment.json"
 ENV_FILE = ".env"
@@ -43,18 +43,6 @@ ALLOWED_TOOLS = ["Edit", "Read", "Write", "Bash", "Glob", "Grep"]
 ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 RUN_KEYS = {FUNCTION: ("module", "callable"), HTTP: ("url", "path"), SCRIPT: ()}
 COMMITTER = git.Actor("Kapso", "kapso@leeroo.com")
-
-
-def deployment_role(config: Dict[str, Any], coding_agent: Optional[str]) -> SessionRole:
-    """The deployment session's spec over the hosts table: the call's host,
-    else the block's `cli`, else the build's host; the block's model and
-    effort, else the host entry's."""
-    block = config["deployment"]
-    spec = {key: block[key] for key in SPEC_KEYS if block.get(key) is not None}
-    if coding_agent is not None:
-        spec["cli"] = coding_agent
-    host = spec.get("cli") or config["search_strategy"]["params"]["host"]
-    return resolve_spec(config["hosts"], host, spec, name=DEPLOYMENT_MODULE, origin=DEPLOYMENT_MODULE)
 
 
 def check_env(env: Dict[str, str]) -> None:
@@ -284,6 +272,8 @@ def run_deployment(
     options = {str(k): str(v) for k, v in (options or {}).items()}
     check_env(env)
     refuse_dirty(campaign)
+    if harness is not None:
+        check_harness_unchanged(harness)   # before any record: a changed harness deploys nothing
     record = start_record(
         campaign, target_requested=target if target is not None else block["target"],
         host=f"{role.cli}:{role.model}", interpreter=sys.executable, env_names=sorted(env), options=options,
@@ -295,10 +285,13 @@ def run_deployment(
     )
     workspace = make_workspace(campaign, record)
     env_file = write_env_file(workspace, env)
+    # The engine's own targets are staged as its skills; a harness target
+    # arrives with the harness's deployment module.
     staged_targets = [chosen] if chosen is not None else list(offered)
     staged = stage_harness(
         harness, DEPLOYMENT_MODULE, session_dir=workspace, campaign_dir=campaign,
-        session_id=record.data["session"], host=host, engine_skills=[candidate.path for candidate in staged_targets],
+        session_id=record.data["session"], host=host,
+        engine_skills=[candidate.path for candidate in staged_targets if candidate.origin == BUNDLED],
     )
     offered_lines = [{"name": candidate.name, "ready": _readiness_line(candidate)} for candidate in offered]
     record.data["offered"] = offered_lines
