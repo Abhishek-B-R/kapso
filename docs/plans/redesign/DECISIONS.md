@@ -6,6 +6,70 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-26, WP4 (taken while building)
+
+**The axes live in one tag, status included.** The planner's first plan
+names the axes in an `<axes>` block (a list numbered from 1); a revision
+restates every one in the same block as `N. <axis> — <status>`, and the
+record keeps those lines as the axes, so the judge and the next
+replanner read the latest status beside each axis; a keep puts its
+statuses in its paragraph and carries the axes along. Why: one grammar
+to parse and one field in the record, and the status is what the judge's
+frontier report builds on. Alternatives rejected: a separate
+`<axis_status>` tag and an `axis_statuses` field (two things to keep in
+step, no reader that wanted them apart); statuses required on a keep
+(a terse keep would be discarded for a formality). Shows in
+`lens_planning.py`, the two planner prompts, `axis_frontier.md`.
+
+**Single-session ideation keeps the ensemble's candidate hygiene.** The
+plain path is the ensemble machinery with one member, so a candidate
+under the degenerate floor (eighty characters, or forty of content) is
+dropped and the fallback solution is implemented, where the old Claude-
+only path took any output as the plan. Why: one machinery, one rule; a
+plan that short is a skeleton on any host, and the fallback keeps the
+round alive. Shows in `ideation.py`; the direct-construction tests give
+their fake agents plan-sized outputs.
+
+**A host the table does not name is a config error, named by where the
+host is set.** `search_strategy.params.host (what --coding-agent sets):
+gemini is not in hosts (the hosts are claude_code, codex); add
+hosts.gemini: {model: …} to the config to use it`, a `ValueError` from
+the resolver before the preflight, like every other config refusal; a
+role's own `cli` is named as that role's key. The harness staging's
+"no staging" refusal is unreachable through the facade now: the hosts
+table is checked against the adapter registry, and every registered
+adapter stages. Alternative rejected: a preflight row (the preflight
+checks the machine against the config; a config that names nothing the
+engine knows is not a machine fact).
+
+**An open namespace exists in the schema, empty.** `knowledge_search.
+params: {}` is in the packaged file: the walk allows any key under an
+open namespace, but the namespace's own key must be one the packaged
+mapping names, so an override could not set it until the packaged file
+carried it. The readers take `["params"]`, not `.get`. The rule holds
+for every open namespace: `hosts`, `inference.roles`, `gates`,
+`session_env_defaults` all exist in the packaged file.
+
+**A mapping in the packaged file is a mapping in an override.** The walk
+refuses a scalar where the packaged value is a mapping (`inference:
+nonsense` → `must be a mapping, got str`) instead of letting the merge
+replace the block and the reader die later. Shows in `config.py`.
+
+**The launch record's `config_path` is `None` for the packaged
+defaults, however they were named.** `is_packaged()` (the resolver's
+own test, exported) decides it at record and resume time, so a resume
+from another install — a different site-packages path for the same
+packaged file — compares equal, as the old `_launch_config_path` made
+it. Shows in `kapso.py`.
+
+**The trace fixture generator writes the launch record at the current
+schema.** The archives predate the record without `mode`; the generator
+reconstructs the record (schema 2, no `mode`) as it already
+reconstructs the checkpoint's and the solution record's schemas, and the
+three fixtures were regenerated from their archives (the golden texts
+unchanged). The handle's words (`experiments`, `minutes`, `usd`,
+`reserve_minutes`, `host`) come with change 5.
+
 ## 2026-10-26, WP4 (planned; taken while writing the sub-plan)
 
 **The build's sessions are roles over a hosts table.** The config gains
