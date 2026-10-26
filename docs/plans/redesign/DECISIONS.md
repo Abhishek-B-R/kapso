@@ -16,7 +16,7 @@ That is the brief: no `SessionStart` hook, nothing injected into every
 prompt, nothing for Codex to lack. The plugin ships no hooks file.
 
 **What a host session loads is a line in the project's config.**
-`experience.sessions` (a list of references, empty as packaged) names what
+`experience.session_sources` (a list of references, empty as packaged) names what
 `kapso-mcp` loads when `--experience` is absent; `kapso-mcp` finds the
 project's `kapso-config.yaml` by the one rule every command follows (the
 git top level, else the working directory), so the one convention the
@@ -33,7 +33,7 @@ that only wanted the research tools must keep them (Codex's review); an
 explicit `--experience` that does not exist stops the server with the
 add line, as a build is refused.
 
-**Six skills and eleven commands, the commands pointing at the skills.**
+**Six skills and ten commands, the commands pointing at the skills.**
 A command is the explicit entry with arguments (`/kapso:build <wish>`),
 a skill the procedure that also triggers on its description; a command's
 body names the skill and the moment's CLI line and nothing else, so the
@@ -41,7 +41,9 @@ procedure is written once. Codex has no commands: the skills' names
 (`$kapso-build`) and the sidecars' default prompts are its entries.
 `research` and `bank` from the 2026-10-12 tree are gone with WP3's verbs
 (`experience add --research`, `experience share`); `review` and
-`harness` and `experience` join.
+`harness` and `experience` join; `doctor` is not a command (one CLI line
+the `kapso` skill knows and `/kapso:setup` runs), and `experience` stays
+for the team's moment. A command's body carries no procedure.
 
 **`kapso-evaluation` builds the evaluator for one approval.** The shipped
 skill said "never write an evaluator on the user's behalf"; the owner's
@@ -153,6 +155,47 @@ false` on Claude Code (hidden from the menu, the model's to call) and
 each host's file carries its own control, and the test checks each for
 its own field. The earlier "mirror" would have disabled Codex's implicit
 invocation, the opposite of the skills document.
+
+**The host-session server connects even with every gate off.** Before,
+`kapso-mcp` exited 1 when nothing could be served (no `codex` on PATH,
+no repo memory, not in a campaign, nothing loaded), which is exactly a
+fresh project: the host showed "failed to connect" as the engineer's
+first impression (Claude Code's review). Now the campaign tools are
+always served, and a session with every other gate off gets the notes in
+the server's instructions. A host spawns its servers once at session
+start, so the setup skill's closing lines say how the session reaches
+the tools it just installed (`/mcp` reconnect on Claude Code, a new
+session on Codex).
+
+**The installed plugin is kept out of campaign sessions.** The probe:
+a user-scope plugin's skills are listed by every `claude -p` and `codex
+exec` session, so an implementation session could reach `kapso-build`
+and launch a campaign inside a campaign. The Claude adapter passes
+`enabledPlugins: {"kapso@kapso": false}` in every campaign session's
+settings (verified to hide the skills); Codex has no per-session switch
+(a `-c plugins."…".enabled=false` override did not hide them), so the
+Codex adapter stages an execpolicy rule refusing `kapso build`, `kapso
+learn` and `kapso deploy` inside its sessions (the mechanism WP2
+verified) and the six descriptions say "never inside a Kapso campaign
+session". The proof lists a campaign session's skills and tools on both
+hosts.
+
+**A session-built evaluator keeps its hold-out inside the evaluation
+directory.** The one thing the product promise rests on: labels left
+under `--data` are copied to `kapso_datasets/` and reachable by every
+attempt. The contract pins the churn fixture's pattern (`private/` named
+by `evaluation/private_dir.txt`, inside the directory passed with
+`--evaluation`, protected with it), and the protocol names the split rule
+and the leakage checks run; a criterion the data cannot measure is said
+plainly.
+
+**The version is a development number until the release.** `0.7.10` is
+on PyPI without `kapso-mcp`: the launcher's pin to it would resolve a
+real wheel and die on the missing entry point (Claude Code's review).
+`0.8.0.dev1` is on no index, so the bootstrap branches fail to resolve
+until WP11 ships, and the version test pins one number across the
+package, the manifests and the pin; the marketplace entry carries none
+(the manifest's wins: one copy fewer).
 
 ## 2026-10-26, WP5 (after the pull-request review of #160)
 
