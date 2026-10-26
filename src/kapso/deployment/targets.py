@@ -136,11 +136,11 @@ def resolve_target(
 
 
 def readiness(target: TargetSkill) -> str:
-    """What the machine has for the target: `present`, `missing: <install>`
-    (the binary is not on PATH), or `unverified` (the target declares no
-    tool, a harness target)."""
+    """What the machine has for the target: `present` (the tool is on PATH,
+    or the engine's target needs none), `missing: <install>`, or
+    `unverified` (a harness target, whose tools the harness declares)."""
     if target.requires is None:
-        return "unverified"
+        return "present, needs nothing" if target.origin == BUNDLED else "unverified"
     if shutil.which(target.requires["binary"]) is None:
         return f"missing: {target.requires['install']}"
     return "present"

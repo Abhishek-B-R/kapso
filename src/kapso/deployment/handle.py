@@ -221,20 +221,17 @@ class Software:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                worker.kill()
-                worker.wait()
-                self._worker = None
+                self._end_worker()
                 return {"error": f"the function did not answer within {self._call_timeout:g} s; its worker was ended"}
             readable, _, _ = select.select([worker.stdout], [], [], min(remaining, _POLL_SECONDS))
             if readable:
                 line = worker.stdout.readline()
                 if line:
                     return json.loads(line)
-                worker.wait()
-                self._worker = None
+                self._end_worker()
                 return {"error": self._worker_log_tail()}
             if worker.poll() is not None:
-                self._worker = None
+                self._end_worker()
                 return {"error": self._worker_log_tail()}
 
     def _worker_log_tail(self) -> str:
@@ -243,10 +240,15 @@ class Software:
         return "\n".join(lines[-30:]) or "the worker ended without a message"
 
     def _end_worker(self) -> None:
-        if self._worker is not None and self._worker.poll() is None:
-            self._worker.kill()
-            self._worker.wait()
+        worker = self._worker
         self._worker = None
+        if worker is None:
+            return
+        if worker.poll() is None:
+            worker.kill()
+            worker.wait()
+        worker.stdin.close()
+        worker.stdout.close()
 
     def _run_function(self, inputs: Any) -> Dict[str, Any]:
         failure = self._ensure_worker()

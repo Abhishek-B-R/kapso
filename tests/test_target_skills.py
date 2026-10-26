@@ -114,6 +114,8 @@ def test_a_harness_target_named_like_a_bundled_one_is_refused(tmp_path):
 
 def test_readiness_names_the_missing_tool(monkeypatch):
     docker = next(target for target in bundled_targets() if target.name == "docker")
+    local = next(target for target in bundled_targets() if target.name == "local")
+    assert readiness(local) == "present, needs nothing"
     monkeypatch.setattr("kapso.deployment.targets.shutil.which", lambda name: None)
     assert readiness(docker) == "missing: install Docker: https://docs.docker.com/get-docker/ (and start its daemon)"
     monkeypatch.setattr("kapso.deployment.targets.shutil.which", lambda name: f"/usr/bin/{name}")
