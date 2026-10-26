@@ -15,7 +15,6 @@ import os
 import re
 
 from kapso.core.prompt_loader import load_prompt, render_prompt
-from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.core.roles import SessionRole
 
@@ -54,21 +53,14 @@ def generate_technical_difficulties(
         },
     )
 
-    config = CodingAgentConfig(
-        agent_type=role.cli,
-        model=role.model,
-        debug_model=role.model,
-        agent_specific={
-            **role.settings,
-            "env_strip": env_strip,
-            "allowed_tools": ["Read", "Bash"],
-            "sandbox": "read-only",
-            "timeout": timeout_seconds,
-            "streaming": True,
-            "planning_mode": False,
-            "effort": role.effort,
-        },
-    )
+    config = CodingAgentFactory.session_config(role, {
+        "env_strip": env_strip,
+        "allowed_tools": ["Read", "Bash"],
+        "sandbox": "read-only",
+        "timeout": timeout_seconds,
+        "streaming": True,
+        "planning_mode": False,
+    })
     agent = CodingAgentFactory.create(config)
     agent.initialize(workspace_dir)
     result = agent.generate_code(prompt)

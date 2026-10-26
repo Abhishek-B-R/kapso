@@ -12,6 +12,7 @@ import warnings
 from typing import Dict, Type, List, Any, Optional
 
 from kapso.core.agent_manifest import load_agent_manifest
+from kapso.core.roles import SessionRole
 from kapso.execution.coding_agents.base import (
     CodingAgentInterface,
     CodingAgentConfig,
@@ -194,6 +195,21 @@ class CodingAgentFactory:
             agent_specific=merged_agent_specific,
         )
     
+    @classmethod
+    def session_config(
+        cls, role: SessionRole, own: Dict[str, Any], staged: Optional[Any] = None,
+    ) -> CodingAgentConfig:
+        """A build session's config on its role's host, in one precedence:
+        the adapter's structural defaults (agents.yaml), then the host
+        entry's settings, then the role's effort and the session's own
+        keys, then the staging's merge (the harness's hooks, servers and
+        environment; ``staged`` is the session's StagedHarness, None
+        without one). Every build session is constructed here."""
+        settings: Dict[str, Any] = {**role.settings, "effort": role.effort, **own}
+        if staged is not None:
+            settings = staged.merged_agent_specific(settings)
+        return cls.build_config(role.cli, model=role.model, agent_specific=settings)
+
     # =========================================================================
     # Registry Query Methods
     # =========================================================================

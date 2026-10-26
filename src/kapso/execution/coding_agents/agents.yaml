@@ -155,10 +155,6 @@ agents:
       vertex_location: "global"
       # Seconds to wait for the local bridge to start serving.
       bridge_startup_timeout: 60
-      # The open model's reasoning effort, set on the bridge for every
-      # request (Vertex accepts minimal / low / medium / high / max for
-      # GLM 5.2; xhigh is sent as max). null would leave the model's default.
-      effort: "xhigh"
       # Open models write big files in one turn; the CLI's default 32k
       # output cap killed 1 of 48 fleet runs (Vertex accepts 100k for GLM 5.2).
       # Set-if-absent in the CLI's environment.
@@ -240,8 +236,6 @@ agents:
     install_command: "npm install -g @openai/codex"
     documentation_url: "https://github.com/openai/codex"
     agent_specific:
-      # OpenAI reasoning ceiling is xhigh (no "max" tier)
-      effort: "xhigh"
       timeout: 3600
       sandbox: "danger-full-access"
       web_search: true

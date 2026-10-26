@@ -30,7 +30,6 @@ from kapso.execution.search_strategies import (
     SearchStrategy,
     SearchStrategyFactory,
 )
-from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.search_strategies.generic import FeedbackGenerator, FeedbackResult
 from kapso.execution.search_strategies.generic.implementation import render_inbox_section
@@ -449,13 +448,8 @@ class OrchestratorAgent:
         """The judge: the `judge` role over the hosts table (kapso.core.roles)."""
         role = resolve_role(self.config["hosts"], self.strategy_params, "judge")
         return FeedbackGenerator(
-            coding_agent_config=CodingAgentConfig(
-                agent_type=role.cli,
-                model=role.model,
-                debug_model=role.model,
-                agent_specific={
-                    **role.settings, "streaming": True, "effort": role.effort, "timeout": role.timeout,
-                },
+            coding_agent_config=CodingAgentFactory.session_config(
+                role, {"streaming": True, "timeout": role.timeout},
             ),
         )
 
@@ -467,12 +461,7 @@ class OrchestratorAgent:
         """The search strategy from the resolved config; the workspace's
         sessions carry the implementation role's host."""
         role = resolve_role(self.config["hosts"], self.strategy_params, "implementation")
-        coding_agent_config = CodingAgentConfig(
-            agent_type=role.cli,
-            model=role.model,
-            debug_model=role.model,
-            agent_specific=dict(role.settings),
-        )
+        coding_agent_config = CodingAgentFactory.session_config(role, {})
         return SearchStrategyFactory.create(
             strategy_type=self.strategy_type,
             problem_handler=self.problem_handler,
@@ -534,12 +523,7 @@ class OrchestratorAgent:
             {key: block[key] for key in SPEC_KEYS if key in block},
             name="evaluation_maintainer", origin="evaluation_maintainer",
         )
-        agent_config = CodingAgentConfig(
-            agent_type=role.cli,
-            model=role.model,
-            debug_model=role.model,
-            agent_specific={**role.settings, "effort": role.effort, "timeout": role.timeout},
-        )
+        agent_config = CodingAgentFactory.session_config(role, {"timeout": role.timeout})
         maintainer = EvaluationMaintainer(
             coding_agent_config=agent_config,
             workspace_dir=self.search_strategy.workspace_dir,
@@ -663,23 +647,15 @@ class OrchestratorAgent:
             *[tool for tool in mcp_tools if tool.startswith("mcp__")],
             *staged.allowed_tools,
         ]
-        own = {
-            **strategy.implementation_role.settings,
+        config = CodingAgentFactory.session_config(strategy.implementation_role, {
             "env_strip": strategy.env_strip,
             "env_defaults": strategy.env_defaults,
             "mcp_servers": mcp_servers,
             "allowed_tools": allowed,
             "timeout": strategy._clamped_timeout(float(harness.settings["setup_minutes"]) * 60.0),
             "streaming": True,
-            "effort": strategy.implementation_role.effort,
             **inbox_agent_settings,
-        }
-        config = CodingAgentConfig(
-            agent_type=host,
-            model=strategy.implementation_role.model,
-            debug_model=strategy.implementation_role.model,
-            agent_specific=staged.merged_agent_specific(own),
-        )
+        }, staged)
         answered = (
             render_inbox_section(load_requests(inbox["path"]), dotenv_path=inbox.get("dotenv_path", ""))
             if inbox_on else ""

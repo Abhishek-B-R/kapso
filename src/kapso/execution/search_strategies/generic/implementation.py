@@ -21,7 +21,6 @@ from kapso.harness.staging import StagedHarness
 from kapso.execution.inbox import Request, load_requests
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.core.roles import SessionRole
-from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.search_strategies.generic.ideation import WEB_TOOLS
 from kapso.execution.search_strategies.generic.difficulties_generator import (
@@ -143,8 +142,6 @@ def run_implementation(
     from kapso.gated_mcp import gate_usage, get_mcp_config
     from kapso.execution.memories.repo_memory.observation import extract_repo_memory_sections_consulted
     
-    implementation_cli = implementation_role.cli
-    implementation_model = implementation_role.model
 
     # Create experiment session (handles git branching). A continuation
     # takes the branch as the stopped session left it.
@@ -186,7 +183,7 @@ def run_implementation(
     
     # The harness's implementation module, staged into the clone after the
     # checkout and before the executing agent is built.
-    staged = stage_harness_for("implementation", session.session_folder, branch_name, implementation_cli)
+    staged = stage_harness_for("implementation", session.session_folder, branch_name, implementation_role.cli)
 
     # 2. Get MCP config for code + research + repo_memory gates (not idea)
     mcp_servers, mcp_tools = get_mcp_config(
@@ -219,12 +216,7 @@ def run_implementation(
     # settings, the engine's environment, the gates, the tools (the
     # whitelist on Claude Code, `--search` on Codex), the deadline and
     # the transcript.
-    config = CodingAgentConfig(
-        agent_type=implementation_cli,
-        model=implementation_model,
-        debug_model=implementation_model,
-        agent_specific=staged.merged_agent_specific({
-            **implementation_role.settings,
+    config = CodingAgentFactory.session_config(implementation_role, {
             **({"env_overrides": lane_env} if lane_env else {}),
             "env_strip": env_strip,
             "env_defaults": env_defaults,
@@ -237,7 +229,6 @@ def run_implementation(
             # other lanes stay buffered (their raw streams still land in
             # per-branch stream_artifact_path files).
             "streaming": lane_index == 0,
-            "effort": implementation_role.effort,
             # Per-session process record: raw stream-json events land
             # here as they arrive, so a killed session still leaves its
             # forensics behind (feeds the difficulties fallback).
@@ -246,8 +237,7 @@ def run_implementation(
             # that delivered its full final report but lingers alive.
             "completion_markers": IMPLEMENTATION_COMPLETION_MARKERS,
             **inbox_agent_settings,
-        }),
-    )
+    }, staged)
 
     # 5. Build implementation prompt
     repo_memory_detail_access_instructions = (

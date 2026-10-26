@@ -20,7 +20,6 @@ from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic import codex_ideation
 from kapso.execution.search_strategies.generic.ideation import WEB_TOOLS
 from kapso.core.roles import SessionRole
-from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 logger = logging.getLogger(__name__)
@@ -240,7 +239,6 @@ def run_lens_planner_session(
         f"{' (bank-served)' if mcp_servers else ''}"
     )
     own = {
-            **planner.settings,
             "env_strip": env_strip,
             "env_defaults": env_defaults,
             "mcp_servers": mcp_servers,
@@ -254,18 +252,12 @@ def run_lens_planner_session(
             "timeout": clamped_timeout(planner.timeout),
             "streaming": True,
             "planning_mode": False,
-            "effort": planner.effort,
             "stream_artifact_path": codex_ideation.ideation_stream_path(
                 artifacts_dir, "lens_planner",
                 planner.model,
             ),
     }
-    config = CodingAgentConfig(
-        agent_type=planner.cli,
-        model=planner.model,
-        debug_model=planner.model,
-        agent_specific=staged.merged_agent_specific(own) if staged is not None else own,
-    )
+    config = CodingAgentFactory.session_config(planner, own, staged)
     agent = CodingAgentFactory.create(config)
     agent.initialize(ideation_dir)
     result = agent.generate_code(prompt)

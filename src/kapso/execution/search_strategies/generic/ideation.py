@@ -23,7 +23,6 @@ from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic import codex_ideation
 from kapso.core.roles import SessionRole
-from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 logger = logging.getLogger(__name__)
@@ -423,12 +422,7 @@ def generate_solution_ensemble(
                 ),
             }
 
-        config = CodingAgentConfig(
-            agent_type=member.cli,
-            model=member.model,
-            debug_model=member.model,
-            agent_specific=staged.merged_agent_specific({
-                **member.settings,
+        config = CodingAgentFactory.session_config(member, {
                 "env_strip": env_strip,
                 "env_defaults": env_defaults,
                 "mcp_servers": mcp_servers,
@@ -437,12 +431,10 @@ def generate_solution_ensemble(
                 "timeout": member_deadline,
                 "streaming": True,
                 "planning_mode": False,
-                "effort": member.effort,
                 "stream_artifact_path": codex_ideation.ideation_stream_path(
                     artifacts_dir, member.cli, member.model
                 ),
-            }),
-        )
+        }, staged)
         agent = CodingAgentFactory.create(config)
         agent.initialize(ideation_dir)
         result = agent.generate_code(prompt)
@@ -691,12 +683,7 @@ def select_from_candidates(
                 output=output,
                 error="selector session timed out" if timed_out else None,
             ), 0.0
-        config = CodingAgentConfig(
-            agent_type=selector.cli,
-            model=selector.model,
-            debug_model=selector.model,
-            agent_specific=staged.merged_agent_specific({
-                **selector.settings,
+        config = CodingAgentFactory.session_config(selector, {
                 "env_strip": env_strip,
                 "env_defaults": env_defaults,
                 "allowed_tools": ["Read", *(WEB_TOOLS if selector.web else []), *staged.allowed_tools],
@@ -704,13 +691,11 @@ def select_from_candidates(
                 "timeout": selector_deadline,
                 "streaming": True,
                 "planning_mode": False,
-                "effort": selector.effort,
                 "stream_artifact_path": codex_ideation.ideation_stream_path(
                     artifacts_dir, "selector",
                     selector.model,
                 ),
-            }),
-        )
+        }, staged)
         agent = CodingAgentFactory.create(config)
         agent.initialize(ideation_dir)
         session_result = agent.generate_code(session_prompt)

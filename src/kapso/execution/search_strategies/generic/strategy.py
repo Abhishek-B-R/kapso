@@ -79,7 +79,6 @@ from kapso.execution.inbox import (
     requests_for_ids,
 )
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
-from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, stage_harness
 from kapso.harness.verdict import VERDICT_FILE, is_deliverable, is_void, read_verdict, verification_dir
@@ -878,12 +877,10 @@ class GenericSearch(SearchStrategy):
                 "domain_guidance": optional_block(staged.guidance),
             })
             own = {
-                **self.implementation_role.settings,
                 "env_strip": self.env_strip,
                 "env_defaults": self.env_defaults,
                 "allowed_tools": ["Read", "Bash", "Write", *staged.allowed_tools],
                 "streaming": True,
-                "effort": self.implementation_role.effort,
                 # The verdict lives outside the worktree; codex's sandbox
                 # must be told it may write there.
                 **({"add_dirs": [str(directory)]} if host == "codex" else {}),
@@ -892,10 +889,7 @@ class GenericSearch(SearchStrategy):
                 # Clamped at each attempt: a retry gets what is left, not
                 # what the first attempt was given.
                 own["timeout"] = self._clamped_timeout(float(harness.settings["verification_minutes"]) * 60.0)
-                config = CodingAgentConfig(
-                    agent_type=host, model=self.implementation_role.model, debug_model=self.implementation_role.model,
-                    agent_specific=staged.merged_agent_specific(own),
-                )
+                config = CodingAgentFactory.session_config(self.implementation_role, own, staged)
                 agent = CodingAgentFactory.create(config)
                 agent.initialize(worktree)
                 result = agent.generate_code(prompt)

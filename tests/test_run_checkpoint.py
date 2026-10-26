@@ -831,3 +831,29 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
         RunCheckpointIncompatibleError, match="coding_agent was None, now 'codex'"
     ):
         kapso.build(output=str(workspace), resume=True, coding_agent="codex")
+
+
+def test_the_fingerprint_is_the_builds_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The checkpoint fingerprints the blocks a build reads (hosts, the
+    strategy with its host, inference, retry, models, inbox, the
+    maintainer): a benchmark runner's own key or the budget does not
+    change a campaign's identity, the host a role runs on does."""
+    import kapso.execution.orchestrator as orchestrator_module
+
+    _patch_orchestrator(monkeypatch)
+
+    def fingerprint(name, **blocks):
+        monkeypatch.setattr(
+            orchestrator_module, "load_config", lambda config_path=None: fake_config(**blocks),
+        )
+        workspace = tmp_path / name
+        _init_git_workspace(workspace)
+        return _orchestrator(workspace).config_fingerprint
+
+    base = fingerprint("base")
+    assert fingerprint("runner", benchmark={"run_defaults": {"lanes": 4}}) == base
+    assert fingerprint("budget", budget={"minutes": 5, "experiments": 2}) == base
+    assert fingerprint("host", search_strategy={"params": {"host": "codex"}}) != base
+    assert fingerprint("model", hosts={"codex": {"model": "gpt-other"}}) != base
