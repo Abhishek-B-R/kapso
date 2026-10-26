@@ -8,6 +8,49 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**The launch predicate guards the lane's sessions; ideation's inner
+sessions take the room they have.** The implementation, the evaluation
+run, the verification, the judge and the reconstruction each check
+their room against the floor before launching and record why when
+refused. The ensemble members, the selector and the lens planner start
+inside an admitted round (admission already covered the floor and the
+last round), so they are clamped to their room without a launch check:
+a selector that finds less than the floor runs with what remains and is
+cut at it, recorded as timed out, rather than skipped with a second
+mechanism inside the ideation module. Why: one predicate at the five
+sites where a skip has a record to land in; the ideation sub-sessions'
+case is an edge of an edge (a round admitted with barely the floor).
+Shows in `strategy.py` (`_room`, `_clamped_timeout`,
+`_finishing_deadline`), `budget.py`.
+
+**The obligations are counted at the floor, not at their configured
+timeouts.** A finishing session's room is the remainder less one floor
+per session still to run (the evaluation run in cost mode, the
+verification when the harness verifies, the judge) plus the delivery's
+slice. Why: the plan says each is "protected at its floor"; counting
+configured timeouts (ten minutes of verification, say) would hand the
+end of a campaign to the reserve and starve the attempt in flight. The
+derived reserve is the other side: there the verification's configured
+minutes and the judge's observed duration count in full, so the
+searchable window is cut for the real finishing cost while a session
+already running is only asked to leave its successors their floors.
+
+**The round's duration lives in the strategy's state.** `round_seconds`
+is a key of `strategy_state` (written by `dump_state`, read strictly by
+`load_state`), not a field of the checkpoint dataclass: the strategy
+measures and consumes it, and the checkpoint carries the state whole.
+The schema stays 6.
+
+**The escrowed attempt's end is `attempt_would_not_fit`.** After the
+fidelity policy's reserved full-size run, the campaign stops with the
+admission detail (no further attempt fits) rather than a third detail:
+the closed set has two new members, as planned.
+
+**The delivery's slice without a fidelity measurement is thirty
+seconds.** The final checkout and the records; a structural constant
+(`DELIVERY_SECONDS`), not a knob, like the quarter bound on a set
+reserve (`RESERVE_FRACTION_BOUND`).
+
 **`deny-web` is the implementation module's; `deny-web-fetch` stays
 everywhere.** The trading example already denied the shell's fetchers
 (`curl`, `wget`, `aria2c`) on every module; the plan's `deny-web` is a
