@@ -28,7 +28,7 @@ import git
 from kapso.core.agent_manifest import load_agent_manifest
 from kapso.execution.coding_agents.adapters.codex_agent import agent_role_overrides, mcp_config_overrides
 from kapso.execution.coding_agents.session_record import write_whole
-from kapso.harness.check import read_front_matter
+from kapso.core.front_matter import read_front_matter
 from kapso.harness.hash import describe_change, harness_files, harness_hash, short
 from kapso.harness.hooks import ENGINE_HOOKS, engine_hooks, expand_plugin_root, merge_hooks
 from kapso.harness.load import Harness, HarnessError

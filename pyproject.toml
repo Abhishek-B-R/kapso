@@ -139,3 +139,5 @@ namespaces = true
 # not only the extensions above; the engine's own hooks, script beside
 # each hook.json.
 "kapso.harness" = ["bundled/**/*", "engine_hooks/**/*"]
+# The bundled deployment targets: each a skill with its scripts.
+"kapso.deployment" = ["targets/**/*"]

@@ -2,6 +2,7 @@ include LICENSE
 include README.md
 include pyproject.toml
 recursive-include src/kapso *.yaml *.json *.md *.txt
+recursive-include src/kapso/deployment/targets *
 recursive-include benchmarks *.yaml *.json *.md *.txt
 prune tests
 prune examples
