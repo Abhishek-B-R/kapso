@@ -19,11 +19,11 @@
 #   python examples/ml_model_development/e2e/run_e2e.py --config config.gate.yaml
 #   python examples/ml_model_development/e2e/run_e2e.py --config config.e2e.yaml \
 #       --interrupt-after-seconds 300          # M2: simulated crash
-#   python examples/ml_model_development/e2e/run_e2e.py --mode E2E_BUDGET \
+#   python examples/ml_model_development/e2e/run_e2e.py --config config.e2e.yaml \
 #       --resume                               # M2: clock continues
-#   python examples/ml_model_development/e2e/run_e2e.py --mode E2E_BUDGET \
+#   python examples/ml_model_development/e2e/run_e2e.py --config config.e2e.yaml \
 #       --resume --top-up-minutes 60           # M3: budget top-up
-#   python examples/ml_model_development/e2e/run_e2e.py --mode E2E_BUDGET \
+#   python examples/ml_model_development/e2e/run_e2e.py --config config.e2e.yaml \
 #       --verify-only                          # re-run checks, no spawn
 
 import argparse

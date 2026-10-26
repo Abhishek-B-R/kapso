@@ -147,10 +147,7 @@ def main():
         # Build merger params from config.yaml (same as Kapso.learn() lines 430-452)
         config_path = Path(__file__).resolve().parent.parent / "src" / "kapso" / "config.yaml"
         config = load_config(str(config_path))
-        mode_name = config.get("default_mode", "GENERIC")
-        mode_config = config.get("modes", {}).get(mode_name, {})
-        learner_config = mode_config.get("learner", {})
-        merger_params = learner_config.get("merger", {}).copy()
+        merger_params = dict(config["learner"]["merger"])
 
         # If .index exists, pass it so MCP server can initialize the backend
         if has_index:

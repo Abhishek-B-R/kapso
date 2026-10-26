@@ -12,7 +12,7 @@ Kapso sends every model call through a coding-agent CLI. Install those CLIs and 
 |----------|-----|------------|
 | Node.js 18 or newer | Both coding-agent CLIs are npm packages | `node` |
 | Codex CLI, logged in | Research, judging and utility calls | `codex authenticated` |
-| Claude Code CLI, logged in | Ideation and implementation in the default `GENERIC` mode | `claude authenticated` |
+| Claude Code CLI, logged in | Ideation and implementation, as the packaged default host | `claude authenticated` |
 | Python 3.10 or newer | The `leeroo-kapso` package | — |
 | An OpenAI API key (optional) | Embeddings, never generation: the knowledge graph, and semantic search over past experiments when `models.embedding` is set. A stock install needs neither | `OPENAI_API_KEY (embeddings: https://api.openai.com/v1)`, only when something will embed |
 | Git | Kapso commits every experiment to a branch | `git` |

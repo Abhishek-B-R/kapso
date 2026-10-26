@@ -39,7 +39,7 @@ objective       Raise the strategy's out-of-sample Sharpe above 1.0 on the 2024
 harness         trading 0.1.0 (83b6c0b60d6a)
 served          mine at a9ddad3d302d, measured by you
 evaluator       none registered: the agent's own evaluation
-budget          43.5 of 40.0 min
+budget          43.5 of 40.0 min (the launch's over the brief's 75.0 min)
 cost            $13.169
 stopped         budget_exhausted (time_budget); 2 experiments, 1 rejected
 delivered       none succeeded
@@ -105,9 +105,12 @@ retried session two or more; the line carries how the run ended
 (`success`, `error`, `timeout`, `paused` for a session the inbox stopped,
 `refused` for an answer the model's safeguards refused), its duration,
 its cost, its turns, the tools it used, the gates it called, the hooks
-that fired and how many denied, the delegates it asked. `OTHER SESSIONS`
-holds the sessions that belong to no attempt: the harness setup, and a
-node still in flight. `LESSONS` is one entry per source served, with who
+that fired and how many denied, the delegates it asked; a run that
+resumed the session says why (`retry: tags missing` on a judge's second
+run). An attempt the budget left unjudged says so on its `judge` line.
+`OTHER SESSIONS` holds the sessions that belong to no attempt: the
+harness setup, the engine's own inference sessions, and a node still in
+flight. `LESSONS` is one entry per source served, with who
 read which cards and which the judge found load-bearing per node;
 `SESSIONS FAILED` lists every run that ended `error`, `timeout` or
 `refused`, and names the kinds of which every run failed.
@@ -132,19 +135,22 @@ is how the text shows it.
 skill reads the keys as pinned:
 
 ```text
-schema_version   1
+schema_version   2
 campaign         the directory
 state            complete | partial
 branch           the branch the view is narrowed to, or null
 header           objective, harness, experience (one label per source), evaluator,
-                 budget {elapsed_min, total_min},
+                 budget {elapsed_min, total_min, reserve_min},
+                 budget_source (which budget won when the brief and the launch both named minutes),
                  cost {usd, coverage (the hosts the figure covers: all, or claude_code when a Codex
                        session ran), unpriced_runs (Claude Code runs whose spend no figure covers:
                        killed before their result, and not resumed in a run that reported one)},
                  stopped_reason, stop_detail, experiments, rejected,
                  delivered {branch, commit}, status {state, phase, error},
                  requests (what the person must answer when the campaign paused)
-attempts[]       node, parent, branch, idea, sessions[] {label, module, host, hooks_staged, runs[]},
+attempts[]       node, parent, branch, commit (the branch head when the attempt was evaluated;
+                 null when it never was), unjudged ("" when judged, else the reason),
+                 idea, sessions[] {label, module, host, hooks_staged, runs[]},
                  evaluation {score, valid, provenance, integrity_error, output},
                  verification {verdict, summary, findings} | null,
                  judge {stop, valid, feedback}, cards {read, listed, load_bearing},
@@ -159,6 +165,8 @@ delivered        branch, commit, base_commit, files_changed, verification, feedb
 
 A run entry, as the session record holds it: `started`, `ended`,
 `duration_seconds`, `model`, `cli_session_id`, `exit`, `error`,
+`retry_reason` (set on a run that resumed the session: `tags missing`
+for the judge's retry),
 `cost_usd` (this run's share of the host's cumulative figure),
 `cost_cumulative`, `turns`, `usage` (the host's token counts), `tools`
 (by name), `gates` (by server, by tool), `hooks` (each with its event,
@@ -188,8 +196,11 @@ campaign/.kapso/
 
 The session labels are the branch for an implementation session,
 `verification/<branch>` and `feedback/<branch>` for its verifier and its
-judge, `ideation/iter<n>/<member>` for the ideation of iteration `n`, and
-`harness_setup` for the setup session. The trace joins the sessions to
+judge, `ideation/iter<n>/<member>` for the ideation of iteration `n`,
+`difficulties/<branch>` for the reconstruction of what an attempt lost,
+`harness_setup` for the setup session, and `engine/<role>/<n>` for the
+engine's own inference sessions (the repo-memory bootstrap, the commit
+messages), which belong to no attempt. The trace joins the sessions to
 their attempts by these labels (a node records the iteration that made
 it, and every node of an iteration shares its ideation session) and the
 pull log's events by the session the gate served.

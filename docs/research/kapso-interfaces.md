@@ -128,6 +128,10 @@ budgets as hard stops, the inbox, the checkpoint, the trace. It may not pin
 models or credentials: the user's config names models; a harness may set
 `effort` and timeouts as defaults only.
 
+*Superseded on 2026-10-26 by `docs/plans/redesign/wp4-config.md`: two
+layers, the packaged file (the schema at every depth) and one override file,
+with call arguments over both; the config has no harness layer.*
+
 **Precedence.** Packaged defaults, then the harness defaults, then the user's
 config file, then call arguments. Today's `modes[<mode>]` layer is replaced
 by the harness layer, and a user config is a plain override layer, which
@@ -285,6 +289,12 @@ objective, the score and the stop reason into the campaign's
 `Experience` name is WP3's.
 
 ## 7. The config file after this
+
+*Superseded on 2026-10-26 by `docs/plans/redesign/wp4-config.md`: the config
+is the packaged file plus one override file; `modes`, `coding_agent` and
+`feedback_generator` are gone, the strategy's knobs are
+`search_strategy.params` with the three roles under it over a `hosts` table,
+and a harness carries no engine knob. The text below is the first draft.*
 
 Keep: `inference`, `preflight`, `gates`, `deployment`, `coding_agent`,
 `feedback_generator`, `learner`, `learning` (minus `serving.enabled`), and

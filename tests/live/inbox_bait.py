@@ -328,7 +328,7 @@ def api_build(root: Path, *, resume: bool = False) -> None:
     solution = Kapso(config=str(root / "config.yaml")).build(
         (root / "goal.txt").read_text(), output=str(root / "campaign"),
         repo=None if resume else str(root / "seed"), budget=Budget(experiments=1),
-        mode="MINIMAL", resume=resume,
+        resume=resume,
     )
     print(f"stopped_reason={solution.stopped_reason} requests={solution.requests}")
 

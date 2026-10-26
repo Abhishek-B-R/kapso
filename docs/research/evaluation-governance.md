@@ -212,6 +212,14 @@ snapshot) are protected by the same hash: you cannot stamp `head_id` onto a
 tree that does not hash to it. All verification failures raise; there are no
 fallbacks (Rule 2).
 
+The directory's rule, stated for the three provenances (wp4-config.md,
+change 4): a provided suite is protected by its manifest, every file by path
+and content, and a new file under it is rejected when it is source by suffix
+(`PROTECTED_SUFFIXES`) or executable, data and reports being allowed and a
+leftover `result.json` refused at launch; an agent-generated, unregistered
+evaluator is the candidate's to write; a registered one is the maintainer's,
+protected by the registry's hash.
+
 ## 6. Tests
 
 Existing (keep): integrity suite, transition suite, fidelity/comparability

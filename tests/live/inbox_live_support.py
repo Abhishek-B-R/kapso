@@ -22,7 +22,7 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import git
 import yaml
@@ -147,15 +147,18 @@ def _dotenv_without_key(source: Path) -> str:
 
 
 def write_config(path: Path, cli: str, *, stop_grace_seconds: Optional[int] = None) -> None:
-    """The packaged config with MINIMAL's implementation lane on the CLI
-    under test, and the inbox grace shortened when asked."""
-    config = yaml.safe_load(PACKAGED_CONFIG.read_text())
-    mode = config["modes"]["MINIMAL"]
-    params = mode["search_strategy"]["params"]
-    params["implementation_cli"] = "codex" if cli == "codex" else "claude_code"
-    params["implementation_model"] = CODEX_MODEL if cli == "codex" else "claude-opus-5"
+    """An override file over the packaged config: the gates off (the bait
+    needs none), the implementation lane on the CLI under test with its
+    model, and the inbox grace shortened when asked."""
+    config: Dict[str, Any] = {
+        "hosts": {"codex": {"model": CODEX_MODEL}},
+        "search_strategy": {"params": {
+            "ideation": {"gates": []},
+            "implementation": {"cli": "codex" if cli == "codex" else "claude_code", "gates": []},
+        }},
+    }
     if stop_grace_seconds is not None:
-        mode["inbox"] = {**(mode.get("inbox") or {}), "stop_grace_seconds": stop_grace_seconds}
+        config["inbox"] = {"stop_grace_seconds": stop_grace_seconds}
     path.write_text(yaml.safe_dump(config, sort_keys=False))
 
 
@@ -181,8 +184,11 @@ def build_fixture(root: Path, cli: str, *, variant: str = "single",
     (root / "goal.txt").write_text(VARIANT_GOALS[variant])
     (root / ".env").write_text(_dotenv_without_key(dotenv_source))
     (root / "cli.txt").write_text(cli)
+    write_config(root / "config.yaml", cli, stop_grace_seconds=VARIANT_GRACE_SECONDS.get(variant))
+    # The codex and the shortened-grace fixtures run through the Python
+    # API, the others through the CLI: both launch forms stay covered.
     if cli == "codex" or variant in VARIANT_GRACE_SECONDS:
-        write_config(root / "config.yaml", cli, stop_grace_seconds=VARIANT_GRACE_SECONDS.get(variant))
+        (root / "api.txt").write_text("the build runs through the Python API\n")
     return {"root": str(root), "campaign": str(root / "campaign"), "key": key.hex(), "cli": cli,
             "variant": variant}
 
@@ -196,15 +202,15 @@ def _subprocess_env() -> Dict[str, str]:
 
 def run_build(root: Path, *, iterations: int = 1, log: Optional[Path] = None,
                extra: Optional[List[str]] = None) -> subprocess.CompletedProcess:
-    """`kapso build` on the fixture — the CLI with the packaged config,
-    or the Python API when the fixture carries its own config (codex,
-    or a shortened grace) — cwd at the root so the root's .env is the
-    one the run loads."""
-    if not (root / "config.yaml").exists():
+    """`kapso build` on the fixture — the CLI with the fixture's override
+    file, or the Python API for the fixtures marked for it (codex, or a
+    shortened grace) — cwd at the root so the root's .env is the one the
+    run loads."""
+    if not (root / "api.txt").exists():
         command = [
             sys.executable, "-m", "kapso.cli", "build",
             "--goal-file", "goal.txt", "--output", "campaign", "--repo", "seed",
-            "--budget-experiments", str(iterations), "-m", "MINIMAL", *(extra or []),
+            "--budget-experiments", str(iterations), "--config", "config.yaml", *(extra or []),
         ]
     else:
         command = [sys.executable, str(Path(__file__).resolve()), "api-build", str(root),
@@ -223,22 +229,22 @@ def api_build(root: Path, iterations: int, *, resume: bool = False) -> None:
     solution = Kapso(config=str(root / "config.yaml")).build(
         (root / "goal.txt").read_text(), output=str(root / "campaign"),
         repo=None if resume else str(root / "seed"), budget=Budget(experiments=iterations),
-        mode="MINIMAL", resume=resume,
+        resume=resume,
     )
     print(f"stopped_reason={solution.stopped_reason} requests={solution.requests}")
 
 
 def run_resume(root: Path, *, log: Optional[Path] = None) -> subprocess.CompletedProcess:
-    """`kapso build --resume` on the campaign: the CLI form with the
-    packaged config, or the API form with the fixture's config when the
-    fixture carries one (the checkpoint's fingerprint is that config)."""
-    if (root / "config.yaml").exists():
+    """`kapso build --resume` on the campaign: the API form for the
+    fixtures marked for it, else the CLI form, both with the fixture's
+    override file (the checkpoint's fingerprint is that config)."""
+    if (root / "api.txt").exists():
         command = [sys.executable, str(Path(__file__).resolve()), "api-build", str(root),
                    "--iterations", "1", "--resume"]
     else:
         command = [
             sys.executable, "-m", "kapso.cli", "build", "--goal-file", "goal.txt",
-            "--output", "campaign", "--budget-experiments", "1", "-m", "MINIMAL", "--resume",
+            "--output", "campaign", "--budget-experiments", "1", "--config", "config.yaml", "--resume",
         ]
     return _run(command, root, log)
 

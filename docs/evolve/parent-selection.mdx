@@ -12,12 +12,9 @@ explicit strategy parameter and is fixed for the campaign.
 ## Configuration
 
 ```yaml
-modes:
-  GENERIC:
-    search_strategy:
-      type: "generic"
-      params:
-        parent_policy: "best"
+search_strategy:
+  params:
+    parent_policy: best
 ```
 
 `parent_policy` accepts exactly two values:

@@ -144,7 +144,7 @@ defaults:
 | `stop_grace_seconds` | How long a session that asked gets to end its own turn before the adapter ends the session | `120` |
 | `registry` | One line per launched campaign, so `kapso inbox` outside a campaign can list every one that waits | `~/.kapso/campaigns.jsonl` |
 
-The block sits under `defaults`, which every mode inherits. To turn the inbox off for one mode, put `inbox: {enabled: false}` under that mode in your config; the mode layer is deep-merged over the defaults, so the other two keys keep their values. The benchmark modes ship with the inbox off. A mode whose `node_expansion_value` is above 1 runs with the inbox off as well: a campaign with several implementation lanes cannot pause on one of them yet.
+The block is a top-level key of the config. To turn the inbox off, put `inbox: {enabled: false}` in your override file; it is merged over the packaged block, so the other two keys keep their values. The benchmark override files ship with the inbox off. A campaign whose `node_expansion_value` is above 1 runs with the inbox off as well: a campaign with several implementation lanes cannot pause on one of them yet.
 
 With the inbox off, sessions do not get the tool, the prompt is unchanged, no campaign pauses, and no launch record or registry line is written. The inbox block is part of the checkpoint's configuration fingerprint, so changing the block on an existing campaign blocks `--resume` for that campaign.
 
@@ -167,7 +167,7 @@ With the inbox off, sessions do not get the tool, the prompt is unchanged, no ca
   <Card title="MCP gates" icon="plug" href="/docs/evolve/mcp-gates">
     The gate that carries the request_from_user tool
   </Card>
-  <Card title="Configuration" icon="gear" href="/docs/reference/configuration#defaults">
+  <Card title="Configuration" icon="gear" href="/docs/reference/configuration#inbox">
     The inbox block and its defaults
   </Card>
 </CardGroup>

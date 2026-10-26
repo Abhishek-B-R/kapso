@@ -83,7 +83,7 @@ def validate_root(task_dir: str) -> str:
     return slug
 
 
-def run_preflight(task_brief: str, root: str, mode: str = "KAGGLE") -> str:
+def run_preflight(task_brief: str, root: str) -> str:
     root = os.path.abspath(root)
     task_dir = os.path.join(root, "task")
     dataset_dir = os.path.join(task_dir, "dataset")
@@ -163,9 +163,8 @@ def main():
                              "verbatim, or a competition URL")
     parser.add_argument("--root", required=True,
                         help="Run root to create (consumed by runner.py --root)")
-    parser.add_argument("--mode", default="KAGGLE")
     args = parser.parse_args()
-    run_preflight(args.task, args.root, args.mode)
+    run_preflight(args.task, args.root)
 
 
 if __name__ == "__main__":

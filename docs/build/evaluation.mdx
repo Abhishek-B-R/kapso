@@ -39,8 +39,13 @@ to `kapso_evaluation/` in the workspace, committed as the baseline and
 fingerprinted, file by file. A candidate that modifies, deletes, replaces or
 extends it is rejected: its score is cleared, the judge never sees it, and
 it is never chosen as a parent or delivered. The count of such candidates is
-`solution.rejected_candidates`. New runtime artifacts (`result.json`, logs,
-predictions) are allowed; new evaluator source is not. A `result.json` an
+`solution.rejected_candidates`. The rule, file by file: every file of the
+suite is protected by path and content; a new file under it is rejected
+when it is source by suffix (`.py`, `.sh`, `.js`, `.yaml` and the like) or
+executable, and allowed otherwise, so runtime artifacts (`result.json`,
+logs, predictions, a profile) pass. An evaluator the campaign writes
+itself is the candidate's to edit; one the maintainer registered is the
+maintainer's, under the registry's hash. A `result.json` an
 earlier run left in your evaluation directory is refused at launch, since
 it would be protected with the suite. The mechanics are
 on [Evaluation integrity](/docs/evolve/evaluation-integrity).
@@ -63,9 +68,8 @@ shows one.
 What the shipped config does not do yet is register that evaluator and
 protect it file by file the way a provided one is protected. That is the
 evaluation maintainer's job, and the maintainer runs only when the
-config's `evaluation_maintainer` block is set (the RelBench benchmark
-config sets one; `GENERIC` and `MINIMAL` do not). The config package of
-the redesign decides the default.
+config's `evaluation_maintainer` block turns it on (the RelBench
+benchmark's override file does; the packaged config ships it off).
 
 ## Versioned: the registry
 

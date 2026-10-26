@@ -184,3 +184,35 @@ def bare_machine_rows(monkeypatch):
         monkeypatch.setattr(preflight, "claude_logged_in", lambda: False)
         monkeypatch.setattr(preflight, "codex_authenticated", lambda: False)
     return apply
+
+
+def test_the_config_line_names_the_layers_and_show_config_prints_the_effective_config(
+    full_machine, tmp_path, capsys,
+):
+    """`kapso doctor` says which layers a run uses and what the override
+    file sets; `--show-config` prints the effective config as YAML and
+    nothing else; `--json` carries both (wp4-config.md, change 12)."""
+    cmd_doctor(args(verb="build"))
+    assert "  config: packaged defaults\n" in capsys.readouterr().out
+
+    path = tmp_path / "mine.yaml"
+    path.write_text(yaml.safe_dump({
+        "hosts": {"codex": {"model": "gpt-5.6-sol"}},
+        "search_strategy": {"params": {"host": "codex"}},
+    }))
+    cmd_doctor(args(verb="build", config=str(path)))
+    assert (
+        f"  config: packaged defaults + {path} (overrides: hosts.codex.model, search_strategy.params.host)\n"
+        in capsys.readouterr().out
+    )
+
+    cmd_doctor(args(config=str(path), show_config=True))
+    shown = yaml.safe_load(capsys.readouterr().out)
+    assert shown["search_strategy"]["params"]["host"] == "codex"
+    assert shown["hosts"]["claude_code"]["model"] == "claude-opus-5" and shown["budget"]["experiments"] == 10
+
+    cmd_doctor(args(verb="build", config=str(path), json=True))
+    report = json.loads(capsys.readouterr().out)
+    assert report["config"]["search_strategy"]["params"]["host"] == "codex"
+    assert report["overrides"] == ["hosts.codex.model", "search_strategy.params.host"]
+    assert report["config_path"] == str(path)

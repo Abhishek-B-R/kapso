@@ -73,8 +73,7 @@ pip install -r benchmarks/relbench/requirements.txt
 Run one task:
 
 ```bash
-expert-relbench -s rel-f1 -t driver-position \
-    --strategy generic -m RELBENCH_GENERIC --time-budget-hours 4
+expert-relbench -s rel-f1 -t driver-position --time-budget-hours 4
 ```
 
 Multi-task campaign (task queue, hardware gating, budget threading):
@@ -92,6 +91,6 @@ PYTHONPATH=src:. python -m benchmarks.relbench.campaign \
 | `runner.py` / `campaign.py` | single-task CLI / multi-task campaign driver |
 | `sandbox.py` | sanitized + rolling cache builder |
 | `context.py` / `task_specs.py` | problem-context builder / per-task metadata |
-| `config.yaml` | benchmark modes (`RELBENCH_GENERIC` is the campaign standard) |
+| `config.yaml` | the override file over the packaged config (`kapso doctor --show-config --config benchmarks/relbench/config.yaml`); the runner writes a runtime copy with the task's cache and the budget |
 | `data/` | agent-facing starter kit, provided evaluator, seed baseline |
 | `claude_code_baseline/` | the frontier-coding-agent baseline: prompt, harness, results |

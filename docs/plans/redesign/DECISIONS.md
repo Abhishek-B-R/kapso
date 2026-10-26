@@ -8,6 +8,24 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**The retired-name check reads code and prose differently.** A retired
+config key is a leftover wherever it stands in a page, a README, a skill
+or a config file, and in code only in its quoted-key form (`params[
+"implementation_gates"]`, a dict literal): the strategy keeps attributes
+and arguments of those names for what it resolved (`self.ideation_gates`,
+`implementation_fallback_model=`), which are identifiers, not
+configuration. The two session timeouts stay the benchmark runners' own
+cap names in code and are retired as config keys in prose only. The
+tests that refuse a retired form by name are allowed by path.
+
+**The live and manual tests take override files.** The inbox live
+fixture writes an override file for every variant (the gates off, the
+implementation lane on the CLI under test) and marks the fixtures that
+launch through the Python API with a file, so the CLI form passes
+`--config` where it passed `-m MINIMAL`; the manual Bedrock test's config
+is a hosts entry. Neither suite runs under the gate; both now describe
+the design that exists.
+
 **A changed harness is refused by file name.** The loaded harness keeps
 each file's own digest beside the whole-tree hash, and the staging's
 refusal says `changed a; added b; removed c` with the way out. Why: a

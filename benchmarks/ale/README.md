@@ -102,7 +102,6 @@ PYTHONPATH=. python -m benchmarks.ale.runner -p ahc039
 PYTHONPATH=. python -m benchmarks.ale.runner \
     -p ahc039 \
     -i 30 \
-    -m ALE_GENERIC \
     -d codex
 ```
 
@@ -112,8 +111,7 @@ PYTHONPATH=. python -m benchmarks.ale.runner \
 |--------|-------------|---------|
 | `-p, --problem` | Problem ID (e.g., `ahc039`) | Required |
 | `-i, --iterations` | Max experiment iterations | 30 |
-| `-m, --mode` | Config mode | `ALE_GENERIC` |
-| `-d, --coding-agent` | Coding agent | From config |
+| `-d, --coding-agent` | The host every role without a `cli` of its own runs on | `codex`, the override file's `host` |
 | `--list` | List all problems | - |
 | `--lite` | List lite problems | - |
 | `--list-agents` | List coding agents | - |
