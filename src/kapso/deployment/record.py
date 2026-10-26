@@ -65,7 +65,7 @@ def allocate_port(campaign: Path, number: int, *, base: int, span: int) -> int:
 
 @dataclass
 class DeploymentRecord:
-    directory: Path
+    directory: Path   # absolute: the workspace and the target paths resolve against it from any cwd
     data: Dict[str, Any]
 
     @property
@@ -126,8 +126,9 @@ def start_record(
 ) -> DeploymentRecord:
     """A deployment's record at its first second: the number minted, the
     identity allocated, the state `deploying`; the session has not run."""
+    campaign = Path(campaign).resolve()
     with _MINT_LOCK:
-        directory = _mint(Path(campaign) / DEPLOYMENTS_DIR)
+        directory = _mint(campaign / DEPLOYMENTS_DIR)
         number = int(directory.name)
         port = allocate_port(campaign, number, base=port_base, span=port_span)
     record = DeploymentRecord(directory, {
@@ -164,18 +165,19 @@ def start_record(
 
 
 def read_record(directory: Path) -> DeploymentRecord:
-    path = Path(directory) / RECORD_FILE
+    directory = Path(directory).resolve()
+    path = directory / RECORD_FILE
     if not path.is_file():
         raise DeployError(f"no deployment record at {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or data.get("state") not in STATES:
         raise DeployError(f"{path}: not a deployment record")
-    return DeploymentRecord(Path(directory), data)
+    return DeploymentRecord(directory, data)
 
 
 def records(campaign: Path) -> List[DeploymentRecord]:
     """Every deployment of the campaign, by number."""
-    deployments = Path(campaign) / DEPLOYMENTS_DIR
+    deployments = Path(campaign).resolve() / DEPLOYMENTS_DIR
     if not deployments.is_dir():
         return []
     numbered = sorted((int(child.name), child) for child in deployments.iterdir() if child.name.isdigit() and (child / RECORD_FILE).is_file())
@@ -185,7 +187,7 @@ def records(campaign: Path) -> List[DeploymentRecord]:
 def open_record(campaign: Path, number: Optional[int] = None) -> DeploymentRecord:
     """The numbered deployment, or the highest number; refused when the
     campaign has none, naming the directory looked at."""
-    deployments = Path(campaign) / DEPLOYMENTS_DIR
+    deployments = Path(campaign).resolve() / DEPLOYMENTS_DIR
     if number is not None:
         directory = deployments / str(number)
         if not (directory / RECORD_FILE).is_file():

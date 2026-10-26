@@ -26,7 +26,9 @@ install, nothing to stop but the worker.
    worker before the import, so do not load `.env` yourself.
 2. Keep `requirements.txt` complete: the worker runs in the engine's own
    interpreter (`$KAPSO_INTERPRETER`), so install what `main.py` imports
-   with `"$KAPSO_INTERPRETER" -m pip install -r requirements.txt`.
+   into it: `"$KAPSO_INTERPRETER" -m pip install -r requirements.txt`, or,
+   when that interpreter has no pip (a `uv tool` install), `uv pip install
+   --python "$KAPSO_INTERPRETER" -r requirements.txt`.
 3. Run `bash "$KAPSO_TARGET_DIR/scripts/deploy.sh"`: it imports `main` in
    that interpreter with the caller's variables and fails naming the
    error if the import does not succeed. Fix and run it again.

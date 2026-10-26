@@ -107,6 +107,19 @@ def test_the_record_reads_back_after_the_campaign_moved(tmp_path):
     assert again.data["options"] == {"schedule": "*/5 * * * *"} and again.data["env_names"] == ["API_KEY"]
 
 
+def test_a_relative_campaign_path_opens_with_absolute_paths(tmp_path, monkeypatch):
+    """`Software.open("campaign", 1)` from the campaign's parent: the
+    record's paths are absolute, so the worker's working directory and
+    the scripts' do not depend on the caller's."""
+    campaign = tmp_path / "campaign"
+    campaign.mkdir()
+    monkeypatch.chdir(tmp_path)
+    started("campaign")
+    record = open_record("campaign", 1)
+    assert record.directory.is_absolute() and record.workspace == campaign / ".kapso" / "deployments" / "1" / "workspace"
+    assert record.campaign == campaign and records("campaign")[0].directory.is_absolute()
+
+
 def test_the_states_and_the_opening_by_number(tmp_path):
     campaign = tmp_path / "campaign"
     campaign.mkdir()

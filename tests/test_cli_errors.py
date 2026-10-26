@@ -42,6 +42,10 @@ def test_any_other_exception_keeps_its_traceback(monkeypatch):
     report_engine_error(TypeError, error, None)
     assert seen == [(TypeError, error, None)]
     assert TypeError not in ENGINE_ERRORS and ExperienceReferenceError in ENGINE_ERRORS
+    # A path with no solution reaches every verb on a finished build as one
+    # line, not as a FileNotFoundError traceback (the WP5 proof's first step).
+    from kapso.handles import SolutionError
+    assert SolutionError in ENGINE_ERRORS and issubclass(SolutionError, FileNotFoundError)
 
 
 def test_the_command_line_shows_the_message_and_no_traceback(tmp_path):
