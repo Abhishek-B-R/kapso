@@ -8,6 +8,23 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**The engine sessions' record is wired in, not imported.** The
+inference client (`kapso.core`) records its sessions through a callable
+the orchestrator sets once the workspace exists (the staging's
+`engine_session_record` over the campaign's records directory); the
+client imports nothing from the harness package. Why: `kapso.core
+.cli_inference` importing `kapso.harness.staging` closed an import cycle
+(staging reaches the adapters, the adapters' modules reach the client).
+An inference with no campaign records nothing.
+
+**The reconstruction's record says `implementation`, labelled
+`difficulties/<branch>`.** It is staged with the implementation module
+(its host, its servers and hooks, in the campaign directory like the
+setup session) under its own session id; the trace's label grammar
+places it with its attempt. Alternative rejected: a `difficulties`
+module of the harness manifest, which would make every harness author
+decide what a reconstruction may see.
+
 **The judge says "its deadline"; the strategy says whose.** The
 generator does not know whether the deadline that cut the judge was the
 budget's room or the role's own timeout, so its reason reads `the
