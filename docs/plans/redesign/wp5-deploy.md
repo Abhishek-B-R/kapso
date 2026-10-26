@@ -92,12 +92,12 @@ The returned `Software`, and the one `Software.open` returns:
 |---|---|
 | `run(inputs)` | One call by the record's run kind (below); `{"status": "success", "output": …}` or `{"status": "error", "error": …}`; refused with the state when the deployment is not `running` (`deployment 2 is stopped; start() it`); `software(inputs)` is the same |
 | `run_batch(list)` | `run` over each, in order |
-| `stop()`, `start()` | `scripts/stop.sh` and `scripts/start.sh` from the record's target directory, the workspace as working directory, the record's values in the environment; the state written to the record (`stopped`, `running`); `start()` recreates the same deployment (the same name, port, variables, values); a target without the script says so (`this target has nothing to stop`) and the state changes all the same |
+| `stop()`, `start()` | `scripts/stop.sh` and `scripts/start.sh` from the record's target directory, the workspace as working directory, the record's values in the environment; the state written to the record (`stopped`, `running`; a stop keeps a failed deployment's error); `start()` recreates the same deployment (the same name, port, variables, values); a target without the script says so (`the local target has nothing to stop`) and the state changes all the same. Each returns the lines it noted (the script's own lines included), kept in the record's `engine.log`, which `logs()` repeats |
 | `is_healthy()` | The record's state is `running` and `scripts/health.sh` exits 0 (the `function` kind: and its worker answers a ping); without a `health.sh`, the state alone |
 | `logs()` | The engine's own lines, then `scripts/logs.sh`'s output (nothing more without one) |
-| `number`, `state`, `target`, `endpoint`, `workspace`, `record` | The deployment's number; its state (`deploying`, `running`, `stopped`, `failed`); the target's name; the endpoint the session reported (an URL, a log path, or `None`); the workspace path; the record's path |
-| `proof` | The call the session proved, `{"inputs": …, "output": …}`, the example of what `run()` takes |
-| `Software.open(campaign, number=None)` | The campaign's deployment of that number, or the highest number; refuses a campaign with none, naming the directory it looked at, and a record whose target directory, workspace or recorded harness is gone, naming the path |
+| `number`, `state`, `target`, `endpoint`, `workspace`, `record` | The deployment's number; its state (`deploying`, `running`, `stopped`, `failed`); the target's name (`None` while a session under `auto` has not chosen); the endpoint the session reported (an URL, a log path, or `None`); the workspace path; the record's path |
+| `proof`, `observed` | The call the session proved, `{"inputs": …, "output": …}`, the example of what `run()` takes; and what the engine's own call of it answered at the acceptance |
+| `Software.open(campaign, number=None)` | The campaign's deployment of that number, or the highest number, whatever its state; refuses a campaign with none, naming the directory it looked at, and a record whose workspace, chosen target's directory or recorded harness is gone, naming the path |
 | `with kapso.deploy(...) as software:` | `stop()` on exit |
 
 Run kinds, chosen by the target's skill and written in the result:
@@ -105,7 +105,7 @@ Run kinds, chosen by the target's skill and written in the result:
 | Kind | Keys in `run` | `run()` |
 |---|---|---|
 | `function` | `module`, `callable` | A worker process per handle, `sys.executable -m kapso.deployment.worker`, started in the workspace with the `.env` values: it imports `<workspace>/<module>.py` once and answers one JSON line per call with `callable(inputs)`. A call whose function raises ends the worker; the traceback is the error text and the next call starts a worker again. `stop()` ends the worker, `start()` starts one, `is_healthy()` pings it; the kind has no `stop.sh`/`start.sh`/`health.sh` |
-| `http` | `url`, `path` | `POST <url><path>` with the inputs as JSON (`urllib`, no extra dependency); a 2xx reply's JSON is the output, any other status is the error with the body |
+| `http` | `url`, `path` | `POST <url><path>` with the inputs as JSON (`http.client`, no extra dependency; the URL's own path kept as the prefix); a 2xx reply's JSON is the output, any other status is the error with the body, and no reply at all (refused, reset, timed out) is the error with the exception's name and message, read off the request's future. A lifecycle script's `KAPSO_ENDPOINT=` line becomes the `url` |
 | `script` | none | `sys.executable <target>/scripts/run.py` from the workspace: the inputs as one JSON document on stdin, the output as exactly one JSON document on stdout, stderr as the error text when the exit is non-zero |
 
 Every call is bounded by `deployment.call_timeout`; a worker or script
@@ -132,14 +132,24 @@ summary after a deployment: the number and state, the target (and under
 `auto` the reasoning in one line), the run kind, the endpoint, the proof
 call (its inputs and output, the example of what `run()` takes), health,
 the workspace and the record's paths, what the campaign grew by, and the
-next actions pinned to the number: the Python line
-(`Software.open("<campaign>", <n>).run({...})`, the proof's inputs
-inlined) and the three CLI lines (`--logs`, `--stop`, `--start`, each with
-`--number <n>`). `--status` lists every deployment of the campaign with
-its number, state, target, endpoint and health; `--stop`, `--start` and
-`--logs` act on `--number`, the highest by default, through
-`Software.open`. A deploy that fails prints the record's path and the
-`--stop` line, since what `deploy.sh` started may be running.
+engine's own answer to the proof call when it differs from the
+session's, the interpreter a function runs in, and the next actions
+pinned to the number, copy-pastable as printed: the Python line
+(`from kapso import Software; Software.open('<campaign>', <n>).run({...})`,
+the proof's inputs as Python literals, the config carried when one was
+passed) and the three CLI lines (`--logs`, `--stop`, `--start`, each with
+`--number <n>`, the path quoted for the shell, `--config` carried).
+`--status` lists every deployment of the campaign with its number, state
+(health for a running one, the error for a failed one, "its files are
+gone" for a running one whose directories went), target (the request
+until the session chose), endpoint; `--status --number <n>` that one;
+`--stop`, `--start` and `--logs` act on `--number`, the highest by
+default, through `Software.open`, and print the script's own lines under
+theirs. The four lifecycle flags exclude each other; a deploy flag beside
+one, or `--number` on a deploy, is refused. A deploy that fails prints
+the record's path and the `--stop` line, since what `deploy.sh` started
+may be running (a session under `auto` that named no target leaves
+nothing for `--stop` to run, and the line says so).
 
 **The config block.**
 
@@ -162,8 +172,10 @@ the ports. `check_deployment` in `kapso.core.roles`, called by
 `validate_config`, resolves the spec with `origin="deployment"` (a `cli`
 the table lacks is refused against `deployment.cli`, naming the hosts a
 deployment session runs on) and refuses a `target` that is not a
-non-empty string and a timeout, a span or a base that is not a positive
-number. `coding_agent` leaves the block (`kapso doctor` and the
+non-empty string, a `call_timeout` or `script_timeout` that is not a
+positive finite number (`timeout` may be null: no deadline on the
+session), a span or a base that is not a positive integer, and a range
+past 65535. `coding_agent` leaves the block (`kapso doctor` and the
 retired-name check see it go); `model` stays, null by default, which
 removes the packaged duplicate of `hosts.claude_code.model`.
 
@@ -186,9 +198,14 @@ listed on its deployment module. What the skill holds:
 - The front matter is the harness check's: `name` the directory's name,
   `description` what it deploys to and the criteria for choosing it, in
   the guide's `Use when …` form (the session under `auto` chooses by it;
-  the test pins the form on every bundled target). A **bundled** target's
-  front matter also carries `metadata.requires: {binary, install}`, the
-  tool the deploying machine needs; the preflight reads it from the
+  the test pins the form on every bundled target). Any target may carry
+  `metadata.run_kinds`, the run kinds its workflow ends in (every bundled
+  target and `paper-trading` do): a result naming another kind is
+  refused at the acceptance. A **bundled** target's front matter also
+  carries `metadata.requires: {binary, install}`, the tool the deploying
+  machine needs, with an optional `probe: {command, timeout, fix}`, what
+  proves the tool usable (docker's `docker info`), run bounded by the
+  readiness line and the doctor's row; the preflight reads it from the
   engine's own files only. A harness target declares its tools in
   `harness.yaml`'s `environment.commands`, which `check` and the verb's
   prerequisite refusal already read; `check` neither requires nor reads
@@ -209,7 +226,9 @@ listed on its deployment module. What the skill holds:
   `KAPSO_RECORD_DIR`, `KAPSO_TARGET_DIR`, `KAPSO_INTERPRETER` (the engine's
   own, which runs the worker and `run.py`; the solution's requirements go
   into it for the local target), `KAPSO_ENDPOINT` (after the
-  result), `KAPSO_ENV_FILE` (when the call passed `env`),
+  result), `KAPSO_ENV_FILE` (when the workspace holds `.env`: the call's
+  variables, or the solution's own; one `NAME=VALUE` per line, the value
+  verbatim, as docker's `--env-file` and the engine's worker read it),
   `KAPSO_OPTION_<NAME>` for each option, `KAPSO_VALUE_<KEY>` for each
   value the session recorded (below), and `KAPSO_HARNESS_ROOT` for a
   harness target. A script's stdout lines of the form
@@ -225,11 +244,11 @@ The five bundled targets, what each one's scripts do:
 
 | Target | `deploy.sh` | run kind | `stop.sh` / `start.sh` | `requires` |
 |---|---|---|---|---|
-| `local` | proves `from main import predict` with `sys.executable` and the env file | `function` (`main`, `predict`): the worker | none: the worker is the engine's | none |
+| `local` | proves the entry point through the engine's worker (`sys.executable -m kapso.deployment.worker`, the env file loaded as every call loads it) | `function` (`main`, `predict`): the worker | none: the worker is the engine's | none |
 | `docker` | writes `.dockerignore` (`.env`, `.git`, `.claude`, `.agents`, `.codex`, `.kapso*`), `docker build -t kapso-$KAPSO_DEPLOYMENT_NAME .`, `docker run -d --name kapso-$KAPSO_DEPLOYMENT_NAME -p $KAPSO_PORT:$KAPSO_VALUE_CONTAINER_PORT --env-file … --restart unless-stopped [--gpus all]`, waits for `/health`; records `container_port` and `gpu` as values | `http` (`http://localhost:$KAPSO_PORT`, `/predict`) | `stop.sh` writes the last 200 lines of the container's logs to `$KAPSO_RECORD_DIR/container.log` then `docker rm -f`; `start.sh` runs the same `docker run` from the values; `logs.sh` prints the container's logs, else the saved file | `docker`, the daemon running |
 | `modal` | `modal deploy modal_app.py` with the app `kapso-$KAPSO_DEPLOYMENT_NAME`; the `.env` attached as `modal.Secret.from_dotenv()` | `script`: `run.py` looks the function up by app name with the SDK and calls it | `modal app stop <app> --yes`; `modal deploy` again | `modal` |
-| `bentoml` | `python deploy.py` against BentoCloud under the deployment name | `script`: `run.py` asks BentoCloud for the deployment's URL and posts with the SDK's own credentials | `bentoml deployment terminate`; `start.sh` applies again and prints `KAPSO_ENDPOINT=<the new url>` | `bentoml` |
-| `langgraph` | `langgraph deploy`; records `deployment_url` as a value | `script`: `run.py` posts a run through the platform's SDK on a thread it keeps in `<workspace>/.kapso_langgraph_thread`, so a conversation persists across calls as today | `stop.sh` deletes the thread; `start.sh` re-checks the deployment | `langgraph` |
+| `bentoml` | `python deploy.py` against BentoCloud under the deployment name | `script`: `run.py` asks BentoCloud for the deployment's URL and posts with the SDK's own credentials | `bentoml deployment terminate --wait`; `start.sh` runs `bentoml deployment start`, waits for `running` and prints `KAPSO_ENDPOINT=<the new url>` from `endpoint_urls` | `bentoml` |
+| `langgraph` | `langgraph deploy --name kapso-$KAPSO_DEPLOYMENT_NAME` (the platform deployment of that name, found or created); records `deployment_url` as a value | `script`: `run.py` posts a run through the platform's SDK on a thread it keeps in `<workspace>/.kapso_langgraph_thread`, so a conversation persists across calls as today | `stop.sh` deletes the thread and says the platform deployment stays and how to delete it; `start.sh` re-checks the deployment; `logs.sh` adds the platform's runtime logs | `langgraph` |
 
 **The deployment result.** The session writes `kapso_deployment.json` at
 the workspace root, the path named in its prompt:
@@ -254,15 +273,23 @@ or changed, which must exist.
 **The engine's acceptance.** When the session ends the engine checks, in
 order: the session completed (a session killed at its deadline or failed
 at launch is a failed deployment, not a missing file); the result file
-parses and has the fields above with the right shapes (a malformed file
-is a refusal naming the file and the field); the target is the one
-requested or offered; the artifacts exist; `scripts/health.sh` exits 0
-(or the worker starts, for `function`); and `run(proof.inputs)` answers
-with status `success`. A result file missing or failing a check after a
-completed session resumes the session once with the finding, under the
-same deadline (the resume's room is what the deadline leaves); failing
-again, the deployment is `failed` with the finding. Only a deployment
-that passed every check is `running`.
+parses (checked at a process boundary: a file that is not JSON is a
+finding carrying the parser's message, never a traceback) and has the
+fields above with the right shapes (a malformed file is a finding naming
+the file and the field); the target is the one requested or offered
+(under `auto`, its directory is copied beside the record the moment it
+is read); the run kind is one the target's skill declares, a function's
+module is a file of the workspace, the artifacts are relative paths
+inside it and exist; `scripts/health.sh` exits 0 (or the worker answers
+a ping, for `function`); and `run(proof.inputs)` answers with status
+`success`, the answer recorded as `observed`. The record stays
+`deploying` through the checks and the handle that ran them is the one
+returned. A result file missing or failing a check after a completed
+session resumes the session once with the finding, under the same
+deadline (the resume's room is what the deadline leaves; the handle's
+worker is closed first, since the session may rewrite the module);
+failing again, the deployment is `failed` with the finding. Only a
+deployment that passed every check is `running`.
 
 **The deployment record.** `<campaign>/.kapso/deployments/<n>/`, `<n>`
 minted by an atomic `mkdir` (two deploys in flight take distinct numbers,
@@ -271,7 +298,8 @@ in one process or two):
 ```
 deployments/<n>/
 ├── deployment.json     the record, written at the session's start and completed at its end
-├── target/             the target's skill directory, copied at deploy time: the scripts every later call runs
+├── target/             the target's skill directory, copied as soon as the target is known (before the session for a named one, at the session's choice under auto): the scripts every later call runs, a failed deployment's --stop included
+├── engine.log          what the engine did to the deployment: stops, starts, a script's lines and failures
 ├── workspace/          the solution at the delivered commit, adapted and deployed; its own git repository
 └── container.log       what the docker target saved before removing its container (that target only)
 ```
@@ -285,7 +313,8 @@ deployments/<n>/
  "host": "claude_code:claude-opus-5", "interpreter": "/home/me/.venv/bin/python",
  "deployment_name": "churn-build-3f9a1c-2", "port": 8769,
  "workspace": "workspace", "target_dir": "target", "env_names": ["API_KEY"], "options": {},
- "result": {…the session's file…}, "endpoint": "http://localhost:8769", "values": {"container_port": "8000", "gpu": "none"},
+ "result": {…the session's file…}, "observed": {…the engine's own answer to the proof call…},
+ "endpoint": "http://localhost:8769", "values": {"container_port": "8000", "gpu": "none"},
  "session": "deployment/2", "started": "2026-10-27T10:02:11Z", "finished": "2026-10-27T10:09:40Z",
  "error": null}
 ```
@@ -305,10 +334,13 @@ running under its own name and port.
 **Identity.** `deployment_name` is `<slug>-<hash6>-<n>` (the campaign
 directory's name slugged, six hex digits of the sha1 of its absolute
 path, the number); `port` is the first port free on this machine from
-`port_base + (hash + n) % port_span`, upwards within the span, bound once
-at allocation and recorded. Two deployments of one campaign, two targets
-of one build, and two campaigns side by side never share a name or a
-port; a script acts only on the identity in its own environment.
+`port_base + (hash + n) % port_span`, upwards within the span, probed
+free at allocation and recorded (nothing holds it: the target's
+`deploy.sh` binds it and fails naming it if something took it since).
+Two deployments of one campaign and two targets of one build never
+share a name or a port; two campaigns side by side never share a name,
+and share a port only if neither has bound its own yet; a script acts
+only on the identity in its own environment.
 
 **The workspace.** A copy of the campaign's working tree at the delivered
 commit (its tracked files must match the commit, else the refusal above),
@@ -345,13 +377,17 @@ campaign above it is not to be touched; the variables above, the env
 names and the options with their values; the target, or under `auto` the
 offered targets each with its description, how to open its skill in the
 host's own syntax (the staging's guidance builder renders the list) and
-its readiness on this machine (`present`, `missing: <install>`, or
-`unverified` for a harness target, whose tools the harness declares, and for docker whether
-the daemon answers); the instruction to decide the target first and say
-why, open its skill and follow it, run `scripts/deploy.sh`, prove one
-call with real inputs, and write the result file; and that the scripts
-are not to be edited. The engine's rules stand over the harness's page
-(WP2).
+its readiness on this machine (`present`, `present, <probe> answers`,
+`present, but <the probe's failure and its fix>`, `missing: <install>`,
+`present, needs nothing`, or `unverified` for a harness target, whose
+tools the harness declares; the probe is the skill's, `docker info` for
+docker, killed at its timeout); the instruction to decide the target
+first, write the result file at once with the choice and its reasoning
+(so a failed session still leaves the engine a target to stop), open its
+skill and follow it, run `scripts/deploy.sh`, prove one call with real
+inputs, and complete the result file; and that the scripts are not to be
+edited. The engine's rules stand over the harness's page (WP2). A named
+target's record lists that target's readiness alone.
 
 **The preflight.** `kapso doctor deploy` and the call's preflight resolve
 the one deployment spec (the hosts entry, the model and effort) and check
@@ -359,7 +395,8 @@ the session's host row and its host-and-model pairing (WP4's rows; the
 live tier probes the pair too, since `_specs_for` gets the spec); for a
 named bundled target (the call's, or the configured `deployment.target`
 when the call names none) the row its `metadata.requires` names, required
-(`docker` also checks the daemon, as today); under `auto`, the host alone
+(and the probe the skill declares, `docker info` for docker, as a row of
+its own naming the command and the fix); under `auto`, the host alone
 (the session is told each target's readiness); for a harness target,
 nothing beyond the harness's own prerequisites (the verb's module check,
 WP2). The doctor with no call in flight lists the other bundled targets'
@@ -412,10 +449,12 @@ What this package asks of the staging (WP2's file, the same implementer):
 harness's into the session's skills directory on either host; the
 no-harness path stages them too and writes the record (today it returns
 before writing anything); they are in `writes()` and survive the
-module-skills cleanup; the record's `skills` names them; the guidance
-builder lists them with the harness's skills, each with the host's
-opening syntax. The engine's `protect-harness` hook rides along only with
-a harness, as today.
+module-skills cleanup; the record's `engine_skills` names them; the
+deployment prompt lists them with the host's opening syntax and each
+one's readiness, the guidance staying the harness's page (amended after
+the build: the plan first asked the guidance builder to list them; the
+decision is recorded). The engine's `protect-harness` hook rides along
+only with a harness, as today.
 
 ## Ownership
 
@@ -646,7 +685,9 @@ Each line names the proof step that establishes it.
   records at `.kapso/deployments/<n>/deployment.json` name the target, the
   state, the identity, the endpoint and the session; `Software.open
   (campaign, n).run(row)` from another process answers as the delivered
-  branch does on the proof's five rows, on both targets.
+  branch does on the proof's five rows, on both targets: four within
+  1e-6, the fifth within 5e-5 (the rank blend's tie handling for one row
+  against a batch, which the Proof run explains).
 - A second deployment leaves the first running under its own name and
   port, and stopping one leaves the other healthy (d).
 - `deploy()` with no target follows `deployment.target` (f); `auto`
@@ -662,11 +703,16 @@ Each line names the proof step that establishes it.
 - The trading example's `paper-trading` skill deploys WP4's trading build
   on the fresh machine with its scripts and an option; `run()` runs one
   cycle; `--stop` and `--start` work from another process (g); `kapso
-  harness check examples/harnesses/trading` passes.
+  harness check examples/harnesses/trading` passes
+  (`tests/test_harness_check.py`, the suite's check of the example, not a
+  proof step).
 - `deployment:` is a session spec over the hosts table with the target,
   the three deadlines and the ports; `kapso doctor deploy` shows its host
-  row, the configured target's tool as required and the others as
-  advisory (a); `coding_agent` under it is refused by the walk.
+  row and the other targets' tools as advisory (a), and the configured
+  target's tool as required with its probe
+  (`tests/test_preflight.py`, the configured-target test; the proof ran
+  the doctor under the packaged `auto`); `coding_agent` under it is
+  refused by the walk.
 - The engine skill's deploy section is the one specified, and a Claude
   Code session following it deploys, reopens, calls and stops the churn
   build (i).
@@ -795,6 +841,93 @@ passed as a target. Every finding and what the plan now says:
 
 Built on these answers; the owner checks the decisions.
 
+### Pull-request review
+
+Both reviewers read pull request #160's diff against `redesign`, the
+sub-plan with its proof run, the decisions, the pages and the proof
+evidence under `scripts/redesign/runs/wp5/` (`scripts/redesign/review.sh`,
+brief and outputs in `scripts/redesign/runs/wp5-pr-review/`). Codex would
+not have merged (eleven P1s); Claude Code would have fixed one P1 and a
+handful of P2s. Every finding, with what was done; "fixed" names the
+commit after the review, `d7c5a8c8`, unless another is named. The cloud
+scripts' fixes are verified against the CLIs' own help texts (`bentoml
+deployment start|terminate|get`, `langgraph deploy --name`, `langgraph
+deploy delete|logs`, `modal app stop --yes`), not against an account.
+
+**Codex (gpt-6-astra, xhigh), thirty-seven findings.**
+
+| # | Finding | Answer |
+|---|---|---|
+| 1 | P1 a failed deployment cannot run its advertised cleanup: the target directory is copied only after an acceptable result | fixed: a named target's directory is copied right after the record is minted, before the session; under `auto` the prompt has the session write `target` and `reasoning` at once, and the engine copies the directory the moment it reads the choice (at the acceptance, or from a failed session's parseable file); `Software.open` opens a record whose target was never chosen and `stop()` says there is nothing to run; tested on a cut session, every failing check, and `auto` with and without a choice |
+| 2 | P1 malformed JSON bypasses the refusal and the resume | fixed: the parse is checked at a process boundary (`json.load` in the interpreter, its exit code the verdict, its last stderr line the finding), so the file comes back to the session once; tested fixed on the resume and failed after it; the decision is recorded |
+| 3 | P1 the record is `running` before the acceptance succeeds | fixed: `Software` has state-free `_call` and `_answers` the acceptance uses, `running` is written after the last check, and a crash mid-acceptance leaves `deploying`; the test's entry point answers with the record's state at call time, `deploying` |
+| 4 | P1 number allocation is not safe across processes; a deleted highest record reuses its number | answered: the loser of a true cross-process race fails loud at the atomic `mkdir`, never silently; a deleted record directory is a discarded deployment (the page says to delete stopped ones); a lock file is in the findings |
+| 5 | P1 ports are neither bound nor reserved | the wording fixed on the page and in the Interface: probed free at allocation, not held, and `deploy.sh` fails naming the port if something took it; the test no longer substitutes a value when two campaigns share one; a reservation is in the findings |
+| 6 | P1 concurrent record operations corrupt or undo each other | fixed: `write` replaces the file atomically, `update` re-reads and merges, `set_state` and the update lines go through it; tested with a handle opened before another's start wrote a new endpoint |
+| 7 | P1 the deadlines are not hard: children keep the pipes, a blocking `readline` | fixed: every child the engine runs is its own session and the group is killed at the deadline (tested: a script's `sleep` child dies with it); the worker's reply is one bounded `select`, and a dead worker's closed channel ends the wait (the poll loop and its interval are gone). The request line is written before the wait: one line the worker always reads between calls |
+| 8 | P1 env values are altered or executed as shell | fixed: values are verbatim in docker's `--env-file` format, the worker has its own six-line loader (no dotenv), the local target's `deploy.sh` proves the entry point through the worker instead of sourcing the file as shell, names are matched whole, and a value with a carriage return or a NUL is refused; the modal skill says its dotenv secret unquotes; tested with a quoted, `${X}`-bearing, `#`-bearing value |
+| 9 | P1 LangGraph deployments share the default name | fixed: `langgraph deploy --name "kapso-$KAPSO_DEPLOYMENT_NAME"` (the CLI's help: `--name` finds or creates by name); `logs.sh` adds `langgraph deploy logs --name`; the id stays the platform's, the skill says so |
+| 10 | P1 the acceptance abandons a live worker | fixed: one handle is built before the session, runs the acceptance, is closed before a resume and on every failure, and is the one returned; the suite's session tests run without a `ResourceWarning` |
+| 11 | P2 the session and the runtime get different environments without `env=`; the local proof's loader differs | fixed: `KAPSO_ENV_FILE` is set whenever the workspace holds `.env` (the solution's own too, made owner-only), the prompt says so, and the local skill's proof runs through the worker's loader |
+| 12 | P2 worker transport failures escape the envelope; descriptor 1 can corrupt replies | fixed: the worker is polled right before the write and pinged on every health check, so a dead worker is found first (the window between the poll and the write is microseconds and stays); the worker's descriptor 1 now goes to stderr, with the channel on a descriptor of its own, so a child process the function starts cannot write into it (tested with an `echo` child) |
+| 13 | P2 health is not a ping; a cross-handle stop leaves other workers | fixed: `is_healthy()` pings this handle's worker each time (a hung one fails at the timeout); a stop from another handle changes the state and the other handle's next `run()` refuses, its worker living until it closes: said in the findings |
+| 14 | P2 HTTP calls raise on transport failures and drop the URL's prefix | fixed: the request runs in a thread and its exception (refused, reset, timed out) is read off the future as the error answer with its name and message; the URL's own path is the prefix; the deadline is the socket's on connect and each read (a drip-fed body can outlast it: findings); tested on a closed port and a prefixed URL |
+| 15 | P2 an endpoint update line does not re-route HTTP | fixed: `KAPSO_ENDPOINT=` updates `result.run.url` for the `http` kind; tested with a start script sending the calls to a new server; values keep their content, only the line end is stripped |
+| 16 | P2 the acceptance proves less than the receipt suggests | fixed in part: artifacts must be relative paths inside the workspace, a function's module a file of it, the run kind one the target declares; the engine's own answer is recorded as `observed` and printed beside the session's when it differs (the paper account answers with the call's cash); output equality is not required, since a stateful target answers differently; binding a cloud resource to the identity stays the skill's rule (`kapso-$KAPSO_DEPLOYMENT_NAME`) |
+| 17 | P2 a target with no `run.py` cannot deploy under the `script` kind | fixed: a finding at the acceptance ("the script kind cannot be called; name the kind its skill says") instead of a raise; `metadata.run_kinds` lets a target say which kinds it ends in |
+| 18 | P2 lifecycle feedback hides a failed or absent cleanup | fixed: stop and start lines, a stop script's failure and "the local target has nothing to stop" are noted in the record's `engine.log` and returned; the verb prints the script's own lines; a stop keeps a failed deployment's error |
+| 19 | P1 the summary's Python line emits `false`/`true`/`null`; paths unquoted; `--config` dropped | fixed: the line carries the import, the path and the config quoted for Python, and the inputs as Python literals; the CLI lines quote the path for the shell and carry `--config`; tested with a path holding a space |
+| 20 | P2 conflicting lifecycle flags choose silently | fixed: the four are an argparse exclusive group, a deploy flag beside one is refused by name, `--number` on a deploy is refused; tested |
+| 21 | P2 `--status` is inadequate for recovery; the page's `--number` claim | fixed: the requested target is shown until the session chose, a failed row carries its error, a running row whose directories went is a row of its own, `--status --number n` shows that one; the page says so |
+| 22 | P2 BentoML's restart reruns the create script; regex over the JSON | fixed: `start.sh` runs `bentoml deployment start`, waits for `status: running` and prints the endpoint from `endpoint_urls`, parsed as JSON in the interpreter; `health.sh` parses `status`; `stop.sh` terminates with `--wait`; the CLI's help confirms the three subcommands |
+| 23 | P2 the login does not necessarily authenticate inference | answered: on the page's check-first list and in the findings; the SDK's credential path is the first thing to verify with an account |
+| 24 | P2 the Modal template does not keep the working directory | fixed: `.workdir("/root/solution")` on the image, the ignore list grown, the imports at the top; on the check-first list |
+| 25 | P2 the cloud lifecycle descriptions hide different behaviour | fixed: the langgraph row and its `stop.sh` output say the platform deployment stays and how to delete it; modal's and bentoml's `logs.sh` say where the logs are; the page lists what to check first with an account |
+| 26 | P2 paper-trading trusts a reusable pid | fixed: `runner_alive` checks the pid's command is the runner (`ps -o args`), `stop.sh` waits for the exit (then `kill -9`) before removing the pid file; tested with a pid file naming the test's own process |
+| 27 | P2 the paper account's contract under concurrent calls; `--at` undocumented | fixed in the skill: `--once [--at <timestamp>]` named, a cycle holds a file lock on the account from read to write; the runner is the session's to write (the tests' fake is not the contract) |
+| 28 | P2 preserved symlinks | answered: links stay links, `prepared/` is the staging's absolute link into the campaign, the docker image leaves it out and the skill says to copy what the service reads; a relocatable workspace is in the findings |
+| 29 | P2 staging without a harness skips the collision check and the lock; the `engine_skills` contract change | answered: the copy excludes `.claude`, `.agents`, `.codex`, so no tracked path can collide, and each deploy stages into its own workspace, so there is nothing to lock; a reference skill named like a bundled target is now refused too; the contract change is in the Consumed paragraph and the decisions |
+| 30 | P2 config validation admits null or infinite deadlines and a port range past the ports | fixed: `call_timeout` and `script_timeout` must be positive finite numbers (`timeout` may be null), the range must stay within 1..65535; tested |
+| 31 | P2 an advisory docker probe can abort a named deploy; the doctor's rows | fixed: the probe is the skill's (`metadata.requires.probe`), run bounded and killed at its timeout as a readiness line, never an exception; a named target's record lists that target's readiness alone; the doctor's probe row names the command and the fix; a CLI on PATH versus its SDK in the interpreter is in the findings |
+| 32 | P2 the local-environment limitation is unsaid | fixed: the local row on the page, the summary's interpreter line, the `Software` paragraph; the cloud targets' unproven status on the page |
+| 33 | P2 the engine skills' example ignores the proof's inputs | fixed: `software.run(software.proof["inputs"])` in the three skills |
+| 34 | P2 tests mask the regressions they claim to prevent | fixed in part: the port test's substitution is gone, and invalid JSON both ways, a failed deploy's cleanup, Python literals, a stale handle, a script's child, a reused pid and a quoted env value are tested; process contention and stateful provider fakes stay in the findings |
+| 35 | P2 the proof overclaims | fixed in this plan: the Acceptance says four of five and why, the configured-target row is the preflight test's, the harness check's citation is the suite's, the archive's `tar` error and contents are stated, `common.sh` is counted, the costs and turns come from the archive; the plan makes no claim about `--status` and a pid |
+| 36 | P3 literals, local imports, stale pyproject | fixed in part: the poll interval is gone; the worker log's thirty-line tail is a display cap and the scripts' waits are the scripts' own bounds (under the engine's `script_timeout`); the tests' and the modal template's imports are at the top; pyproject's stale comments and the docker SDK extra are gone |
+| 37 | P3 the dirty-campaign advice cannot work alone | fixed: restore the delivered tree (the checkout line, with the files), or build again |
+
+**Claude Code (claude-opus-5), twenty-three findings.**
+
+| # | Finding | Answer |
+|---|---|---|
+| 1 | P1 the target's scripts are copied only after the result passes, so a failed deploy's `--stop` line cannot run | fixed, as Codex 1; `run_kind`, `proof` and `logs()` tolerate a record with no result |
+| 2 | P2 a result that is not JSON is a traceback and leaves `deploying` | fixed, as Codex 2; the Interface line amended |
+| 3 | P2 the acceptance's handle is never closed | fixed, as Codex 10; the returned handle is the acceptance's own. A fresh local log is not re-archived (the dev box is not the proof machine); the Proof run says so |
+| 4 | P2 `--status` prints `None` for a deployment in flight | fixed: the requested target until the session chose; a failed row's error |
+| 5 | P2 nothing says the local target's dependencies live in the engine's interpreter | fixed: the row, the summary's line, the page |
+| 6 | P2 the paper-trading skill never asks for `--at` | fixed, with the account lock; the harness-root sentence stays (the session may read `prepared/` instead; both are the harness's data) |
+| 7 | P2 the run kind is not tied to the target | fixed: `metadata.run_kinds` and the module-in-the-workspace check; an http host rule is not added, since the kind binding closes the hole (a docker service answers on localhost by its skill) |
+| 8 | P3 record writes clobber each other | fixed, as Codex 6 |
+| 9 | P3 the port is probed, not held | the wording fixed, as Codex 5 |
+| 10 | P3 the docker image carries the data, the sealed evaluation and a dangling link | fixed: `kapso_evaluation` and `prepared` in `.dockerignore`; the skill says to add the data the service does not read and to copy what it does |
+| 11 | P3 `stop()`/`start()` say nothing without the script | fixed, the lines noted and printed |
+| 12 | P3 "running (healthy)" for a function deployment with no process | fixed: the health word says "its module imports in a worker"; the page's paragraph |
+| 13 | P3 a killed script leaves its children | fixed, as Codex 7 |
+| 14 | P3 `BrokenPipeError` and `ConnectionRefusedError` as tracebacks | fixed, as Codex 12 and 14 |
+| 15 | P3 a refusal between the record and the session leaves `deploying` | answered: the refusals that can fire (env, dirty tree, changed harness) run before the record, and the copy's exclusions make the staging's collision impossible; what remains is an I/O error, in the findings |
+| 16 | P3 the configured-target row has no test | fixed: tested with `deployment.target: docker` on a machine without docker, and with the probe failing |
+| 17 | P3 the engine skills' staging differs from the Consumed paragraph | fixed: the paragraph amended, the decision recorded |
+| 18 | P3 the unknown-target refusal gives no hint without a harness | fixed: the line says a harness's target needs `--harness` |
+| 19 | P3 the pages omit three members and overstate the update lines | fixed: `run_batch`, `software(inputs)`, `with`; the update lines scoped to the lifecycle scripts on exit 0 |
+| 20 | P3 proof-evidence gaps | fixed in this plan, as Codex 35 |
+| 21 | P3 the bentoml lifecycle reads JSON by regex; the account checklist | fixed: parsed as JSON; the checklist on the page in the order given |
+| 22 | P3 `deploy(coding_agent=…)` is refused naming a config key | answered: the call's host folds into the one spec the key resolves, and the message names the hosts to use; pinned by the preflight's test and the decision; left as is |
+| 23 | P3 two docker-specific branches | fixed: `metadata.requires.probe`; the engine names no target |
+
+**What the review did not change.** No lock across processes, the
+worker per handle, the symlink policy, BentoCloud's inference
+credentials: the owner's calls, in the findings below.
+
 
 ## Proof run
 
@@ -808,7 +941,7 @@ over its quota): the session on Codex, and a Claude Code session following
 the engine skill.
 
 **(a) The installed package and the doctor** (run-3). The installed wheel
-lists every target's scripts (bentoml 6, docker 7 with `common.sh`,
+lists every target's scripts (bentoml 6, docker 6 with `common.sh`,
 langgraph 6, local 1, modal 6). `kapso doctor deploy` from the home
 directory, no checkout anywhere: required checks passed (8), four
 advisory rows, `deploy target bentoml|docker|langgraph|modal`, each "only
@@ -838,7 +971,8 @@ local`; `--stop --number 1`, then `Software.open` from another process:
 stopped, not healthy; `--start --number 1`: started (healthy); from Python
 after the start: running, healthy, `run(proof inputs)` success. The
 record's `offered` list carries each target's readiness as the prompt
-stated it.
+stated it (that run's engine listed every target under a named one;
+since `d7c5a8c8` a named target's record lists that target alone).
 
 **(h) The refusals**, one line on stderr each (run-9, run-12): `--target
 k8s` → "deploy(target='k8s'): no such target; the targets are auto,
@@ -909,7 +1043,9 @@ following cycles; `run({})` from Python: one cycle on demand, success;
 `--stop`: the loop ended (no `run_paper.py --loop` process left), `--start`:
 started (healthy), `--status`: running. The record's `offered` list
 carries paper-trading beside the bundled five, local "present, needs
-nothing", docker "present, the daemon answers".
+nothing", docker "present, the daemon answers" (the wording and the
+list of that run's engine; since `d7c5a8c8` the probe is the skill's and a
+named target's record lists that target alone).
 
 **(i) The development box.** WP4's delivered churn build (campaign-c,
 0.8447) restored under the scratch directory. `kapso deploy campaign
@@ -931,19 +1067,34 @@ engine's interpreter at scikit-learn 1.6.1 against the campaign's recorded
 1.9.1 (a drift of up to 0.032 per row between the committed predictions
 and a re-run), the environment's, not the deployment's.
 
-**The numbers, for WP9's deploy step.** Wall time and the session's cost
-per target: local 8 m 02 s on the machine (3 m 04 s on Codex on the dev
-box; 7 m 28 s and $1.91 through the skill), docker 9 m 51 s and $2.16
-(the second docker deploy about the same), auto 9 m 17 s, paper-trading
-5 m 21 s and $2.62; parity 4 of 5 on local and docker on the machine (the
-fifth row 5e-5 apart), 5 of 5 on the dev box.
+**The numbers, for WP9's deploy step** (the session records in the
+archive, `sessions/deployment/<n>/session.json`). Wall time, the
+session's cost and its turns per target: local 8 m 02 s, $1.88, 28 turns
+on the machine (3 m 04 s on Codex on the dev box; 7 m 28 s and $1.91
+through the skill); docker 9 m 51 s, $2.16, 33 turns (the second docker
+deploy 10 m 29 s, $2.20, 39 turns); auto 9 m 17 s, $2.21, 32 turns; the
+config's default (local) 6 m 42 s, $1.50, 25 turns; paper-trading
+5 m 21 s, $2.62, 59 turns. Parity 4 of 5 on local and docker on the
+machine (the fifth row 5e-5 apart), 5 of 5 on the dev box.
 
 **What could not be proven here, as the plan said.** The three cloud
-targets live (their scripts ran against fake executables in the tests);
-the docker `gpu` value's effect (no GPU on an `e2-standard-4`); a
-BentoCloud endpoint change across a stop and a start; the result-file
-refusals beyond the fakes (every session wrote an acceptable result on
-its first turn); a host call cut mid-session.
+targets live (their scripts ran against fake executables in the tests;
+the review's fixes to their scripts, `d7c5a8c8`, are verified against the
+CLIs' own help texts, not an account); the docker `gpu` value's effect
+(no GPU on an `e2-standard-4`); a BentoCloud endpoint change across a
+stop and a start; the result-file refusals beyond the fakes (every
+session wrote an acceptable result on its first turn); a host call cut
+mid-session; a local-target run archived after the pipe fix (the three
+archived local runs predate `9577b2ce`; the suite's worker tests run
+without a warning, and the handle returned since `d7c5a8c8` is the one that
+proved the deployment, so no second worker is started).
+
+**The archive.** `wp5-campaigns.tgz` was written by a `tar` that exited
+non-zero (run-26: `churn-first-build/campaign.launch.json`, a launch
+file the build had already removed, "Cannot stat"); the archive holds
+both campaigns all the same, 1,186 entries, every deployment's record
+and workspace and every session's record, which this section's numbers
+are read from.
 
 ## Findings for later packages
 
@@ -973,8 +1124,40 @@ Fixed on this branch during the proof run:
   ones, the word for a harness target; "present, needs nothing"
   (`9577b2ce`).
 
+Fixed after the pull-request review (`d7c5a8c8`): the review's tables above
+say what, finding by finding.
+
 For the owner's decision, or a later package:
 
+- **No lock across processes.** Two processes deploying one campaign in
+  the same instant: the second's atomic `mkdir` fails loud
+  (`FileExistsError`), never silently; a port is probed free at
+  allocation, not held, so two campaigns allocating at once may get one
+  port and the second `deploy.sh` fails naming it; record writes are
+  atomic and re-read first, with no inter-process lock between the read
+  and the write. A lock file under `.kapso/deployments/` would close all
+  three; the flows served today do not need it.
+- **A deployment's workspace is tied to its campaign's place.** Links are
+  kept as links (`symlinks=True`), and the staging's `prepared/` is an
+  absolute link into the campaign; a workspace moved elsewhere loses it.
+  A relocatable workspace copies what the deployed code reads.
+- **The worker is pinged on every health check**, one round trip; a
+  function mid-call in another handle's worker is not seen (each handle
+  owns a worker). A stop from one handle changes the state; another
+  handle's worker lives until that handle closes.
+- **A tool on PATH is not its SDK in the interpreter.** `modal`,
+  `bentoml` and `langgraph` are the same packages as their SDKs, but a CLI
+  installed into another environment reads "present" while
+  `$KAPSO_INTERPRETER` lacks the module; the skill's install line is the
+  fix, and a probe importing the module in the interpreter would say so
+  first.
+- **BentoCloud's inference credentials.** `get_client()` is given no
+  token; whether it carries what `bentoml cloud login` saved is the first
+  thing to check with an account, as the page says.
+- **A `deploying` record older than the session's deadline** is a crashed
+  deploy (an I/O error between the record and the session, a killed
+  engine); `--status` shows it as deploying. A row that says so after the
+  deadline is a small addition.
 - **The local target's dependencies live in the engine's interpreter.**
   The session installs the solution's requirements there, and an upgrade
   of the tool (`uv tool install --force`, which the proof did between its
@@ -1024,4 +1207,6 @@ the snippet check 6 quoted files, the GEO rules passing).
 | `db9f19d1` | `Software.close()`; the verb closes the handle it opened for a status line or a start |
 | `2e6905a0` | the engine skills' deploy section for a host whose tool timeout is below the session's |
 | `9577b2ce` | a bundled target that needs no tool reads present; the worker's pipes closed when it ends |
-| the last commit | this section, the findings, the two Interface amendments the build made (`KAPSO_INTERPRETER`, the skill's wording), the master's row |
+| `dac9bbfd` | the Proof run, the findings, the two Interface amendments the build made (`KAPSO_INTERPRETER`, the skill's wording), the master's row |
+| `d7c5a8c8` | the pull-request review's fixes: the target's scripts before the session, the acceptance under `deploying` with the handle returned, the result parsed at a process boundary, the run kind the target declares, env values verbatim, the probe in the skill, the engine log, the group kill, the atomic record, the verb's flags and summary, the cloud scripts against the CLIs' help, the tests for each |
+| the last commit | the review's tables, the Interface amended where the fixes changed it, the Consumed paragraph, the pages, the decisions, the master's row |

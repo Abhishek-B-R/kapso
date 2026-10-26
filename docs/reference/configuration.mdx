@@ -383,7 +383,7 @@ The session `deploy()` runs, a spec over the hosts table in the shape of the bui
 | `script_timeout` | One lifecycle script of the target (start, stop, health, logs), in seconds | `600` |
 | `port_base`, `port_span` | The host ports a deployment takes: the first free from `port_base + (hash + number) % port_span`, within the span | `8000`, `1000` |
 
-`deploy(target=..., coding_agent=...)` and `kapso deploy --target --coding-agent` override per call.
+`deploy(target=..., coding_agent=...)` and `kapso deploy --target --coding-agent` override per call. The two call deadlines must be positive finite numbers (`timeout` may be null: no deadline on the session), and the port range must stay within 1..65535.
 
 ## harness
 

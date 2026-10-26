@@ -353,14 +353,15 @@ A `DeployError` names what refused the deployment (no such target, a dirty campa
 
 | Member | What it does |
 |--------|--------------|
-| `run(inputs)` | One call, by the deployment's run kind: `{"status": "success", "output": …}` or `{"status": "error", "error": …}`; refused while the deployment is not running |
-| `run_batch(inputs_list)` | `run` over each |
-| `stop()`, `start()` | The target's stop and start scripts (a function's worker ended or started); the state written to the record |
-| `is_healthy()` | Running by the record and answering its health check |
+| `run(inputs)`, `software(inputs)` | One call, by the deployment's run kind: `{"status": "success", "output": …}` or `{"status": "error", "error": …}`; refused while the deployment is not running |
+| `run_batch(inputs_list)` | `run` over each, in order |
+| `stop()`, `start()` | The target's stop and start scripts (a function's worker ended or started); the state written to the record; each returns the lines it noted, which `logs()` repeats |
+| `is_healthy()` | Running by the record and answering its health check (a function: its worker answers a ping) |
 | `close()` | This handle's worker ended, the deployment left running |
 | `logs()` | The engine's lines, the target's logs script, a function's worker log |
-| `number`, `state`, `target`, `endpoint`, `workspace`, `record`, `proof` | The record's facts; `proof` is the call the session proved, what `run()` takes |
-| `Software.open(campaign, number=None, config=None)` | The campaign's deployment of that number, or its highest |
+| `number`, `state`, `target`, `endpoint`, `workspace`, `record`, `proof`, `observed` | The record's facts; `proof` is the call the session proved, what `run()` takes, `observed` what the engine's own call of it answered; `target` is `None` when a session under `auto` chose none |
+| `Software.open(campaign, number=None, config=None)` | The campaign's deployment of that number, or its highest, whatever its state |
+| `with kapso.deploy(...) as software:` | `stop()` on exit |
 
 ## memory
 

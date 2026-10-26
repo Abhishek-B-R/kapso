@@ -37,11 +37,17 @@ description: "The paper-trading deployment target: runs the selected strategy ag
 to and when to choose it, in the `Use when …` form: under `--target auto`
 the session chooses by it. `scripts/deploy.sh` is what makes a listed
 skill a target: a skill without one (a reference, `market-data` in the
-trading example) is never offered as a target. A harness target declares
-the tools it needs in `harness.yaml`'s `environment`, which `kapso harness
-check` and the deploy's prerequisite check already read; the bundled
-targets name theirs in the front matter's `metadata.requires`, which the
-engine reads from its own files only.
+trading example) is never offered as a target. `metadata.run_kinds`
+(optional) lists the run kinds the workflow ends in, `[script]` for
+`paper-trading`: a result naming another kind is refused at the
+acceptance, so a session cannot pass by pointing `run.url` at something
+else. A harness target declares the tools it needs in `harness.yaml`'s
+`environment`, which `kapso harness check` and the deploy's prerequisite
+check already read; the bundled targets name theirs in the front matter's
+`metadata.requires` (`binary`, `install`, and for docker a `probe`:
+the command, its timeout and the fix, since the daemon's absence is what
+a binary on PATH does not show), which the engine reads from its own
+files only.
 
 ## The body
 
@@ -66,17 +72,24 @@ variables set:
 | `KAPSO_NUMBER`, `KAPSO_WORKSPACE`, `KAPSO_RECORD_DIR`, `KAPSO_TARGET_DIR` | The deployment's number, workspace, record directory, and the target's directory the scripts run from |
 | `KAPSO_INTERPRETER` | The Python the engine runs the deployed software with; `run.py` runs in it, and the solution's requirements are installed into it |
 | `KAPSO_ENDPOINT` | The endpoint the session reported, once there is one |
-| `KAPSO_ENV_FILE` | The caller's variables, when the call passed any: `.env` at the workspace root |
+| `KAPSO_ENV_FILE` | `.env` at the workspace root, when the workspace holds one: the caller's variables, or the solution's own; one `NAME=VALUE` per line, the value verbatim |
 | `KAPSO_OPTION_<NAME>` | Each option of the call |
 | `KAPSO_VALUE_<KEY>` | Each value the session recorded in the result (`container_port`, `app`, …): what `start.sh` needs to recreate the same deployment |
 | `KAPSO_HARNESS_ROOT` | The harness directory, for a harness target |
 
 A script's non-zero exit is an error with its stderr (`stop.sh` is the
 exception: its failure is noted, and the deployment is stopped all the
-same). A script's stdout lines of the form `KAPSO_ENDPOINT=<url>` or
-`KAPSO_VALUE_<KEY>=<value>` write back into the record: a cloud target
-whose `start.sh` gets a new URL prints it. Every lifecycle script is
-bounded by `deployment.script_timeout`, `run.py` by `call_timeout`.
+same). A lifecycle script's stdout lines of the form
+`KAPSO_ENDPOINT=<url>` or `KAPSO_VALUE_<KEY>=<value>` write back into the
+record when the script exits 0 (a new endpoint is where an `http`
+deployment's calls go from then on): a cloud target whose `start.sh`
+gets a new URL prints it. `deploy.sh` runs in the session, not in the
+engine, so what it learns reaches the record through the result file.
+The other lines `stop.sh` and `start.sh` print are noted in the record's
+`engine.log` and printed by the verb, so a stop that leaves something
+behind on a platform says so there. Every lifecycle script is bounded by
+`deployment.script_timeout`, `run.py` by `call_timeout`; one still
+running at it is killed with the processes it started.
 
 `run.py` reads the call's inputs as one JSON document on stdin and writes
 exactly one JSON document on stdout; stderr is the error text when it
@@ -100,12 +113,15 @@ The session writes `kapso_deployment.json` at the workspace root:
 
 Three run kinds: `function` (`module`, `callable`: the engine's worker
 imports `<workspace>/<module>.py` once and calls the function), `http`
-(`url`, `path`: a POST with the inputs as JSON) and `script` (the target's
-`run.py`). `reasoning` is required when the session chose the target;
-`endpoint` may be null; `values` is a string map the skill documents;
-`proof` is the one call the session made; `artifacts` lists the files it
-wrote or changed. The engine checks the file, the artifacts, the health
-script and the proof call before the deployment is `running`.
+(`url`, `path`: a POST to `<url><path>` with the inputs as JSON) and
+`script` (the target's `run.py`). `reasoning` is required when the
+session chose the target; `endpoint` may be null; `values` is a string
+map the skill documents; `proof` is the one call the session made;
+`artifacts` lists the files it wrote or changed, as paths inside the
+workspace. The engine checks the file (one that is not JSON comes back
+to the session as a finding), the run kind against the skill's
+`run_kinds`, the module's presence in the workspace, the artifacts, the
+health script and the proof call before the deployment is `running`.
 
 ## Where a target lives, and testing one
 

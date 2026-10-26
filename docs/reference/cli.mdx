@@ -292,9 +292,9 @@ Turns the solution a build wrote into running software, and stops, starts, reads
 | `--coding-agent` | The host the deployment session runs on, an entry of the config's `hosts` table | from config (`deployment.cli`, else the build's host) |
 | `--config` | Config path; pass the one the build used | packaged `config.yaml` |
 | `--harness` | The harness whose deployment module the session carries: the build's, from the campaign record, or another version of it | the campaign record's |
-| `--status` | List the campaign's deployments: number, state, target, endpoint, health | off |
-| `--stop`, `--start`, `--logs` | Stop a deployment, start a stopped one again, print its logs; each acts on `--number` | off |
-| `--number` | Which deployment `--stop`, `--start` and `--logs` act on | the highest |
+| `--status` | List the campaign's deployments: number, state (health for a running one, the error for a failed one), target (the request until the session chose), endpoint; one of them with `--number` | off |
+| `--stop`, `--start`, `--logs` | Stop a deployment, start a stopped one again, print its logs; each acts on `--number`. One of the four lifecycle flags at a time, and none of the deploy flags beside it | off |
+| `--number` | Which deployment `--status`, `--stop`, `--start` and `--logs` act on; refused on a deploy, which takes the next number | every one for `--status`, the highest otherwise |
 
 ```bash
 kapso deploy ../churn-build
@@ -304,7 +304,7 @@ kapso deploy ../churn-build --status
 kapso deploy ../churn-build --stop --number 2
 ```
 
-The summary after a deployment names its number and state, the target (and the session's reasoning when it chose), how `run()` calls it, the call the session proved, the endpoint, the workspace and the record under `<campaign>/.kapso/deployments/<n>/`, and the next actions pinned to that number: the Python line and the three lifecycle lines. A deploy that fails prints the record's path and the `--stop` line, since what its deploy script started may be running.
+The summary after a deployment names its number and state, the target (and the session's reasoning when it chose), how `run()` calls it, the call the session proved and what the engine's own call of it answered, the endpoint, the interpreter, the workspace and the record under `<campaign>/.kapso/deployments/<n>/`, and the next actions pinned to that number, copy-pastable as printed: the Python line (`from kapso import Software; Software.open(…).run(…)`, the proof's inputs as Python literals) and the three lifecycle lines (with `--config` when one was passed). A deploy that fails prints the record's path and the `--stop` line, since what its deploy script started may be running.
 
 ## kapso watch
 

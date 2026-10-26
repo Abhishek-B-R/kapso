@@ -6,6 +6,123 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-26, WP5 (after the pull-request review of #160)
+
+**The target's scripts are beside the record before the session runs.**
+A named target's skill directory is copied into `deployments/<n>/target/`
+right after the record is minted; under `auto` the session is told to
+write the result file with `target` and `reasoning` the moment it
+decides, and the engine copies the chosen target's directory as soon as
+it reads that (at the acceptance, or when a failed session left a
+parseable file naming an offered target). The plan said "copied at deploy
+time", which the build read as "after the result passed", so a failed
+deployment's `--stop` line could not run (both reviewers' first P1).
+`Software.open` opens a record whose target was never chosen, and
+`stop()` says there is nothing to run.
+
+**The result file is validated at a process boundary.** Rule 2 says a
+malformed JSON document raises; the Interface says a malformed result
+comes back to the session as a finding. Both hold: the engine checks the
+parse by running the interpreter on the file (`json.load` in a
+subprocess, its exit code the verdict, its last stderr line the finding),
+then reads what parsed. A session's sloppy file is a resume, never a
+traceback, and the engine's own code catches nothing. The alternative, a
+`DeployError` that fails the deployment at once, would spend the resume
+the Interface promises on the most ordinary model slip.
+
+**The record stays `deploying` through the acceptance, and the handle
+that proved the deployment is the one returned.** `Software` has
+state-free `_call` and `_answers` the acceptance uses, so `running` is
+written once every check passed; no other process can call a deployment
+still being proved, and a crash mid-acceptance leaves `deploying`, never
+a false `running`. One handle is built before the session and returned
+at the end with its worker alive (the proof call started it); a resume
+closes it first, since the session may rewrite the module.
+
+**HTTP transport failures are answers, read off a future.** `run()` on an
+`http` deployment posts in a thread; the request's exception (refused,
+reset, timed out) is read with `Future.exception()` and becomes the
+`{"status": "error"}` answer the Interface promises, with the exception's
+name and message. No `try`: the boundary is the executor's. A 2xx body
+that is not JSON still raises, as the Interface says.
+
+**The run kind is the target's to declare.** `metadata.run_kinds` in a
+target skill's front matter (every bundled target and `paper-trading`
+declare theirs) and the acceptance refuses a result naming another; a
+`function` module must be a file of the workspace; artifacts must be
+relative paths inside it. Without this a session could pass the checks
+by pointing `run.url` at any service that answers 2xx.
+
+**A tool's probe lives in its skill's front matter.** `metadata.requires`
+takes an optional `probe` (`command`, `timeout`, `fix`); `readiness` and
+the doctor run it bounded (killed at its timeout, a readiness line rather
+than an exception). The docker skill declares `docker info`. The engine
+no longer names `docker` anywhere: the two docker-specific branches
+(`_readiness_line`, the doctor's daemon row) are gone, and any target can
+declare what proves its tool usable.
+
+**Env values are verbatim, in docker's format, and the worker has its
+own six-line loader.** `.env` is `NAME=VALUE` per line, the value to the
+end of the line: what `docker --env-file` reads. The worker reads it the
+same way (no python-dotenv: it unquoted and expanded, so the function
+and the container saw different values for `"a b"` or `${X}`), and the
+local target's `deploy.sh` proves the entry point through the worker
+itself instead of sourcing the file as shell. Names are matched whole;
+values may not hold a line break, a carriage return or a NUL. The modal
+skill says its dotenv secret unquotes.
+
+**The engine notes what it does in `engine.log` beside the record.**
+Stop and start lines, a stop script's failure, "the local target has
+nothing to stop": written to the file as they happen, so a later handle's
+`logs()` and a later `--logs` show them (before, they lived in the handle
+that made them). `stop()` and `start()` return the lines they noted and
+the verb prints them under its own, so a cloud stop that leaves a
+platform deployment behind says so where the person is looking.
+
+**A stop keeps a failed deployment's error.** `--stop` on a failed record
+runs the scripts and writes `stopped` with the error kept, so `--status`
+still says why it failed; `start()` clears it.
+
+**Every child the engine runs is its own session, killed as a group.**
+Lifecycle scripts, `run.py` and the worker start with
+`start_new_session=True`; a timeout kills the process group, so a build
+or a runner a script started dies with it and the deadline is a bound,
+not a hope.
+
+**Record writes are atomic and every change re-reads first.**
+`DeploymentRecord.write` replaces the file through a temporary one;
+`update(**changes)` reloads, applies, writes. Two handles on one
+deployment never undo each other's fields; there is no inter-process
+lock, which the plan's findings say.
+
+**A new endpoint from a lifecycle script re-routes an `http`
+deployment's calls.** `KAPSO_ENDPOINT=` from `start.sh` updates the
+record's `endpoint` and, for the `http` kind, `result.run.url`: BentoCloud
+gives a started deployment a new URL, and `run()` must follow it.
+
+**The verb's lifecycle flags exclude each other, and a deploy flag beside
+one is refused.** `--status --stop` chose silently before; argparse's
+group refuses two lifecycle flags, the verb refuses `--target` with
+`--stop` and `--number` on a deploy. `--status --number n` shows that one
+row; a running row whose files are gone, a failed row's error and a
+deploying row's requested target are shown.
+
+**The summary's next step is Python, not JSON.** The proof's inputs were
+printed with `json.dumps`, which emits `false`, `true` and `null` inside
+a Python line; the line now carries the import, the path and the config
+quoted for Python, and the inputs as Python literals; the CLI lines quote
+the path for the shell and carry `--config`. The summary also prints the
+engine's own answer to the proof call beside the session's when they
+differ (a stateful target answers differently), and the interpreter a
+function runs in.
+
+**The engine's targets are listed by the deployment prompt, not the
+guidance.** The plan's Consumed paragraph asked the guidance builder to
+list them with the harness's skills; the build lists them in the prompt's
+target block, with each one's readiness beside it, and the session record
+names them under `engine_skills`. The guidance stays the harness's page.
+Recorded here since the plan's text said otherwise.
+
 ## 2026-10-26, WP5 (taken while building)
 
 **The front-matter reader lives in `kapso.core`.** The preflight imports
