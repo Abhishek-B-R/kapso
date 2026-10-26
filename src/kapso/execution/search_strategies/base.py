@@ -484,7 +484,7 @@ class SearchStrategyConfig:
     # from the first second; empty when nothing is loaded.
     experience: List[Dict[str, Any]] = field(default_factory=list)
     # The config's hosts table (`hosts.<cli>: {model, …}`), over which the
-    # strategy's roles resolve their sessions (generic/roles.py).
+    # strategy's roles resolve their sessions (kapso.core.roles).
     hosts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 

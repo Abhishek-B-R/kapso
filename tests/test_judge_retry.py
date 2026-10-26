@@ -24,11 +24,19 @@ class Outcome(SimpleNamespace):
 
 
 def answer(output: str) -> Outcome:
-    return Outcome(output=output, metadata={"cli_session_id": "judge-1"})
+    return Outcome(success=True, error=None, output=output, metadata={"cli_session_id": "judge-1"})
 
 
 def cut(output: str = "half an analysis") -> Outcome:
-    return Outcome(output=output, metadata={"cli_session_id": "judge-1", "deadline_exceeded": True, "completed_before_kill": False})
+    return Outcome(
+        success=False, error="the judge's CLI exceeded its deadline", output=output,
+        metadata={"cli_session_id": "judge-1", "deadline_exceeded": True, "completed_before_kill": False},
+    )
+
+
+def failed_to_start(error: str) -> Outcome:
+    """A login revoked, a quota exhausted, a crashed CLI: no turn, no session."""
+    return Outcome(success=False, error=error, output="", metadata={"cli_session_id": None})
 
 
 class ScriptedJudge:
@@ -104,8 +112,20 @@ def test_no_room_for_a_retry_is_unjudged_with_the_reason(judged):
 
 
 def test_a_tagless_answer_with_no_session_handle_raises(judged):
+    """A turn that completed without the adapter naming its session is a
+    wiring bug, not a tagless answer: the retry cannot resume it."""
     with pytest.raises(RuntimeError, match="recorded no cli_session_id"):
-        judged([Outcome(output="no tags", metadata={})])
+        judged([Outcome(success=True, error=None, output="no tags", metadata={})])
+
+
+def test_a_judge_session_that_fails_to_start_is_unjudged_with_its_error(judged):
+    """The invocation itself failed (the proof run's exhausted quota): the
+    attempt is unjudged with the error, nothing is resumed, and the
+    campaign goes on without a verdict rather than dying on a traceback."""
+    agent, result = judged([failed_to_start("Quota exceeded for the openai-api-key secret")])
+    assert [call["kind"] for call in agent.calls] == ["fresh"]
+    assert result.unjudged == "the judge's session failed: Quota exceeded for the openai-api-key secret"
+    assert result.score is None and result.evaluation_valid is True and result.feedback == ""
 
 
 def test_the_retry_run_entry_carries_its_reason(tmp_path):

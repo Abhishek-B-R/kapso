@@ -100,6 +100,7 @@ def make_stub(monkeypatch, expansion, scores, stop_flags):
             node_id=node_id,
             branch_name=f"generic_exp_{node_id}",
             score=None,
+            unjudged="",
             should_stop=False,
             phase_telemetry={"implementation": {"cost_usd": 1.0}},
             evaluation_integrity_error=None,

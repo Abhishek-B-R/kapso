@@ -12,7 +12,7 @@ import pytest
 
 
 import kapso.execution.coding_agents.factory as factory_module
-import kapso.gated_mcp as gated_mcp_module
+import kapso.execution.search_strategies.generic.ideation as ideation_module
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.base import SearchStrategy
@@ -204,7 +204,7 @@ def test_ideation_reads_from_a_detached_view_of_the_selected_ref(
     monkeypatch.setattr(
         factory_module.CodingAgentFactory, "create", classmethod(lambda cls, config: FakeAgent(config)),
     )
-    monkeypatch.setattr(gated_mcp_module, "get_mcp_config", fake_mcp_config)
+    monkeypatch.setattr(ideation_module, "get_mcp_config", fake_mcp_config)
     monkeypatch.setattr(
         RepoMemoryManager,
         "load_from_git_branch",

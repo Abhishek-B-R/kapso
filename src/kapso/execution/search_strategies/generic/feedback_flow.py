@@ -172,6 +172,9 @@ def generate_feedback(
         print(f"[GenericSearch] Error generating feedback: {e}")
         node.feedback = f"Error generating feedback: {e}"
         node.should_stop = False
+        # No judgment reached the record: the attempt keeps its score and
+        # is never a parent or delivered, as every unjudged attempt.
+        node.unjudged = f"the judge failed: {e}"
         if is_void(verification):
             # The harness's void holds whether or not the judge spoke.
             node.evaluation_valid = False

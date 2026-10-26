@@ -31,14 +31,14 @@ class ScriptedFeedbackAgent:
             {"prompt": prompt, "timeout_seconds": timeout_seconds}
         )
         self.cost += 0.1
-        return SimpleNamespace(output=self.outputs.pop(0), metadata={"cli_session_id": "judge-1"})
+        return SimpleNamespace(success=True, error=None, output=self.outputs.pop(0), metadata={"cli_session_id": "judge-1"})
 
     def resume(self, cli_session_id, follow_up, timeout_seconds=None, reason=None):
         self.calls.append(
             {"prompt": follow_up, "timeout_seconds": timeout_seconds, "resumed": cli_session_id, "reason": reason}
         )
         self.cost += 0.1
-        return SimpleNamespace(output=self.outputs.pop(0), metadata={"cli_session_id": cli_session_id})
+        return SimpleNamespace(success=True, error=None, output=self.outputs.pop(0), metadata={"cli_session_id": cli_session_id})
 
     def get_cumulative_cost(self):
         return self.cost

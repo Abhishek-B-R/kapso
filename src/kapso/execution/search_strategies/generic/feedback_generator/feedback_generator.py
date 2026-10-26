@@ -204,6 +204,10 @@ class FeedbackGenerator:
             prompt, timeout_seconds=timeout_seconds
         )
         unjudged = self._ended_at_deadline(result)
+        if unjudged is None and not result.success:
+            # The invocation itself failed (a login revoked, a quota, a
+            # crashed CLI): nothing to parse and nothing to resume.
+            unjudged = f"the judge's session failed: {result.error or 'no output'}"
         feedback_result = None if unjudged else self._parse_response(result.output)
         if unjudged is None and feedback_result is None:
             cli_session_id = result.metadata.get("cli_session_id")

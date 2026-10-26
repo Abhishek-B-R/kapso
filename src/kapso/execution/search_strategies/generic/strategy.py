@@ -193,7 +193,7 @@ class GenericSearch(SearchStrategy):
     - RepoMemory access via MCP tools for architecture understanding
     
     Config (`search_strategy.params`, every key in the packaged config,
-    refused by name otherwise — kapso.execution.search_strategies.generic.roles):
+    refused by name otherwise — kapso.core.roles):
         - host: the CLI every session runs on unless its role names one;
           the config's `hosts` table gives each CLI its model and its own
           settings (auth_mode, effort, vertex_project, …)
@@ -562,6 +562,15 @@ class GenericSearch(SearchStrategy):
         node.branch_name = branch_name
         node.parent_branch_name = parent.branch_name
         node.agent_output = agent_output
+        if not implementation_telemetry and build_error is not None:
+            # The session was not launched (no room under the floor): no
+            # branch exists; the node records why and is judged by nobody.
+            node.had_error = True
+            node.error_message = build_error
+            node.evaluation_valid = False
+            node.score = None
+            node.unjudged = f"the implementation was not launched: {build_error}"
+            return node
         node.code_diff = self._get_code_diff(branch_name, parent.branch_name)
         self._absorb_implementation(
             node, agent_output, recovered, suspended, build_error, lane_tag
@@ -799,6 +808,10 @@ class GenericSearch(SearchStrategy):
                     f"[GenericSearch] node {node.node_id} waits for the person "
                     "— not judged until it is continued"
                 )
+            elif node.unjudged:
+                # A node whose session was never launched: nothing to
+                # evaluate, verify or judge; the reason is on the node.
+                print(f"[GenericSearch] node {node.node_id} {node.unjudged}")
             elif self.enforce_evaluation_integrity(node):
                 if self._evaluate_admitted_candidate(node, lane_index=lane_index):
                     node.commit = self._attempt_commit(node.branch_name)
@@ -912,10 +925,11 @@ class GenericSearch(SearchStrategy):
                 if verdict_path.is_file():
                     break
                 failure = result.error if not result.success else None
-                if own["timeout"] < float(harness.settings["verification_minutes"]) * 60.0:
-                    # The budget, not the session, set the deadline: a retry
-                    # would get less still.
-                    failure = failure or "the session ended without a verdict under the budget's deadline"
+                killed = bool(result.metadata.get("deadline_exceeded")) and not result.metadata.get("completed_before_kill")
+                if killed and own["timeout"] < float(harness.settings["verification_minutes"]) * 60.0:
+                    # The budget, not the session's own cap, set the deadline
+                    # that cut it: a retry would get less still.
+                    failure = failure or "the session was cut at the budget's deadline without a verdict"
                     self._note_finishing_cut(f"the verification of node {node.node_id} was cut: {failure}")
                     break
         node.verification = read_verdict(verdict_path)
@@ -1056,7 +1070,9 @@ class GenericSearch(SearchStrategy):
             campaign_state_brief=self._campaign_state_brief,
             get_best_experiment=self.get_best_experiment,
             run_planner_session=self._run_lens_planner_session,
-            domain_guidance=self.stage_harness_for("ideation", ideation_dir, "lens_planner", "claude_code").guidance,
+            domain_guidance=self.stage_harness_for(
+                "ideation", ideation_dir, "lens_planner", self.ideation_lens_planner.cli,
+            ).guidance,
             experience_intro=self.experience_intro(),
         )
 
@@ -1794,7 +1810,15 @@ class GenericSearch(SearchStrategy):
             self._note_finishing_cut(f"node {node.node_id} unjudged: {not_launched}")
             print(f"[GenericSearch] node {node.node_id} unjudged: {node.unjudged}")
             return node
-        budget_set = deadline is not None and (configured is None or deadline < configured)
+        rooms = [deadline]
+
+        def retry_deadline():
+            # The retry's room, re-computed; remembered so the attempt
+            # says which deadline cut it.
+            room, not_launched = self._finishing_deadline("judge", configured)
+            rooms.append(room)
+            return room, not_launched
+
         generate_feedback(
             node,
             feedback_generator=self.feedback_generator,
@@ -1802,7 +1826,7 @@ class GenericSearch(SearchStrategy):
             axes=axes_brief(current_plan_axes(self.workspace_dir)),
             session_end_facts=self._judge_end_facts(node),
             deadline_seconds=deadline,
-            retry_deadline=lambda: self._finishing_deadline("judge", configured),
+            retry_deadline=retry_deadline,
             manifest_of_record=self._manifest_of_record,
             finalize_run_selection=(
                 lambda manifest, valid:
@@ -1814,11 +1838,15 @@ class GenericSearch(SearchStrategy):
             stage_harness_for=self.stage_harness_for,
             verification=node.verification,
         )
+        # The deadline that cut the judge was the budget's when the run it
+        # cut (the first, or the retry) had a room below the configured
+        # timeout: the attempt says so, and the round reports the
+        # finishing cut; a retry refused for want of room is one too.
+        budget_set = rooms[-1] is not None and (configured is None or rooms[-1] < configured)
         if node.unjudged == FeedbackGenerator.DEADLINE_REASON and budget_set:
-            # The budget, not the judge's own timeout, set the deadline
-            # that cut it: the attempt says so, and the round reports the
-            # finishing cut.
             node.unjudged = "the judge's session ended at the budget's deadline"
+            self._note_finishing_cut(f"node {node.node_id} unjudged: {node.unjudged}")
+        elif node.unjudged.startswith("no tags, and no room for a retry"):
             self._note_finishing_cut(f"node {node.node_id} unjudged: {node.unjudged}")
         return node
 

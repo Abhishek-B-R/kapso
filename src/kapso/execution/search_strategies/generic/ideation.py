@@ -18,11 +18,13 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.gated_mcp import get_mcp_config
 from kapso.harness.staging import StagedHarness
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic import codex_ideation
 from kapso.core.roles import SessionRole
+from kapso.execution.coding_agents.base import CodingResult
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 logger = logging.getLogger(__name__)
@@ -37,11 +39,6 @@ MIN_IDEATION_SALVAGE_CHARS = 200
 # cannot do useful work; it applies ONLY while a split is active — the
 # no-split default gives each role the full ideation clamp, floor-free.
 ENSEMBLE_SPLIT_SELECTOR_MIN_SECONDS = 240
-# Default only — the live value is search_strategy.params
-# ideation_candidates_per_member (see GenericSearch.__init__). A wider pool
-# gives the selector more to choose from and keeps K-way expansion alive
-# when one member under-delivers.
-
 
 # Extraction artifacts (prompt echoes, stream duplicates) are shorter than
 # any real plan; drop them before the selector sees the pool.
@@ -197,8 +194,6 @@ def generate_solution(
     sections_consulted, phase_telemetry): solutions is rank-ordered,
     length <= node_expansion_value.
     """
-    from kapso.gated_mcp import get_mcp_config
-
     # 1. Load RepoMemory (read-only)
     repo_memory_doc = RepoMemoryManager.load_from_git_branch(
         workspace.repo, parent_branch
@@ -306,11 +301,19 @@ def generate_solution_ensemble(
     # did not spend flows to it instead of being forfeited. An explicit
     # split restores the fractional carve-up of this pre-fan-out clamp.
     clamp = clamped_timeout(ideation_timeout)
+    # A member's share of the clamp (the whole clamp without a split), never
+    # raised above it; a member's own timeout bounds it further.
     member_deadline = (
         clamp
         if ensemble_time_split is None or clamp is None
-        else max(60.0, clamp * ensemble_time_split["member_fraction"])
+        else clamp * ensemble_time_split["member_fraction"]
     )
+
+    def bounded(deadline: Optional[float], own_timeout: Optional[float]) -> Optional[float]:
+        """A session's deadline: its share bounded by its own configured timeout."""
+        if own_timeout is None:
+            return deadline
+        return own_timeout if deadline is None else min(deadline, own_timeout)
 
     def run_member(member: SessionRole, lens: str) -> Dict[str, Any]:
         # The prompt is per member: a codex member runs read-only with no
@@ -343,6 +346,7 @@ def generate_solution_ensemble(
                 },
             )
         label = member.label
+        deadline = bounded(member_deadline, member.timeout)
         print(f"[GenericSearch] Ideation member starting: {label}")
         # Every member persists its transcript here, not just codex: the
         # claude-driven members used to stream to the console only, so
@@ -367,6 +371,8 @@ def generate_solution_ensemble(
                     extra_args=staged.codex_exec_args(),
                     extra_env=staged.env,
                     record_path=staged.agent_specific.get("session_record_path"),
+                    env_strip=env_strip,
+                    env_defaults=env_defaults,
                 )
 
             def extract(output: str) -> list:
@@ -382,13 +388,14 @@ def generate_solution_ensemble(
                     if c.strip() and c.strip() not in prompt
                 ]
 
-            output, timed_out, duration, meta = run_codex_once(member_deadline)
+            output, timed_out, duration, meta = run_codex_once(deadline)
             candidates = extract(output)
-            if not candidates and not timed_out:
-                # Transient turn failure (run #8 iters 1-2: empty final
-                # message on the first calls after auth shipping). One
-                # retry inside the remaining member window self-heals it.
-                remaining = None if member_deadline is None else max(60.0, member_deadline - duration)
+            # Transient turn failure (run #8 iters 1-2: empty final message
+            # on the first calls after auth shipping). One retry inside the
+            # remaining member window self-heals it; a window already spent
+            # is not raised for it.
+            remaining = None if deadline is None else deadline - duration
+            if not candidates and not timed_out and (remaining is None or remaining > 0):
                 logger.warning(
                     f"[GenericSearch] member {label} returned no "
                     f"candidates (last_message_empty="
@@ -428,7 +435,7 @@ def generate_solution_ensemble(
                 "mcp_servers": mcp_servers,
                 "allowed_tools": member_allowed_tools,
                 "disallowed_tools": [] if member.web else WEB_TOOLS,
-                "timeout": member_deadline,
+                "timeout": deadline,
                 "streaming": True,
                 "planning_mode": False,
                 "stream_artifact_path": codex_ideation.ideation_stream_path(
@@ -531,14 +538,16 @@ def generate_solution_ensemble(
             print("[GenericSearch] Single candidate — selector skipped")
         return [pool[0]["text"]], sections, telemetry
 
-    selector_deadline = (
-        clamped_timeout(ideation_timeout)
-        if ensemble_time_split is None or clamp is None
-        else max(
-            ensemble_time_split["selector_min_seconds"],
-            clamp * ensemble_time_split["selector_fraction"],
-        )
-    )
+    # The selector's room now that the members are done (time they left
+    # flows to it); with a split, its share of the pre-member clamp with the
+    # split's own floor, never above the room that is left; its own timeout
+    # bounds it further.
+    room_now = clamped_timeout(ideation_timeout)
+    if ensemble_time_split is None or clamp is None:
+        selector_deadline = room_now
+    else:
+        share = max(ensemble_time_split["selector_min_seconds"], clamp * ensemble_time_split["selector_fraction"])
+        selector_deadline = share if room_now is None else min(share, room_now)
     chosen = select_candidates(
         problem=problem,
         repo_memory_brief=repo_memory_brief,
@@ -644,6 +653,9 @@ def select_from_candidates(
             {"expansion_count": str(expansion)},
         )
     selector = ideation_selector
+    if selector.timeout is not None:
+        # The selector's own configured timeout bounds its deadline too.
+        selector_deadline = selector.timeout if selector_deadline is None else min(selector_deadline, selector.timeout)
 
     def run_selector_session(session_prompt: str):
         """One selector invocation -> (CodingResult, cost_usd).
@@ -652,11 +664,6 @@ def select_from_candidates(
         session with an added corrective instruction.
         """
         if selector.cli == "codex":
-            from kapso.execution.search_strategies.generic.codex_ideation import (
-                run_codex_ideation,
-            )
-            from kapso.execution.coding_agents.base import CodingResult
-
             # web on: selection verifies candidate claims — a cited repo,
             # pretrained model, or dataset must exist and plausibly do what
             # the candidate says before it can win selection.
@@ -666,7 +673,7 @@ def select_from_candidates(
             staged.merged_agent_specific({
                 "stream_artifact_path": codex_ideation.ideation_stream_path(artifacts_dir, "codex", selector.model),
             })
-            output, timed_out, _duration, _meta = run_codex_ideation(
+            output, timed_out, _duration, _meta = codex_ideation.run_codex_ideation(
                 prompt=session_prompt,
                 model=selector.model,
                 cwd=ideation_dir,
@@ -677,6 +684,8 @@ def select_from_candidates(
                 extra_args=staged.codex_exec_args(),
                 extra_env=staged.env,
                 record_path=staged.agent_specific.get("session_record_path"),
+                env_strip=env_strip,
+                env_defaults=env_defaults,
             )
             return CodingResult(
                 success=not timed_out and bool(output.strip()),

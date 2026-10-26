@@ -156,6 +156,7 @@ class CountingAgent:
     def generate_code(self, prompt, debug_mode=False, timeout_seconds=None):
         self.cumulative += self.delta
         return SimpleNamespace(
+            success=True, error=None,
             metadata={"cli_session_id": "judge-1"},
             output=(
                 "<stop>false</stop>"

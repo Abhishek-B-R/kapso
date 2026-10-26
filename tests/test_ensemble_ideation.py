@@ -13,7 +13,7 @@ import pytest
 
 import kapso.execution.coding_agents.factory as factory_module
 import kapso.execution.search_strategies.generic.codex_ideation as codex_module
-import kapso.gated_mcp as gated_mcp_module
+import kapso.execution.search_strategies.generic.ideation as ideation_module
 from kapso.core.roles import resolve_members, resolve_optional, resolve_role
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.generic.ideation import (
@@ -144,11 +144,11 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
             pass
 
     def fake_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None,
-                   web_search=True, extra_args=None, extra_env=None, record_path=None):
+                   web_search=True, extra_args=None, extra_env=None, record_path=None, env_strip=None, env_defaults=None):
         events["codex_calls"].append(
             {"model": model, "cwd": cwd, "timeout": timeout_seconds,
              "effort": effort, "artifacts_dir": artifacts_dir, "prompt": prompt,
-             "web_search": web_search}
+             "web_search": web_search, "env_strip": env_strip, "env_defaults": env_defaults}
         )
         meta = {"last_message_empty": not codex_output, "stream_tail": "",
                 "stream_path": None, "last_path": None}
@@ -157,7 +157,7 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
     monkeypatch.setattr(factory_module.CodingAgentFactory, "create", classmethod(lambda cls, config: FakeAgent(config)))
     monkeypatch.setattr(codex_module, "run_codex_ideation", fake_codex)
     monkeypatch.setattr(
-        gated_mcp_module, "get_mcp_config", lambda **kw: ({}, [])
+        ideation_module, "get_mcp_config", lambda **kw: ({}, [])
     )
     monkeypatch.setattr(
         RepoMemoryManager, "load_from_git_branch",
@@ -246,7 +246,7 @@ def test_member_prompts_describe_only_the_gates_each_member_mounts(tmp_path, mon
         selector_output=f"<solution>{_plan('winner')}</solution>",
     )
     monkeypatch.setattr(
-        gated_mcp_module, "get_mcp_config",
+        ideation_module, "get_mcp_config",
         lambda **kw: (
             {"leeroopedia": {"type": "http", "url": "https://mcp.leeroopedia.com/mcp?token=x", "timeout": 600000}},
             ["mcp__leeroopedia__search_knowledge", "mcp__leeroopedia__review_plan"],
@@ -393,8 +393,10 @@ def test_split_carves_the_prefanout_clamp_with_the_floor(tmp_path, monkeypatch):
     ]
     assert [c.agent_specific["timeout"] for c in member_configs] == [420.0]
     assert [c.agent_specific["timeout"] for c in selector_configs] == [240.0]
-    # Split semantics: ONE frozen pre-fan-out clamp, no selector recompute.
-    assert calls == [600]
+    # Split semantics: the shares are carved from the one pre-fan-out clamp;
+    # the selector's is then bounded by the room read when it launches (a
+    # second reading that can only lower it, never a recompute of the split).
+    assert calls == [600, 600]
 
 
 @pytest.mark.parametrize(
@@ -575,7 +577,7 @@ def test_codex_zero_candidates_retries_once(tmp_path, monkeypatch):
         selector_output="unused",
     )
 
-    def flaky_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None):
+    def flaky_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None, env_strip=None, env_defaults=None):
         calls["n"] += 1
         meta = {"last_message_empty": calls["n"] == 1, "stream_tail": "boom",
                 "stream_path": None, "last_path": None}
@@ -600,7 +602,7 @@ def test_codex_timeout_does_not_retry(tmp_path, monkeypatch):
         selector_output="unused",
     )
 
-    def timing_out_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None):
+    def timing_out_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None, env_strip=None, env_defaults=None):
         calls["n"] += 1
         return "short", True, 1.0, {"last_message_empty": True, "stream_tail": "",
                                     "stream_path": None, "last_path": None}
@@ -624,7 +626,7 @@ def test_prompt_echo_candidates_are_dropped(tmp_path, monkeypatch):
     )
     real = _plan("genuine")
 
-    def echoing_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None):
+    def echoing_codex(prompt, model, cwd, timeout_seconds, effort=None, artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None, env_strip=None, env_defaults=None):
         # echo a large verbatim chunk of the prompt inside solution tags,
         # plus one genuine candidate
         echo = prompt[100:600]
@@ -747,6 +749,11 @@ def test_env_strip_reaches_member_and_selector_session_configs(tmp_path, monkeyp
     assert events["configs"], "harness captured no session configs"
     for config in events["configs"]:
         assert config.agent_specific["env_strip"] == ["OPENAI_API_KEY"]
+    # The raw Codex calls (a Codex member, a Codex selector) carry the same
+    # rule: the strip is the strategy's, not the host's.
+    assert events["codex_calls"]
+    for call in events["codex_calls"]:
+        assert call["env_strip"] == ["OPENAI_API_KEY"]
 
 
 def test_codex_selector_runs_web_on_and_choice_wins(tmp_path, monkeypatch):
@@ -764,7 +771,7 @@ def test_codex_selector_runs_web_on_and_choice_wins(tmp_path, monkeypatch):
     selector_calls = []
 
     def prompt_aware_codex(prompt, model, cwd, timeout_seconds, effort=None,
-                           artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None):
+                           artifacts_dir=None, web_search=True, extra_args=None, extra_env=None, record_path=None, env_strip=None, env_defaults=None):
         meta = {"last_message_empty": False, "stream_tail": "",
                 "stream_path": None, "last_path": None}
         if "### Candidate" in prompt:

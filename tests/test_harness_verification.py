@@ -39,6 +39,7 @@ class FakeVerifier:
     calls: List[dict] = []
     script: Callable[[Path, str], None] = staticmethod(lambda verdict_path, prompt: None)
     error: Optional[str] = None   # a session that dies instead of finishing
+    killed: bool = False          # ... cut at its deadline, the turn unfinished
 
     def __init__(self, config):
         self.config = config
@@ -52,7 +53,8 @@ class FakeVerifier:
         FakeVerifier.calls.append({"workspace": self.workspace, "prompt": prompt, "config": self.config, "verdict_path": verdict_path})
         FakeVerifier.script(verdict_path, prompt)
         if FakeVerifier.error:
-            return CodingResult(success=False, output="", error=FakeVerifier.error)
+            metadata = {"deadline_exceeded": True, "completed_before_kill": False} if FakeVerifier.killed else {}
+            return CodingResult(success=False, output="", error=FakeVerifier.error, metadata=metadata)
         return CodingResult(success=True, output="done")
 
     def get_cumulative_cost(self) -> float:
@@ -252,12 +254,23 @@ def test_a_session_that_dies_is_said_so_and_a_budget_clamp_ends_the_retries(stra
         iteration_index=0, max_iterations=3, elapsed_seconds=800, cost_usd=0.0, time_budget_seconds=1000,
         finalization_reserve_seconds=0.0, min_agent_timeout_seconds=60, delivery_seconds=30,
     )
+    FakeVerifier.killed = True
     clamped = node_for(strategy, "generic_exp_0", node_id=1)
     strategy._verify_attempt(clamped)
     assert len(FakeVerifier.calls) == 1
     assert FakeVerifier.calls[0]["config"].agent_specific["timeout"] == 110
     assert clamped.verification["summary"].startswith("the verification session failed: Deadline")
     assert strategy.finishing_cut.startswith("the verification of node 1 was cut")
+
+    FakeVerifier.calls = []
+    FakeVerifier.killed = False
+    FakeVerifier.error = "the CLI crashed at startup"
+    strategy.finishing_cut = None
+    crashed = node_for(strategy, "generic_exp_0", node_id=3)
+    strategy._verify_attempt(crashed)
+    # Under the same clamp, a session that fails at once is retried: the
+    # cut is the invocation's own outcome, not the clamp's arithmetic.
+    assert len(FakeVerifier.calls) == 2 and strategy.finishing_cut is None
     FakeVerifier.error = None
     strategy.budget_snapshot = None
     strategy.finishing_cut = None

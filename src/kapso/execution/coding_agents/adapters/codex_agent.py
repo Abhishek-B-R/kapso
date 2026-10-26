@@ -293,13 +293,16 @@ class CodexCodingAgent(CodingAgentInterface):
 
     def _exec_command(self, model: str, last_message_path: str) -> List[str]:
         """`codex [--search] exec <exec options>` — the shared head of a
-        fresh session and a resumed one."""
+        fresh session and a resumed one. With the web off, the native
+        search is disabled by its config key (omitting `--search` alone
+        leaves Codex's default cached search on)."""
         cmd = ["codex"]
         if self._web_search:
             cmd.append("--search")
         cmd.extend(
             [
                 "exec",
+                *([] if self._web_search else ["-c", 'web_search="disabled"']),
                 "--sandbox",
                 self._sandbox,
                 "--skip-git-repo-check",
