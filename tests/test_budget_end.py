@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 import kapso.execution.orchestrator as orchestrator_module
+from kapso.harness import HarnessError
 from kapso.execution.budget import (
     ATTEMPT_WOULD_NOT_FIT,
     DELIVERY_SECONDS,
@@ -203,6 +204,12 @@ def test_the_reserve_is_derived_from_the_obligations_or_bounded_when_set(tmp_pat
     orchestrator.solve(experiment_max_iter=1, time_budget_minutes=60)
     assert strategy.budget_snapshot.finalization_reserve_seconds == 240 + 95 + DELIVERY_SECONDS
     assert status_file(orchestrator)["budget"]["reserve_min"] == round((240 + 95 + DELIVERY_SECONDS) / 60, 1)
+    # The derived reserve is bounded like a set one: a quarter of a
+    # ten-minute budget, not the 365 s the obligations add up to (the
+    # proof run's ten-minute build, whose setup session got a negative
+    # deadline).
+    orchestrator.solve(experiment_max_iter=1, time_budget_minutes=10)
+    assert strategy.budget_snapshot.finalization_reserve_seconds == 150.0
     # A set reserve wins, bounded by a quarter of the budget: 100 of 60 min is 15.
     orchestrator.harness = None
     orchestrator.solve(experiment_max_iter=1, time_budget_minutes=60, finalization_reserve_minutes=100)
@@ -217,3 +224,23 @@ def test_the_trace_budget_line_names_the_reserve_and_the_winning_budget():
     assert _budget_source({"brief": {"budget": {"minutes": None}}, "minutes": 40.0}) is None
     assert _budget_source({"brief": {"budget": {"minutes": 40.0}}, "minutes": 40.0}) is None
     assert _budget_source({"brief": {"budget": {"minutes": 75.0}}, "minutes": 40.0}) == "the launch's over the brief's 75.0 min"
+
+
+def test_the_setup_session_is_refused_when_the_budget_leaves_it_no_room(tmp_path, monkeypatch):
+    """The launch predicate reaches the harness setup session: a budget
+    whose search room is under the floor stops the campaign with the
+    reason before any session, instead of launching the setup with a
+    negative deadline (the proof run's ten-minute build)."""
+    workspace = tmp_path / "workspace"
+    _init_git_workspace(workspace)
+    _patch_orchestrator(monkeypatch)
+    orchestrator = _orchestrator(workspace)
+    identity = {"name": "h", "version": "0.1", "hash": "0" * 64, "source": "/h"}
+    orchestrator.harness = SimpleNamespace(
+        name="h", version="0.1", has_content=lambda module: module in ("setup", "verification"),
+        settings={"verification_minutes": 10, "setup_minutes": 20}, ref_dict=lambda: dict(identity),
+        label=lambda: "h 0.1 (000000000000)",
+    )
+    # One minute: the reserve is bounded to 15 s, the room 45 s, the floor 60 s.
+    with pytest.raises(HarnessError, match=r"leaves 0\.[6-8] min for the harness setup session of h 0\.1 .*under the 60 s floor \(0\.2 min of the budget are kept for finishing\); give the campaign more minutes"):
+        orchestrator.solve(experiment_max_iter=1, time_budget_minutes=1)

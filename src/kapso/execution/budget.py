@@ -185,12 +185,16 @@ class BudgetSpec:
         when the reserve is derived from the obligations each round."""
         if self.finalization_reserve_seconds is None:
             return None
+        return self.bound_reserve(self.finalization_reserve_seconds)
+
+    def bound_reserve(self, seconds: float) -> float:
+        """A reserve, set or derived, bounded by a quarter of the time
+        budget: a short budget keeps its search (a verifying harness's
+        minutes alone can exceed a short budget; the finishing sessions
+        then take what their rooms leave)."""
         if self.time_budget_seconds is None:
-            return self.finalization_reserve_seconds
-        return min(
-            self.finalization_reserve_seconds,
-            RESERVE_FRACTION_BOUND * self.time_budget_seconds,
-        )
+            return seconds
+        return min(seconds, RESERVE_FRACTION_BOUND * self.time_budget_seconds)
 
     def effective_min_iteration_seconds(self, insured: bool) -> float:
         """The admission floor for the current deliverable state."""

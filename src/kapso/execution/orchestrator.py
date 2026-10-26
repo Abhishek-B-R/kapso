@@ -621,6 +621,17 @@ class OrchestratorAgent:
         if harness is None or not harness.has_content("setup") or self._harness_setup is not None:
             return
         strategy = self.search_strategy
+        # The launch predicate, as for every session: no room under the
+        # floor, no launch — and the setup is the campaign's precondition,
+        # so the campaign stops here with the reason.
+        room = strategy._room()
+        if room is not None and room < strategy.budget_snapshot.min_agent_timeout_seconds:
+            raise HarnessError(
+                f"the budget leaves {max(room, 0.0) / 60:.1f} min for the harness setup session of "
+                f"{harness.label()}, under the {strategy.budget_snapshot.min_agent_timeout_seconds:.0f} s floor "
+                f"({strategy.budget_snapshot.finalization_reserve_seconds / 60:.1f} min of the budget are kept for "
+                "finishing); give the campaign more minutes"
+            )
         campaign = Path(strategy.workspace_dir)
         strategy._status_phase("harness_setup")
         host = strategy.implementation_role.cli
@@ -1097,10 +1108,10 @@ class OrchestratorAgent:
 
     def _round_reserve_seconds(self, budget_spec: BudgetSpec) -> float:
         """The reserve this round keeps out of the search: the set one,
-        bounded by a quarter of the budget; else derived from the
-        obligations — the harness's verification minutes when it
-        verifies, the judge's last observed duration (the floor before
-        one), the delivery's slice."""
+        else derived from the obligations — the harness's verification
+        minutes when it verifies, the judge's last observed duration (the
+        floor before one), the delivery's slice; either bounded by a
+        quarter of the budget."""
         bounded = budget_spec.bounded_reserve_seconds()
         if bounded is not None:
             return bounded
@@ -1115,7 +1126,7 @@ class OrchestratorAgent:
             if "feedback" in node.phase_telemetry
         ]
         judge = observed[-1] if observed else budget_spec.min_agent_timeout_seconds
-        return verification + judge + self._delivery_seconds()
+        return budget_spec.bound_reserve(verification + judge + self._delivery_seconds())
 
     def _platform_budget_view(self) -> Optional[Dict[str, Any]]:
         """The campaign's platform spend against its budget, in the

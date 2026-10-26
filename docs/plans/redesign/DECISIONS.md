@@ -8,6 +8,18 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**The derived reserve is bounded like a set one.** The plan bounded a
+set `reserve_minutes` by a quarter of the budget and left the derived
+reserve to the obligations themselves. The proof run's ten-minute trading
+build derived 11.5 minutes (the harness's ten verification minutes, the
+judge's floor, the delivery) and launched its setup session with a
+negative deadline; the forty-minute builds kept under three quarters of
+their minutes for the search. Both reserves now take the quarter bound;
+a finishing session takes what its room leaves, as before. And the setup
+session follows the launch predicate every other session follows: a room
+under the floor is a refusal with the reason, since the setup is the
+campaign's precondition.
+
 **The retired-name check reads code and prose differently.** A retired
 config key is a leftover wherever it stands in a page, a README, a skill
 or a config file, and in code only in its quoted-key form (`params[

@@ -239,7 +239,7 @@ The first four keys are the `Budget` handle's words: the brief's `Budget` line w
 | `experiments` | The experiment cap when neither the brief nor the call names one | `10` |
 | `minutes` | The wall clock; `null` is unbounded | `null` |
 | `usd` | The model spend, best effort; `null` is unbounded | `null` |
-| `reserve_minutes` | Kept out of the search for finishing: the last attempt's evaluation, verification and judgment run inside it, and the delivery after them. `null` derives it each round from those obligations; a number wins, bounded by a quarter of the budget | `null` |
+| `reserve_minutes` | Kept out of the search for finishing: the last attempt's evaluation, verification and judgment run inside it, and the delivery after them. `null` derives it each round from those obligations; a number wins; either is bounded by a quarter of the budget | `null` |
 | `min_iteration_seconds` | The admission floor: a round starts only when the searchable remainder covers the larger of this and the previous round's own duration | `60` |
 | `min_iteration_seconds_insured` | The floor used instead once the handler reports a deliverable; `null` keeps the floor above | `null` |
 | `min_agent_timeout_seconds` | Below this a session cannot do useful work: a session whose deadline would be clamped under it is not launched, and says so | `60` |

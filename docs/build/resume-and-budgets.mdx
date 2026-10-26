@@ -101,11 +101,14 @@ obligation. A session's deadline is the smaller of its configured timeout
 and this room, never raised to the floor; an unbudgeted campaign keeps its
 configured timeouts.
 
-**The reserve.** `reserve_minutes` set wins, bounded by a quarter of the
-budget so a short budget keeps its search. Unset, the packaged default, it
-is derived each round from the obligations themselves: the harness's
+**The reserve.** `reserve_minutes` set wins. Unset, the packaged default,
+it is derived each round from the obligations themselves: the harness's
 `verification_minutes` when it verifies, the judge's last observed duration
-(the floor before the first), the delivery's slice.
+(the floor before the first), the delivery's slice. Either is bounded by a
+quarter of the budget, so a short budget keeps its search; a finishing
+session then takes what its room leaves. A budget whose search room is
+under the floor before anything ran (a harness setup session with no room)
+is refused at launch with the reason.
 
 **Admission.** A round starts only when the searchable remainder covers
 the larger of `budget.min_iteration_seconds` and the previous round's own

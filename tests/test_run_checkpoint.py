@@ -113,6 +113,12 @@ class FakeStrategy:
         self.bridge_calls: List[Dict[str, Any]] = []
         self.bridge_result = True
         self.refreshed_classes: List[Any] = []
+        self.budget_snapshot = None
+
+    def _room(self, *, finishing: bool = False, obligations_seconds: float = 0.0):
+        if self.budget_snapshot is None:
+            return None
+        return self.budget_snapshot.room(obligations_seconds, finishing=finishing)
 
     def run(self, context: str, budget_progress: float = 0.0) -> SearchNode:
         node_id = len(self.node_history)

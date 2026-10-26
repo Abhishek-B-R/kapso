@@ -297,7 +297,8 @@ budget:
   # verification and judgment run inside it, and the delivery after them.
   # Null derives it each round from those obligations (the harness's
   # verification minutes, the judge's observed duration, the delivery's
-  # protected slice); a number wins, bounded by a quarter of the budget.
+  # protected slice); a number wins; either is bounded by a quarter of
+  # the budget, so a short budget keeps its search.
   reserve_minutes: null
   # A round is admitted when the searchable remainder covers the larger
   # of this floor (seconds) and the previous round's own duration; the

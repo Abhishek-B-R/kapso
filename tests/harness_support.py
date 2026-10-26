@@ -55,6 +55,7 @@ class ScoringFakeStrategy:
     env_defaults: Dict[str, str] = {}
     gate_failure_policy = "warn"
     inbox_settings: Optional[Dict[str, Any]] = None
+    budget_snapshot = None
 
     def __init__(self, workspace_dir: str, harness: Any):
         self.workspace_dir = workspace_dir
@@ -81,6 +82,9 @@ class ScoringFakeStrategy:
 
     def _clamped_timeout(self, seconds: float) -> float:
         return seconds
+
+    def _room(self, *, finishing: bool = False, obligations_seconds: float = 0.0):
+        return None
 
     def stage_harness_for(self, module: str, session_dir: str, label: str, agent_type: str):
         # The engine's own method, on this fake: the records tests pin the
