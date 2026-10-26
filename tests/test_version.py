@@ -5,6 +5,7 @@ it to pyproject.toml. This makes the drift a suite failure: bump one, the
 test names the other.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -17,3 +18,14 @@ def test_package_version_matches_pyproject():
     match = re.search(r'^version = "([^"]+)"$', _PYPROJECT.read_text(), re.M)
     assert match, "pyproject.toml has no version line"
     assert kapso.__version__ == match.group(1)
+
+
+def test_the_plugin_carries_the_same_version():
+    """The plugin's manifests, the marketplace entry and the launcher's
+    pin name the package's version (docs/plans/redesign/wp7-plugin.md):
+    the skills' facts are written for it, and the launcher serves it."""
+    root = _PYPROJECT.parent
+    for manifest in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".cursor-plugin/plugin.json"):
+        assert json.loads((root / "plugin" / manifest).read_text())["version"] == kapso.__version__, manifest
+    launcher = (root / "plugin" / "scripts" / "kapso-mcp").read_text()
+    assert re.search(r'^KAPSO_VERSION="([^"]+)"$', launcher, re.M).group(1) == kapso.__version__

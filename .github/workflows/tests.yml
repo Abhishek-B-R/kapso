@@ -8,6 +8,10 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/tests.yml'
   push:
@@ -15,6 +19,10 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/tests.yml'
 

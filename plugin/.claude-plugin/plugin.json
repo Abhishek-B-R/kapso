@@ -1,0 +1,14 @@
+{
+  "name": "kapso",
+  "version": "0.8.0.dev1",
+  "description": "Build and verify software toward a measurable objective with Kapso's long-running agents, from this session: set up, state the objective, launch and follow the campaign, review and deploy the result, author a harness for your domain.",
+  "author": {
+    "name": "Leeroo",
+    "url": "https://leeroo.com"
+  },
+  "homepage": "https://docs.leeroo.com/docs/coding-agent-skills",
+  "repository": "https://github.com/Leeroo-AI/kapso",
+  "license": "MIT",
+  "keywords": ["kapso", "experiments", "optimization", "evaluation", "harness", "deploy", "machine learning"],
+  "mcpServers": "./hosts/claude/mcp.json"
+}

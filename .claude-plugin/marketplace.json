@@ -1,0 +1,16 @@
+{
+  "name": "kapso",
+  "description": "Kapso, the long-running agents that build and verify software toward a measurable objective: the plugin that runs them from your coding agent",
+  "owner": {
+    "name": "Leeroo",
+    "url": "https://leeroo.com"
+  },
+  "plugins": [
+    {
+      "name": "kapso",
+      "source": "./plugin",
+      "description": "Set up Kapso, state an objective with its evaluation, launch and follow a campaign, review and deploy the result, author a harness",
+      "category": "development"
+    }
+  ]
+}

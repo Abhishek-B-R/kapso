@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "kapso": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/kapso-mcp",
+      "args": []
+    }
+  }
+}
