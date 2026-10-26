@@ -206,7 +206,9 @@ listed on its deployment module. What the skill holds:
   workspace as the working directory, bounded by `script_timeout`
   (`call_timeout` for `run.py`), and these variables set:
   `KAPSO_DEPLOYMENT_NAME`, `KAPSO_PORT`, `KAPSO_NUMBER`, `KAPSO_WORKSPACE`,
-  `KAPSO_RECORD_DIR`, `KAPSO_TARGET_DIR`, `KAPSO_ENDPOINT` (after the
+  `KAPSO_RECORD_DIR`, `KAPSO_TARGET_DIR`, `KAPSO_INTERPRETER` (the engine's
+  own, which runs the worker and `run.py`; the solution's requirements go
+  into it for the local target), `KAPSO_ENDPOINT` (after the
   result), `KAPSO_ENV_FILE` (when the call passed `env`),
   `KAPSO_OPTION_<NAME>` for each option, `KAPSO_VALUE_<KEY>` for each
   value the session recorded (below), and `KAPSO_HARNESS_ROOT` for a
@@ -344,7 +346,7 @@ names and the options with their values; the target, or under `auto` the
 offered targets each with its description, how to open its skill in the
 host's own syntax (the staging's guidance builder renders the list) and
 its readiness on this machine (`present`, `missing: <install>`, or
-`unverified` for a target that declares no tool, and for docker whether
+`unverified` for a harness target, whose tools the harness declares, and for docker whether
 the daemon answers); the instruction to decide the target first and say
 why, open its skill and follow it, run `scripts/deploy.sh`, prove one
 call with real inputs, and write the result file; and that the scripts
@@ -372,13 +374,15 @@ not running) and prints as one line from the CLI (it joins
 `ENGINE_ERRORS`).
 
 **The engine skill's deploy section** (`skills/claude-code/kapso/SKILL.md`,
-`skills/codex/kapso/SKILL.md`): deploy once, in the foreground, with a
-tool timeout above `deployment.timeout` (the section names the duration:
-minutes, up to thirty); the record is written at the start, so a cut host
-call leaves `kapso deploy <campaign> --status` something to read; then
-reopen the numbered deployment (`Software.open(path, n)`) and call it, or
-read `--logs` for a scheduled target; stop it with `--stop --number n`.
-Never background the verb and poll.
+`skills/codex/kapso/SKILL.md`, `skills/opencode/kapso/SKILL.md`): deploy
+once, in the foreground when the tool's timeout allows, else (Claude
+Code's Bash tool stops at ten minutes) once in the background writing to
+a log, waiting for the summary there and never a second time (the
+section names the duration: minutes, up to thirty); the record is
+written at the start, so `kapso deploy <campaign> --status` says what is
+deploying meanwhile and after a cut host call; then reopen the numbered
+deployment (`Software.open(path, n)`) and call it, or read `--logs` for a
+scheduled target; stop it with `--stop --number n`.
 
 **Superseded in the research documents.** `harness-user-flow.md` §3's
 `kapso deploy --solution … --target …` (the campaign is positional, no
@@ -790,3 +794,234 @@ passed as a target. Every finding and what the plan now says:
 | F42 | P3: Rule 6 on the prompt | the objective in full |
 
 Built on these answers; the owner checks the decisions.
+
+
+## Proof run
+
+**The fresh machine, `kapso-fresh-wp5`** (`e2-standard-4`, Ubuntu 24.04,
+created 2026-10-26 18:44 UTC, deleted after the run; the wheel built from
+the branch, reinstalled twice as the proof's fixes landed, `c39440e1` then
+`9577b2ce`; the logs under `scripts/redesign/runs/wp5/run-N.log`, the two
+campaigns with their deployments in `wp5-campaigns.tgz` there). The
+development box ran the two steps the machine cannot (its Codex key is
+over its quota): the session on Codex, and a Claude Code session following
+the engine skill.
+
+**(a) The installed package and the doctor** (run-3). The installed wheel
+lists every target's scripts (bentoml 6, docker 7 with `common.sh`,
+langgraph 6, local 1, modal 6). `kapso doctor deploy` from the home
+directory, no checkout anywhere: required checks passed (8), four
+advisory rows, `deploy target bentoml|docker|langgraph|modal`, each "only
+needed for kapso deploy --target <name>" with its install line; local
+needs none.
+
+**(b) The churn build** (run-5, run-6). Launched 18:47 UTC on the packaged
+host, 25 minutes, 3 experiments, detached; returned at 19:08 (21.5 min):
+branch `generic_exp_0`, score 0.8464, `budget_exhausted
+(attempt_would_not_fit)`, the delivered commit `011c74bd`, the campaign
+checked out at it with no tracked change.
+
+**(c) The local target** (run-10, run-11). `kapso deploy campaign --target
+local --env PROOF_RUN=wp5`: 8 m 02 s, exit 0; the summary names deployment
+1, local, running (healthy), `function — main.predict in a worker
+process`, the proof a real holdout row (`C010001` → churn probability
+0.985333), the session's summary ("the delivered churn blend runs in the
+engine's local worker as main.predict, which loads the pre-fitted 16-seed
+HGB bag + spline logistic regression from model/churn_blend.joblib at
+import …"), the workspace (3.7 MB), the record, and the four next-action
+lines pinned to number 1. Parity from another process: 4 of 5 holdout
+rows equal within 1e-6 to the delivered `predict.py`'s probabilities, the
+fourth 0.27435 against 0.2744 (the deployed module loads the delivered
+joblib, `predict.py` refits at call time; the rank blend's tie handling,
+which the docker session explained). `--status`: `1 running (healthy)
+local`; `--stop --number 1`, then `Software.open` from another process:
+stopped, not healthy; `--start --number 1`: started (healthy); from Python
+after the start: running, healthy, `run(proof inputs)` success. The
+record's `offered` list carries each target's readiness as the prompt
+stated it.
+
+**(h) The refusals**, one line on stderr each (run-9, run-12): `--target
+k8s` → "deploy(target='k8s'): no such target; the targets are auto,
+bentoml, docker, langgraph, local, modal (bundled)"; `--target
+paper-trading` on the churn build, the same line (no harness); a tracked
+file edited after the delivery → "…/campaign: tracked files differ from
+the delivered commit (predict.py); commit or discard the changes first";
+`--env FOO` → "--env takes KEY=VALUE, got 'FOO'"; a path that is not a
+campaign → "…/nowhere is not a campaign directory" (a traceback before
+`c39440e1`, run-4); `--target docker` before docker was installed → the
+preflight's report ("1 of 5 requirements missing", `docker (deploy
+target)`, "needed by deploy(target='docker')", the install line), and no
+record written.
+
+**(d) The docker target** (run-13 to run-19). `apt-get install docker.io`
+in 15 s, the user in the docker group, the daemon answering from a new
+login, `kapso doctor deploy` → `[OK ] deploy target docker`. From Python,
+`Kapso().deploy(Solution.open('campaign'), target='docker', env={…})`:
+9 m 51 s wall, the session 582 s and $2.16 (31 tool calls); deployment 2,
+docker, running, endpoint `http://localhost:8863`, the container
+`kapso-campaign-3dfaa5-2` publishing 8863 → 8000. The session's own
+report: the delivered `predict.py` blends ranks over the whole holdout
+file, so it froze each model's score distribution into the service and
+checked the service against the delivered predictions on all 3,000 rows
+(max abs diff 0.00058, Spearman 1.0, AUC 0.8463 vs 0.8464); the image on
+Python 3.12 since the pinned numpy needs it (its first build failed on
+the skill's 3.11 example and it switched); `.env` kept out of the image;
+`values` `container_port` 8000 and `gpu` none exported and recorded.
+`stop()` from another process removed the container and saved its last
+lines in `container.log`; `start()` recreated it under the same name and
+port, healthy, `run(proof inputs)` success. A second `kapso deploy
+campaign --target docker`: deployment 3 on 8864 beside 2 on 8863, both
+healthy in `--status` and in `docker ps`; `--stop --number 2` left 3
+running. Parity on deployment 3 from another process: 4 of 5 rows equal,
+the fourth the same 5e-5; the worker and the container answer the same
+values on every row.
+
+**(e) `--target auto`** (run-20). 9 m 17 s; deployment 4; the session
+chose local, with its reasoning in the record ("a CPU-bound scikit-learn
+tabular model whose dependencies … are pure Python wheels already present
+in the engine's interpreter at the exact versions it was scored with …");
+running (healthy); `offered` as the prompt stated it: bentoml, langgraph
+and modal missing with their install lines, docker "present, the daemon
+answers", local "present, needs nothing". Stopped afterwards.
+
+**(f) No `--target`, the override file names local** (run-21). `kapso
+deploy campaign --config ~/fixture/configs/deploy-local.yaml`: "Target:
+local" in the banner, deployment 5, the record's `target_requested`
+"local". Stopped afterwards.
+
+**(g) The harness target** (run-22 to run-24). WP4's archived trading
+build (`scripts/redesign/runs/wp4/campaign-b.tgz`: goal achieved, Sharpe
+2.2382, `generic_exp_0` at `1a102cc2`) unpacked under the trading example
+and checked out at its branch; the recorded harness source resolved at
+the same path, and `--harness ../harnesses/trading` named the example's
+copy with the paper-trading scripts (another hash, printed beside the
+build's). `kapso deploy campaign --harness ../harnesses/trading --target
+paper-trading --option 'schedule=*/2 * * * *' --option cash=100000`:
+5 m 21 s wall, the session 312 s and $2.62 (57 tool calls): it wrote
+`deploy/run_paper.py` with `--once` and `--loop`, ran the target's
+`deploy.sh`, which started the loop under its pid file, and wrote the
+result with `run.kind` `script`, the endpoint `deploy/paper.log`, the
+proof `{}` → `already_traded` on the latest closed bar (2023-12-29, the
+positions and cash of the paper account). The runner logged `started`
+(schedule `*/2 * * * *`, the pinned store under `prepared/market-data`),
+`traded` (three orders at the last close) and `already_traded` on the
+following cycles; `run({})` from Python: one cycle on demand, success;
+`--stop`: the loop ended (no `run_paper.py --loop` process left), `--start`:
+started (healthy), `--status`: running. The record's `offered` list
+carries paper-trading beside the bundled five, local "present, needs
+nothing", docker "present, the daemon answers".
+
+**(i) The development box.** WP4's delivered churn build (campaign-c,
+0.8447) restored under the scratch directory. `kapso deploy campaign
+--target local --coding-agent codex`: 3 m 04 s, the session on Codex (the
+record's host `codex:gpt-5.6-sol`), the summary as on the machine, parity
+5 of 5 from another process (`scripts/redesign/runs/wp5/
+devbox-deploy-codex.log`). Then a `claude -p` session (claude-opus-5) in
+the example directory with the engine skill under `.claude/skills/kapso`
+and this worktree's `kapso` on PATH, told to deploy the build locally
+following the skill's Deploy section, reopen the deployment by number
+from Python, call it once and stop it with the CLI (`devbox-skill-flow.txt`):
+it ran `--status` first, `kapso doctor deploy`, then the deploy (448 s,
+$1.91, exit 0, deployment 2, healthy), which it backgrounded since its
+Bash tool stops at ten minutes and waited for the summary in the log;
+`Software.open("./campaign", 2)`, `proof["inputs"]` as what `run()`
+takes, `run(...)` → the proof's value to the last digit; `--stop --number
+2` → stopped; `--status` listing both. The session also reported the
+engine's interpreter at scikit-learn 1.6.1 against the campaign's recorded
+1.9.1 (a drift of up to 0.032 per row between the committed predictions
+and a re-run), the environment's, not the deployment's.
+
+**The numbers, for WP9's deploy step.** Wall time and the session's cost
+per target: local 8 m 02 s on the machine (3 m 04 s on Codex on the dev
+box; 7 m 28 s and $1.91 through the skill), docker 9 m 51 s and $2.16
+(the second docker deploy about the same), auto 9 m 17 s, paper-trading
+5 m 21 s and $2.62; parity 4 of 5 on local and docker on the machine (the
+fifth row 5e-5 apart), 5 of 5 on the dev box.
+
+**What could not be proven here, as the plan said.** The three cloud
+targets live (their scripts ran against fake executables in the tests);
+the docker `gpu` value's effect (no GPU on an `e2-standard-4`); a
+BentoCloud endpoint change across a stop and a start; the result-file
+refusals beyond the fakes (every session wrote an acceptable result on
+its first turn); a host call cut mid-session.
+
+## Findings for later packages
+
+Fixed on this branch during the proof run:
+
+- **A path with no solution was a traceback.** `Solution.open` raised a
+  plain `FileNotFoundError`, which the CLI's hook treats as a bug (WP1's
+  handle; `kapso trace` had its own one-line refusal). `SolutionError`,
+  an engine error (`c39440e1`).
+- **A relative campaign path broke the function worker.**
+  `Software.open("campaign", 1)` from the campaign's parent recorded a
+  relative directory; the worker's working directory was changed into
+  the workspace twice and the status line said "not answering". The
+  record's directory is absolute (`c39440e1`).
+- **A status line left its health-check worker behind**, and the worker's
+  pipes reached the terminal as warnings. `Software.close()`, the verb
+  closes what it opens, the pipes closed when the worker ends
+  (`db9f19d1`, `9577b2ce`).
+- **The local skill assumed pip in the engine's interpreter.** A `uv
+  tool` install has none; the skill says `uv pip install --python
+  "$KAPSO_INTERPRETER"` then (`c39440e1`).
+- **The engine skill's "foreground with a long tool timeout" was
+  impossible on Claude Code**, whose Bash tool stops at ten minutes; the
+  proof's session backgrounded the verb and waited on its log, which the
+  skill now says to do once (`2e6905a0`).
+- **A bundled target with no tool read "unverified"** beside the missing
+  ones, the word for a harness target; "present, needs nothing"
+  (`9577b2ce`).
+
+For the owner's decision, or a later package:
+
+- **The local target's dependencies live in the engine's interpreter.**
+  The session installs the solution's requirements there, and an upgrade
+  of the tool (`uv tool install --force`, which the proof did between its
+  steps) replaces that environment and drops them; the proof's parity
+  script failed for want of pandas until they were installed again. The
+  docker target's live in its image. A recorded environment for the local
+  target (a venv per deployment under the record) is a later package's
+  call.
+- **Version drift between the campaign's environment and the engine's.**
+  The dev box's interpreter had scikit-learn 1.6.1 against the campaign's
+  1.9.1: the deployed code is the delivered code, the environment is the
+  engine's. Docker pins it; the summary could say which interpreter and
+  versions the deployment runs on.
+- **The deployed call is not always the delivered batch, bit for bit.**
+  The churn blend ranks over the whole holdout file; a one-row service
+  must freeze the distributions, and the sessions did (5e-5 on one of
+  five rows). WP9's parity check should state its tolerance, and the
+  summary's proof is the place a person reads the difference.
+- **The summary's proof line is long** when the inputs are a wide feature
+  row (nineteen fields): the Python line it pins is correct and
+  copy-pastable, and wide. A `--json` form of the summary for the plugin
+  (WP7) would carry it without wrapping.
+- **The session rewrote the solution's own files where it had to**
+  (`predict.py` refactored for one-row scoring on the docker target,
+  "nothing committed, the tree left for review"): the workspace is the
+  deployment's copy and the campaign is untouched, as designed; the
+  record's `artifacts` names what changed.
+
+## Built
+
+Branch `wp5-deploy` off `redesign` at `24b95801`, the commits below, each
+with its tests and the gate green (the last gate: 1,745 passed, 27
+skipped, 2 deselected; the docs coverage check 43 commands and methods,
+the snippet check 6 quoted files, the GEO rules passing).
+
+| Commit | What landed |
+|---|---|
+| `e04c9cf6`, `fa249375` | the sub-plan and its planned decisions; its revision after the cross-model review (Codex 24, Claude Code 42 findings) |
+| `135802b2` | the five bundled targets as skills with their scripts under `src/kapso/deployment/targets/`, their registry (`targets.py`: the bundled targets, a harness's deployment skills holding `scripts/deploy.sh`, the resolution and its refusals, readiness), the front-matter reader in `kapso.core`, the packaging that carries the directories; the scripts tested against fake executables and SDK modules (change 1) |
+| `12b6367a` | the deployment record and the deployment's identity: the atomic number, the name and the free port, the record at the first second, the states, paths relative to its directory (change 2) |
+| `76802505` | the function worker and the `Software` handle from the record: the three run kinds, the lifecycle through the target's scripts with the deployment's values and the update lines, the state shared through the record, `open` (change 3) |
+| `ed99a4af` | the staging's `engine_skills`, with and without a harness, on either host; `open_skill_instruction` (change 4) |
+| `50c7b622` | the deployment session: the dirty refusal, the workspace as its own repository, the env file and the options, the staging, the prompt with the offered targets' readiness, the acceptance in order with one resume, the record's completion (change 5) |
+| `a439071f` | the cutover: `deploy(solution, target, env, options, coding_agent)`, `kapso deploy` with `--target`, `--env`, `--option` and the lifecycle flags, the `deployment` block as a spec over the hosts table with the target, the deadlines and the ports, the preflight's rows and the live tier, `DeployError` as an engine error, the deletions, the reference pages' and the engine skills' deploy sections; the trading example's `paper-trading` target with its scripts (changes 6 and 7, one commit: each needs the other's test) |
+| `8c99cc8f` | the two Deploy pages, the navigation and the redirects, the mentions, the mental model's deploy rows, the research documents' superseded notes, the retired names, the docs' one name for the concept; the decisions taken while building (change 8) |
+| `c39440e1` | the proof's first findings: `SolutionError` as an engine error; the record's directory absolute however the campaign was named; the local skill's install line for an interpreter without pip |
+| `db9f19d1` | `Software.close()`; the verb closes the handle it opened for a status line or a start |
+| `2e6905a0` | the engine skills' deploy section for a host whose tool timeout is below the session's |
+| `9577b2ce` | a bundled target that needs no tool reads present; the worker's pipes closed when it ends |
+| the last commit | this section, the findings, the two Interface amendments the build made (`KAPSO_INTERPRETER`, the skill's wording), the master's row |
