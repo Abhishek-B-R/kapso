@@ -329,7 +329,9 @@ class CodexCodingAgent(CodingAgentInterface):
         way it ends (wp6-observability.md): the turn runs, and its run
         entry is appended in a `finally`, with the exception in flight
         when there is one, which then propagates."""
-        recorder = start_run(CODEX_HOST, model, self._session_record_path, self._stream_artifact_path, reason=reason)
+        recorder = start_run(
+            CODEX_HOST, model, self._session_record_path, self._stream_artifact_path, reason=reason, deadline_seconds=timeout,
+        )
         result: Optional[CodingResult] = None
         try:
             result = self._run_session_turn(model, tail, prompt, timeout)

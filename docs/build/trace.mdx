@@ -164,7 +164,9 @@ delivered        branch, commit, base_commit, files_changed, verification, feedb
 ```
 
 A run entry, as the session record holds it: `started`, `ended`,
-`duration_seconds`, `model`, `cli_session_id`, `exit`, `error`,
+`duration_seconds`, `deadline_seconds` (the deadline the run was
+launched with: its room under the budget or its configured timeout;
+`null` without one), `model`, `cli_session_id`, `exit`, `error`,
 `retry_reason` (set on a run that resumed the session: `tags missing`
 for the judge's retry),
 `cost_usd` (this run's share of the host's cumulative figure),

@@ -556,7 +556,10 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         inbox continuation, and a wiring error that must not pass as a
         failed turn). The recording's own failure (a stream that is not
         evidence) propagates past either."""
-        recorder = start_run(CLAUDE_HOST, model, self._session_record_path, self._stream_artifact_path, reason=reason)
+        recorder = start_run(
+            CLAUDE_HOST, model, self._session_record_path, self._stream_artifact_path,
+            reason=reason, deadline_seconds=timeout_seconds,
+        )
         result: Optional[CodingResult] = None
         try:
             try:

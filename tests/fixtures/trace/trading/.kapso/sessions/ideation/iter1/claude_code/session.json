@@ -32,6 +32,7 @@
       "started": "2026-10-25T18:25:49+00:00",
       "ended": "2026-10-25T18:29:41+00:00",
       "duration_seconds": 231.657,
+      "deadline_seconds": null,
       "model": "claude-opus-5",
       "cli_session_id": "64fa5f9c-6155-43ff-a655-cf71952733bd",
       "exit": "success",
