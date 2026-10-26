@@ -64,7 +64,12 @@ total lacks (both readers worked it out from a `cost n/a` line), and
 ones it read (`none (15 listed)` is not `none`). After the second,
 `sessions[].hooks_staged`: a delivered block saying `hooks none fired
 in its sessions` meant nothing when no hook was staged, and now says
-so. Alternative rejected:
+so. After the pull-request review, `header.requests` (a campaign
+waiting on the person renders `partial` with the count, as the listing
+counts it alive), and the run entry's own keys beyond the sketch,
+`cost_cumulative` (the host's figure the delta is taken from), `usage`
+(the tokens, Codex's only figure) and `host_errors` (what the host
+itself reported wrong), each on the trace page. Alternative rejected:
 deriving each from the text's sections at the reader's end, which WP7's
 skills would have to repeat. Shows in
 `kapso.execution.trace` and `tests/test_trace.py`; WP7 reads the keys as
@@ -91,9 +96,14 @@ trailing slice without one is a killed invocation, its error the
 adapter's deadline text), times each run from the node's start and its
 phases' durations, stamps each pull event with the session whose window
 holds its time, lifts the records to the current schemas, blanks the
-checkpoint's `code_diff` and `agent_output` (the trace reads neither; the
-fixtures stay under a megabyte) and rebases the campaign's own path to
-`/campaign`. It is deterministic and the test proves it reproduces the
+checkpoint's `agent_output` (the trace does not read it; the diffs it
+does, for the delivered files, so they stay) and rebases the campaign's
+own path to `/campaign`. The pull-request review found the generator
+splitting a stream at its `result` events, a turn each: an invocation
+begins at its `init` event (the hook events just before it are its own)
+and holds every turn until the next; one that ended without a result
+and was resumed is an `error` entry that says so, one killed at its
+deadline a `timeout`. It is deterministic and the test proves it reproduces the
 committed fixtures when the archives are on the machine. Alternative
 rejected: hand-written fixtures, which could not carry a real delegate
 report, a real void verdict or a real resumed session.
@@ -154,6 +164,16 @@ word promised a log: the trace renders the record and says so on its
 page. The cost line carries its coverage (`claude_code` when any Codex
 run exists), extending the status surface's time-only rule to a record
 reader that already prints the campaign's cost.
+
+**A refusal is read from the host's words, for now.** The Claude Code
+adapter recognises the model's safeguard refusal by the result's text
+(`API Error` and `safeguards flagged`), the shape the proof learns met;
+the pull-request review asked for the structured signal WP3's finding
+named (`model_refusal_no_fallback`), which is the API's error type
+inside that same text, not a field of the result event. Until the host
+exposes one, the words are the signal; a refusal worded otherwise would
+be a failed turn with the words in its run entry, not a silent success,
+since the digest keeps the result's text and the entry its error.
 
 **The engine's errors print their message, on stderr.** For the
 engine's own error classes the CLI prints the message alone (however

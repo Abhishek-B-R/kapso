@@ -26,10 +26,10 @@ view.delivered               # the delivered candidate, None when none succeeded
 ```
 
 A campaign still running renders too, marked `partial` with the reason
-(the phase it is in, the error it failed with, no status yet); follow a
-live one with [`kapso watch`](/docs/build/run-and-watch#watch). A
-directory with no `.kapso/` inside is not a campaign and is refused by
-name.
+(the phase it is in, the error it failed with, no status yet, or waiting
+on you with the count of requests); follow a live one with
+[`kapso watch`](/docs/build/run-and-watch#watch). A directory with no
+`.kapso/` inside is not a campaign and is refused by name.
 
 ## The sections
 
@@ -91,12 +91,12 @@ budget. Where each answer sits:
 
 | Question | Where |
 |---|---|
-| What won | The header's `delivered` line and the `DELIVERED` section: the branch, the commit, the files changed, the judge's words in full |
+| What won | The header's `delivered` line and the `DELIVERED` section: the branch, the commit, the files its branch changed against the seed, the judge's verdict in a line (`--branch` for the words in full) |
 | Why | The attempt's `evaluation`, `verification` and `judge` lines; `--branch` prints the judge's feedback and the verifier's summary whole |
 | What was voided, on what evidence | `VOIDED OR REJECTED`: the verifier's verdict with each finding, the rule and the evidence as the verifier wrote them |
 | What was rejected and why | The same section: an integrity rejection with the evaluator's output, or the judge's invalidation |
 | What it cost | The header's `cost`, each attempt's figure, each run's; `cost` says when the figure covers the Claude Code sessions only (Codex reports none) and how many runs ended with no cost figure |
-| Safe to merge | `DELIVERED`: the verification, the integrity line, the hooks that fired in its sessions and which were denied, the failures in its sessions. The trace prints the evidence and no verdict; the conclusion is the reader's |
+| Safe to merge | `DELIVERED`: the verification, the integrity line, the hooks that fired in its sessions and which were denied (or that none was staged, or that a host reports no hook events), the failures in its sessions. The trace prints the evidence and no verdict; the conclusion is the reader's |
 
 Each attempt lists its sessions in the order they ran: the ideation of
 its iteration, the implementation on its branch, the verification and the
@@ -139,9 +139,11 @@ branch           the branch the view is narrowed to, or null
 header           objective, harness, experience (one label per source), evaluator,
                  budget {elapsed_min, total_min},
                  cost {usd, coverage (the hosts the figure covers: all, or claude_code when a Codex
-                       session ran), unpriced_runs (Claude Code runs killed before their result)},
+                       session ran), unpriced_runs (Claude Code runs whose spend no figure covers:
+                       killed before their result, and not resumed in a run that reported one)},
                  stopped_reason, stop_detail, experiments, rejected,
-                 delivered {branch, commit}, status {state, phase, error}
+                 delivered {branch, commit}, status {state, phase, error},
+                 requests (what the person must answer when the campaign paused)
 attempts[]       node, parent, branch, idea, sessions[] {label, module, host, hooks_staged, runs[]},
                  evaluation {score, valid, provenance, integrity_error, output},
                  verification {verdict, summary, findings} | null,
@@ -188,8 +190,9 @@ The session labels are the branch for an implementation session,
 `verification/<branch>` and `feedback/<branch>` for its verifier and its
 judge, `ideation/iter<n>/<member>` for the ideation of iteration `n`, and
 `harness_setup` for the setup session. The trace joins the sessions to
-their attempts by these labels and the pull log's events by the session
-the gate served.
+their attempts by these labels (a node records the iteration that made
+it, and every node of an iteration shares its ideation session) and the
+pull log's events by the session the gate served.
 
 ## Related
 

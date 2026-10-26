@@ -582,6 +582,61 @@ and how each was answered in this revision:
 | P3-9 `--all` is not every campaign | the registry written on every launch; the learn and ingest statuses listed from `learning.status_dir`; taking `watch --all` off the deferred list is a decision |
 | P3-10 Ownership contradicts itself and MASTER | rewritten; the staging and the pull log are this package's asks of WP2 and WP3, both merged |
 
+### Pull-request review
+
+Both reviewers read the pull request's diff, the sub-plan with its
+proof run, the decisions, the four doc pages and the proof evidence
+under `scripts/redesign/runs/wp6/s4/` (`scripts/redesign/review.sh`,
+brief in `scripts/redesign/runs/wp6-pr-review/`). Every finding, with
+what was done; "fixed" names the commit after the review.
+
+**Codex (gpt-6-astra, xhigh), seventeen findings.**
+
+| Finding | Answer |
+|---|---|
+| P1 the delivered file list omits inherited changes (`code_diff` is against the parent) | fixed: the delivered files are the union of the diffs along the branch's ancestry |
+| P1 failure ownership has uncovered regions (`solve()`'s head, the strategy constructor's tail, the orchestrator's setup) | fixed: the protected region is the whole of `solve()`; the facade guards the orchestrator's construction and marks the status file failed when the writer went with the exception (`mark_failed`) |
+| P1 a Codex ideation retry digests a replaced stream from a stale offset | fixed: the member's stream is appended, never replaced |
+| P2 the delivered hook summary turns a Codex host's `null` into a clean result | fixed: the line names the runs on a host that reports no hook events |
+| P2 ideation sessions attach by node position, wrong under node expansion | fixed: a node records its `iteration`; the join is by it, every node of an iteration sharing its ideation session (the archives, one node per iteration, get it from the generator) |
+| P2 the fixture generator splits a stream at every `result`, inventing resumes | partly right: the archived implementation stream has three `init` events, three CLI invocations, so the three runs are real; the split was wrong all the same (a turn per `result`, a delegate's notification waking the same invocation for another turn). Fixed: an invocation begins at its `init`, the hook events before it are its own; one that ended without a result and was resumed is an `error` entry saying so |
+| P2 an unpriced invocation resets the cost baseline | fixed: the delta is against the latest priced entry of the same host session; `unpriced_runs` counts only runs no later figure covers |
+| P2 a fresh Codex invocation inherits an earlier thread id from the adapter | fixed: the entry's host session is the one its own transcript names, the adapter's figure second |
+| P2 worker failures can leave no run entry (no `finally`; an exit line with no thread dropped) | fixed: the workers are recorded in a `finally`; a launcher exit with no thread is an `error` entry |
+| P2 a corrupt transcript's raise is swallowed by the adapter's result conversion | fixed: the conversion of a turn's exception into a failed result moved inside the recorded region; the recording's own raise propagates; a stream's last line cut by a kill is skipped and noted, a malformed line elsewhere raises |
+| P2 `watch --follow` waits forever when a starting child dies | fixed: the wait re-reads the receipt; a dead pid ends it with the stopped line and exit 1 |
+| P2 pre-status `watch --json` prints prose | fixed: the launch state as JSON (`starting`, `stopped`, `no_status`) |
+| P2 a custom log location can fail `--detach` after spawning | fixed: the receipt's directory is made before the child |
+| P2 `watch --all` labels dead campaigns RUNNING | fixed: `DEAD` when the writer is gone or stale |
+| P2 delegate accounting discards the notification's final usage | fixed |
+| P3 the stderr migration is incomplete (three refusals in `build`) | fixed |
+| P3 function-local imports in two tests | fixed |
+
+**Claude Code (opus-5), seventeen findings.**
+
+| Finding | Answer |
+|---|---|
+| S1 a run's cost double-counts after an unpriced run of the same host session | fixed, as above |
+| S2 a truncated stream line rewrites a session's outcome and loses its entry | fixed, as above (the cut last line skipped and noted) |
+| S3 the attempt-to-session join assumes one node per iteration | fixed, as above |
+| S4 `state: complete` for a campaign waiting on the person | fixed: `partial`, with the count of requests, as the listing counts it alive |
+| M5 the refusal is detected from the API's English, not a structured signal | a decision recorded: the structured name WP3 cited is the API's error type inside the same text; the words are the signal until the host exposes a field, and a refusal worded otherwise is a failed turn with the words in its entry, not a silent success |
+| M6 a worker whose `codex exec` never opened a thread leaves no entry | fixed |
+| M7 the crew's worker entries are lost when the run fails | fixed |
+| M8 without a harness the record's `host` is the agent type | fixed: `host_for` in both branches |
+| M9 a detached resume that dies at a check is invisible behind the earlier status | fixed: a receipt newer than the status is reported, alive or dead |
+| M10 the engine's own sessions (the difficulties reconstruction, the repo-memory bootstrap) leave no run entry | a finding for WP4 below; the acceptance promised staged sessions |
+| R11 interface drift the decisions do not record (`cost_cumulative`, `usage`, `host_errors`; `watch --json`'s `alive`; no schema version on `watch --json` and `doctor --json`) | the keys recorded in the decisions and on the pages; `watch --json` is a list and `doctor --json` carries the install's `version`, neither a schema version: WP7 reads them by key, and a version comes with the first change that needs one |
+| R12 the generator decision misstates what is blanked | fixed: the decision says `agent_output` alone, the diffs kept for the delivered files |
+| R13 the master's row claims a review and a merge ahead of time | the row is written to be true at the merge that follows this review; the review is answered here |
+| R14 function-local imports | fixed |
+| D15 the worker launcher tees the event stream into the lead's context | fixed: the stream goes to its file; the lead reads the worker's final message |
+| R16 the receipt is never removed, so a deleted campaign is listed forever; `_validate_restored_branch_refs` raises outside every owner | fixed: the receipt is removed once the status is born; the facade's guard covers the orchestrator's setup |
+| U17 the default trace ends in the judge's unclipped essay | fixed: a headline in the compact view, the words in full under `--branch` |
+
+Neither reviewer found a wrong claim in the proof run's record; both
+confirmed the cost delta and the protected region's `finish`.
+
 ## Proof run
 
 **The fresh machine, `kapso-fresh-wp6`** (`e2-standard-4`, Ubuntu
@@ -840,6 +895,13 @@ outside the record by design), and the killed run's own spend.
   Whether a candidate may add files to the protected directory is a rule
   the governance should state; the trace's delivered files list shows
   it either way.
+- **The engine's own sessions leave no run entry** (WP4): the
+  difficulties reconstruction after a killed session and the repo-memory
+  bootstrap build their own agent configuration without a session
+  record, so they spend and can fail outside the record (S4's second
+  reader found both in the log). Thread the record path in, as the
+  staged sessions have it, or state in the acceptance that they are
+  outside it.
 - **The fixture's `evaluation/result.json` rode into a proof machine a
   second time**: the development checkout keeps the evaluator's own
   output (gitignored) and an `rsync` of the example carries it. The
@@ -873,4 +935,6 @@ snippet check 6 quoted files, `mint validate` passing).
 | `60428655`, `04635a1b` | what S4's first reading asked: a blocking hook's denial in the record, the unpriced runs on the cost line, the cards listed beside the cards read; the keys noted in the plan |
 | `b6d1b1df` | the proof run's third finding: the judge's runs recorded without a harness |
 | `5ff0b4b5` | what S4's second reading asked: whether any hook was staged, why nothing was served |
-| the last commit | the proof run's record: this section, the findings, this table |
+| `8c90d8f0`, `38147c50` | the proof run's record: the proof section, the findings, this table; the master's row |
+| `78ffb44f` | the pull-request review's thirty-four findings fixed or answered (the Review section): the cost baseline, the session ids, the cut last line, the workers' entries, the iteration on the node, the delivered files over the ancestry, the lifecycle's last gaps, the watch verb's follow, JSON, DEAD and receipt cases, the generator's true split |
+| the last commit | the review answered in the sub-plan; the pages and the decisions aligned |
