@@ -1047,7 +1047,7 @@ Branch `wp4-config` off `redesign` at `55a92430`, the commits below, each
 with its tests and the gate green at every one (the last gate: 1,713
 passed, 27 skipped, 2 deselected; the docs coverage check 43 commands and
 methods, the snippet check 6 quoted files, `mint validate` passing). The
-branch: 282 files, +9991 −5104.
+branch: 282 files, +9,991 −5,104.
 
 | Commit | What landed |
 |---|---|
