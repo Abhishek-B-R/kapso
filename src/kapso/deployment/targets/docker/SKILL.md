@@ -5,6 +5,11 @@ metadata:
   requires:
     binary: docker
     install: "install Docker: https://docs.docker.com/get-docker/ (and start its daemon)"
+    probe:
+      command: docker info
+      timeout: 30
+      fix: "start Docker Desktop, or: sudo systemctl start docker"
+  run_kinds: [http]
 ---
 # Docker
 
@@ -58,9 +63,13 @@ and reads `GET /health`.
    ```
 
    The caller's variables reach the container through `--env-file` at
-   run time; never `COPY .env` or bake a value into an `ENV` line. The
-   deploy script adds `.env`, `.git` and the engine's own directories to
-   `.dockerignore`; keep them there.
+   run time (each value verbatim, as `.env` holds it); never `COPY .env`
+   or bake a value into an `ENV` line. The deploy script adds `.env`,
+   `.git`, the engine's and the hosts' directories, `kapso_evaluation`
+   and `prepared` to `.dockerignore`; keep them there, add the data the
+   service does not read (`kapso_datasets`, say), and copy into the
+   workspace what it does read from `prepared/` (a link the image cannot
+   follow).
 4. Export the values the scripts need, then run the deploy script:
 
    ```bash

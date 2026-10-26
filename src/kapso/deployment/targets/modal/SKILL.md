@@ -5,6 +5,7 @@ metadata:
   requires:
     binary: modal
     install: "pip install \"leeroo-kapso[modal]\" and authenticate with `modal token new`"
+  run_kinds: [script]
 ---
 # Modal
 
@@ -20,6 +21,7 @@ name (the target's `scripts/run.py`).
 
    ```python
    import os
+   import sys
 
    import modal
 
@@ -27,14 +29,14 @@ name (the target's `scripts/run.py`).
    image = (
        modal.Image.debian_slim(python_version="3.11")
        .pip_install_from_requirements("requirements.txt")
-       .add_local_dir(".", remote_path="/root/solution", ignore=[".env", ".git", ".claude", ".agents", ".codex", "__pycache__"])
+       .add_local_dir(".", remote_path="/root/solution", ignore=[".env", ".git", ".claude", ".agents", ".codex", "__pycache__", "kapso_evaluation", "prepared"])
+       .workdir("/root/solution")   # the solution's relative paths (model/..., data/...) resolve as they did here
    )
    secrets = [modal.Secret.from_dotenv()] if os.path.exists(".env") else []
 
 
    @app.function(image=image, secrets=secrets, timeout=300)   # gpu="T4", memory=16384 when the model needs them
    def predict(inputs: dict) -> dict:
-       import sys
        sys.path.insert(0, "/root/solution")
        from main import predict as _predict
        return _predict(inputs)
@@ -66,4 +68,6 @@ name (the target's `scripts/run.py`).
 ## Never
 
 Do not paste the caller's variables into `modal_app.py`: the `.env` file
-rides as a Modal secret. Do not deploy under another app name.
+rides as a Modal secret (Modal's dotenv loader unquotes a quoted value and
+expands `${NAME}`, where the engine and docker take values verbatim: keep
+the values plain). Do not deploy under another app name.

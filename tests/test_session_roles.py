@@ -180,7 +180,10 @@ def test_the_deployment_block_is_a_spec_over_the_hosts_following_the_builds_host
     ({"target": ""}, r"deployment\.target must be a non-empty string"),
     ({"timeout": -1}, r"deployment\.timeout must be a positive number of seconds"),
     ({"call_timeout": "soon"}, r"deployment\.call_timeout must be a positive number of seconds"),
+    ({"call_timeout": None}, r"deployment\.call_timeout must be a positive number of seconds"),
+    ({"script_timeout": float("inf")}, r"deployment\.script_timeout must be a positive number of seconds"),
     ({"port_span": 0}, r"deployment\.port_span must be a positive integer"),
+    ({"port_base": 65000, "port_span": 1000}, r"deployment\.port_base \+ port_span must stay within the ports \(1\.\.65535\)"),
     ({"coding_agent": "claude_code"}, r"deployment: unknown key coding_agent; the keys are"),
 ])
 def test_the_deployment_block_is_refused_by_key(block, message):

@@ -24,7 +24,7 @@ These variables are set in your environment and in every script you run:
 - `KAPSO_DEPLOYMENT_NAME` = `{{deployment_name}}`: what the targets name their containers, apps and services after (`kapso-{{deployment_name}}`); use it exactly.
 - `KAPSO_PORT` = `{{port}}`: the host port this deployment publishes on, when its target uses one.
 - `KAPSO_NUMBER` = `{{number}}`, `KAPSO_WORKSPACE`, `KAPSO_RECORD_DIR` = `{{record_dir}}`.
-- `KAPSO_INTERPRETER` = `{{interpreter}}`: the Python the engine runs the deployed software with; install the solution's requirements into it (`"$KAPSO_INTERPRETER" -m pip install -r requirements.txt`).
+- `KAPSO_INTERPRETER` = `{{interpreter}}`: the Python the engine runs the deployed software with; install the solution's requirements into it (`"$KAPSO_INTERPRETER" -m pip install -r requirements.txt`, or `uv pip install --python "$KAPSO_INTERPRETER" -r requirements.txt` when it has no pip).
 - `KAPSO_TARGET_DIR`: the target's skill directory, whose `scripts/` you run (`bash "$KAPSO_TARGET_DIR/scripts/deploy.sh"`).
 
 {{env_block}}
@@ -59,7 +59,9 @@ deploy script, and write the same under `values` in the result.
  "summary": "<one or two sentences: what runs where, and how the proof went>"}
 ```
 
-The engine then reads it, checks the artifacts exist, runs the target's
+The engine then reads it (a file that is not valid JSON, or not of this
+shape, comes back to you as a finding), checks that the run kind is the
+target's and that the artifacts exist in the workspace, runs the target's
 health check and makes the proof call itself; a check that fails comes
 back to you once with the finding.
 

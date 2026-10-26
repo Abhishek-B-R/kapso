@@ -1,6 +1,8 @@
 ---
 name: paper-trading
 description: "The paper-trading deployment target: runs the selected strategy against the broker server's paper account on the pinned market-data feed, as a scheduled runner, with one cycle on demand. Use when deploy() names the paper-trading target; never for a live account."
+metadata:
+  run_kinds: [script]
 ---
 # Paper trading
 
@@ -18,12 +20,13 @@ and the options of the `deploy()` call in the environment:
    function returning target weights, or adapt the repository's equivalent
    into one.
 2. Write `deploy/run_paper.py`, the runner the target's scripts drive:
-   - `run_paper.py --once` runs one cycle: pulls the latest closed bars from
-     the market-data store (`read_frame` and `instrument_file` from
-     `$KAPSO_HARNESS_ROOT/servers/market_data.py`), computes the target
-     weights, moves the paper account to them with `PaperAccount.place_order`
-     from `$KAPSO_HARNESS_ROOT/servers/broker.py` (fills at the last close,
-     the backtest's convention), keeps the account state in
+   - `run_paper.py --once [--at <timestamp>]` runs one cycle: pulls the
+     latest closed bars from the market-data store (`read_frame` and
+     `instrument_file` from `$KAPSO_HARNESS_ROOT/servers/market_data.py`;
+     the bars up to `--at` when given), computes the target weights, moves
+     the paper account to them with `PaperAccount.place_order` from
+     `$KAPSO_HARNESS_ROOT/servers/broker.py` (fills at the last close, the
+     backtest's convention), keeps the account state in
      `paper_account.json` across cycles so a bar already traded is never
      traded twice, and prints one JSON document: the bar it acted on, the
      orders placed, the account's equity.
@@ -31,6 +34,9 @@ and the options of the `deploy()` call in the environment:
      (`KAPSO_OPTION_SCHEDULE`) until it is ended, logging each cycle's
      document on one line.
    Both read the starting cash from `KAPSO_OPTION_CASH` when it is set.
+   A cycle holds a lock on the account file (`fcntl.flock` on
+   `paper_account.lock`) from its read to its write, so the loop and a
+   call on demand never trade the same account at once.
 3. Run `bash "$KAPSO_TARGET_DIR/scripts/deploy.sh"`: it starts the loop in
    the background (its pid in `deploy/paper.pid`, its log in
    `deploy/paper.log`) and checks it is alive. Then prove one cycle:

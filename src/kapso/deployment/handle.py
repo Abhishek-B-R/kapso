@@ -5,39 +5,50 @@ function, an HTTP call, the target's `scripts/run.py`), and stops, starts,
 checks and reads it through the target's scripts with the deployment's
 values in their environment, writing the state back into the record so
 another process sees it. `Software.open(campaign, number)` is the same
-handle from any later process."""
+handle from any later process. What the engine does to a deployment is
+noted in `engine.log` beside the record, which `logs()` repeats."""
 
+import concurrent.futures
 import http.client
 import json
 import os
 import select
+import signal
 import subprocess
 import threading
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlsplit
 
 from kapso.core.config import load_config
 from kapso.deployment.errors import DeployError
-from kapso.deployment.record import DeploymentRecord, RUNNING, STOPPED, open_record, read_record
-from kapso.deployment.targets import RUN_SCRIPT, SCRIPTS_DIR
+from kapso.deployment.record import DeploymentRecord, RUNNING, STOPPED, now, open_record
+from kapso.deployment.targets import FUNCTION, HTTP, RUN_SCRIPT, SCRIPTS_DIR
 
-FUNCTION, HTTP, SCRIPT = "function", "http", "script"
-RUN_KINDS = (FUNCTION, HTTP, SCRIPT)
 START, STOP, HEALTH, LOGS = "start.sh", "stop.sh", "health.sh", "logs.sh"
 # A lifecycle script's stdout lines that write back into the record.
 ENDPOINT_LINE = "KAPSO_ENDPOINT="
 VALUE_LINE = "KAPSO_VALUE_"
 WORKER_LOG = "worker.log"
+ENGINE_LOG = "engine.log"
 ENV_FILE = ".env"
-_POLL_SECONDS = 0.05
+# A dead worker's error is the end of its log: enough for a traceback.
+_LOG_TAIL_LINES = 30
+
+
+def _end_group(process: subprocess.Popen) -> None:
+    """The process ended with everything it started: every child the
+    engine runs is its own session, so one signal reaches the group."""
+    if process.poll() is None:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
 
 
 def _communicate(process: subprocess.Popen, payload: Optional[str], deadline_seconds: float) -> Optional[Tuple[str, str]]:
     """The process's stdout and stderr once it ends, or None when it is
-    still running at the deadline, killed then. Pumped in a thread so a
-    large output never blocks it, and bounded without an exception."""
+    still running at the deadline, killed then with its children. Pumped
+    in a thread so a large output never blocks it, and bounded without
+    an exception."""
     collected: Dict[str, str] = {}
 
     def pump() -> None:
@@ -47,7 +58,7 @@ def _communicate(process: subprocess.Popen, payload: Optional[str], deadline_sec
     thread.start()
     thread.join(timeout=deadline_seconds)
     if thread.is_alive():
-        process.kill()
+        _end_group(process)
         thread.join()
         return None
     return collected["out"], collected["err"]
@@ -61,7 +72,6 @@ class Software:
         self._record = record
         self._call_timeout = float(call_timeout)
         self._script_timeout = float(script_timeout)
-        self._lines: List[str] = []
         self._worker: Optional[subprocess.Popen] = None
 
     @classmethod
@@ -89,11 +99,12 @@ class Software:
     @property
     def state(self) -> str:
         """Read from the record each time: a stop from another process shows."""
-        self._record = read_record(self._record.directory)
+        self._record.reload()
         return self._record.state
 
     @property
-    def target(self) -> str:
+    def target(self) -> Optional[str]:
+        """The target's name; None while a session under `auto` has not chosen."""
         return self._record.data["target"]
 
     @property
@@ -118,14 +129,21 @@ class Software:
         return dict(self._record.data["values"])
 
     @property
-    def run_kind(self) -> str:
-        return self._record.data["result"]["run"]["kind"]
+    def run_kind(self) -> Optional[str]:
+        """The result's run kind; None before a session wrote an acceptable result."""
+        result = self._record.data["result"]
+        return None if result is None else result["run"]["kind"]
 
     @property
     def proof(self) -> Optional[Dict[str, Any]]:
         """The call the session proved: what `run()` takes, and what it answered."""
         result = self._record.data["result"]
         return None if result is None else result["proof"]
+
+    @property
+    def observed(self) -> Any:
+        """What the engine's own proof call answered at the acceptance."""
+        return self._record.data["observed"]
 
     def __repr__(self) -> str:
         return f"Software(deployment {self.number} of {self.campaign}, {self.target}, {self.state})"
@@ -140,7 +158,20 @@ class Software:
         if state != RUNNING:
             way_out = "start() it" if state == STOPPED else (self._record.data["error"] or "it never ran")
             raise DeployError(f"deployment {self.number} is {state}; {way_out}")
+        return self._call(inputs)
+
+    def run_batch(self, inputs_list: List[Any]) -> List[Dict[str, Any]]:
+        return [self.run(inputs) for inputs in inputs_list]
+
+    def __call__(self, inputs: Union[Dict[str, Any], str, bytes]) -> Dict[str, Any]:
+        return self.run(inputs)
+
+    def _call(self, inputs: Any) -> Dict[str, Any]:
+        """One call by the record's run kind, the state not looked at: the
+        acceptance proves a deployment this way before it is `running`."""
         kind = self.run_kind
+        if kind is None:
+            raise DeployError(f"deployment {self.number} recorded no result to call")
         if kind == FUNCTION:
             return self._run_function(inputs)
         if kind == HTTP:
@@ -149,32 +180,38 @@ class Software:
             raise DeployError(f"the {self.target} target has no {SCRIPTS_DIR}/{RUN_SCRIPT}; see logs()")
         return self._run_script(inputs)
 
-    def run_batch(self, inputs_list: List[Any]) -> List[Dict[str, Any]]:
-        return [self.run(inputs) for inputs in inputs_list]
-
-    def __call__(self, inputs: Union[Dict[str, Any], str, bytes]) -> Dict[str, Any]:
-        return self.run(inputs)
-
     def _run_http(self, inputs: Any) -> Dict[str, Any]:
+        """`POST <url><path>`; a reply that is not 2xx, or no reply at all
+        (refused, reset, timed out: the exception the request ended with,
+        read off its future), is the call's error."""
         run = self._record.data["result"]["run"]
-        url = urlsplit(run["url"])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(self._post, run["url"], run["path"], inputs)
+        failure = future.exception()
+        if failure is not None:
+            return {"status": "error", "error": f"POST {run['url']}{run['path']}: {type(failure).__name__}: {failure}"}
+        status, body = future.result()
+        if 200 <= status < 300:
+            return {"status": "success", "output": json.loads(body)}
+        return {"status": "error", "error": f"{status} from {run['url']}{run['path']}: {body}"}
+
+    def _post(self, base: str, path: str, inputs: Any) -> Tuple[int, str]:
+        url = urlsplit(base)
         connection_class = http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection
         connection = connection_class(url.hostname, url.port, timeout=self._call_timeout)
         connection.request(
-            "POST", run["path"], body=json.dumps(inputs), headers={"Content-Type": "application/json"},
+            "POST", url.path.rstrip("/") + path, body=json.dumps(inputs), headers={"Content-Type": "application/json"},
         )
         response = connection.getresponse()
         body = response.read().decode("utf-8")
         connection.close()
-        if 200 <= response.status < 300:
-            return {"status": "success", "output": json.loads(body)}
-        return {"status": "error", "error": f"{response.status} from {run['url']}{run['path']}: {body}"}
+        return response.status, body
 
     def _run_script(self, inputs: Any) -> Dict[str, Any]:
         process = subprocess.Popen(
             [self._record.data["interpreter"], str(self._script(RUN_SCRIPT))],
             cwd=self.workspace, env=self._environment(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, text=True,
+            stderr=subprocess.PIPE, text=True, start_new_session=True,
         )
         ended = _communicate(process, json.dumps(inputs), self._call_timeout)
         if ended is None:
@@ -190,63 +227,58 @@ class Software:
         return self._record.directory / WORKER_LOG
 
     def _ensure_worker(self) -> Optional[str]:
-        """A worker answering pings, started when there is none; the
-        reason (its log's tail) when it cannot start."""
-        if self._worker is not None and self._worker.poll() is None:
-            return None
-        run = self._record.data["result"]["run"]
-        command = [
-            self._record.data["interpreter"], "-m", "kapso.deployment.worker",
-            str(self.workspace), run["module"], run["callable"],
-        ]
-        env_file = self.workspace / ENV_FILE
-        if env_file.is_file():
-            command.append(str(env_file))
-        with self._worker_log().open("a", encoding="utf-8") as log:
-            self._worker = subprocess.Popen(
-                command, cwd=self.workspace, env=self._environment(), stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE, stderr=log, text=True,
-            )
+        """This handle's worker answering a ping, started when it has
+        none; the reason (its log's tail) when it does not."""
+        if self._worker is None or self._worker.poll() is not None:
+            self._end_worker()
+            run = self._record.data["result"]["run"]
+            command = [
+                self._record.data["interpreter"], "-m", "kapso.deployment.worker",
+                str(self.workspace), run["module"], run["callable"],
+            ]
+            env_file = self.workspace / ENV_FILE
+            if env_file.is_file():
+                command.append(str(env_file))
+            with self._worker_log().open("a", encoding="utf-8") as log:
+                self._worker = subprocess.Popen(
+                    command, cwd=self.workspace, env=self._environment(), stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE, stderr=log, text=True, start_new_session=True,
+                )
         reply = self._ask_worker({"ping": True})
         return None if reply == {"pong": True} else reply["error"]
 
     def _ask_worker(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """One request line to the worker and its reply line, bounded by
         the call timeout; a worker that ends (its function raised, its
-        import failed) answers with the error from its log."""
+        import failed) answers with the error from its log, which the
+        closed reply channel announces."""
         worker = self._worker
+        if worker.poll() is not None:
+            self._end_worker()
+            return {"error": self._worker_log_tail()}
         worker.stdin.write(json.dumps(request) + "\n")
         worker.stdin.flush()
-        deadline = time.monotonic() + self._call_timeout
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                self._end_worker()
-                return {"error": f"the function did not answer within {self._call_timeout:g} s; its worker was ended"}
-            readable, _, _ = select.select([worker.stdout], [], [], min(remaining, _POLL_SECONDS))
-            if readable:
-                line = worker.stdout.readline()
-                if line:
-                    return json.loads(line)
-                self._end_worker()
-                return {"error": self._worker_log_tail()}
-            if worker.poll() is not None:
-                self._end_worker()
-                return {"error": self._worker_log_tail()}
+        readable, _, _ = select.select([worker.stdout], [], [], self._call_timeout)
+        if not readable:
+            self._end_worker()
+            return {"error": f"the function did not answer within {self._call_timeout:g} s; its worker was ended"}
+        line = worker.stdout.readline()
+        if line:
+            return json.loads(line)
+        self._end_worker()
+        return {"error": self._worker_log_tail()}
 
     def _worker_log_tail(self) -> str:
         log = self._worker_log()
         lines = log.read_text(encoding="utf-8").splitlines() if log.is_file() else []
-        return "\n".join(lines[-30:]) or "the worker ended without a message"
+        return "\n".join(lines[-_LOG_TAIL_LINES:]) or "the worker ended without a message"
 
     def _end_worker(self) -> None:
         worker = self._worker
         self._worker = None
         if worker is None:
             return
-        if worker.poll() is None:
-            worker.kill()
-            worker.wait()
+        _end_group(worker)
         worker.stdin.close()
         worker.stdout.close()
 
@@ -261,37 +293,49 @@ class Software:
 
     # ---------------------------------------------------------- lifecycle
 
-    def stop(self) -> None:
-        """The target's stop script (its failure noted, never raised), the
-        worker ended, the state `stopped`."""
+    def stop(self) -> List[str]:
+        """The target's stop script (its failure noted, never raised), this
+        handle's worker ended, the state `stopped` (a failed deployment
+        keeps its error); the lines noted, as `logs()` repeats them."""
+        noted = []
         if self._script(STOP):
-            code, _out, err = self._lifecycle(STOP)
+            code, out, err = self._lifecycle(STOP)
+            noted.extend(self._script_lines(STOP, out))
             if code != 0:
-                self._lines.append(f"{STOP} exited {code}: {err.strip()}")
+                noted.append(self._note(f"{STOP} exited {code}: {err.strip()}"))
+        else:
+            noted.append(self._note(self._nothing_to("stop")))
         self._end_worker()
-        self._record.set_state(STOPPED)
-        self._lines.append(f"stopped deployment {self.number}")
+        self._record.set_state(STOPPED, error=self._record.data["error"])
+        noted.append(self._note(f"stopped deployment {self.number}"))
+        return noted
 
-    def start(self) -> None:
+    def start(self) -> List[str]:
         """The target's start script (its failure raised), the worker
-        started, the state `running`."""
+        started, the state `running`; the lines noted."""
+        noted = []
         if self._script(START):
-            code, _out, err = self._lifecycle(START)
+            code, out, err = self._lifecycle(START)
             if code != 0:
                 raise DeployError(f"deployment {self.number}: {START} exited {code}: {err.strip()}")
+            noted.extend(self._script_lines(START, out))
+        else:
+            noted.append(self._note(self._nothing_to("start")))
         if self.run_kind == FUNCTION:
             failure = self._ensure_worker()
             if failure is not None:
                 raise DeployError(f"deployment {self.number}: the function's worker did not start: {failure}")
         self._record.set_state(RUNNING)
-        self._lines.append(f"started deployment {self.number}")
+        noted.append(self._note(f"started deployment {self.number}"))
+        return noted
 
     def is_healthy(self) -> bool:
-        """Running by the record, answering by the target's health script
-        (the state alone without one), and the worker answering a ping
-        for a function."""
-        if self.state != RUNNING:
-            return False
+        """Running by the record, and answering."""
+        return self.state == RUNNING and self._answers()
+
+    def _answers(self) -> bool:
+        """The target's health script exits 0 (nothing to ask without one)
+        and, for a function, this handle's worker answers a ping."""
         if self._script(HEALTH):
             code, _out, _err = self._lifecycle(HEALTH)
             if code != 0:
@@ -303,7 +347,7 @@ class Software:
     def logs(self) -> str:
         """The engine's own lines, the target's logs script's output, and a
         function's worker log."""
-        parts = list(self._lines)
+        parts = [self._engine_log().read_text(encoding="utf-8").rstrip("\n")] if self._engine_log().is_file() else []
         if self._script(LOGS):
             code, out, err = self._lifecycle(LOGS)
             parts.append(out.rstrip("\n") if code == 0 else f"{LOGS} exited {code}: {err.strip()}")
@@ -329,6 +373,23 @@ class Software:
     def _script(self, name: str) -> Optional[Path]:
         path = self._record.target_dir / SCRIPTS_DIR / name
         return path if path.is_file() else None
+
+    def _nothing_to(self, verb: str) -> str:
+        if self.target is None:
+            return (
+                f"deployment {self.number} recorded no target (its session chose none the engine could read): "
+                f"nothing to {verb}; end by hand what the session may have started"
+            )
+        return f"the {self.target} target has nothing to {verb}"
+
+    def _engine_log(self) -> Path:
+        return self._record.directory / ENGINE_LOG
+
+    def _note(self, line: str) -> str:
+        """One line of what the engine did, kept beside the record."""
+        with self._engine_log().open("a", encoding="utf-8") as log:
+            log.write(f"{now()} {line}\n")
+        return line
 
     def _environment(self) -> Dict[str, str]:
         """The deployment's values, as every script and the worker see them."""
@@ -359,36 +420,55 @@ class Software:
         """One lifecycle script from the record's target directory, the
         workspace as its working directory; its update lines written into
         the record when it succeeds. A script still running at the
-        timeout is killed and counts as failed."""
+        timeout is killed with what it started, and counts as failed."""
         process = subprocess.Popen(
             ["bash", str(self._script(name))], cwd=self.workspace, env=self._environment(),
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
         )
         ended = _communicate(process, None, self._script_timeout)
         if ended is None:
-            return 1, "", f"{name} did not end within {self._script_timeout:g} s and was killed"
+            return 1, "", f"{name} did not end within {self._script_timeout:g} s and was killed, with what it started"
         out, err = ended
         if process.returncode == 0:
             self._take_updates(out)
         return process.returncode, out, err
 
+    def _script_lines(self, name: str, out: str) -> List[str]:
+        """What the script said, its update lines aside, noted."""
+        return [
+            self._note(f"{name}: {line}") for line in out.splitlines()
+            if line.strip() and not line.startswith((ENDPOINT_LINE, VALUE_LINE))
+        ]
+
     def _take_updates(self, out: str) -> None:
-        changed = False
+        """`KAPSO_ENDPOINT=` and `KAPSO_VALUE_<KEY>=` lines into the record;
+        a new endpoint is where an `http` deployment's calls go."""
+        endpoint = None
+        values: Dict[str, str] = {}
         for line in out.splitlines():
             if line.startswith(ENDPOINT_LINE):
-                self._record.data["endpoint"] = line[len(ENDPOINT_LINE):].strip()
-                changed = True
+                endpoint = line[len(ENDPOINT_LINE):].rstrip("\r")
             elif line.startswith(VALUE_LINE) and "=" in line:
                 key, value = line[len(VALUE_LINE):].split("=", 1)
-                self._record.data["values"][key.lower()] = value.strip()
-                changed = True
-        if changed:
-            self._record.write()
+                values[key.lower()] = value.rstrip("\r")
+        if endpoint is None and not values:
+            return
+        self._record.reload()
+        changes: Dict[str, Any] = {}
+        if endpoint is not None:
+            changes["endpoint"] = endpoint
+            result = self._record.data["result"]
+            if result is not None and result["run"]["kind"] == HTTP:
+                changes["result"] = dict(result, run=dict(result["run"], url=endpoint))
+        if values:
+            changes["values"] = {**self._record.data["values"], **values}
+        self._record.update(**changes)
 
     def _check_files(self) -> None:
-        for label, path in (("workspace", self.workspace), ("target directory", self._record.target_dir)):
-            if not path.is_dir():
-                raise DeployError(f"deployment {self.number} of {self.campaign}: its {label} is gone ({path})")
+        if not self.workspace.is_dir():
+            raise DeployError(f"deployment {self.number} of {self.campaign}: its workspace is gone ({self.workspace})")
+        if self.target is not None and not self.target_dir.is_dir():
+            raise DeployError(f"deployment {self.number} of {self.campaign}: its target directory is gone ({self.target_dir})")
         root = self._record.data["harness_root"]
         if root and not Path(root).is_dir():
             raise DeployError(f"deployment {self.number} of {self.campaign}: its harness is gone ({root})")

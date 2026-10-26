@@ -11,6 +11,7 @@ parameters a config file may set are a known set, refused by name
 otherwise. Design: docs/plans/redesign/wp4-config.md.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -126,6 +127,7 @@ def check_maintainer(block: Any) -> None:
 # the target the call defaults to, the deadlines and the ports.
 DEPLOYMENT_KEYS = SPEC_KEYS | {"target", "call_timeout", "script_timeout", "port_base", "port_span"}
 DEPLOYMENT = "deployment"
+MAX_PORT = 65535
 
 
 def deployment_role(config: Dict[str, Any], coding_agent: Optional[str] = None) -> SessionRole:
@@ -151,12 +153,16 @@ def check_deployment(config: Dict[str, Any]) -> None:
         raise ConfigError(f"{DEPLOYMENT}.target must be a non-empty string: auto, a bundled target or a harness's")
     for key in ("timeout", "call_timeout", "script_timeout"):
         value = block.get(key)
-        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0):
+        if key == "timeout" and value is None:
+            continue   # no deadline on the session, as a role's null timeout means
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
             raise ConfigError(f"{DEPLOYMENT}.{key} must be a positive number of seconds")
     for key in ("port_base", "port_span"):
         value = block.get(key)
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"{DEPLOYMENT}.{key} must be a positive integer")
+    if block["port_base"] + block["port_span"] - 1 > MAX_PORT:
+        raise ConfigError(f"{DEPLOYMENT}.port_base + port_span must stay within the ports (1..{MAX_PORT})")
     deployment_role(config)
 
 

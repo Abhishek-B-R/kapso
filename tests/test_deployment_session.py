@@ -2,33 +2,48 @@
 with the session's agent faked and everything else real: the workspace
 as its own repository, the env file, the staging with the target skills,
 the prompt, the record before and after, the engine's acceptance with
-its one resume, the failures."""
+its one resume, the failures and what a failed deployment still lets a
+person do."""
 
 import json
 import os
+import shutil
 import stat
+import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 import kapso.deployment.session as session_module
 from kapso.core.config import load_config
 from kapso.deployment.errors import DeployError
-from kapso.deployment.record import FAILED, RUNNING, open_record, records
+from kapso.deployment.handle import Software
+from kapso.deployment.record import DEPLOYING, FAILED, RUNNING, STOPPED, open_record, records
 from kapso.deployment.session import run_deployment
 from kapso.execution.coding_agents.base import CodingResult
+from kapso.harness import HarnessError, load_harness
 from tests.handles_support import candidate_branch, git, git_workspace, make_solution
+from tests.test_target_scripts import RUN_PAPER
 
 OBJECTIVE = "Raise the churn model's AUC above 0.85.\n\nRules: never touch dq/; keep retention above 0.98."
-MAIN = "def predict(inputs):\n    if inputs.get('boom'):\n        raise ValueError('boom')\n    return {'ok': inputs}\n"
+# The entry point answers with the record's state at the time of the
+# call: what the acceptance's own proof call sees.
+MAIN = '''import json
+import os
+
+def predict(inputs):
+    if inputs.get('boom'):
+        raise ValueError('boom')
+    state = json.load(open(os.environ['KAPSO_RECORD_DIR'] + '/deployment.json'))['state']
+    return {'ok': inputs, 'state': state}
+'''
 
 
 def result_of(target="local", **overrides):
     data = {
         "target": target, "reasoning": None, "endpoint": None,
         "run": {"kind": "function", "module": "main", "callable": "predict"}, "values": {},
-        "proof": {"inputs": {"a": 1}, "output": {"ok": {"a": 1}}}, "artifacts": ["main.py"],
+        "proof": {"inputs": {"a": 1}, "output": {"ok": {"a": 1}, "state": "deploying"}}, "artifacts": ["main.py"],
         "summary": "main.predict answers in the worker",
     }
     data.update(overrides)
@@ -65,11 +80,11 @@ class FakeAgent:
         pass
 
 
-def writes(main=MAIN, **overrides):
+def writes(main=MAIN, text=None, **overrides):
     def write(workspace):
         if main is not None:
             (workspace / "main.py").write_text(main)
-        (workspace / "kapso_deployment.json").write_text(json.dumps(result_of(**overrides)))
+        (workspace / "kapso_deployment.json").write_text(text if text is not None else json.dumps(result_of(**overrides)))
     return write
 
 
@@ -80,8 +95,11 @@ def agent(monkeypatch):
     FakeAgent.on_resume = staticmethod(lambda workspace: None)
     FakeAgent.generate_result = None
     monkeypatch.setattr(session_module.CodingAgentFactory, "create", staticmethod(lambda config: FakeAgent(config)))
-    monkeypatch.setattr(session_module, "readiness", lambda target: "present" if target.name in ("local", "docker") else f"missing: install {target.name}")
-    monkeypatch.setattr(session_module, "docker_daemon_running", lambda: False)
+    bundled = {"local": "present, needs nothing", "docker": "present, but `docker info` fails: start Docker Desktop, or: sudo systemctl start docker"}
+    monkeypatch.setattr(
+        session_module, "readiness",
+        lambda target: bundled.get(target.name, f"missing: install {target.name}") if target.origin == "bundled" else "unverified",
+    )
     return FakeAgent
 
 
@@ -128,6 +146,10 @@ def test_a_named_target_deploys_and_the_record_runs(solution, agent):
     assert record.data["result"]["summary"] == "main.predict answers in the worker" and record.data["finished"]
     assert record.data["commit"] == solution.commit and record.data["branch"] == "generic_exp_0"
     assert record.data["host"] == "claude_code:claude-opus-5" and record.data["env_names"] == ["API_KEY"] and record.data["options"] == {"schedule": "daily"}
+    assert record.data["offered"] == [{"name": "local", "ready": "present, needs nothing"}]
+    # The engine's own proof call ran while the record was still
+    # `deploying`: nothing else could call the deployment meanwhile.
+    assert record.data["observed"] == {"ok": {"a": 1}, "state": "deploying"}
     # The workspace: the solution's tree with its untracked data, without
     # the engine's and the host's directories, its own repository.
     workspace = record.workspace
@@ -152,8 +174,23 @@ def test_a_named_target_deploys_and_the_record_runs(solution, agent):
     assert env["KAPSO_DEPLOYMENT_NAME"] == record.data["deployment_name"] and env["KAPSO_PORT"] == str(record.data["port"])
     assert env["KAPSO_TARGET_DIR"] == str(workspace / ".claude" / "skills" / "local") and env["KAPSO_ENV_FILE"] == str(env_file)
     assert env["KAPSO_OPTION_SCHEDULE"] == "daily" and call["config"].agent_specific["timeout"] == 600
-    # The handle runs the deployment the engine just proved.
-    assert software.run({"b": 2}) == {"status": "success", "output": {"ok": {"b": 2}}} and software.proof["inputs"] == {"a": 1}
+    # The handle returned is the one that proved the deployment: its
+    # worker is alive, and no other was left behind.
+    assert software._worker is not None and software._worker.poll() is None
+    assert software.run({"b": 2}) == {"status": "success", "output": {"ok": {"b": 2}, "state": "running"}} and software.proof["inputs"] == {"a": 1}
+    assert software.logs().count("Traceback") == 0
+    software.stop()
+
+
+def test_the_solutions_own_env_file_reaches_the_session_and_the_runtime(solution, agent):
+    """No `env=`, but the copied tree holds `.env`: the session is told,
+    the scripts and the worker get `KAPSO_ENV_FILE`, the file is owner-only."""
+    software = deploy(solution, agent)
+    env_file = software.workspace / ".env"
+    assert env_file.read_text() == "OTHER=1\nAPI_KEY=old\n" and stat.S_IMODE(env_file.stat().st_mode) == 0o600
+    [call] = agent.calls
+    assert "the solution's own `.env` is at the workspace root (`$KAPSO_ENV_FILE`)" in call["prompt"]
+    assert call["config"].agent_specific["env_overrides"]["KAPSO_ENV_FILE"] == str(env_file)
     software.stop()
 
 
@@ -163,16 +200,17 @@ def test_under_auto_the_prompt_offers_the_targets_with_their_readiness(solution,
     [call] = agent.calls
     prompt = call["prompt"]
     assert "Choose the target first." in prompt
-    assert "- local — Runs the solution in a Python process on this machine" in prompt and "open with `/local` — present" in prompt
-    assert "- docker — " in prompt and "— present, the daemon does not answer: start Docker" in prompt
+    assert "- local — Runs the solution in a Python process on this machine" in prompt and "open with `/local` — present, needs nothing" in prompt
+    assert "- docker — " in prompt and "— present, but `docker info` fails: start Docker Desktop" in prompt
     assert "- modal — " in prompt and "— missing: install modal" in prompt
+    assert f"write `{software.workspace / 'kapso_deployment.json'}` at once with `target` and `reasoning` alone" in prompt
     assert "KAPSO_TARGET_DIR" not in call["config"].agent_specific["env_overrides"]
     record = open_record(solution.campaign)
     assert record.data["target_requested"] == "auto" and record.data["target"] == "local"
     assert record.data["reasoning"] == "a plain Python model; local is present"
     assert [(o["name"], o["ready"]) for o in record.data["offered"]] == [
-        ("bentoml", "missing: install bentoml"), ("docker", "present, the daemon does not answer: start Docker"),
-        ("langgraph", "missing: install langgraph"), ("local", "present"), ("modal", "missing: install modal"),
+        ("bentoml", "missing: install bentoml"), ("docker", "present, but `docker info` fails: start Docker Desktop, or: sudo systemctl start docker"),
+        ("langgraph", "missing: install langgraph"), ("local", "present, needs nothing"), ("modal", "missing: install modal"),
     ]
     assert sorted(p.name for p in (record.workspace / ".claude" / "skills").iterdir()) == ["bentoml", "docker", "langgraph", "local", "modal"]
     software.stop()
@@ -188,12 +226,27 @@ def test_a_missing_reasoning_under_auto_comes_back_once(solution, agent):
     software.stop()
 
 
+def test_a_result_that_is_not_json_comes_back_as_a_finding_then_passes(solution, agent):
+    agent.on_generate = staticmethod(writes(text='{"target": "local", "run": {"kind": "function"'))
+    agent.on_resume = staticmethod(writes())
+    software = deploy(solution, agent)
+    assert [call["kind"] for call in agent.calls] == ["fresh", "resume"]
+    assert "kapso_deployment.json is not valid JSON (json.decoder.JSONDecodeError: " in agent.calls[1]["prompt"]
+    assert "write it again as one JSON object" in agent.calls[1]["prompt"]
+    assert open_record(solution.campaign).state == RUNNING
+    software.stop()
+
+
 @pytest.mark.parametrize("script, finding", [
     (writes(target="docker"), "kapso_deployment.json names target docker; the request was local"),
     (writes(artifacts=["main.py", "missing.py"]), "artifact missing.py is not in the workspace"),
+    (writes(artifacts=["../predict.py"]), "artifact ../predict.py must be a path inside the workspace, relative to it"),
+    (writes(run={"kind": "http", "url": "https://api.example", "path": "/x"}), "the local target's run kind is function; the result names http"),
+    (writes(run={"kind": "function", "module": "json", "callable": "loads"}), "run.module json is not a module of the workspace (no json.py or json/__init__.py there)"),
     (writes(proof={"inputs": {"boom": True}, "output": {}}), "the proof call failed: "),
     (writes(main="def other(inputs):\n    return inputs\n"), "the deployment does not answer its health check"),
     (writes(run={"kind": "http"}), "kapso_deployment.json: `run.url` must be a non-empty string for the http kind"),
+    (writes(text="not json at all"), "kapso_deployment.json is not valid JSON ("),
     (lambda workspace: None, "no kapso_deployment.json at the workspace root"),
 ])
 def test_a_failing_check_comes_back_once_then_fails_the_deployment(solution, agent, script, finding):
@@ -203,7 +256,15 @@ def test_a_failing_check_comes_back_once_then_fails_the_deployment(solution, age
     assert finding in str(error.value) and "--stop --number 1" in str(error.value)
     assert [call["kind"] for call in agent.calls] == ["fresh", "resume"] and finding in agent.calls[1]["prompt"]
     record = open_record(solution.campaign)
-    assert record.state == FAILED and finding in record.data["error"]
+    assert record.state == FAILED and finding in record.data["error"] and record.data["finished"]
+    # The failed deployment is still a deployment: it opens, `--stop`
+    # runs the target's scripts, and no worker of the acceptance is left.
+    software = Software.open(solution.campaign, 1)
+    assert software.target == "local" and software.stop()[-1] == "stopped deployment 1" and software.state == STOPPED
+    assert not list(Path("/proc").glob("*/cmdline")) or all(
+        "kapso.deployment.worker" not in path.read_bytes().decode(errors="replace") or str(record.workspace) not in path.read_bytes().decode(errors="replace")
+        for path in Path("/proc").glob("*/cmdline") if path.is_file()
+    )
 
 
 def test_a_session_cut_at_its_deadline_is_failed_without_a_resume(solution, agent):
@@ -214,7 +275,8 @@ def test_a_session_cut_at_its_deadline_is_failed_without_a_resume(solution, agen
     with pytest.raises(DeployError, match="failed: the session was cut at its deadline"):
         deploy(solution, agent)
     assert [call["kind"] for call in agent.calls] == ["fresh"]
-    assert open_record(solution.campaign).state == FAILED
+    record = open_record(solution.campaign)
+    assert record.state == FAILED and record.data["target"] == "local" and (record.target_dir / "scripts" / "deploy.sh").is_file()
 
 
 def test_a_session_that_fails_to_run_is_failed(solution, agent):
@@ -223,13 +285,36 @@ def test_a_session_that_fails_to_run_is_failed(solution, agent):
         deploy(solution, agent)
 
 
+def test_under_auto_a_failed_session_leaves_the_target_it_named_or_says_it_named_none(solution, agent):
+    """A session cut after writing its choice: the target's scripts are
+    beside the record for `--stop`. One that wrote nothing: the record says
+    so, and `--stop` has nothing to run."""
+    cut = CodingResult(success=False, output="", error="cut", metadata={"cli_session_id": "s1", "deadline_exceeded": True, "completed_before_kill": False})
+    agent.generate_result = cut
+    agent.on_generate = staticmethod(writes(main=None, text='{"target": "docker", "reasoning": "a service"}'))
+    with pytest.raises(DeployError, match="--stop --number 1"):
+        deploy(solution, agent, target=None)
+    record = open_record(solution.campaign, 1)
+    assert record.state == FAILED and record.data["target"] == "docker" and (record.target_dir / "scripts" / "stop.sh").is_file()
+    agent.on_generate = staticmethod(lambda workspace: None)
+    with pytest.raises(DeployError, match="its session named no target the engine could read, so there is nothing for `--stop` to run"):
+        deploy(solution, agent, target=None)
+    record = open_record(solution.campaign, 2)
+    assert record.state == FAILED and record.data["target"] is None and not record.target_dir.exists()
+    assert Software.open(solution.campaign, 2).stop()[0].startswith("deployment 2 recorded no target")
+
+
 def test_a_dirty_campaign_and_bad_env_are_refused_before_any_record(solution, agent):
     with pytest.raises(DeployError, match="env: 'BAD NAME' is not a variable name"):
         deploy(solution, agent, env={"BAD NAME": "x"})
-    with pytest.raises(DeployError, match="env: the value of A holds a newline"):
+    with pytest.raises(DeployError, match="env: 'NAME\\\\n' is not a variable name"):
+        deploy(solution, agent, env={"NAME\n": "x"})
+    with pytest.raises(DeployError, match="env: the value of A holds a line break or a control character"):
         deploy(solution, agent, env={"A": "x\ny"})
+    with pytest.raises(DeployError, match="env: the value of A holds a line break or a control character"):
+        deploy(solution, agent, env={"A": "x\ry"})
     (solution.campaign / "predict.py").write_text("changed\n")
-    with pytest.raises(DeployError, match=r"tracked files differ from the delivered commit \(predict.py\); commit or discard"):
+    with pytest.raises(DeployError, match=r"tracked files differ from the delivered commit \(predict.py\); restore the delivered tree \(`git -C .* checkout -- predict.py`\), or build again"):
         deploy(solution, agent)
     assert records(solution.campaign) == [] and agent.calls == []
 
@@ -249,8 +334,6 @@ TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "t
 
 
 def trading(tmp_path):
-    import shutil
-    from kapso.harness import load_harness
     copy = tmp_path / "harness" / "trading"
     shutil.copytree(TRADING, copy)
     return load_harness(str(copy), settings=dict(load_config()["harness"], store=str(tmp_path / "store")), say=lambda line: None)
@@ -277,7 +360,6 @@ def test_with_a_harness_the_session_carries_its_deployment_module_beside_the_tar
 
 
 def test_a_harness_changed_since_its_load_deploys_nothing(solution, agent, tmp_path):
-    from kapso.harness import HarnessError
     harness = trading(tmp_path)
     page = harness.path / "instructions" / "guardrails.md"
     page.write_text(page.read_text() + "\n- edited after the load\n")
@@ -292,9 +374,6 @@ def test_a_harness_target_deploys_through_its_skill_and_runs_one_cycle_on_demand
     script with the deployment's variables; the engine's acceptance runs
     the health check and the proof cycle; the handle runs a cycle on
     demand, reads the log and stops the runner."""
-    import os
-    import subprocess
-    from tests.test_target_scripts import RUN_PAPER
 
     def act(workspace):
         (workspace / "deploy").mkdir()
@@ -316,10 +395,14 @@ def test_a_harness_target_deploys_through_its_skill_and_runs_one_cycle_on_demand
     assert "The target is `paper-trading`. Open its skill with `/paper-trading`" in call["prompt"]
     record = open_record(solution.campaign)
     assert record.state == RUNNING and record.data["target"] == "paper-trading" and record.data["endpoint"] == "deploy/paper.log"
+    # The engine's own cycle ran with the call's cash, which the session's
+    # claimed proof did not: both are in the record, the engine's first.
+    assert record.data["observed"] == {"bar": "latest", "orders": [], "equity": 5000.0}
     assert (record.target_dir / "scripts" / "run.py").is_file() and record.data["harness"]["name"] == "trading"
+    assert record.data["offered"] == [{"name": "paper-trading", "ready": "unverified"}]
     session = json.loads((solution.campaign / ".kapso" / "sessions" / "deployment" / "1" / "session.json").read_text())
     assert session["skills"] == ["market-data", "paper-trading"] and session["engine_skills"] == []
     assert software.run({"at": "2024-01-05"}) == {"status": "success", "output": {"bar": "2024-01-05", "orders": [], "equity": 5000.0}}
     assert software.is_healthy() and '"bar": "latest"' in software.logs()
-    software.stop()
+    assert software.stop()[0].startswith("stop.sh: the paper runner (pid ")
     assert not software.is_healthy() and not (software.workspace / "deploy" / "paper.pid").exists()

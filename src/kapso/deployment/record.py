@@ -3,10 +3,13 @@
 "Identity"). Written with `state: deploying` before the session starts,
 completed at its end, and the whole handle afterwards: `Software.open`
 reads nothing else. Paths inside it are relative to its directory, so a
-moved campaign still opens."""
+moved campaign still opens. Every write replaces the file whole and
+atomically, and every change re-reads it first, so two handles on one
+deployment never undo each other's fields."""
 
 import hashlib
 import json
+import os
 import re
 import socket
 import threading
@@ -53,14 +56,25 @@ def _port_is_free(port: int) -> bool:
 
 
 def allocate_port(campaign: Path, number: int, *, base: int, span: int) -> int:
-    """The first free port from `base + (hash + number) % span`, upwards
-    within the span and wrapping; refused when the whole span is taken."""
+    """The first port nothing listens on from `base + (hash + number) %
+    span`, upwards within the span and wrapping; refused when the whole
+    span is taken. Probed, not held: the target's `deploy.sh` binds it
+    later and fails naming it if something took it since."""
     start = (int(campaign_hash(campaign), 16) + number) % span
     for offset in range(span):
         port = base + (start + offset) % span
         if _port_is_free(port):
             return port
     raise DeployError(f"no free port in {base}..{base + span - 1} for the deployment; set deployment.port_base or port_span")
+
+
+def _read(path: Path) -> Dict[str, Any]:
+    if not path.is_file():
+        raise DeployError(f"no deployment record at {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("state") not in STATES:
+        raise DeployError(f"{path}: not a deployment record")
+    return data
 
 
 @dataclass
@@ -94,15 +108,26 @@ class DeploymentRecord:
         return self.directory / self.data["target_dir"]
 
     def write(self) -> None:
-        self.path.write_text(json.dumps(self.data, indent=2) + "\n", encoding="utf-8")
+        """The file replaced whole: a reader never sees a half-written record."""
+        staging = self.directory / (RECORD_FILE + ".tmp")
+        staging.write_text(json.dumps(self.data, indent=2) + "\n", encoding="utf-8")
+        os.replace(staging, self.path)
+
+    def reload(self) -> None:
+        """What is on disk now: a stop from another process shows."""
+        self.data = _read(self.path)
+
+    def update(self, **changes: Any) -> None:
+        """These fields changed on the record as it is on disk now, so a
+        handle that read it earlier changes nothing but what it means to."""
+        self.reload()
+        self.data.update(changes)
+        self.write()
 
     def set_state(self, state: str, *, error: Optional[str] = None) -> None:
         if state not in STATES:
             raise ValueError(f"unknown deployment state {state!r}; the states are {', '.join(STATES)}")
-        self.data["state"] = state
-        self.data["state_at"] = now()
-        self.data["error"] = error
-        self.write()
+        self.update(state=state, state_at=now(), error=error)
 
 
 def _mint(deployments: Path) -> Path:
@@ -153,6 +178,7 @@ def start_record(
         "env_names": list(env_names),
         "options": dict(options),
         "result": None,
+        "observed": None,
         "endpoint": None,
         "values": {},
         "session": f"deployment/{number}",
@@ -166,13 +192,7 @@ def start_record(
 
 def read_record(directory: Path) -> DeploymentRecord:
     directory = Path(directory).resolve()
-    path = directory / RECORD_FILE
-    if not path.is_file():
-        raise DeployError(f"no deployment record at {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or data.get("state") not in STATES:
-        raise DeployError(f"{path}: not a deployment record")
-    return DeploymentRecord(directory, data)
+    return DeploymentRecord(directory, _read(directory / RECORD_FILE))
 
 
 def records(campaign: Path) -> List[DeploymentRecord]:

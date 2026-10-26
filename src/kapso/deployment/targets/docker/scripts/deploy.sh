@@ -5,7 +5,10 @@ set -euo pipefail
 # shellcheck disable=SC1091
 . "$(dirname "$0")/common.sh"
 touch .dockerignore
-for line in .env .git .claude .agents .codex '.kapso*' __pycache__ '*.pyc'; do
+# Out of the image: the env file, the repositories and the hosts' own
+# directories, the sealed evaluation, and the prepared mounts (a link into
+# the campaign, which the image cannot follow).
+for line in .env .git .claude .agents .codex '.kapso*' __pycache__ '*.pyc' kapso_evaluation prepared; do
   grep -qxF -- "$line" .dockerignore || echo "$line" >> .dockerignore
 done
 docker rm -f "$NAME" > /dev/null 2>&1 || true

@@ -13,9 +13,13 @@ from pathlib import Path
 
 import pytest
 
+import kapso
 from kapso.deployment.targets import BUNDLED_DIR
 
 FAKE_SDKS = Path(__file__).resolve().parent / "fakes" / "deploy_sdks"
+# The engine's own source, for the worker the local target's deploy
+# script runs in `$KAPSO_INTERPRETER`.
+ENGINE_SRC = Path(kapso.__file__).resolve().parent.parent
 NAME = "churn-3f9a1c-2"
 
 DOCKER_SHIM = """#!/usr/bin/env bash
@@ -85,7 +89,7 @@ def rig(tmp_path):
             env = {
                 **{k: v for k, v in os.environ.items() if k in ("HOME", "LANG")},
                 "PATH": f"{bin_dir}:{os.environ['PATH']}",
-                "PYTHONPATH": str(FAKE_SDKS),
+                "PYTHONPATH": f"{FAKE_SDKS}:{ENGINE_SRC}",
                 "FAKE_LOG": str(log),
                 "FAKE_STATE": str(tmp_path / "container.state"),
                 "KAPSO_DEPLOYMENT_NAME": NAME,
@@ -115,12 +119,15 @@ def rig(tmp_path):
 
 # -------------------------------------------------------------------- local
 
-def test_local_deploy_proves_the_entry_point_with_the_callers_variables(rig):
+def test_local_deploy_proves_the_entry_point_through_the_worker_with_the_callers_variables(rig):
     (rig.workspace_dir / "main.py").write_text("import os\nGREETING = os.environ['GREETING']\n\ndef predict(inputs):\n    return {'greeting': GREETING}\n")
-    assert rig.run("local", "deploy.sh").stdout.strip() == "main.predict imports"
+    assert rig.run("local", "deploy.sh").stdout.strip() == "main.predict imports in the engine's worker"
     (rig.workspace_dir / "main.py").write_text("def other(inputs):\n    return inputs\n")
     failed = rig.run("local", "deploy.sh", check=False)
-    assert failed.returncode == 1 and "main.py has no module-level predict function" in failed.stderr
+    assert failed.returncode == 1 and "main.py has no module-level callable predict" in failed.stderr
+    (rig.workspace_dir / "main.py").write_text("import nothing_of_the_kind\n")
+    failed = rig.run("local", "deploy.sh", check=False)
+    assert failed.returncode == 1 and "No module named 'nothing_of_the_kind'" in failed.stderr
 
 
 # ------------------------------------------------------------------- docker
@@ -137,7 +144,7 @@ def test_docker_builds_runs_with_the_env_file_port_and_gpu_then_waits_for_health
     # The engine's own files and the env file stay out of the image; the
     # person's lines stay.
     lines = (rig.workspace_dir / ".dockerignore").read_text().splitlines()
-    assert lines[0] == "*.md" and {".env", ".git", ".claude", ".agents", ".codex", ".kapso*", "__pycache__", "*.pyc"} <= set(lines)
+    assert lines[0] == "*.md" and {".env", ".git", ".claude", ".agents", ".codex", ".kapso*", "__pycache__", "*.pyc", "kapso_evaluation", "prepared"} <= set(lines)
     assert rig.run("docker", "health.sh", port=health_server, check=False).returncode == 0
     assert rig.run("docker", "logs.sh", port=health_server).stdout == "line one\nline two\n"
 
@@ -185,8 +192,9 @@ def test_bentoml_deploys_through_the_workspace_script_and_a_start_reports_the_ne
     answer = rig.run("bentoml", "run.py", deployment=name, stdin=json.dumps({"x": 2}))
     assert json.loads(answer.stdout) == {"deployment": name, "echo": {"x": 2}}
     rig.run("bentoml", "stop.sh", deployment=name)
-    assert rig.log()[-1] == f"deployment terminate {name}"
+    assert rig.log()[-1] == f"deployment terminate {name} --wait"
     started = rig.run("bentoml", "start.sh", deployment=name)
+    assert rig.log()[-2] == f"deployment start {name}" and rig.log()[-1] == f"deployment get {name} -o json"
     assert started.stdout.splitlines()[-1] == f"KAPSO_ENDPOINT=https://{name}.bentoml.cloud"
 
 
@@ -195,7 +203,7 @@ def test_bentoml_deploys_through_the_workspace_script_and_a_start_reports_the_ne
 def test_langgraph_keeps_one_thread_across_calls_and_deletes_it_on_stop(rig):
     url = "https://graph.example"
     rig.run("langgraph", "deploy.sh", deployment_url=url, assistant="agent")
-    assert rig.log() == ["deploy"]
+    assert rig.log() == [f"deploy --name kapso-{NAME}"]
     first = json.loads(rig.run("langgraph", "run.py", deployment_url=url, assistant="agent", stdin=json.dumps({"text": "hi"})).stdout)
     second = json.loads(rig.run("langgraph", "run.py", deployment_url=url, assistant="agent", stdin=json.dumps({"messages": [{"role": "user", "content": "again"}]})).stdout)
     assert first == {"thread": "thread-1", "assistant": "agent", "messages": [{"role": "user", "content": "hi"}]}
@@ -204,8 +212,13 @@ def test_langgraph_keeps_one_thread_across_calls_and_deletes_it_on_stop(rig):
     assert rig.run("langgraph", "logs.sh", deployment_url=url, assistant="agent").stdout.splitlines() == [
         f"deployment: {url} (assistant agent)", "thread: thread-1",
     ]
-    rig.run("langgraph", "stop.sh", deployment_url=url)
+    assert rig.log()[-1] == f"deploy logs --name kapso-{NAME}"
+    stopped = rig.run("langgraph", "stop.sh", deployment_url=url)
     assert rig.log()[-1] == "sdk threads.delete thread-1" and not (rig.workspace_dir / ".kapso_langgraph_thread").exists()
+    assert stopped.stdout.splitlines() == [
+        "thread thread-1 deleted",
+        f"the platform deployment kapso-{NAME} stays on LangSmith; to delete it: langgraph deploy list, then langgraph deploy delete <its id> --force",
+    ]
 
 
 # ------------------------------------------------------------ paper-trading
@@ -248,8 +261,14 @@ def test_paper_trading_runs_the_workspaces_runner_as_a_loop_and_one_cycle_on_dem
     answer = rig.run(PAPER, "run.py", stdin=json.dumps({"at": "2024-01-03"}), options={"cash": "5000"})
     assert json.loads(answer.stdout) == {"bar": "2024-01-03", "orders": [], "equity": 5000.0}
     assert '"bar": "latest"' in rig.run(PAPER, "logs.sh").stdout
-    rig.run(PAPER, "stop.sh")
+    pid = int((rig.workspace_dir / "deploy" / "paper.pid").read_text())
+    assert rig.run(PAPER, "stop.sh").stdout.strip() == f"the paper runner (pid {pid}) ended"
     assert rig.run(PAPER, "health.sh", check=False).returncode == 1 and not (rig.workspace_dir / "deploy" / "paper.pid").exists()
+    # A pid file naming another process (a pid reused after a reboot) is
+    # not the runner.
+    (rig.workspace_dir / "deploy" / "paper.pid").write_text(f"{os.getpid()}\n")
+    assert rig.run(PAPER, "health.sh", check=False).returncode == 1
+    (rig.workspace_dir / "deploy" / "paper.pid").unlink()
     assert rig.run(PAPER, "start.sh").stdout.startswith("the paper runner runs (pid ")
     assert rig.run(PAPER, "health.sh", check=False).returncode == 0
 

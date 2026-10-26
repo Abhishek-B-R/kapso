@@ -5,6 +5,7 @@ metadata:
   requires:
     binary: bentoml
     install: "pip install \"leeroo-kapso[bentoml]\" and log in with `bentoml cloud login`"
+  run_kinds: [script]
 ---
 # BentoML
 

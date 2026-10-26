@@ -703,6 +703,24 @@ def test_other_non_inference_sessions_are_rejected(
         preflight.run_preflight(verb, packaged)
 
 
+def test_the_configured_target_is_a_required_row_with_its_probe(packaged, full_machine, monkeypatch):
+    """`deployment.target: docker` on a machine without docker: the
+    doctor's row is required and names the key; with docker present, the
+    daemon's probe is a row of its own."""
+    packaged["deployment"]["target"] = "docker"
+    monkeypatch.setattr(preflight.shutil, "which", lambda name, *a, **k: None if name == "docker" else f"/usr/bin/{name}")
+    rows = {row.label: row for row in preflight.deploy_requirements(packaged)}
+    assert rows["docker (deploy target)"].required and not rows["docker (deploy target)"].ok
+    assert rows["docker (deploy target)"].origin == "deployment.target = docker"
+    assert "docker: `docker info` answers" not in rows and not rows["deploy target modal"].required
+    monkeypatch.setattr(preflight.shutil, "which", lambda name, *a, **k: f"/usr/bin/{name}")
+    monkeypatch.setattr(preflight, "probe_failure", lambda skill: "`docker info` fails: start Docker Desktop, or: sudo systemctl start docker")
+    rows = {row.label: row for row in preflight.deploy_requirements(packaged, target="docker")}
+    probe = rows["docker: `docker info` answers"]
+    assert probe.required and not probe.ok and probe.origin == "deploy(target='docker')" and probe.fix == "start Docker Desktop, or: sudo systemctl start docker"
+    assert "deploy target modal" not in rows   # a call in flight lists no advisory rows
+
+
 @pytest.mark.parametrize("override", [False, True])
 def test_deploy_rejects_an_inference_only_host_by_key(packaged, full_machine, override):
     """An inference-only adapter is never in the hosts table (it has no

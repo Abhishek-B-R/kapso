@@ -56,8 +56,8 @@ dependencies = [
     # Google Vertex AI embeddings (kg_graph_search embedding_provider "vertex"):
     # Application Default Credentials + an authorized HTTP session.
     "google-auth[requests]>=2.0",
-    # deploy(): the Docker and BentoCloud runners call their endpoints with it
-    # (it arrived only transitively before, through google-auth).
+    # HTTP from the engine's own code (the handles, the inbox, the
+    # embeddings; it arrived only transitively before, through google-auth).
     "requests>=2.28",
 ]
 
@@ -78,12 +78,10 @@ mle = [
 ale = [
     # ale-bench installed separately (requires docker setup)
 ]
-# deploy() targets. The adapter session installs what the *solution* needs;
-# these are what Kapso's own runners need to drive each target.
-deploy = [
-    # DockerRunner recreates and removes containers through the SDK
-    "docker>=7.0",
-]
+# deploy() targets: what the engine's own scripts for each cloud target
+# need in its interpreter (the docker target drives the docker CLI and
+# needs no package; the deployment session installs what the *solution*
+# needs).
 modal = [
     "modal>=1.0",
 ]

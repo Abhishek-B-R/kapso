@@ -1,21 +1,10 @@
 # The local target's deployment: the entry point imports in the engine's
-# interpreter with the caller's variables set. Run from the workspace.
+# worker, the one every call runs, with the caller's variables loaded as
+# the worker loads them. Run from the workspace.
 set -euo pipefail
-if [ -n "${KAPSO_ENV_FILE:-}" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$KAPSO_ENV_FILE"
-  set +a
+reply="$(echo '{"ping": true}' | "$KAPSO_INTERPRETER" -m kapso.deployment.worker "$KAPSO_WORKSPACE" main predict ${KAPSO_ENV_FILE:+"$KAPSO_ENV_FILE"})"
+if [ "$reply" != '{"pong": true}' ]; then
+  echo "the worker did not answer its ping: $reply" >&2
+  exit 1
 fi
-"$KAPSO_INTERPRETER" - <<'PY'
-import importlib
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path.cwd()))
-module = importlib.import_module("main")
-if not callable(getattr(module, "predict", None)):
-    sys.stderr.write("main.py has no module-level predict function\n")
-    sys.exit(1)
-print("main.predict imports")
-PY
+echo "main.predict imports in the engine's worker"

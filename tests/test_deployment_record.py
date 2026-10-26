@@ -67,7 +67,10 @@ def test_the_identity_carries_the_campaign_and_the_number(tmp_path):
     assert one.data["deployment_name"] == f"churn-build-{campaign_hash(first)}-1"
     assert two.data["deployment_name"] == f"churn-build-{campaign_hash(first)}-2"
     assert deployment_name(first, 3) != deployment_name(second, 3)   # the same name, another path
-    assert len({one.data["port"], two.data["port"], other.data["port"] if other.data["port"] not in (one.data["port"], two.data["port"]) else -1}) == 3
+    # Two deployments of one campaign never share a port: the number is in
+    # the port's seed. Two campaigns may, since nothing listens on a port
+    # until a deploy script binds it; the first to bind keeps it.
+    assert one.data["port"] != two.data["port"]
     assert all(PORTS["port_base"] <= record.data["port"] < PORTS["port_base"] + PORTS["port_span"] for record in (one, two, other))
 
 
@@ -137,3 +140,17 @@ def test_the_states_and_the_opening_by_number(tmp_path):
         open_record(campaign, 3)
     with pytest.raises(ValueError, match="unknown deployment state"):
         one.set_state("paused")
+
+
+def test_a_change_re_reads_the_record_so_two_handles_never_undo_each_other(tmp_path):
+    campaign = tmp_path / "campaign"
+    campaign.mkdir()
+    mine = started(campaign)
+    theirs = open_record(campaign)
+    theirs.update(endpoint="http://new:1", values={"image": "img:2"})
+    mine.set_state(RUNNING)
+    assert mine.data["endpoint"] == "http://new:1" and mine.data["values"] == {"image": "img:2"}
+    on_disk = read_record(mine.directory).data
+    assert on_disk["state"] == RUNNING and on_disk["endpoint"] == "http://new:1"
+    # The file is replaced whole: no staging file is left beside it.
+    assert sorted(p.name for p in mine.directory.iterdir()) == ["deployment.json"]

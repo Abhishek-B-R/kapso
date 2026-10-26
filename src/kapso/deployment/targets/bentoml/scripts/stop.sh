@@ -1,3 +1,4 @@
-# Terminate the BentoCloud deployment: its instances end, the name stays.
+# Terminate the BentoCloud deployment and wait for it: its instances end,
+# the name stays, and `bentoml deployment start` brings it back.
 set -euo pipefail
-bentoml deployment terminate "$KAPSO_VALUE_DEPLOYMENT"
+bentoml deployment terminate "$KAPSO_VALUE_DEPLOYMENT" --wait

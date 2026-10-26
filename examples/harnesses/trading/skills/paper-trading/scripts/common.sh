@@ -5,7 +5,10 @@ PID_FILE="deploy/paper.pid"
 LOG_FILE="deploy/paper.log"
 
 runner_alive() {
-  [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2> /dev/null
+  # The recorded pid is alive and is still the runner (a pid is reused
+  # after a reboot or a crash).
+  [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2> /dev/null \
+    && ps -o args= -p "$(cat "$PID_FILE")" 2> /dev/null | grep -q -- "$RUNNER"
 }
 
 start_runner() {

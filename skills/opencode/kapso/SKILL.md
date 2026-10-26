@@ -288,8 +288,8 @@ Python:
 ```python
 from kapso import Software
 software = Software.open("../churn-campaign", 1)
-print(software.proof["inputs"])                     # what run() takes
-print(software.run({"tenure_months": 3, "monthly_spend": 92.0, "support_tickets": 4, "logins_per_week": 1.0, "plan": "basic"}))
+print(software.proof["inputs"])                     # what run() takes: the call the session proved
+print(software.run(software.proof["inputs"]))       # the same call; your own inputs take this shape
 software.stop()
 ```
 

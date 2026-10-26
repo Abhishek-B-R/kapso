@@ -5,12 +5,15 @@ metadata:
   requires:
     binary: langgraph
     install: "pip install \"leeroo-kapso[langgraph]\" and set LANGSMITH_API_KEY"
+  run_kinds: [script]
 ---
 # LangGraph
 
 The solution runs as a graph on LangGraph Platform; the engine calls it
 through the platform's SDK (the target's `scripts/run.py`) on one thread
-it keeps in the workspace, so a conversation persists across calls.
+it keeps in the workspace, so a conversation persists across calls. A
+stop ends that thread and leaves the platform deployment (serverless, it
+scales to zero); the stop's output says how to delete it.
 
 ## Steps
 
@@ -28,8 +31,9 @@ it keeps in the workspace, so a conversation persists across calls.
    `requirements.txt` complete (`langgraph`, `langgraph-sdk`, the model
    provider's package).
 3. Run the deploy script, `bash "$KAPSO_TARGET_DIR/scripts/deploy.sh"`:
-   it runs `langgraph deploy`, which prints the deployment's URL. Then
-   export the values and check the deployment:
+   it runs `langgraph deploy --name "kapso-$KAPSO_DEPLOYMENT_NAME"` (the
+   platform deployment of this name, found or created), which prints the
+   deployment's URL. Then export the values and check the deployment:
 
    ```bash
    export KAPSO_VALUE_DEPLOYMENT_URL="https://..."   # as printed

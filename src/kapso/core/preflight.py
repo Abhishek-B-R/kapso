@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 
 from kapso.core.config import deep_merge, load_config
 from kapso.core.roles import ROLES, SPEC_KEYS, deployment_role, resolve_members, resolve_optional, resolve_role, resolve_spec
-from kapso.deployment.targets import AUTO, bundled_targets
+from kapso.deployment.targets import AUTO, bundled_targets, probe_failure
 from kapso.core.agent_manifest import load_agent_manifest
 from kapso.core.api_endpoint import (
     openai_compatible_options,
@@ -75,12 +75,6 @@ CLI_BINARIES = {
     "codex": "codex",
     "aider": "aider",
 }
-
-def deploy_tools() -> Dict[str, Tuple[str, str]]:
-    """The bundled targets and the tool each one needs on the box, from
-    their skills' `metadata.requires` (binary, install); local declares
-    none and runs in the engine's worker."""
-    return {target.name: (target.requires["binary"], target.requires["install"]) for target in bundled_targets() if target.requires}
 
 VERBS = ("build", "learn", "deploy", "experience")
 
@@ -878,11 +872,6 @@ def _bank_push_requirements(
     )]
 
 
-def docker_daemon_running() -> bool:
-    """`docker info` answers: the daemon is up and this user may talk to it."""
-    return subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=30).returncode == 0
-
-
 def deployment_session_spec(config: Dict[str, Any], coding_agent: Optional[str] = None) -> SessionSpec:
     """The deployment session as the doctor's rows and the live tier see it."""
     role = deployment_role(config, coding_agent)
@@ -900,32 +889,36 @@ def deploy_requirements(
 ) -> List[Requirement]:
     """`deploy()` runs one session on the resolved host, then the target's
     scripts. The session's host row and its pairing always; then the
-    target's tool: a named target's is required (`docker` also checks the
-    daemon), `auto` asks for none (the session is told each target's
-    readiness). `target=None` is the doctor's view, no call in flight:
-    the configured target's tool is required when it names one, the other
-    bundled targets' tools are advisory."""
+    target's tool: a named target's is required (and its probe, when its
+    skill declares one: the docker daemon answering), `auto` asks for
+    none (the session is told each target's readiness). `target=None` is
+    the doctor's view, no call in flight: the configured target's tool is
+    required when it names one, the other bundled targets' tools are
+    advisory."""
     spec = deployment_session_spec(config, coding_agent)
     requirements = host_model_requirements([spec]) + cli_requirements([spec])
-    tools = deploy_tools()
+    tools = {skill.name: skill for skill in bundled_targets() if skill.requires}
     configured = config["deployment"]["target"]
     named = target if target is not None else configured
     if named != AUTO and named in tools:
-        binary, fix = tools[named]
+        skill = tools[named]
+        binary, fix = skill.requires["binary"], skill.requires["install"]
         present = shutil.which(binary) is not None
         origin = f"deploy(target={named!r})" if target is not None else f"deployment.target = {named}"
         requirements.append(Requirement(label=f"{binary} (deploy target)", ok=present, fix=fix, origin=origin))
-        if named == "docker" and present:
+        probe = skill.requires.get("probe")
+        if probe is not None and present:
+            failure = probe_failure(skill)
             requirements.append(Requirement(
-                label="docker daemon running", ok=docker_daemon_running(),
-                fix="start Docker Desktop, or: sudo systemctl start docker", origin=origin,
+                label=f"{binary}: `{probe['command']}` answers", ok=failure is None, fix=probe["fix"], origin=origin,
+                detail=failure or "",
             ))
     if target is None:
-        for name, (binary, fix) in sorted(tools.items()):
+        for name, skill in sorted(tools.items()):
             if name == named:
                 continue
             requirements.append(Requirement(
-                label=f"deploy target {name}", ok=shutil.which(binary) is not None, fix=fix,
+                label=f"deploy target {name}", ok=shutil.which(skill.requires["binary"]) is not None, fix=skill.requires["install"],
                 origin=f"only needed for kapso deploy --target {name}", required=False,
             ))
     return requirements
