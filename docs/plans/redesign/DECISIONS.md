@@ -8,6 +8,25 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**The judge says "its deadline"; the strategy says whose.** The
+generator does not know whether the deadline that cut the judge was the
+budget's room or the role's own timeout, so its reason reads `the
+judge's session ended at its deadline`; the strategy, which computed
+the deadline, rewrites it to `the budget's deadline` and reports the
+finishing cut only when the budget set it. Why: a judge cut by its own
+configured timeout with an hour of budget left is not a budget's end,
+and stopping the campaign on it would be wrong. The plan's wording is
+kept for the case it described. Shows in `feedback_generator.py`,
+`strategy.py`.
+
+**No verdict is a field of the result, not an exception.**
+`FeedbackResult.unjudged` carries the reason (no tags after a retry,
+the deadline, no room for a retry); the flow sets `SearchNode.unjudged`
+from it and skips the verdict. The one exception kept is the missing
+session handle, a wiring bug. Alternative rejected: raising for every
+unjudged outcome, which would turn a budget's end into a failed
+campaign.
+
 **The launch predicate guards the lane's sessions; ideation's inner
 sessions take the room they have.** The implementation, the evaluation
 run, the verification, the judge and the reconstruction each check
