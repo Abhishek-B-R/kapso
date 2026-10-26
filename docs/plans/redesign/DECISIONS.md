@@ -6,6 +6,83 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-26, WP7 (planned; taken while writing the sub-plan)
+
+**The session-start brief rides as the MCP server's instructions, not a
+hook.** The owner's decision of 2026-10-12 left the brief to the live-UI
+layer; since WP3 the host-session server serves the intro of what it
+loads as its instructions, which both hosts show the session on connect.
+That is the brief: no `SessionStart` hook, nothing injected into every
+prompt, nothing for Codex to lack. The plugin ships no hooks file.
+
+**What a host session loads is a line in the project's config.**
+`experience.sessions` (a list of references, empty as packaged) names what
+`kapso-mcp` loads when `--experience` is absent; the launcher passes the
+project's `kapso-config.yaml`, so the one convention the owner settled
+(decision 9: the project's config is passed by every command) carries it.
+The alternatives: a plugin setting (the owner said the plugin carries
+none), serving by existence (WP3 rejected it: a build is served exactly
+what it loads, and a session should be too), or the person adding a
+second MCP server by hand with `--experience mine` (what the docs say
+today; it stays for a session without the plugin). A reference that does
+not exist stops the server with the add line, as a build is refused: a
+silent empty bank would be the worse surprise.
+
+**Six skills and eleven commands, the commands pointing at the skills.**
+A command is the explicit entry with arguments (`/kapso:build <wish>`),
+a skill the procedure that also triggers on its description; a command's
+body names the skill and the moment's CLI line and nothing else, so the
+procedure is written once. Codex has no commands: the skills' names
+(`$kapso-build`) and the sidecars' default prompts are its entries.
+`research` and `bank` from the 2026-10-12 tree are gone with WP3's verbs
+(`experience add --research`, `experience share`); `review` and
+`harness` and `experience` join.
+
+**`kapso-evaluation` builds the evaluator for one approval.** The shipped
+skill said "never write an evaluator on the user's behalf"; the owner's
+revision of the skills document (2026-10-24) has the agent build or audit
+it against the contract and ask once. The later word wins; the proof's
+no-evaluator step is the check. The evaluator a session builds is passed
+with `--evaluation` once approved, so it is protected from that moment,
+the same as one the person brought.
+
+**The campaign tools live in the host-session server, host sessions
+only.** `kapso_build_start` and `kapso_status` wrap `kapso build --detach`
+and `kapso watch --json` as subprocesses of the server, which runs outside
+the host's shell sandbox (Codex ends a shell's background children; a
+launch through the tool survives). They are a gate like the others, never
+emitted for a campaign's own sessions, as the inbox gate is never emitted
+for a host's. The owner's decision 7 put the tools after the commands;
+they are the last change of this package, not a later one, since the
+MASTER's scope names them.
+
+**One copy of the operating skill, under the plugin.** The three per-host
+folders under `skills/` were identical since the `--detach` rewrite; the
+plugin's `skills/kapso/` is the one copy, with the Codex sidecar beside
+it, and OpenCode (which reads `.claude/skills` and `.agents/skills`)
+symlinks it. `skills/` is deleted (Rule 7); the README's agent note and
+the docs point at the plugin's file.
+
+**`kapso harness export` is the union staging.** The author flow's A4
+(deferred from WP2) writes a host's layout from the harness's skills,
+delegates, servers and hooks over every module, with the staging's own
+per-host writers, and says what the host cannot reproduce: the routing
+and the pages. It is a convenience for an ordinary session, not a second
+way to run a build; a build stages per module as before.
+
+**The launcher pins the package's version and falls through.** `kapso-mcp`
+on PATH, else `uvx --from leeroo-kapso==<version>`, else `pipx run --spec`,
+else one line naming `/kapso:setup`. The pin keeps a session's tools at
+the version the skill's facts were written for; the version test pins the
+pin. Until the release the pinned version is not on PyPI and the last
+line is what a bare machine sees, which the setup command answers.
+
+**The proof's Codex half runs on the development box.** The fresh
+machine's Codex key is over its quota (WP4's finding); the Codex steps
+run in a scratch project on the dev box with its ChatGPT login, the
+Claude Code steps on the fresh machine. The owner's key moves the Codex
+half to the machine; said in the plan.
+
 ## 2026-10-26, WP5 (after the pull-request review of #160)
 
 **The target's scripts are beside the record before the session runs.**
