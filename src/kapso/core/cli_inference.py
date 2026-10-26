@@ -24,8 +24,6 @@ from kapso.core.llm import LLMBackend
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
-# The packaged platform config carries the default inference block (Rule 1).
-
 
 class CliInference:
     """LLMBackend's surface, served by coding-agent CLI sessions.
@@ -100,6 +98,9 @@ class CliInference:
             agent_specific.setdefault(
                 "auth_mode", spec.get("auth_mode", "oauth")
             )
+            # The engine's own session mounts only the servers it is given
+            # (none), never the person's own.
+            agent_specific.setdefault("strict_mcp_config", True)
         with tempfile.TemporaryDirectory(prefix="kapso-inference-") as scratch:
             if self.record_session is not None:
                 agent_specific.update(self.record_session(role, spec["cli"], Path(scratch)))

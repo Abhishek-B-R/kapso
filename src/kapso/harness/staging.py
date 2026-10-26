@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import git
 
+from kapso.core.agent_manifest import load_agent_manifest
 from kapso.execution.coding_agents.adapters.codex_agent import agent_role_overrides, mcp_config_overrides
 from kapso.execution.coding_agents.session_record import write_whole
 from kapso.harness.check import read_front_matter
@@ -45,11 +46,11 @@ STREAM_FILE = "stream.jsonl"
 SESSIONS_DIR = Path(".kapso") / "sessions"
 CLAUDE_HOST = "claude_code"
 CODEX_HOST = "codex"
+# The staging each adapter's sessions get, from the registry's `host`
+# (kapso.core.roles.build_hosts reads the same key): the Claude Code
+# layout for the Claude adapters, Codex's for codex.
 HOST_OF_AGENT = {
-    "claude_code": CLAUDE_HOST,
-    "oss_claude_code": CLAUDE_HOST,
-    "vertex_claude_code": CLAUDE_HOST,
-    "codex": CODEX_HOST,
+    name: entry["host"] for name, entry in load_agent_manifest()["agents"].items() if entry.get("host")
 }
 _SKILLS_DIR = {CLAUDE_HOST: Path(".claude") / "skills", CODEX_HOST: Path(".agents") / "skills"}
 _HOOKS_FILE = {CLAUDE_HOST: Path(".claude") / "harness-hooks.json", CODEX_HOST: Path(".codex") / "hooks.json"}
@@ -159,8 +160,12 @@ def engine_session_record(records_dir: Path, role: Optional[str], host: str, ses
     the keys the adapter writes its runs and stream into."""
     label = f"{ENGINE_SESSIONS}/{role or 'default'}"
     earlier = records_dir / label
-    number = 1 + (sum(1 for child in earlier.iterdir() if child.is_dir()) if earlier.is_dir() else 0)
-    return dict(record_without_harness("engine", host, session_dir, f"{label}/{number}", records_dir).agent_specific)
+    # Parallel lanes mint their commit messages at the same time: the
+    # number and the record are taken under the one lock, so two sessions
+    # never share a record.
+    with _STAGING_LOCK:
+        number = 1 + (sum(1 for child in earlier.iterdir() if child.is_dir()) if earlier.is_dir() else 0)
+        return dict(record_without_harness("engine", host, session_dir, f"{label}/{number}", records_dir).agent_specific)
 
 
 def existing_runs(record_path: Path) -> list:

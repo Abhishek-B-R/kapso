@@ -7,6 +7,7 @@ each session's MCP config in its own directory; the workspace
 initialising with no agent."""
 
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -160,3 +161,25 @@ def test_the_recorder_is_wired_when_the_workspace_is_born(monkeypatch, tmp_path)
     keys = orchestrator.llm.record_session("repo_memory", "codex", tmp_path / "scratch")
     assert keys["session_record_path"] == str(workspace / ".kapso" / "sessions" / "engine" / "repo_memory" / "1" / "session.json")
     assert json.loads(Path(keys["session_record_path"]).read_text())["module"] == "engine"
+
+
+def test_concurrent_engine_sessions_take_distinct_records(tmp_path):
+    """Parallel lanes mint their commit messages at the same time: each
+    session gets its own `engine/commit_message/<n>` record, never one
+    record holding two sessions' runs."""
+    records = tmp_path / ".kapso" / "sessions"
+    together = threading.Barrier(8)
+    taken = []
+
+    def mint():
+        together.wait()
+        taken.append(engine_session_record(records, "commit_message", "codex", tmp_path)["session_record_path"])
+
+    threads = [threading.Thread(target=mint) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(Path(path).relative_to(records).as_posix() for path in taken) == sorted(
+        f"engine/commit_message/{number}/session.json" for number in range(1, 9)
+    )
