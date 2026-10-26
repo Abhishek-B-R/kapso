@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import FeedbackGenerator
 from kapso.execution.search_strategies.generic.ideation import build_ideation_prompt
@@ -28,7 +28,7 @@ def harness(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("harness")
     copy = tmp / "trading"
     shutil.copytree(TRADING, copy)
-    return load_harness(str(copy), settings=dict(load_harness_defaults(), store=str(tmp / "store")), say=lambda line: None)
+    return load_harness(str(copy), settings=dict(load_config()["harness"], store=str(tmp / "store")), say=lambda line: None)
 
 
 def guidance_for(harness, module, tmp_path) -> str:
@@ -95,9 +95,9 @@ def test_the_judge_carries_the_feedback_page_before_its_task(harness, tmp_path):
 
 @pytest.mark.parametrize("template, variables", [
     (GENERIC + "ideation_selector.md", {"problem": "p", "repo_memory_brief": "m", "campaign_state": "c", "candidates": "x"}),
-    (GENERIC + "ideation_lens_planner.md", {"problem": "p", "member_roster": "r", "lens_count": "2", "shared_artifacts_brief": "", "design_axes": "a",
+    (GENERIC + "ideation_lens_planner.md", {"problem": "p", "member_roster": "r", "lens_count": "2", "shared_artifacts_brief": "", "axes": "a",
                                             "experience_intro": ""}),
-    (GENERIC + "ideation_lens_replanner.md", {"problem": "p", "member_roster": "r", "lens_count": "2", "shared_artifacts_brief": "", "design_axes": "a",
+    (GENERIC + "ideation_lens_replanner.md", {"problem": "p", "member_roster": "r", "lens_count": "2", "shared_artifacts_brief": "", "axes": "a",
                                               "campaign_state": "c", "plan_iteration": "1", "previous_lenses": "l", "previous_sources": "s",
                                               "previous_rationale": "r", "recent_feedback": "f", "champion_solution": "w", "experience_intro": ""}),
     ("execution/evaluation_maintainer/prompts/setup_provided.md", {"goal": "g", "entrypoint_name": "e", "manifest_marker": "m", "fast_fraction": "0.1", "subsample_seed": "7"}),
@@ -126,7 +126,7 @@ def test_a_long_page_reaches_the_prompt_whole(harness, tmp_path):
     shutil.copytree(harness.path, copy)
     long_page = copy / "instructions" / "guardrails.md"
     long_page.write_text(long_page.read_text() + "\n" + "\n".join(f"- rule number {i} of the domain" for i in range(600)) + "\n")
-    settings = dict(load_harness_defaults(), store=str(tmp_path / "store"))
+    settings = dict(load_config()["harness"], store=str(tmp_path / "store"))
     long_harness = load_harness(str(copy), settings=settings, say=lambda line: None)
     guidance = guidance_for(long_harness, "implementation", tmp_path / "x")
     assert len(long_page.read_text().encode()) > 20_000

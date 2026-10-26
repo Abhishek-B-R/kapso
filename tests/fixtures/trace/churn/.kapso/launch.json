@@ -1,5 +1,4 @@
 {
-  "additional_context": "",
   "brief": {
     "baseline": "0.797 (the shipped logistic regression, bootstrap SE 0.010)",
     "budget": {
@@ -18,10 +17,7 @@
     ],
     "target": "0.85"
   },
-  "coding_agent": null,
   "config_path": null,
-  "context": null,
-  "cost_budget": null,
   "data_dir": "/home/ubuntu/fixture/examples/churn-first-build/data",
   "dotenv_path": "",
   "eval_dir": "/home/ubuntu/fixture/examples/churn-first-build/evaluation",
@@ -35,12 +31,13 @@
       "scope": "harness"
     }
   ],
-  "finalization_reserve_minutes": null,
+  "experiments": 1,
   "harness": null,
-  "max_iterations": 1,
-  "mode": null,
+  "host": null,
+  "minutes": 15.0,
   "output_path": "/campaign",
+  "reserve_minutes": null,
   "resumable_from_inbox": true,
-  "schema_version": 1,
-  "time_budget_minutes": 15.0
+  "schema_version": 2,
+  "usd": null
 }

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+import kapso.core.preflight as preflight
 from kapso.core.preflight import PreflightError
 from kapso.kapso import Kapso
 from kapso.learning.bank_remote import connect_bank
@@ -29,17 +30,14 @@ def _git_workspace(path: Path) -> None:
 
 
 def facade_config(tmp_path) -> str:
-    """A minimal real config file exercising the actual load path."""
+    """A minimal override file exercising the actual load path: the
+    packaged defaults with the test's own places over them."""
     config = {
-        "default_mode": "GENERIC",
-        "defaults": {"models": {"embedding": "e"},
-                     "retry": {"request_timeout_seconds": 600}},
-        "modes": {"GENERIC": {
-            "knowledge_search": {
-                "type": "kg_graph_search", "enabled": True, "params": {}},
-            # build() registers every launch; keep it out of ~/.kapso
-            "inbox": {"registry": str(tmp_path / "campaigns.jsonl")},
-        }},
+        "models": {"embedding": "e"},
+        "retry": {"request_timeout_seconds": 600},
+        "knowledge_search": {"type": "kg_graph_search", "params": {}},
+        # build() registers every launch; keep it out of ~/.kapso
+        "inbox": {"registry": str(tmp_path / "campaigns.jsonl")},
         "learning": {
             "trajectory_store": {"local": str(tmp_path / "store"),
                                  "remote": None},
@@ -222,6 +220,7 @@ def test_learn_auto_inits_missing_bank_then_fails_on_bad_source(tmp_path):
     assert kapso._bank_head()  # skeleton commit landed
 
 
+@pytest.mark.preflight
 def test_learn_push_preflight_fires_before_any_pipeline_work(
     tmp_path, monkeypatch
 ):
@@ -233,6 +232,10 @@ def test_learn_push_preflight_fires_before_any_pipeline_work(
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
     kapso = Kapso(config=config_path)
     calls = stub_chain(monkeypatch, kapso._bank_home)
+    monkeypatch.setattr(preflight.shutil, "which", lambda name, *args, **kwargs: f"/usr/bin/{name}")
+    monkeypatch.setattr(preflight, "claude_logged_in", lambda: True)
+    monkeypatch.setattr(preflight, "codex_authenticated", lambda: True)
+    monkeypatch.setenv("OPENAI_API_KEY", "set")
     subprocess.run(
         ["git", "--git-dir", str(kapso._bank_home), "remote", "add",
          "origin", str(tmp_path / "no-such-remote.git")],
@@ -372,7 +375,7 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
     # nothing loaded: no intro, no override
     kapso = Kapso(config=config_path)
     kapso.build("test goal", output=str(tmp_path / "out1"))
-    off_context = captured["handler"].additional_context
+    off_context = captured["handler"].get_problem_context()
     assert "Experience" not in off_context
     assert captured["kwargs"]["strategy_params_overrides"] is None
 
@@ -382,7 +385,7 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
     solution = kapso.build("test goal", output=str(tmp_path / "out2"))
     # the context is untouched (it is frozen at construction and never
     # was a seam): the intro is staged for the prompts to read
-    assert captured["handler"].additional_context == off_context
+    assert captured["handler"].get_problem_context() == off_context
     override = captured["kwargs"]["strategy_params_overrides"]
     assert "KAPSO_BANKS" in override["bank_serving"]
     intro_path = Path(override["experience_intro_path"])

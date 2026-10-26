@@ -43,7 +43,7 @@ kapso harness check ./harnesses/trading
 ```
 
 ```text
-check ok (7 skills, 2 agents, 2 servers, 6 hooks)
+check ok (7 skills, 2 agents, 2 servers, 7 hooks)
 name     trading 0.1.0
 ```
 
@@ -85,7 +85,7 @@ The launch prints the harness and what it adds:
    | `void` | The score is cleared, the attempt counts as rejected, it is never a parent and never delivered; the judge still reads the findings |
    | `unverified` | No verdict after two sessions: the score stands and the attempt may be a parent, but it is never delivered |
 
-   A malformed verdict fails the build naming the file. The judge's prompt carries the verdict beside the evaluation; a judge saying `valid` cannot resurrect a void attempt.
+   A malformed verdict fails the build naming the file. The judge's prompt carries the verdict beside the evaluation; a judge saying `valid` cannot resurrect a void attempt. An attempt the budget left unjudged (no time for the judge, or its session cut at the deadline) keeps its score, is never a parent and is never delivered, and the trace says so on its `judge` line; see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends).
 5. **The record.** The harness's name, version, content hash and source are in `.kapso/launch.json`, `status.json`, the checkpoint and `solution.json`, as one and the same identity; `solution.verification` is the verdict on the delivered candidate.
 
 ## In the campaign directory
@@ -117,7 +117,7 @@ A resume runs with the launch's harness, by content hash. Three refusals, each w
 
 | The campaign | Now | The message says |
 |---|---|---|
-| was launched with a harness | that harness has changed (a page edited, a version bumped) | both hashes, and how to get the recorded content back: `git checkout` in a directory, `kapso harness remove` then `add` for a git reference, or a new campaign |
+| was launched with a harness | that harness has changed (a page edited, a version bumped) | both hashes, the files changed, added or removed, and how to get the recorded content back: `git checkout` in a directory, `kapso harness remove` then `add` for a git reference, or a new campaign |
 | was launched with a harness | none is loaded | the harness it needs: pass `--harness <source>` or load it |
 | was launched without one | a harness is loaded | a resume cannot add one; start a new campaign |
 

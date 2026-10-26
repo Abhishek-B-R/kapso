@@ -35,9 +35,22 @@ class RunRecorder:
     offset: int
     started_at: str
     started_monotonic: float
+    # Why this invocation resumed the session, when it did for a reason
+    # the record should carry (the judge's "tags missing"); None else.
+    reason: Optional[str] = None
+    # The deadline the invocation was launched with, in seconds (the
+    # session's room under the budget, or its configured timeout); None
+    # when it ran without one.
+    deadline_seconds: Optional[float] = None
 
 
-def start_run(host: str, model: str, record_path: Optional[str], stream_path: Optional[str]) -> RunRecorder:
+def start_run(
+    host: str, model: str, record_path: Optional[str], stream_path: Optional[str],
+    reason: Optional[str] = None, deadline_seconds: Optional[float] = None,
+) -> RunRecorder:
+    """The recorder of one invocation, made before the launch so an
+    invocation that raises still records why it was made and what
+    deadline it had."""
     stream = Path(stream_path) if stream_path else None
     offset = stream.stat().st_size if stream is not None and stream.exists() else 0
     return RunRecorder(
@@ -45,6 +58,8 @@ def start_run(host: str, model: str, record_path: Optional[str], stream_path: Op
         record_path=Path(record_path) if record_path else None,
         stream_path=stream, offset=offset,
         started_at=_utcnow(), started_monotonic=time.monotonic(),
+        reason=reason,
+        deadline_seconds=None if deadline_seconds is None else round(float(deadline_seconds), 3),
     )
 
 
@@ -72,6 +87,8 @@ def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Opt
         started=recorder.started_at,
         ended=_utcnow(),
         duration_seconds=round(time.monotonic() - recorder.started_monotonic, 3),
+        deadline_seconds=recorder.deadline_seconds,
+        retry_reason=recorder.reason,
     )
     append_run(recorder.record_path, entry)
     return entry
@@ -80,19 +97,23 @@ def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Opt
 def run_entry(
     digest: Dict[str, Any], *, model: str, cli_session_id: Optional[str], exit: str,
     error: Optional[str], files_changed: list, started: Optional[str], ended: Optional[str],
-    duration_seconds: Optional[float],
+    duration_seconds: Optional[float], deadline_seconds: Optional[float] = None,
+    retry_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
     """One run entry's shape: the digest's fields under their own keys,
-    with how the run ended and when. `cost_usd` is filled by `append_run`
-    against the entry before it."""
+    with how the run ended and when, and the deadline it was launched
+    with. `cost_usd` is filled by `append_run` against the entry before
+    it."""
     return {
         "started": started,
         "ended": ended,
         "duration_seconds": duration_seconds,
+        "deadline_seconds": deadline_seconds,
         "model": model,
         "cli_session_id": cli_session_id,
         "exit": exit,
         "error": error,
+        "retry_reason": retry_reason,
         "cost_usd": None,
         "cost_cumulative": digest["cost_cumulative"],
         "turns": digest["turns"],

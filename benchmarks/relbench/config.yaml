@@ -1,263 +1,121 @@
-# RelBench Configuration
+# RelBench: an override file over the packaged config. The engine's
+# settings are at the top level, in the shape the packaged file names;
+# `kapso doctor --show-config --config benchmarks/relbench/config.yaml`
+# prints what a run uses. The runner writes a runtime copy with the task's
+# shared cache, the serving and the budget (`.kapso_runtime/config.yaml`).
 #
 # Generic strategy only (the tree-search era modes were deleted with the
 # strategy — stale-code audit 2026-08-26): agentic code-reading ideation,
-# implementation sessions, and evaluation through the maintainer-registered
-# entrypoint. Knowledge reaches ideation through the handler's problem
-# context (schema, SOTA table, playbooks); the KG backend is optional.
+# implementation sessions on Codex, and evaluation through the
+# maintainer-registered entrypoint wrapping the provided grader
+# (data/generic_eval — official val scoring only; test physically
+# unscorable in-loop). Knowledge reaches ideation through the handler's
+# problem context (schema, SOTA table, playbooks, the design axes).
 
-default_mode: RELBENCH_GENERIC
+# Benchmark harness: nobody is at the keyboard, so a session never asks a
+# person and never pauses.
+inbox:
+  enabled: false
 
-modes:
-  # ===========================================
-  # Production configuration
-  # ===========================================
-  # Code-reading agentic ideation, champion-chain parent policy, evaluation
-  # through the maintainer-registered entrypoint wrapping our provided
-  # grader (data/generic_eval — official val scoring only; test physically
-  # unscorable in-loop). Runner wires eval_dir for this mode.
-  RELBENCH_GENERIC:
-    # Benchmark harness: nobody is at the keyboard, so a session never
-    # asks a person and never pauses (defaults.inbox in the platform config).
-    inbox:
-      enabled: false
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-4-8"
-        # Implementation sessions run on the codex CLI (gpt-5.6-sol).
-        # OpenAI's reasoning ceiling is xhigh — there is no "max" tier —
-        # so every codex role below pins xhigh. session effort also feeds
-        # the claude single-session ideation fallback.
-        implementation_model: "gpt-5.6-sol"
-        implementation_cli: "codex"
-        # Temporal-leakage protocol: the test window's future exists on the web.
-        implementation_web: false
-        auth_mode: "oauth"
-        effort: "xhigh"
-        gate_failure_policy: "skip"
-        parent_policy: "best"
-        # K-way node expansion: the selector emits a ranked top-2 (slot 1 =
-        # highest expected return, slot 2 = deliberately complementary) and
-        # each is implemented/evaluated on its own parallel lane. Lane env
-        # thread-caps split the box (26 vCPU -> 12/12) so two candidate
-        # trainings cannot starve each other's evals (the 07-17 contention
-        # lesson); both lanes share the single GPU (CUDA_DEVICE default 0).
-        node_expansion_value: 4
-        # 4 parallel implementation lanes, each PINNED to its own GPU via
-        # CUDA_VISIBLE_DEVICES. Threads sized for the on-demand
-        # a2-highgpu-4g (48 vCPU / 340 GB / 4x A100-40GB): 4x11=44 of 48,
-        # leaving headroom for the orchestrator.
-        expansion_lane_env:
-          - {CUDA_VISIBLE_DEVICES: "0", OMP_NUM_THREADS: "11", MKL_NUM_THREADS: "11", OPENBLAS_NUM_THREADS: "11", NUMEXPR_MAX_THREADS: "11"}
-          - {CUDA_VISIBLE_DEVICES: "1", OMP_NUM_THREADS: "11", MKL_NUM_THREADS: "11", OPENBLAS_NUM_THREADS: "11", NUMEXPR_MAX_THREADS: "11"}
-          - {CUDA_VISIBLE_DEVICES: "2", OMP_NUM_THREADS: "11", MKL_NUM_THREADS: "11", OPENBLAS_NUM_THREADS: "11", NUMEXPR_MAX_THREADS: "11"}
-          - {CUDA_VISIBLE_DEVICES: "3", OMP_NUM_THREADS: "11", MKL_NUM_THREADS: "11", OPENBLAS_NUM_THREADS: "11", NUMEXPR_MAX_THREADS: "11"}
-        # Ideation is deliberately unbounded: the strategy clamps every phase
-        # to the remaining wall-clock budget (_clamped_timeout), so with this
-        # sentinel-high cap the campaign clock is the ONLY limit on ideation —
-        # each iteration stays bounded, the phase inside it does not.
-        ideation_timeout: 86400
-        # One experiment = implement + run the registered full evaluation
-        # (candidate training, up to the task's full timeout) inside the
-        # session: cap must cover both. Sized to contain a 4h full-eval cap
-        # (RELBENCH_FULL_TIMEOUT=14400) plus the implement phase (~1h).
-        # One experiment = implement + run the registered full evaluation
-        # (candidate training, up to the task's full timeout) inside the
-        # session: cap must cover both. Sized to contain a 4h full-eval cap
-        # (RELBENCH_FULL_TIMEOUT=14400) plus the implement phase (~1h).
-        implementation_timeout: 18000
-        # "bank" resolves only when the runner stages serving (config-gated
-        # KAPSO_* env); with serving off it is skipped quietly. The feedback
-        # judge mounts no gates at all (§5.1: never the judge).
-        ideation_gates: ["experiment_history", "repo_memory", "bank"]
-        implementation_gates: ["repo_memory", "bank"]
-        # Bash-tool clock policy (finding 14): without these the CLI
-        # auto-backgrounds any foreground command at 120s, making a
-        # blocking registered evaluation structurally impossible. Max sized
-        # above the 4h full-eval cap so the agent can hold a foreground eval
-        # to completion (30 min default / 5h max).
-        session_env_defaults:
-          BASH_DEFAULT_TIMEOUT_MS: "1800000"
-          BASH_MAX_TIMEOUT_MS: "18000000"
-        # Durable-archive recovery root for the registered evaluation
-        # (Issue 2): the grader archives runs (incl. manifest.txt) here,
-        # outside the session workspace, so a completed eval's score is
-        # recoverable even after session teardown.
-        registered_evaluation_archive_glob: "tmp/relbench/*/runs"
-        # Ensemble ideation mirroring the ioai-2025 IOAI deployment: parallel
-        # CLI members (a GPT member via codex + a Claude member) whose lenses
-        # are designed per-task by the web-enabled lens planner below — so no
-        # static `lens:` keys here (the planner owns every lens). The codex
-        # member authenticates via ~/.codex/auth.json (ChatGPT login), the
-        # claude members via CLAUDE_CODE_OAUTH_TOKEN.
-        ideation_ensemble:
-          - cli: "codex"
-            model: "gpt-5.6-sol"
-            effort: "xhigh"
-          - cli: "claude_code"
-            model: "claude-fable-5"
-            effort: "xhigh"
-        # Task-aware lens planning: a web-enabled Fable session surveys how
-        # this task's problem family is attacked and designs one lens per
-        # member at iteration 1; EVERY later iteration a keep-or-revise
-        # session re-judges the plan against the campaign evidence (current
-        # plan in .kapso/lens_plan.json, audit in lens_plan_history.jsonl).
-        ideation_lens_planner:
-          cli: "claude_code"
-          model: "claude-fable-5"
-          effort: "max"
-          timeout: 600
-        ideation_selector:
-          cli: "codex"
-          model: "gpt-5.6-sol"
-          effort: "xhigh"
-        # Member/selector carve-up of the ideation clamp, tuned under the
-        # split model (the campaign's proven timing; platform default is
-        # no split — each role would get the full clamp).
-        ensemble_time_split: {member_fraction: 0.7, selector_fraction: 0.3}
-        # Design axes for the anti-freeze contract: the lens replanner must
-        # status each axis (ACTIVE / SATURATED-with-evidence / DEFERRED)
-        # every iteration, and the feedback generator reports the per-axis
-        # frontier. Task-specific vocabulary for relational-table tasks.
-        design_axes:
-          - "input features / representation — joins, temporally-censored transforms, encodings, cohort priors over the relational database (feature engineering)"
-          - "training distribution — episode/window construction, staleness augmentation, sample weighting"
-          - "model mechanism — estimator family, objectives, ensembling"
-          - "decoding / post-processing — calibration, roster/structure constraints, blending"
-          - "validation protocol — origin design, gates, drift estimation"
+search_strategy:
+  params:
+    # Implementation, verification and the judge run on the codex CLI
+    # (gpt-5.6-sol at xhigh, OpenAI's reasoning ceiling).
+    host: codex
+    ideation:
+      # "bank" resolves only when the runner stages serving; with serving
+      # off it is skipped quietly. The judge mounts no gates at all.
+      gates: [experiment_history, repo_memory, bank]
+      candidates_per_member: 3
+      # Ideation is deliberately unbounded: the strategy clamps every phase
+      # to the remaining wall-clock budget, so with this sentinel-high cap
+      # the campaign clock is the ONLY limit on ideation — each round stays
+      # bounded, the phase inside it does not.
+      timeout: 86400
+      # Ensemble ideation mirroring the ioai-2025 IOAI deployment: a GPT
+      # member via codex and a Claude member, their lenses designed per
+      # task by the web-enabled lens planner (so no static `lens:` keys).
+      # The codex member authenticates via ~/.codex/auth.json, the claude
+      # members via CLAUDE_CODE_OAUTH_TOKEN.
+      ensemble:
+        - {cli: codex, effort: xhigh}
+        - {cli: claude_code, model: claude-fable-5, effort: xhigh}
+      # A web-enabled Fable session surveys how this task's problem family
+      # is attacked and designs one lens per member at iteration 1; every
+      # later iteration a keep-or-revise session re-judges the plan.
+      lens_planner: {cli: claude_code, model: claude-fable-5, effort: max, timeout: 600}
+      selector: {cli: codex, effort: xhigh}
+      # Member/selector carve-up of the ideation clamp, tuned under the
+      # split model (the campaign's proven timing).
+      ensemble_time_split: {member_fraction: 0.7, selector_fraction: 0.3}
+    implementation:
+      gates: [repo_memory, bank]
+      # Temporal-leakage protocol: the test window's future exists on the
+      # web, so implementation sessions get no live web on either host.
+      web: false
+      # One experiment = implement + run the registered full evaluation
+      # (candidate training, up to the task's full timeout) inside the
+      # session: the cap covers a 4h full-eval cap (RELBENCH_FULL_TIMEOUT)
+      # plus the implement phase (~1h).
+      timeout: 18000
+    judge:
+      timeout: 900
+    gate_failure_policy: skip
+    # K-way node expansion: the selector emits a ranked top-4 and each is
+    # implemented and evaluated on its own parallel lane, PINNED to its
+    # own GPU via CUDA_VISIBLE_DEVICES. Threads sized for the on-demand
+    # a2-highgpu-4g (48 vCPU / 340 GB / 4x A100-40GB): 4x11=44 of 48,
+    # leaving headroom for the orchestrator.
+    node_expansion_value: 4
+    expansion_lane_env:
+      - {CUDA_VISIBLE_DEVICES: "0", OMP_NUM_THREADS: "11", MKL_NUM_THREADS: "11", OPENBLAS_NUM_THREADS: "11", NUMEXPR_MAX_THREADS: "11"}
+      - {CUDA_VISIBLE_DEVICES: "1", OMP_NUM_THREADS: "11", MKL_NUM_THREADS: "11", OPENBLAS_NUM_THREADS: "11", NUMEXPR_MAX_THREADS: "11"}
+      - {CUDA_VISIBLE_DEVICES: "2", OMP_NUM_THREADS: "11", MKL_NUM_THREADS: "11", OPENBLAS_NUM_THREADS: "11", NUMEXPR_MAX_THREADS: "11"}
+      - {CUDA_VISIBLE_DEVICES: "3", OMP_NUM_THREADS: "11", MKL_NUM_THREADS: "11", OPENBLAS_NUM_THREADS: "11", NUMEXPR_MAX_THREADS: "11"}
+    # Bash-tool clock policy (finding 14): without these the CLI
+    # auto-backgrounds any foreground command at 120s, making a blocking
+    # registered evaluation structurally impossible. Max sized above the
+    # 4h full-eval cap so the agent can hold a foreground eval to
+    # completion (30 min default / 5h max).
+    session_env_defaults:
+      BASH_DEFAULT_TIMEOUT_MS: "1800000"
+      BASH_MAX_TIMEOUT_MS: "18000000"
+    # Durable-archive recovery root for the registered evaluation (Issue
+    # 2): the grader archives runs (incl. manifest.txt) here, outside the
+    # session workspace, so a completed eval's score is recoverable even
+    # after session teardown.
+    registered_evaluation_archive_glob: "tmp/relbench/*/runs"
 
-    # Time-budgeted campaigns: the search decides its own iteration count;
-    # launch with a high -i so the clock, not the counter, is binding.
-    # Admission floor keeps a doomed final iteration (needs ~1h+ with 4h
-    # evals) from being started; the reserve protects final_evaluate.
-    budget:
-      time_budget_minutes: 600
-      finalization_reserve_minutes: 15
-      min_iteration_seconds: 1800
-      # Durable-clock heartbeat: generic-strategy iterations span hours, so
-      # boundary-only checkpoints let a SPOT preemption rewind the budget
-      # clock on resume (seen live: an A/B arm nearly doubled its budget).
-      # The heartbeat patches elapsed_seconds mid-iteration.
-      checkpoint_heartbeat_seconds: 300
+# Time-budgeted campaigns: the search decides its own iteration count;
+# launch with a high -i so the clock, not the counter, is binding. The
+# admission floor keeps a doomed final round (needs ~1h+ with 4h evals)
+# from being started; the reserve protects final_evaluate.
+budget:
+  minutes: 600
+  reserve_minutes: 15
+  min_iteration_seconds: 1800
+  # Durable-clock heartbeat: generic-strategy rounds span hours, so
+  # boundary-only checkpoints let a SPOT preemption rewind the budget
+  # clock on resume (seen live: an A/B arm nearly doubled its budget).
+  # The heartbeat patches elapsed_seconds mid-round.
+  checkpoint_heartbeat_seconds: 300
 
-    evaluation_maintainer:
-      type: "codex"
-      model: "gpt-5.6-sol"
-      agent_specific:
-        effort: "xhigh"
-        timeout: 1800
-      # Registration calibrates via a fast-fidelity run = the candidate's
-      # --debug mode; must fit the debug-tier cap.
-      calibration_timeout_seconds: 1200
-      max_change_requests: 3
-      # Late-transition freeze: past this fraction of the time budget,
-      # evaluator change requests are deferred — a ruler change near the
-      # deadline orphans final selection (2026-08-16: a transition at 92%
-      # budget left one eligible final from a 12h ladder).
-      transition_freeze_fraction: 0.85
+evaluation_maintainer:
+  enabled: true
+  timeout: 1800
+  # Registration calibrates via a fast-fidelity run = the candidate's
+  # --debug mode; must fit the debug-tier cap.
+  calibration_timeout_seconds: 1200
+  max_change_requests: 3
+  # Late-transition freeze: past this fraction of the time budget,
+  # evaluator change requests are deferred — a ruler change near the
+  # deadline orphans final selection (2026-08-16: a transition at 92%
+  # budget left one eligible final from a 12h ladder).
+  transition_freeze_fraction: 0.85
 
-    coding_agent:
-      type: "codex"
-      model: "gpt-5.6-sol"
-      debug_model: "gpt-5.6-sol"
-      agent_specific:
-        effort: "xhigh"
-        timeout: 18000
-
-    # effort: user asked for max; xhigh is the OpenAI ceiling.
-    feedback_generator:
-      type: "codex"
-      model: "gpt-5.6-sol"
-      debug_model: "gpt-5.6-sol"
-      agent_specific:
-        effort: "xhigh"
-        timeout: 900
-
-    # Rich routes: attaches reasoning_effort to call sites that never plumbed
-    # an effort parameter (repo memory, insight extraction). Mirrors the
-    retry:
-      max_attempts: 5
-      initial_delay_seconds: 5
-      max_delay_seconds: 120
-      multiplier: 2
-      jitter: true
-
-    knowledge_search:
-      type: "kg_llm_navigation"
-      enabled: false
-
-
-  # Fast system-debugging loop: production mechanics (claude_code coder,
-  # same contracts/handler) at ~5x lower latency. Pair with a tiny task,
-  # e.g.: -s rel-f1 -t driver-circuit-compete (27-row val/test, seconds-fast
-  # evals). Iterations ~15-20 min instead of ~90.
-  FAST_DEBUG:
-    # Benchmark harness: nobody is at the keyboard, so a session never
-    # asks a person and never pauses (defaults.inbox in the platform config).
-    inbox:
-      enabled: false
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        implementation_model: "gpt-5.6-sol"
-        implementation_cli: "codex"
-        implementation_web: false
-        auth_mode: "oauth"
-        effort: "medium"
-        gate_failure_policy: "skip"
-        parent_policy: "best"
-        ideation_gates: ["experiment_history", "repo_memory"]
-        implementation_gates: ["repo_memory"]
-        ideation_timeout: 900
-        implementation_timeout: 3600
-        session_env_defaults:
-          BASH_DEFAULT_TIMEOUT_MS: "1800000"
-          BASH_MAX_TIMEOUT_MS: "3600000"
-
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-      agent_specific:
-        effort: "medium"
-        auth_mode: "oauth"
-
-    knowledge_search:
-      type: "kg_llm_navigation"
-      enabled: false
-
-
-  # ===========================================
-  # Quick smoke testing (rel-f1 scale)
-  # ===========================================
-  MINIMAL:
-    # Benchmark harness: nobody is at the keyboard, so a session never
-    # asks a person and never pauses (defaults.inbox in the platform config).
-    inbox:
-      enabled: false
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        implementation_model: "claude-opus-5"
-        auth_mode: "oauth"
-        effort: "medium"
-        gate_failure_policy: "skip"
-        parent_policy: "best"
-        ideation_gates: ["experiment_history", "repo_memory"]
-        implementation_gates: ["repo_memory"]
-        ideation_timeout: 600
-        implementation_timeout: 1800
-
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-      debug_model: "claude-opus-5"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-
-    knowledge_search:
-      type: "kg_llm_navigation"
-      enabled: false
+retry:
+  max_attempts: 5
+  initial_delay_seconds: 5
+  max_delay_seconds: 120
+  multiplier: 2
+  jitter: true

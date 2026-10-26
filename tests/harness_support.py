@@ -13,13 +13,19 @@ import git
 
 import kapso.execution.orchestrator as orchestrator_module
 import kapso.kapso as kapso_module
+from kapso.core.config import deep_merge, load_config
+from kapso.core.roles import resolve_role
 from kapso.execution.coding_agents.base import CodingResult
 from kapso.execution.observability import BuildStatus
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
-FAKE_MODE_CONFIG = {"search_strategy": {"type": "generic", "params": {}}, "inbox": {"enabled": False}}
+
+
+def fake_config(**blocks: Any) -> Dict[str, Any]:
+    """The packaged config with a test's own blocks over it."""
+    return deep_merge(load_config(), blocks)
 
 
 class FakeLLM:
@@ -45,19 +51,20 @@ class ScoringFakeStrategy:
     """One scored candidate per run, on a real branch of the workspace;
     stages the harness the way the real strategy does."""
 
-    implementation_cli = "claude_code"
-    implementation_model = "test-model"
-    _claude_auth_settings: Dict[str, Any] = {}
     env_strip: List[str] = []
     env_defaults: Dict[str, str] = {}
-    session_effort = None
     gate_failure_policy = "warn"
     inbox_settings: Optional[Dict[str, Any]] = None
+    budget_snapshot = None
 
     def __init__(self, workspace_dir: str, harness: Any):
         self.workspace_dir = workspace_dir
         self.workspace = FakeWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.harness = harness
+        config = load_config()
+        self.implementation_role = resolve_role(config["hosts"], config["search_strategy"]["params"], "implementation")
         self.iteration_count = 0
         self.node_history: List[SearchNode] = []
         self.scores_evaluator_id = ""
@@ -75,6 +82,9 @@ class ScoringFakeStrategy:
 
     def _clamped_timeout(self, seconds: float) -> float:
         return seconds
+
+    def _room(self, *, finishing: bool = False, obligations_seconds: float = 0.0):
+        return None
 
     def stage_harness_for(self, module: str, session_dir: str, label: str, agent_type: str):
         # The engine's own method, on this fake: the records tests pin the
@@ -185,19 +195,18 @@ def patch_engine(
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     # Every launch registers the campaign (wp6-observability.md): the
     # registry is a file of the test's own, never the machine's.
-    mode_config = {
-        **FAKE_MODE_CONFIG,
-        "inbox": {"enabled": False, "registry": str(Path(tempfile.mkdtemp(prefix="kapso-registry-")) / "campaigns.jsonl")},
-    }
-    monkeypatch.setattr(orchestrator_module, "load_mode_config", lambda *a, **k: dict(mode_config))
-    monkeypatch.setattr(kapso_module, "load_mode_config", lambda *a, **k: dict(mode_config))
+    config = fake_config(
+        inbox={"enabled": False, "registry": str(Path(tempfile.mkdtemp(prefix="kapso-registry-")) / "campaigns.jsonl")},
+    )
+    monkeypatch.setattr(orchestrator_module, "load_config", lambda *a, **k: dict(config))
+    monkeypatch.setattr(kapso_module, "load_config", lambda *a, **k: dict(config))
     monkeypatch.setattr(kapso_module, "run_preflight", lambda *a, **k: None)
-    monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self, coding_agent=None: object())
+    monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self: object())
     strategies: List[Any] = []
 
-    def create_strategy(self, coding_agent, workspace_dir, start_from_checkpoint):
+    def create_strategy(self, workspace_dir, start_from_checkpoint):
         if real_strategy:
-            strategy = REAL_CREATE_STRATEGY(self, coding_agent, workspace_dir, start_from_checkpoint)
+            strategy = REAL_CREATE_STRATEGY(self, workspace_dir, start_from_checkpoint)
         else:
             strategy = ScoringFakeStrategy(workspace_dir, self.harness)
         if inbox is not None:

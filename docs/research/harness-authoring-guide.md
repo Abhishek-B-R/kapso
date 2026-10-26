@@ -89,7 +89,7 @@ modules:
     skills: [backtesting, market-data, risk-limits, lookahead-scan]
     mcp_servers: [market-data]
     agents: [lookahead-auditor]
-    hooks: [session-brief, deny-web-fetch, protect-prepared, deny-snapshot, scan-writes, require-results]
+    hooks: [session-brief, deny-web-fetch, deny-web, protect-prepared, deny-snapshot, scan-writes, require-results]
 ```
 
 Rules:
@@ -698,6 +698,7 @@ examples/harnesses/trading/
 └── hooks/
     ├── session-brief/              SessionStart: which market this run is on
     ├── deny-web-fetch/             PreToolUse on the shell
+    ├── deny-web/                   PreToolUse on the native web tools (implementation)
     ├── protect-prepared/           PreToolUse on the file tools
     ├── deny-snapshot/              PreToolUse on one server tool
     ├── scan-writes/                PostToolUse advisory, sharing the skill's rules

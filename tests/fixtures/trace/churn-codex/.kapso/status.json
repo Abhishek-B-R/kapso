@@ -1,0 +1,44 @@
+{
+ "operation": "build",
+ "phases": [
+  "setup",
+  "harness_setup",
+  "lens_planning",
+  "ideation",
+  "implementation",
+  "evaluation",
+  "verification",
+  "feedback"
+ ],
+ "state": "done",
+ "pid": 2434670,
+ "started_at": "2026-10-26T14:14:56+00:00",
+ "heartbeat_at": "2026-10-26T14:41:49+00:00",
+ "phase": "feedback",
+ "phase_started_at": "2026-10-26T14:38:56+00:00",
+ "recent": [
+  "14:16 iteration 1 started (budget 0%)",
+  "14:41 node 0 completed score=0.849",
+  "14:41 stopping: the remaining 15.8 min would not cover an attempt (the last took 25.8 min)"
+ ],
+ "harness": null,
+ "experience": [],
+ "heartbeat_seconds": 60.0,
+ "budget": {
+  "elapsed_min": 25.8,
+  "total_min": 45.0,
+  "reserve_min": 3.4
+ },
+ "iteration": 1,
+ "last": {
+  "score": 0.849,
+  "node": 0
+ },
+ "best": {
+  "score": 0.849,
+  "node": 0
+ },
+ "finished_at": "2026-10-26T14:41:49+00:00",
+ "stopped_reason": "budget_exhausted",
+ "stop_detail": "attempt_would_not_fit"
+}

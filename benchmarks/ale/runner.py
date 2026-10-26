@@ -13,7 +13,6 @@ Usage:
 Options:
     --problem, -p           Problem ID to solve (e.g., ahc039)
     --iterations, -i        Maximum iterations (default: 30)
-    --mode, -m              Config mode: ALE_GENERIC (default), MINIMAL
     --coding-agent, -d      Coding agent: aider, gemini, claude_code, openhands
     --list                  List all available problems
     --lite                  List only lite benchmark problems
@@ -37,6 +36,7 @@ load_dotenv()
 import ale_bench
 
 from kapso.execution.orchestrator import OrchestratorAgent
+from kapso.core.config import read_yaml
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from benchmarks.ale.handler import AleBench
 
@@ -75,7 +75,6 @@ def list_agents() -> None:
 def solve_problem(
     problem_id: str,
     max_iterations: int = 30,
-    mode: Optional[str] = None,
     coding_agent: Optional[str] = None,
     use_kg: bool = False,
 ) -> dict:
@@ -85,7 +84,6 @@ def solve_problem(
     Args:
         problem_id: The AtCoder problem ID (e.g., ahc039)
         max_iterations: Maximum experiment iterations
-        mode: Config mode (ALE_GENERIC (default), MINIMAL)
         coding_agent: Coding agent to use (aider, gemini, claude_code, openhands)
         use_kg: Whether to use the knowledge graph
         
@@ -96,7 +94,7 @@ def solve_problem(
     print(f"Solving: {problem_id}")
     print(f"{'='*60}")
     print(f"  Max iterations: {max_iterations}")
-    print(f"  Config mode: {mode or 'default (ALE_GENERIC)'}")
+    print(f"  Config: {CONFIG_PATH}")
     print(f"  Coding agent: {coding_agent or 'from config'}")
     print(f"  Knowledge graph: {'enabled' if use_kg else 'disabled'}")
     print()
@@ -106,7 +104,6 @@ def solve_problem(
     orchestrator = OrchestratorAgent(
         problem_handler,
         config_path=CONFIG_PATH,
-        mode=mode,
         coding_agent=coding_agent,
     )
     
@@ -158,12 +155,6 @@ def main():
         help="Maximum experiment iterations (default: 30)"
     )
     parser.add_argument(
-        "-m", "--mode",
-        type=str,
-        default=None,
-        help="Configuration mode (default: ALE_GENERIC)"
-    )
-    parser.add_argument(
         "-d", "--coding-agent",
         type=str,
         choices=AVAILABLE_AGENTS,
@@ -210,22 +201,14 @@ def main():
         print("Use --list to see available problems")
         sys.exit(1)
     
-    # Load config to get use_knowledge_graph
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            config_data = yaml.safe_load(f)
-        mode_name = args.mode or config_data.get('default_mode', 'ALE_GENERIC')
-        mode_config = config_data.get('modes', {}).get(mode_name, {})
-        use_knowledge_graph = mode_config.get('use_knowledge_graph', False)
-    except Exception as e:
-        print(f"Warning: Could not load config for KG setting: {e}")
-        use_knowledge_graph = False
+    # The runner's own settings live under `benchmark:` in this
+    # benchmark's override file; the engine reads the rest.
+    use_knowledge_graph = read_yaml(CONFIG_PATH)["benchmark"]["use_knowledge_graph"]
     
     # Solve the problem
     result = solve_problem(
         problem_id=args.problem,
         max_iterations=args.iterations,
-        mode=args.mode,
         coding_agent=args.coding_agent,
         use_kg=use_knowledge_graph,
     )

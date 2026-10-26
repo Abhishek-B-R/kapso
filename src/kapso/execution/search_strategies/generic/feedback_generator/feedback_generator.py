@@ -15,7 +15,7 @@
 import subprocess
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Callable, List, Optional, Tuple
 
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.coding_agents.base import CodingAgentConfig
@@ -36,6 +36,10 @@ class FeedbackResult:
     # Budget telemetry for the feedback agent call itself.
     cost_usd: float = 0.0
     duration_seconds: Optional[float] = None
+    # Why no verdict was reached (the judge's session ended at its
+    # deadline, no tags after a retry, no room for one): the attempt is
+    # unjudged, by reason, never given a fabricated verdict.
+    unjudged: str = ""
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -45,6 +49,7 @@ class FeedbackResult:
             "feedback": self.feedback,
             "score": self.score,
             "cards_load_bearing": self.cards_load_bearing,
+            "unjudged": self.unjudged,
             "cost_usd": self.cost_usd,
             "duration_seconds": self.duration_seconds,
         }
@@ -67,11 +72,16 @@ class FeedbackGenerator:
     
     # Default prompt path
     PROMPT_PATH = "execution/search_strategies/generic/feedback_generator/prompts/feedback_generator.md"
+    # The axes section and the frontier duty, rendered only while the
+    # campaign has a lens plan (the planner names the axes).
+    AXIS_FRONTIER_PROMPT_PATH = "execution/search_strategies/generic/feedback_generator/prompts/axis_frontier.md"
 
-    # Single source for the module's default call timeout; live runs get
-    # theirs from the mode config's feedback_generator block.
-    DEFAULT_TIMEOUT_SECONDS = 120.0
-
+    # The retry resumes the judge's own session with the nudge; its run
+    # entry says why (`retry_reason`), and the outcomes without a verdict
+    # are the attempt's `unjudged` reasons.
+    RETRY_REASON = "tags missing"
+    DEADLINE_REASON = "the judge's session ended at its deadline"
+    NO_TAGS_AFTER_RETRY = "no tags after a retry"
     RETRY_PROMPT = (
         "Your previous response did not contain the required tags. Respond "
         "now with ONLY the five tags — <stop>, <evaluation_valid>, <score>, "
@@ -79,29 +89,14 @@ class FeedbackGenerator:
         "just analyzed. No other text."
     )
     
-    def __init__(
-        self,
-        coding_agent_config: Optional[CodingAgentConfig] = None,
-    ):
+    def __init__(self, coding_agent_config: CodingAgentConfig):
         """
         Initialize feedback generator.
-        
-        Args:
-            coding_agent_config: Config for the coding agent. If None,
-                defaults to claude_code with adapter-resolved auth
-                (subscription-first; bedrock removed 2026-08-26).
-        """
-        if coding_agent_config is None:
-            coding_agent_config = CodingAgentConfig(
-                agent_type="claude_code",
-                model="claude-opus-5",
-                debug_model="claude-opus-5",
-                agent_specific={
-                    "streaming": True,
-                    "timeout": self.DEFAULT_TIMEOUT_SECONDS,
-                }
-            )
 
+        Args:
+            coding_agent_config: The judge's session: the `judge` role over
+                the config's hosts table, built by the orchestrator.
+        """
         # Absent timeout means no judge deadline: pin the explicit None so
         # the adapter runs unbounded instead of applying its own default.
         coding_agent_config.agent_specific.setdefault("timeout", None)
@@ -144,11 +139,12 @@ class FeedbackGenerator:
         evaluation_script_path: str,
         evaluation_result: str,
         workspace_dir: str,
-        design_axes: str = "",
+        axes: str = "",
         session_end_facts: str = "",
         timeout_seconds: Optional[float] = None,
         domain_guidance: str = "",
         verification: str = "",
+        retry_deadline: Optional[Callable[[], Tuple[Optional[float], Optional[str]]]] = None,
     ) -> FeedbackResult:
         """
         Generate feedback for the iteration.
@@ -187,42 +183,53 @@ class FeedbackGenerator:
             evaluation_script_path=evaluation_script_path,
             evaluation_result=evaluation_result,
             workspace_dir=workspace_dir,
-            design_axes=design_axes,
+            axes=axes,
             session_end_facts=session_end_facts,
             domain_guidance=domain_guidance,
             verification=verification,
         )
 
-        # Run the coding agent to analyze and generate feedback. The agent is
-        # persistent across iterations, so this call's spend is the cumulative
-        # delta around it (retry included).
+        # Run the judge. The agent is persistent across iterations, so
+        # this call's spend is the cumulative delta around it (the retry
+        # included). The invocation's outcome is inspected before its
+        # output: a first run that ended at its deadline is not retried
+        # (a retry would get less still); a complete answer with no tags
+        # resumes the judge's own session with the nudge, under a room
+        # the caller re-computes (`retry_deadline`); a retry cut at its
+        # deadline, or still without tags, leaves the attempt unjudged,
+        # by reason — never a fabricated verdict.
         call_started = time.monotonic()
         cost_before = self.agent.get_cumulative_cost()
         result = self.agent.generate_code(
             prompt, timeout_seconds=timeout_seconds
         )
-        response = result.output
-
-        feedback_result = self._parse_response(response)
-        if feedback_result is None:
-            # One in-session nudge: the judge failing to emit tags loses
-            # the whole iteration's verdict, so a cheap retry earns its
-            # cost. Still tagless after that -> an explicit failure result,
-            # never a fabricated verdict.
-            result = self.agent.generate_code(
-                self.RETRY_PROMPT, timeout_seconds=timeout_seconds
-            )
-            response = result.output
-            feedback_result = self._parse_response(response)
+        unjudged = self._ended_at_deadline(result)
+        if unjudged is None and not result.success:
+            # The invocation itself failed (a login revoked, a quota, a
+            # crashed CLI): nothing to parse and nothing to resume.
+            unjudged = f"the judge's session failed: {result.error or 'no output'}"
+        feedback_result = None if unjudged else self._parse_response(result.output)
+        if unjudged is None and feedback_result is None:
+            cli_session_id = result.metadata.get("cli_session_id")
+            if not cli_session_id:
+                raise RuntimeError(
+                    "the judge's session cannot be resumed for its retry: the adapter "
+                    "recorded no cli_session_id (a wiring bug, not a tagless answer)"
+                )
+            room, not_launched = retry_deadline() if retry_deadline is not None else (timeout_seconds, None)
+            if not_launched is not None:
+                unjudged = f"no tags, and no room for a retry ({not_launched})"
+            else:
+                result = self.agent.resume(
+                    cli_session_id, self.RETRY_PROMPT, timeout_seconds=room, reason=self.RETRY_REASON,
+                )
+                unjudged = self._ended_at_deadline(result)
+                feedback_result = None if unjudged else self._parse_response(result.output)
+                if unjudged is None and feedback_result is None:
+                    unjudged = self.NO_TAGS_AFTER_RETRY
         if feedback_result is None:
             feedback_result = FeedbackResult(
-                stop=False,
-                evaluation_valid=True,
-                feedback=(
-                    "Feedback generation failed: the required tags were "
-                    "missing after a retry.\n\nRaw output:\n" + response
-                ),
-                score=None,
+                stop=False, evaluation_valid=True, feedback="", score=None, unjudged=unjudged,
             )
         feedback_result.cost_usd = (
             self.agent.get_cumulative_cost() - cost_before
@@ -230,6 +237,14 @@ class FeedbackGenerator:
         feedback_result.duration_seconds = time.monotonic() - call_started
         return feedback_result
     
+    def _ended_at_deadline(self, result: Any) -> Optional[str]:
+        """The deadline reason when the invocation was killed at its
+        deadline without completing its turn, None otherwise."""
+        metadata = result.metadata
+        if metadata.get("deadline_exceeded") and not metadata.get("completed_before_kill"):
+            return self.DEADLINE_REASON
+        return None
+
     def _build_prompt(
         self,
         goal: str,
@@ -241,7 +256,7 @@ class FeedbackGenerator:
         evaluation_script_path: str,
         evaluation_result: str,
         workspace_dir: str,
-        design_axes: str = "",
+        axes: str = "",
         session_end_facts: str = "",
         domain_guidance: str = "",
         verification: str = "",
@@ -260,7 +275,10 @@ class FeedbackGenerator:
                 "evaluation_script_path": evaluation_script_path,
                 "evaluation_result": evaluation_result,
                 "workspace_dir": workspace_dir,
-                "design_axes": design_axes or "(none declared)",
+                "axis_frontier": optional_block(
+                    render_prompt(load_prompt(self.AXIS_FRONTIER_PROMPT_PATH), {"axes": axes})
+                    if axes else ""
+                ),
                 "session_end_facts": session_end_facts
                 or "(not recorded)",
                 "domain_guidance": optional_block(domain_guidance),
@@ -336,11 +354,12 @@ class FeedbackGenerator:
 
             feedback = feedback_str or ""
 
-            # Citation contract: comma-separated card names; "none"/absent
-            # mean no served card was load-bearing (also the case whenever
+            # Citation contract: comma-separated card names; "none" (the
+            # prompt's word), "false", "null", an empty tag or no tag mean
+            # no served card was load-bearing (also the case whenever
             # serving is off and the tag never appears).
             cards_load_bearing = []
-            if cards_str and cards_str.lower() != "none":
+            if cards_str and cards_str.lower() not in ("none", "false", "null"):
                 cards_load_bearing = [
                     name.strip().strip("[]").removeprefix("card:")
                     for name in cards_str.split(",")

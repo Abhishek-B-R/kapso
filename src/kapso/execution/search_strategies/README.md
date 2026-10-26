@@ -27,10 +27,8 @@ search_strategies/
 ├── __init__.py              # Public exports
 ├── base.py                  # SearchStrategy ABC + SearchNode
 ├── factory.py               # Registry + factory (auto-discovers strategies)
-├── strategies.yaml          # Default presets for all strategies
 ├── _template.py             # 👈 COPY THIS to create your strategy
-├── generic.py               # Built-in: Claude Code + MCP gates
-├── benchmark_tree_search.py # Built-in: Tree search for benchmarks
+├── generic/                 # Built-in: the generic strategy (coding-agent sessions + MCP gates)
 └── README.md                # This file
 ```
 
@@ -92,39 +90,15 @@ class MyStrategy(SearchStrategy):
         return None
 ```
 
-### Step 3: Add Presets (Optional)
-
-Add to `strategies.yaml`:
+### Step 3: Name it in the config
 
 ```yaml
-strategies:
-  my_strategy:
-    description: "My awesome search strategy"
-    presets:
-      FAST:
-        params:
-          iterations: 5
-          code_debug_tries: 2
-      THOROUGH:
-        params:
-          iterations: 20
-          code_debug_tries: 5
-    default_preset: "FAST"
-```
-
-### Step 4: Use in Benchmark Config
-
-```yaml
-# benchmarks/mle/config.yaml
-modes:
-  MY_MODE:
-    search_strategy:
-      type: "my_strategy"
-      params:
-        iterations: 10
-        my_custom_param: "value"
-    coding_agent:
-      type: "aider"
+# an override file over the packaged config
+search_strategy:
+  type: "my_strategy"
+  params:
+    iterations: 10
+    my_custom_param: "value"
 ```
 
 ## Available Base Class Features
@@ -209,14 +183,6 @@ SearchStrategyFactory.list_available()
 SearchStrategyFactory.is_available("generic")
 # True
 
-# Get preset params
-SearchStrategyFactory.get_preset_params("generic", "MINIMAL")
-# {'idea_generation_model': '...', 'implementation_model': '...', ...}
-
-# List presets for a strategy
-SearchStrategyFactory.list_presets("benchmark_tree_search")
-# ['HEAVY_EXPERIMENTATION', 'HEAVY_THINKING', 'MINIMAL', 'PRODUCTION']
-
 # Create strategy instance
 strategy = SearchStrategyFactory.create(
     strategy_type="generic",
@@ -233,10 +199,10 @@ SearchStrategyFactory.print_strategies_info()
 ## Tips
 
 1. **Start Simple**: Begin with a basic implementation, then add complexity
-2. **Use Presets**: Define presets in `strategies.yaml` for easy configuration
+2. **Parameters in the config**: every parameter a strategy reads lives in `search_strategy.params` of the config (the packaged file names the defaults; an unknown key is refused by name)
 3. **Log Progress**: Print iteration info for debugging
 4. **Handle Errors**: Check `node.had_error` before storing scores
-5. **Parallel Execution**: Use `ThreadPoolExecutor` for parallel experiments (see `benchmark_tree_search.py`)
+5. **Parallel Execution**: Use `ThreadPoolExecutor` for parallel experiments (see the generic strategy's lanes)
 
 ## Need Help?
 

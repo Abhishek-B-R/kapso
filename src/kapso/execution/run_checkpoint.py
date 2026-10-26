@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from kapso.execution.budget import ATTEMPT_WOULD_NOT_FIT, FINISHING_CUT
 from kapso.execution.cost_estimator import normalize_cost_config
 
 
@@ -88,14 +89,14 @@ class RunCheckpoint:
     # when nothing is loaded.
     experience: List[Dict[str, Any]] = field(default_factory=list)
 
-    SCHEMA_VERSION = 5
+    SCHEMA_VERSION = 6
     VALID_STATUSES = {"running", "completed"}
     # waiting_for_user: the campaign paused for a reply in the inbox
     # (docs/research/evolve-hub-design.md v4); a resume continues the
     # session that asked once the reply is in.
     VALID_LAST_STOPS = {
-        "time_budget", "cost_budget", "finalization_reserve", "waiting_for_user",
-        "cost_budget_exhausted",
+        "time_budget", "cost_budget", ATTEMPT_WOULD_NOT_FIT, FINISHING_CUT,
+        "waiting_for_user", "cost_budget_exhausted",
     }
 
     @classmethod

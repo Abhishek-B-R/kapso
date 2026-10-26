@@ -125,15 +125,10 @@ search_strategy:
   type: generic
   params:
     gate_failure_policy: warn  # skip | warn | error
-    ideation_gates:
-      - research
-      - experiment_history
-      - repo_memory
-      - leeroopedia
-    implementation_gates:
-      - research
-      - repo_memory
-      - leeroopedia
+    ideation:
+      gates: [research, experiment_history, repo_memory]
+    implementation:
+      gates: [research, repo_memory]
 ```
 
 Use `error` for a reproducible campaign where every configured knowledge source
@@ -195,7 +190,7 @@ available dependencies; live credential tests should remain opt-in.
     Where gates are offered
   </Card>
   <Card title="Configuration" icon="gear" href="/docs/reference/configuration#search_strategy">
-    ideation_gates and implementation_gates
+    The roles' gates lists
   </Card>
 </CardGroup>
 

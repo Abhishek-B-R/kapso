@@ -33,12 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from kapso.core.config import (
-    PLATFORM_CONFIG_PATH,
-    load_experience_defaults,
-    load_harness_defaults,
-    load_mode_config,
-)
+from kapso.core.config import load_config
+from kapso.experience.sources import experience_settings
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.experience.reference import parse_experience_reference
 from kapso.experience.sources import ExperienceSource, resolve_source
@@ -104,7 +100,7 @@ def prepare_host_gates(
     *,
     root: Path,
     requested: Sequence[str],
-    mode_config: Dict[str, Any],
+    config: Dict[str, Any],
     sources: Sequence[ExperienceSource],
     session_dir: Path,
     probe_budget: int,
@@ -167,7 +163,7 @@ def prepare_host_gates(
             env["EXPERIMENT_HISTORY_PATH"] = str(
                 campaign / ".kapso" / EXPERIMENT_HISTORY_NAME
             )
-            embedding = (mode_config.get("models") or {}).get("embedding")
+            embedding = config["models"]["embedding"]
             if embedding:
                 env["EXPERIMENT_EMBEDDING_MODEL"] = str(embedding)
         elif gate == "bank":
@@ -235,9 +231,8 @@ def remove_session_dir(session_dir: Path) -> None:
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = _parse_args(argv)
-    config_path = args.config or str(PLATFORM_CONFIG_PATH)
-    settings = load_experience_defaults(config_path)
-    mode_config = load_mode_config(config_path)
+    config = load_config(args.config)
+    settings = experience_settings(config)
     root = Path(args.root).expanduser().resolve() if args.root else Path.cwd()
     sources = load_sources(args.experience, settings)
     harness_name = None
@@ -245,7 +240,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         # Loaded for its name alone: the coordinate the bank serves by.
         # stderr keeps stdout for the MCP transport.
         harness = load_harness(
-            args.harness, settings=load_harness_defaults(config_path),
+            args.harness, settings=config["harness"],
             say=lambda line: print(f"kapso-mcp: {line}", file=sys.stderr),
         )
         harness_name = harness.name
@@ -262,7 +257,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     gates = prepare_host_gates(
         root=root,
         requested=requested,
-        mode_config=mode_config,
+        config=config,
         sources=sources,
         session_dir=session_dir,
         probe_budget=settings["probe_budget"],

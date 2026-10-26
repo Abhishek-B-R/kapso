@@ -137,8 +137,9 @@ kapso watch ../churn-campaign --follow
   wins over the brief's `Experience` line, and each source is loaded before the
   fork, so a source that does not exist refuses here, not in the child's log.
   `--harness <ref>` names the domain layer the same way.
-- `-m GENERIC` (default, the gates on) or `-m MINIMAL`; `-a` picks the coding
-  agent (`claude_code` default, `codex`, `gemini`, `openhands`, `oss_claude_code`).
+- `-a` picks the host every role without a `cli` of its own runs on
+  (`claude_code` as packaged, `codex`, `gemini`, `openhands`, `oss_claude_code`);
+  `--config <file>` layers an override file over the packaged config.
 - The summary block ends `COMPLETED` with score and stop reason, or `WAITING ON YOU`.
 
 Python, same thing:
@@ -190,7 +191,7 @@ to other campaigns; never kill one. The checkpoint in `.kapso/run_state.json` ca
 the brief and the search state; the launch record `.kapso/launch.json` carries
 every flag of the launch, and a resume reads both, so pass only what you mean
 to change (a bigger `--budget-minutes`, say). A bare resume is served the sources
-the launch pinned, at the same heads. A resume that changes the mode, coding agent,
+the launch pinned, at the same heads. A resume that changes the host, the
 evaluation, config, harness or experience is refused by name; start a new campaign in
 a new output path instead. A campaign paused by the inbox resumes through
 `kapso inbox reply`, not `--resume`.

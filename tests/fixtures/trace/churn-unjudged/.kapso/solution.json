@@ -1,0 +1,56 @@
+{
+  "schema_version": 5,
+  "brief": {
+    "objective": "Raise the churn model's out-of-sample ROC AUC above 0.85\nwithout changing the prediction contract: predict.py keeps\nwriting id,churn_probability for every holdout id.",
+    "measured_by": "kapso_evaluation/evaluate.py, ROC AUC on the held-out rows",
+    "baseline": "0.797 (the shipped logistic regression, bootstrap SE 0.010)",
+    "target": "0.85",
+    "rules": [
+      "the evaluator is never modified",
+      "no fitting on the holdout rows; the labels are not in the workspace"
+    ],
+    "budget": {
+      "minutes": 45.0,
+      "experiments": 3,
+      "usd": null,
+      "reserve_minutes": null
+    },
+    "harness": null,
+    "experience": []
+  },
+  "branch": null,
+  "commit": null,
+  "base_commit": "c7be42257baa4c6f63c13270e524734f4bb18824",
+  "score": null,
+  "goal_achieved": false,
+  "stopped_reason": "budget_exhausted",
+  "stop_detail": "finishing_cut",
+  "experiments": 1,
+  "experiments_total": 1,
+  "cost_usd": 1.7363080000000002,
+  "requests": [],
+  "feedback": null,
+  "evaluator": null,
+  "harness": null,
+  "experience": [],
+  "verification": null,
+  "rejected_candidates": 0,
+  "callback_metrics": {},
+  "callback_primary_metric": null,
+  "session_failures": [
+    {
+      "label": "engine/repo_memory/1",
+      "module": "engine",
+      "host": "codex",
+      "exit": "error",
+      "error": "Codex CLI exited with code 1: Reading prompt from stdin...\n{\"type\":\"thread.started\",\"thread_id\":\"01a1788d-d064-7fa2-a899-5f4ef3f2b562\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"error\",\"message\":\"Quota exceeded. Check your plan and billing details.\"}\n{\"type\":\"turn.failed\",\"error\":{\"message\":\"Quota exceeded. Check your plan and billing details.\"}}\n"
+    },
+    {
+      "label": "feedback/generic_exp_0",
+      "module": "feedback",
+      "host": "claude_code",
+      "exit": "timeout",
+      "error": "Claude Code CLI exceeded its 105.95179667599984s deadline and was terminated"
+    }
+  ]
+}

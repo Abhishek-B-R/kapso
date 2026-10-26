@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
 from kapso.handles import Brief
 from kapso.harness import load_harness, stage_harness
 from kapso.harness.task_statement import compose_task_statement, setup_statement_path, write_task_statement
@@ -27,7 +27,7 @@ IGNORE_LINES = [".claude/", ".agents/", ".codex/", "kapso_task.md", "prepared"]
 def harness(tmp_path):
     copy = tmp_path / "h" / "trading"
     shutil.copytree(TRADING, copy)
-    return load_harness(str(copy), settings=dict(load_harness_defaults(), store=str(tmp_path / "store")), say=lambda line: None)
+    return load_harness(str(copy), settings=dict(load_config()["harness"], store=str(tmp_path / "store")), say=lambda line: None)
 
 
 def test_the_statement_holds_the_whole_brief_and_the_campaigns_facts(harness, tmp_path):

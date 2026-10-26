@@ -142,8 +142,8 @@ my_agent:
   adapter_class: "MyAgentCodingAgent"
   adapter_module: "kapso.agents.coding_agents.adapters.my_agent_agent"
   supports_native_git: false
-  default_model: "my-model-v1"
-  default_debug_model: "my-model-v1-mini"
+  serves: any              # the model family it can be asked for: claude, openai or any
+  settings: []             # the keys a host entry of the config may set for it
   env_vars:
     - "MY_API_KEY"
   install_command: "pip install my-agent-sdk"
@@ -218,23 +218,21 @@ class CodingAgentConfig:
 
 ## Configuration
 
-### In Benchmark Config (benchmarks/*/config.yaml)
+### In the config (an override file over the packaged config)
 
 ```yaml
-modes:
-  MY_MODE:
-    # ... other settings ...
-    
-    # Specify agent (uses defaults from agents.yaml)
-    coding_agent:
-      type: aider
-    
-    # Or override defaults
-    coding_agent:
-      type: gemini
-      model: "gemini-2.5-pro"
-      agent_specific:
-        temperature: 0.3
+# The hosts a build may run on: the model each is asked for, plus the
+# adapter's own settings (the keys agents.yaml lists under `settings`).
+hosts:
+  gemini:
+    model: "gemini-2.5-pro"
+# The roles name their host; `host` is the default for every role
+# without a cli of its own (what `kapso build --coding-agent` sets).
+search_strategy:
+  params:
+    host: gemini
+    judge:
+      cli: codex
 ```
 
 ### Environment Variables

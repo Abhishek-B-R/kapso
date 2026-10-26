@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from kapso.handles import HarnessRef
 from kapso.harness.check import CheckReport, HarnessRequirement, check_harness
-from kapso.harness.hash import harness_hash, short
+from kapso.harness.hash import harness_files, harness_hash, short
 from kapso.harness.manifest import HarnessEnvironment, Manifest, ModuleAttachments
 from kapso.harness.reference import HarnessReference, parse_reference
 from kapso.harness.store import HarnessStore
@@ -37,6 +37,7 @@ class Harness:
     hash: str
     report: CheckReport
     settings: Dict[str, Any]      # the config's `harness` block it was loaded with
+    files: Dict[str, str]         # each file's digest at the load, for a refusal to name a change
 
     @property
     def name(self) -> str:
@@ -197,6 +198,7 @@ def load_directory(
         hash=harness_hash(path),
         report=report,
         settings=dict(settings),
+        files=harness_files(path),
     )
 
 

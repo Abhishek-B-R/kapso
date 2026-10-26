@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 import git
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
+from tests.harness_support import fake_config
 import kapso.execution.run_checkpoint as checkpoint_module
 from kapso.execution.inbox import write_launch_record
 from kapso.execution.orchestrator import OrchestratorAgent, SolveResult
@@ -94,6 +95,8 @@ class FakeStrategy:
     def __init__(self, workspace_dir: str, stop_next: bool = False):
         self.workspace_dir = workspace_dir
         self.workspace = FakeWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.node_history: List[SearchNode] = []
         self.contexts: List[str] = []
         self.stop_next = stop_next
@@ -110,6 +113,12 @@ class FakeStrategy:
         self.bridge_calls: List[Dict[str, Any]] = []
         self.bridge_result = True
         self.refreshed_classes: List[Any] = []
+        self.budget_snapshot = None
+
+    def _room(self, *, finishing: bool = False, obligations_seconds: float = 0.0):
+        if self.budget_snapshot is None:
+            return None
+        return self.budget_snapshot.room(obligations_seconds, finishing=finishing)
 
     def run(self, context: str, budget_progress: float = 0.0) -> SearchNode:
         node_id = len(self.node_history)
@@ -221,21 +230,13 @@ def _patch_orchestrator(
 
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}}
-        },
-    )
-    monkeypatch.setattr(
         OrchestratorAgent,
         "_create_feedback_generator",
-        lambda self, coding_agent=None: object(),
+        lambda self: object(),
     )
 
     def create_strategy(
         self: OrchestratorAgent,
-        coding_agent: Optional[str],
         workspace_dir: Optional[str],
         start_from_checkpoint: bool,
     ) -> FakeStrategy:
@@ -398,6 +399,7 @@ def test_generic_strategy_state_round_trip() -> None:
     source.previous_errors = ["old error"]
     source.scores_evaluator_id = ""
     source.evaluator_transition = None
+    source.last_round_seconds = 812.5
 
     restored = GenericSearch.__new__(GenericSearch)
     restored.harness = None
@@ -406,6 +408,8 @@ def test_generic_strategy_state_round_trip() -> None:
     assert restored.node_history[0].branch_name == "generic_exp_0"
     assert restored.iteration_count == 1
     assert restored.previous_errors == ["old error"]
+    # The last round's duration: a resume admits its next round from it.
+    assert restored.last_round_seconds == 812.5
 
     # A VALIDATE short-circuit consumes an iteration without minting a
     # node, so iteration_count may legitimately exceed node_history —
@@ -636,7 +640,7 @@ def test_v2_checkpoint_is_rejected_without_migration(tmp_path: Path) -> None:
     # campaign reads "start a fresh campaign", never "missing cost_config".
     with pytest.raises(
         RunCheckpointIncompatibleError,
-        match=r"expected 5\. .*not migrated",
+        match=r"expected 6\. .*not migrated",
     ):
         store.load()
 
@@ -722,10 +726,10 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     kapso.config_path = None
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
     # Mirror __init__-set attributes the build path reads (stub gotcha).
-    kapso._config = {}
+    kapso._config = fake_config(inbox={"registry": str(Path(workspace).with_name("registry.jsonl"))})
     kapso._bank_home = None
     kapso._harness = None
-    kapso._harness_settings = load_harness_defaults()
+    kapso._harness_settings = load_config()["harness"]
     kapso._experience = []
     result = kapso.build(
         "Improve support",
@@ -759,11 +763,9 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     eval_dir.mkdir()
     (eval_dir / "evaluate.py").write_text("print('accuracy: 0.9')\n")
     write_launch_record(workspace, {
-        "config_path": None, "mode": "MINIMAL",
-        "coding_agent": None, "output_path": str(workspace),
-        "max_iterations": 3, "time_budget_minutes": 60.0, "cost_budget": None,
-        "finalization_reserve_minutes": None, "eval_dir": str(eval_dir),
-        "data_dir": None, "additional_context": "", "context": None,
+        "config_path": None, "host": None, "output_path": str(workspace),
+        "experiments": 3, "minutes": 60.0, "usd": None, "reserve_minutes": None,
+        "eval_dir": str(eval_dir), "data_dir": None,
         "resumable_from_inbox": True, "dotenv_path": "",
     })
     captured: Dict[str, Any] = {}
@@ -822,20 +824,45 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     # own packaged path must compare equal (a resume from another install).
     kapso.config_path = kapso_module.DEFAULT_CONFIG_PATH
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    kapso._config = {}
+    kapso._config = fake_config(inbox={"registry": str(tmp_path / "registry.jsonl")})
     kapso._bank_home = None
     kapso._harness = None
-    kapso._harness_settings = load_harness_defaults()
+    kapso._harness_settings = load_config()["harness"]
     kapso._experience = []
 
     kapso.build(output=str(workspace), resume=True)
     assert captured["goal"] == Brief(objective="Raise accuracy above 0.85").render()
-    assert captured["mode"] == "MINIMAL"
     assert captured["eval_dir"] == str(eval_dir)
     assert captured["experiment_max_iter"] == 3
     assert captured["time_budget_minutes"] == 60.0
 
     with pytest.raises(
-        RunCheckpointIncompatibleError, match="mode was 'MINIMAL', now 'GENERIC'"
+        RunCheckpointIncompatibleError, match="host was None, now 'codex'"
     ):
-        kapso.build(output=str(workspace), resume=True, mode="GENERIC")
+        kapso.build(output=str(workspace), resume=True, coding_agent="codex")
+
+
+def test_the_fingerprint_is_the_builds_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The checkpoint fingerprints the blocks a build reads (hosts, the
+    strategy with its host, inference, retry, models, inbox, the
+    maintainer): a benchmark runner's own key or the budget does not
+    change a campaign's identity, the host a role runs on does."""
+    import kapso.execution.orchestrator as orchestrator_module
+
+    _patch_orchestrator(monkeypatch)
+
+    def fingerprint(name, **blocks):
+        monkeypatch.setattr(
+            orchestrator_module, "load_config", lambda config_path=None: fake_config(**blocks),
+        )
+        workspace = tmp_path / name
+        _init_git_workspace(workspace)
+        return _orchestrator(workspace).config_fingerprint
+
+    base = fingerprint("base")
+    assert fingerprint("runner", benchmark={"run_defaults": {"lanes": 4}}) == base
+    assert fingerprint("budget", budget={"minutes": 5, "experiments": 2}) == base
+    assert fingerprint("host", search_strategy={"params": {"host": "codex"}}) != base
+    assert fingerprint("model", hosts={"codex": {"model": "gpt-other"}}) != base

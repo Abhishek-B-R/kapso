@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from kapso.core.cli_inference import resolve_inference_config
 from kapso.experience.reference import RESERVED, valid_index_name
 from kapso.experience.store import ExperienceStore, IndexRecord
 from kapso.knowledge_base.learners import KnowledgePipeline, Source
@@ -39,26 +38,24 @@ def collection_name(name: str, index_id: str) -> str:
     return f"Kapso{words}{index_id}"
 
 
-def search_params(config: Dict[str, Any], config_path: Optional[str], name: str, index_id: str) -> Dict[str, Any]:
+def search_params(config: Dict[str, Any], name: str, index_id: str) -> Dict[str, Any]:
     """The graph backend's parameters for one index: the config's
     `knowledge_search.params` with the models, retry and inference blocks
     the backend needs, and the index's own namespace over them."""
-    mode = config.get("default_mode", "GENERIC")
-    mode_config = config.get("modes", {}).get(mode, {})
-    params = dict((mode_config.get("knowledge_search") or {}).get("params") or {})
-    params.setdefault("models", mode_config.get("models"))
-    params.setdefault("retry", mode_config.get("retry"))
-    params.setdefault("inference", resolve_inference_config(config_path))
+    params = dict(config["knowledge_search"]["params"])
+    params.setdefault("models", config["models"])
+    params.setdefault("retry", config["retry"])
+    params.setdefault("inference", config["inference"])
     params["weaviate_collection"] = collection_name(name, index_id)
     params["corpus"] = index_id
     return params
 
 
-def search_for(record: IndexRecord, config: Dict[str, Any], config_path: Optional[str]):
+def search_for(record: IndexRecord, config: Dict[str, Any]):
     """The search backend an index record names, connected: the record's
     backend references over the config's parameters, the way the index
     was built."""
-    params = search_params(config, config_path, record.name, record.id)
+    params = search_params(config, record.name, record.id)
     params.update(record.backend_refs)
     return KnowledgeSearchFactory.create(search_type=record.search_backend, params=params)
 
@@ -113,8 +110,7 @@ def ingest(
     index_id = uuid.uuid4().hex[:12]
     directory = store.index_dir(name)
     wiki_dir = directory / WIKI_DIR
-    mode = config.get("default_mode", "GENERIC")
-    learner = config.get("modes", {}).get(mode, {}).get("learner", {})
+    learner = config["learner"]
     ingestor_params = dict(learner.get("ingestor") or {})
     ingestor_params.setdefault("publish_workflows", learner_defaults("ingestor")["publish_workflows"])
     written: Dict[str, IndexRecord] = {}
@@ -123,7 +119,7 @@ def ingest(
         """The pipeline's index builder: the pages of `wiki_dir` into the
         index's namespace, then the record; `save_to` is the merger's
         suggestion, the record lives at the index's own place."""
-        search = KnowledgeSearchFactory.create(search_type=GRAPH_SEARCH, params=search_params(config, config_path, name, index_id))
+        search = KnowledgeSearchFactory.create(search_type=GRAPH_SEARCH, params=search_params(config, name, index_id))
         search.index(KGIndexInput(wiki_dir=wiki_dir))
         record = IndexRecord(
             name=name, id=index_id, created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), source=origin,

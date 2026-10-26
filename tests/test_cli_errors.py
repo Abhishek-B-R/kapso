@@ -11,6 +11,7 @@ import pytest
 
 import kapso.cli.errors as errors_module
 from kapso.cli.errors import ENGINE_ERRORS, report_engine_error
+from kapso.core.config import ConfigError, load_config
 from kapso.core.preflight import PreflightError, Requirement
 from kapso.experience.reference import ExperienceReferenceError
 from kapso.harness.load import HarnessError
@@ -65,3 +66,25 @@ def test_the_clis_own_refusals_are_on_stderr(tmp_path):
     assert run.returncode == 1
     assert run.stderr.strip() == "Error: kapso inbox takes at most a campaign directory"
     assert run.stdout == ""
+
+
+def test_a_config_refusal_is_the_engines_own_error(tmp_path, capsys):
+    """A stale file with `modes:`, an unknown key at depth, a missing file:
+    each is a `ConfigError`, which the CLI prints as one line naming the
+    file and the keys, never as a traceback (the WP4 proof run's first
+    finding)."""
+    stale = tmp_path / "stale.yaml"
+    stale.write_text("default_mode: GENERIC\nmodes:\n  GENERIC: {}\n")
+    with pytest.raises(ConfigError, match="stale.yaml: the top level: unknown keys default_mode, modes; the keys are budget,") as caught:
+        load_config(str(stale))
+    assert isinstance(caught.value, ENGINE_ERRORS)
+    with pytest.raises(SystemExit):
+        report_engine_error(ConfigError, caught.value, None)
+    err = capsys.readouterr().err
+    assert err.startswith(f"Error: {stale}: the top level: unknown keys default_mode, modes") and "Traceback" not in err
+    deep = tmp_path / "deep.yaml"
+    deep.write_text("budget:\n  minute: 5\n")
+    with pytest.raises(ConfigError, match="deep.yaml: budget: unknown key minute; the keys are"):
+        load_config(str(deep))
+    with pytest.raises(ConfigError, match="missing.yaml: no such file"):
+        load_config(str(tmp_path / "missing.yaml"))

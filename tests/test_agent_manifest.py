@@ -21,7 +21,7 @@ def test_consumers_share_manifest_changes(monkeypatch, tmp_path):
     assert factory.CodingAgentFactory.get_default_agent() == "codex"
     assert (
         factory.CodingAgentFactory.build_config(
-            "openai_compatible"
+            "openai_compatible", model="provider/model"
         ).agent_specific["timeout"]
         == 31
     )

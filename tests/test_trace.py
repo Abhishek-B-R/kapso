@@ -39,6 +39,10 @@ ARCHIVES = {
     "trading": "wp3/campaign1.tgz",
     "churn": "wp3/campaign2.tgz",
     "trading-delivered": "wp2-claude/campaign.tgz",
+    # The WP4 proof run: the facts the older archives cannot carry.
+    "churn-unjudged": "wp4/campaign-c12.tgz",
+    "churn-codex": "wp4/campaign-devbox-a.tgz",
+    "trading-void": "wp4/campaign-devbox-b.tgz",
 }
 RUNS = Path(__file__).resolve().parents[1] / "scripts" / "redesign" / "runs"
 PLACEHOLDER = "<campaign>"
@@ -156,7 +160,7 @@ def test_json_round_trips_through_the_view():
     view = read_trace(FIXTURES / "trading")
     again = TraceView(json.loads(json.dumps(view.data)))
     assert again.explain() == view.explain() and again.data == view.data
-    with pytest.raises(ValueError, match="not a trace of schema 1"):
+    with pytest.raises(ValueError, match="not a trace of schema 2"):
         TraceView({"schema_version": 0})
 
 
@@ -170,7 +174,10 @@ def running_campaign(tmp_path: Path, *, with_record: bool = False) -> Path:
     (campaign / ".kapso").mkdir(parents=True)
     status = BuildStatus(campaign / ".kapso" / "status.json", heartbeat_seconds=60, harness=HARNESS, experience=[MINE])
     status.phase("implementation", budget={"elapsed_min": 12.0, "total_min": 40.0})
-    write_launch_record(campaign, {"brief": {"objective": "Raise the Sharpe"}, "harness": HARNESS, "experience": [MINE], "output_path": str(campaign)})
+    write_launch_record(campaign, {
+        "brief": {"objective": "Raise the Sharpe", "budget": {"minutes": None}}, "minutes": 40.0,
+        "harness": HARNESS, "experience": [MINE], "output_path": str(campaign),
+    })
     node = SearchNode(
         node_id=0, branch_name="generic_exp_0", parent_branch_name="main", solution="# Idea\nTrend following",
         score=1.2, feedback="Good but not there", evaluation_valid=True, evaluation_provenance="provided",
@@ -320,3 +327,72 @@ def test_the_generator_reproduces_the_fixture_from_its_archive(name, tmp_path):
     assert fresh == committed
     differing = [str(path) for path in committed if not filecmp.cmp(FIXTURES / name / path, rebuilt / path, shallow=False)]
     assert differing == []
+
+
+# ------------------------------------------------- the WP4 proof run's facts
+
+def test_an_unjudged_attempt_with_its_commit_and_the_engines_failed_session():
+    """The twelve-minute churn build on the fresh machine (wp4-config.md,
+    change 13): the judge cut at the budget's deadline leaves the attempt
+    unjudged with the reason and its commit, nothing delivered, the stop
+    `finishing_cut`, the reserve on the budget line, and the engine's own
+    session (on a Codex key over its quota) under the other sessions."""
+    view = read_trace(FIXTURES / "churn-unjudged")
+    header = view.data["header"]
+    assert header["stopped_reason"] == "budget_exhausted" and header["stop_detail"] == "finishing_cut"
+    assert header["budget"] == {"elapsed_min": 11.5, "total_min": 12.0, "reserve_min": 1.5}
+    assert header["budget_source"] == "the launch's over the brief's 45.0 min"
+    attempt, = view.attempts
+    assert attempt["commit"].startswith("60cb08e3876d")
+    assert attempt["unjudged"] == "the judge's session ended at the budget's deadline"
+    assert attempt["evaluation"]["score"] == 0.8454 and attempt["judge"] == {"stop": False, "valid": True, "feedback": ""}
+    assert view.delivered is None
+    engine, = view.data["sessions"]
+    assert engine["label"] == "engine/repo_memory/1" and engine["module"] == "engine" and engine["host"] == "codex"
+    assert engine["runs"][0]["exit"] == "error" and "Quota exceeded" in engine["runs"][0]["error"]
+    text = view.explain()
+    assert "judge         unjudged: the judge's session ended at the budget's deadline" in text
+    assert "budget          11.5 of 12.0 min, 1.5 min reserved for finishing (the launch's over the brief's 45.0 min)" in text
+    assert (
+        "stopped         budget_exhausted (finishing_cut): a finishing session was cut: "
+        "node 0 unjudged: the judge's session ended at the budget's deadline; 1 experiment"
+    ) in text
+
+
+def test_every_session_on_the_host_the_launch_named():
+    """The churn build with `--coding-agent codex` on the packaged config:
+    every session of the attempt and the engine's own run on Codex with
+    the host's model, the second round refused by admission, the attempt
+    delivered."""
+    view = read_trace(FIXTURES / "churn-codex")
+    attempt, = view.attempts
+    sessions = attempt["sessions"] + view.data["sessions"]
+    assert {session["host"] for session in sessions} == {"codex"}
+    assert {run["model"] for session in sessions for run in session["runs"]} == {"gpt-5.6-sol"}
+    assert [session["label"] for session in attempt["sessions"]] == ["ideation/iter1/codex_gpt-5.6-sol", "generic_exp_0", "feedback/generic_exp_0"]
+    engine, = view.data["sessions"]
+    assert engine["label"] == "engine/repo_memory/1" and engine["runs"][0]["exit"] == "success"
+    assert view.data["header"]["stop_detail"] == "attempt_would_not_fit"
+    assert view.delivered["branch"] == "generic_exp_0" and attempt["commit"] == view.delivered["commit"]
+
+
+def test_a_voided_attempt_on_codex_with_the_judge_on_claude():
+    """The trading build with the harness, `host: codex` and `judge: {cli:
+    claude_code}`: the setup, ideation, implementation and verification on
+    Codex, the judge on Claude Code; the verifier's void on a file added
+    under the protected directory, the attempt rejected and not delivered,
+    the judge's delegate stopped."""
+    view = read_trace(FIXTURES / "trading-void")
+    attempt, = view.attempts
+    hosts = {session["label"]: session["host"] for session in attempt["sessions"] + view.data["sessions"]}
+    assert hosts == {
+        "ideation/iter1/codex_gpt-5.6-sol": "codex", "generic_exp_0": "codex", "verification/generic_exp_0": "codex",
+        "feedback/generic_exp_0": "claude_code", "engine/repo_memory/1": "codex", "harness_setup": "codex",
+    }
+    assert attempt["verification"]["verdict"] == "void" and len(attempt["verification"]["findings"]) == 1
+    assert attempt["evaluation"]["score"] is None and attempt["evaluation"]["valid"] is False
+    assert attempt["judge"]["valid"] is False and attempt["unjudged"] == ""
+    assert view.data["header"]["rejected"] == 1 and view.delivered is None
+    judge_run, = next(session for session in attempt["sessions"] if session["label"] == "feedback/generic_exp_0")["runs"]
+    assert judge_run["model"] == "claude-opus-5" and judge_run["delegates"][0]["status"] == "stopped"
+    assert view.data["voided"][0]["branch"] == "generic_exp_0"

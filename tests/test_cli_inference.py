@@ -15,7 +15,8 @@ from types import SimpleNamespace
 import pytest
 
 import kapso.core.llm as llm_module
-from kapso.core.cli_inference import CliInference, resolve_inference_config
+from kapso.core.cli_inference import CliInference
+from kapso.core.config import load_config
 from kapso.execution.coding_agents.base import CodingResult
 
 INFERENCE = {
@@ -119,6 +120,8 @@ def test_non_codex_role_gets_auth_mode_instead_of_sandbox():
     assert factory.agents[0].config.agent_type == "claude_code"
     assert spec["auth_mode"] == "oauth"
     assert "sandbox" not in spec and "web_search" not in spec
+    # Only the servers it is given (none), never the person's own.
+    assert spec["strict_mcp_config"] is True
 
 
 def test_flatten_puts_system_first_and_carries_full_content():
@@ -189,7 +192,7 @@ def test_packaged_config_defines_every_role_the_code_selects():
     # The config/code contract: every role= literal at a call site must
     # resolve in the packaged inference block, else that seam dies at
     # runtime with "unknown inference role".
-    config = resolve_inference_config()
+    config = load_config()["inference"]
     for key in ("cli", "model", "effort", "sandbox", "timeout_seconds"):
         assert key in config["default"], key
     for role in (
@@ -216,8 +219,8 @@ def test_user_config_inference_block_deep_merges_over_packaged(tmp_path):
         "  roles:\n"
         "    research: {timeout_seconds: 60}\n"
     )
-    merged = resolve_inference_config(str(user_config))
-    packaged = resolve_inference_config()
+    merged = load_config(str(user_config))["inference"]
+    packaged = load_config()["inference"]
 
     assert merged["default"]["model"] == "my-own-model"
     # Sibling keys of the overridden scalar survive the merge.
@@ -232,18 +235,15 @@ def test_user_config_inference_block_deep_merges_over_packaged(tmp_path):
 
 def test_user_config_without_inference_block_gets_packaged_defaults(tmp_path):
     user_config = tmp_path / "config.yaml"
-    user_config.write_text("modes:\n  GENERIC: {}\n")
-    assert (
-        resolve_inference_config(str(user_config))
-        == resolve_inference_config()
-    )
+    user_config.write_text("budget:\n  experiments: 3\n")
+    assert load_config(str(user_config))["inference"] == load_config()["inference"]
 
 
 def test_non_mapping_inference_block_raises(tmp_path):
     user_config = tmp_path / "config.yaml"
     user_config.write_text("inference: nonsense\n")
     with pytest.raises(ValueError, match="must be a mapping"):
-        resolve_inference_config(str(user_config))
+        load_config(str(user_config))
 
 
 def test_api_role_preserves_endpoint_options():

@@ -14,7 +14,7 @@ import kapso.cli.build as build_cli
 from kapso.cli import main
 from kapso.handles import Brief, Budget
 
-FACADE_KWARGS = {"evaluation", "data", "repo", "output", "resume", "mode", "coding_agent"}
+FACADE_KWARGS = {"evaluation", "data", "repo", "output", "resume", "coding_agent"}
 BUDGET_FIELDS = {"budget_minutes": "minutes", "budget_experiments": "experiments",
                  "budget_usd": "usd", "budget_reserve_minutes": "reserve_minutes"}
 CONSTRUCTOR = {"config"}
@@ -55,7 +55,7 @@ def test_every_flag_reaches_where_it_belongs(monkeypatch):
     _run(
         monkeypatch, "--goal", "g", "--evaluation", "ev", "--data", "da", "--repo", "re",
         "--output", "out", "--budget-experiments", "3", "--budget-minutes", "30", "--budget-usd", "5",
-        "--budget-reserve-minutes", "2", "--resume", "--mode", "MINIMAL", "--coding-agent", "codex",
+        "--budget-reserve-minutes", "2", "--resume", "--coding-agent", "codex",
         "--config", "c.yaml",
     )
     assert constructor.call_args.kwargs == {"config": "c.yaml"}
@@ -64,7 +64,7 @@ def test_every_flag_reaches_where_it_belongs(monkeypatch):
     assert kwargs == {
         "evaluation": "ev", "data": "da", "repo": "re", "output": "out",
         "budget": Budget(minutes=30, experiments=3, usd=5, reserve_minutes=2),
-        "resume": True, "mode": "MINIMAL", "coding_agent": "codex",
+        "resume": True, "coding_agent": "codex",
     }
 
 

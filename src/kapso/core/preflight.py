@@ -19,7 +19,7 @@ the account can actually serve it; it is config-gated
 
 Every failed row carries the config key that asked for it and one
 copy-pasteable fix. That pairing is the point: "install claude" is not
-actionable, "install claude — modes.GENERIC.coding_agent.model wants
+actionable, "install claude — hosts.claude_code.model wants
 claude-opus-5" is.
 """
 
@@ -33,7 +33,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
-from kapso.core.config import deep_merge, load_config, load_deployment_defaults, load_platform_defaults
+from kapso.core.config import deep_merge, load_config
+from kapso.core.roles import ROLES, SPEC_KEYS, resolve_members, resolve_optional, resolve_role, resolve_spec
 from kapso.core.agent_manifest import load_agent_manifest
 from kapso.core.api_endpoint import (
     openai_compatible_options,
@@ -46,7 +47,6 @@ from kapso.learning.bank_remote import bank_origin, bank_remote_error
 # The packaged platform config is the single source for preflight's own
 # defaults (Rule 1) — a user config that predates the `preflight:` block
 # inherits them rather than a duplicated literal.
-_PACKAGED_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 
 # Agent types that run as an external CLI binary. Everything else in the
 # manifest is a Python SDK adapter, whose requirement is the package its
@@ -144,7 +144,7 @@ class PreflightError(RuntimeError):
 
 def default_preflight_config() -> Dict[str, Any]:
     """The platform `preflight:` block from the packaged config."""
-    return load_config(str(_PACKAGED_CONFIG_PATH))["preflight"]
+    return load_config()["preflight"]
 
 
 def preflight_settings(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -225,11 +225,11 @@ def session_specs(
     """Every coding-agent session the given config subtree can spawn.
 
     A model key (`model` or `*_model`) names the session; the CLI that runs
-    it resolves from, in order: an explicit `cli` sibling, an
-    `implementation_cli` sibling (for `implementation_model`), a `type`
+    it resolves from, in order: an explicit `cli` sibling, a `type`
     sibling naming a known agent, or the model-name prefix (claude-* runs
     on the claude CLI, everything else on codex). Embedding models are not
-    sessions — their check is the OPENAI_API_KEY row.
+    sessions — their check is the OPENAI_API_KEY row. The build's own
+    sessions do not walk this: they are roles (build_session_specs).
     """
     manifest = load_agent_manifest()["agents"]
     specs: List[SessionSpec] = []
@@ -237,11 +237,8 @@ def session_specs(
     def resolve_cli(block: Dict[str, Any], key: str, model_name: str) -> str:
         if block.get("cli"):
             return str(block["cli"])
-        if key == "implementation_model" and block.get("implementation_cli"):
-            return str(block["implementation_cli"])
-        # `coding_agent` / `feedback_generator` name their CLI as `type`;
-        # guard against unrelated `type` keys (search_strategy.type is a
-        # strategy name, not an agent).
+        # A block may name its CLI as `type`; guard against unrelated
+        # `type` keys (search_strategy.type is a strategy name, not an agent).
         block_type = block.get("type")
         if isinstance(block_type, str) and block_type.lower() in manifest:
             return block_type.lower()
@@ -257,7 +254,7 @@ def session_specs(
         if isinstance(current, dict):
             blocked = set()
             if not inference:
-                for selector in ("cli", "type", "implementation_cli"):
+                for selector in ("cli", "type"):
                     name = current.get(selector)
                     info = manifest.get(name.lower(), {}) if isinstance(
                         name, str
@@ -266,7 +263,7 @@ def session_specs(
                         blocked.add(name.lower())
                         specs.append(SessionSpec(
                             cli=name.lower(),
-                            model=str(info["default_model"]),
+                            model=str(current.get("model") or ""),
                             origin=f"{path}.{selector} = {name}",
                         ))
             for key, value in current.items():
@@ -482,12 +479,6 @@ def _auth_requirements(
     )]
 
 
-def _mode_block(config: Dict[str, Any], mode: Optional[str]) -> Tuple[str, Dict]:
-    """The active mode's name and config block."""
-    name = mode or config.get("default_mode", "GENERIC")
-    return name, (config.get("modes") or {}).get(name) or {}
-
-
 def _embedding_requirement(origin: str, params=None) -> Requirement:
     endpoint = validate_api_base_url(
         (params or {}).get(
@@ -581,7 +572,6 @@ def research_requirements(config: Dict[str, Any]) -> List[Requirement]:
 def experience_requirements(
     config: Dict[str, Any],
     *,
-    mode: Optional[str] = None,
     research: bool = False,
     publish_workflows: Optional[bool] = None,
 ) -> List[Requirement]:
@@ -591,9 +581,8 @@ def experience_requirements(
     `research=True` the web-search session too. Publishing the extracted
     workflows as repositories (`learner.ingestor.publish_workflows`)
     needs the token `gh` reads."""
-    mode_name, block = _mode_block(config, mode)
-    learner = block.get("learner") or {}
-    prefix = f"modes.{mode_name}.learner"
+    learner = config["learner"]
+    prefix = "learner"
 
     specs = session_specs(learner.get("ingestor") or {}, f"{prefix}.ingestor")
     specs += session_specs(learner.get("merger") or {}, f"{prefix}.merger")
@@ -617,19 +606,108 @@ def experience_requirements(
         ))
     requirements.append(_embedding_requirement(
         "the index embeds every page",
-        (block.get("knowledge_search") or {}).get("params"),
+        config["knowledge_search"]["params"],
     ))
     requirements.extend(_kg_backend_requirements(
         "the index is written into the graph stores",
-        block.get("knowledge_search"),
+        config["knowledge_search"],
     ))
+    return requirements
+
+
+def build_params(config: Dict[str, Any], coding_agent: Optional[str]) -> Dict[str, Any]:
+    """The strategy's parameters as a build resolves them: the config's
+    block with `--coding-agent` as the host."""
+    params = dict(config["search_strategy"]["params"])
+    if coding_agent:
+        params["host"] = coding_agent
+    return params
+
+
+def build_session_specs(config: Dict[str, Any], params: Dict[str, Any]) -> List[SessionSpec]:
+    """The sessions a build runs, from the roles over the hosts table
+    (kapso.core.roles): the three roles, the ensemble's members, the
+    selector, the lens planner, and the evaluation maintainer when the
+    config names one. The same resolver the campaign runs, so the doctor
+    never names a session a build would not run."""
+    hosts = config["hosts"]
+    specs: List[SessionSpec] = []
+
+    def add(role, origin: str) -> None:
+        specs.append(SessionSpec(
+            cli=role.cli,
+            model=role.model,
+            origin=f"{origin} = {role.cli}:{role.model}",
+            auth_mode=str(role.settings.get("auth_mode") or "auto"),
+            agent_specific=dict(role.settings),
+        ))
+
+    ideation = params["ideation"]
+    for name in ROLES:
+        if name == "ideation" and ideation["ensemble"]:
+            # The members' sessions replace the role's own; its host is
+            # not asked for.
+            continue
+        add(resolve_role(hosts, params, name), f"search_strategy.params.{name}")
+    for index, member in enumerate(resolve_members(hosts, params, ideation["ensemble"]) or []):
+        add(member, f"search_strategy.params.ideation.ensemble[{index}]")
+    for key in ("selector", "lens_planner"):
+        spec = resolve_optional(hosts, params, ideation[key], name=key)
+        if spec is not None:
+            add(spec, f"search_strategy.params.ideation.{key}")
+    maintainer = config["evaluation_maintainer"]
+    if maintainer["enabled"]:
+        add(
+            resolve_spec(
+                hosts, params["host"], {key: maintainer[key] for key in SPEC_KEYS if key in maintainer},
+                name="evaluation_maintainer", origin="evaluation_maintainer",
+            ),
+            "evaluation_maintainer",
+        )
+    return specs
+
+
+# The model family an adapter serves (`serves` in agents.yaml): the
+# `claude` family is the `claude-*` models, the `openai` family everything
+# but them; `any` is not checked statically (the live tier probes it).
+CLAUDE_MODEL_PREFIX = "claude-"
+
+
+def host_model_requirements(specs: Sequence[SessionSpec]) -> List[Requirement]:
+    """One row per distinct host-and-model pair a build asks for, failed
+    when the adapter's family cannot serve the model (a Claude model on
+    the codex CLI is refused by a ChatGPT login, found at the first
+    session otherwise)."""
+    manifest = load_agent_manifest()["agents"]
+    pairs: Dict[Tuple[str, str], List[str]] = {}
+    for spec in specs:
+        pairs.setdefault((spec.cli, spec.model), []).append(spec.origin.split(" = ")[0])
+    requirements = []
+    for (cli, model), origins in sorted(pairs.items()):
+        family = (manifest.get(cli) or {}).get("serves", "any")
+        is_claude_model = model.startswith(CLAUDE_MODEL_PREFIX)
+        if family == "claude":
+            ok = is_claude_model
+        elif family == "openai":
+            ok = not is_claude_model
+        else:
+            continue
+        requirements.append(Requirement(
+            label=f"{cli} is asked for {model}",
+            ok=ok,
+            fix=(
+                f"name a model {cli} serves for {', '.join(dict.fromkeys(origins))}, "
+                f"or the host's own in hosts.{cli}.model"
+            ),
+            origin="; ".join(dict.fromkeys(origins)),
+            detail="" if ok else f"{cli} cannot serve {model}",
+        ))
     return requirements
 
 
 def build_requirements(
     config: Dict[str, Any],
     *,
-    mode: Optional[str] = None,
     coding_agent: Optional[str] = None,
     index: Optional[str] = None,
 ) -> List[Requirement]:
@@ -638,22 +716,8 @@ def build_requirements(
     is the name of a loaded index, whose search needs the embeddings key
     and the graph stores; a bank a build loads is read from its home and
     needs nothing of this machine."""
-    mode_name, block = _mode_block(config, mode)
-    prefix = f"modes.{mode_name}"
-    strategy = block.get("search_strategy") or {}
-    params = strategy.get("params") or {}
-
-    # A caller-passed coding_agent overrides the mode's `type`, so the
-    # requirement must follow the agent that will actually run.
-    agent_block = dict(block.get("coding_agent") or {})
-    if coding_agent:
-        agent_block["type"] = coding_agent
-
-    specs = session_specs(params, f"{prefix}.search_strategy.params")
-    specs += session_specs(agent_block, f"{prefix}.coding_agent")
-    specs += session_specs(
-        block.get("feedback_generator") or {}, f"{prefix}.feedback_generator"
-    )
+    params = build_params(config, coding_agent)
+    specs = build_session_specs(config, params)
 
     inference = config.get("inference") or {}
     roles = ["commit_message", "repo_memory"]
@@ -668,19 +732,15 @@ def build_requirements(
             role_spec, f"inference.roles.{role}", inference=True,
         ))
 
-    requirements = cli_requirements(specs)
+    requirements = host_model_requirements(specs) + cli_requirements(specs)
     requirements.append(_git_requirement(
         "the campaign workspace is a git repository"
     ))
-    requirements.extend(_gate_requirements(params, prefix))
+    requirements.extend(_gate_requirements(params))
     # The key is needed exactly when something will embed: the experiment
-    # store when `models.embedding` names a model (the mode block over
-    # the platform defaults, as the campaign resolves it), and knowledge
-    # search when an index is served.
-    embedding_model = (
-        (deep_merge(load_platform_defaults(), block).get("models") or {})
-        .get("embedding")
-    )
+    # store when `models.embedding` names a model, and knowledge search
+    # when an index is served.
+    embedding_model = config["models"]["embedding"]
     embedding_uses = []
     if embedding_model:
         embedding_uses.append(
@@ -692,27 +752,24 @@ def build_requirements(
     if embedding_uses:
         requirements.append(_embedding_requirement(
             "; ".join(embedding_uses),
-            (block.get("knowledge_search") or {}).get("params"),
+            config["knowledge_search"]["params"],
         ))
     if index:
         requirements.extend(_kg_backend_requirements(
             f"the search over the loaded index `{index}`",
-            block.get("knowledge_search"),
+            config["knowledge_search"],
         ))
 
     return requirements
 
 
-def _gate_requirements(
-    params: Dict[str, Any], prefix: str,
-) -> List[Requirement]:
+def _gate_requirements(params: Dict[str, Any]) -> List[Requirement]:
     """The MCP gates the strategy names, checked through the gate
     resolver that the campaign itself uses. Whether a missing gate BLOCKS
     is the config's own call: `gate_failure_policy: error` makes it
     required, `warn`/`skip` leave it advisory."""
     gates = list(dict.fromkeys(
-        list(params.get("ideation_gates") or [])
-        + list(params.get("implementation_gates") or [])
+        list(params["ideation"]["gates"]) + list(params["implementation"]["gates"])
     ))
     if not gates:
         return []
@@ -732,7 +789,7 @@ def _gate_requirements(
             label=f"MCP gate '{gate_name}'",
             ok=False,
             fix=fix,
-            origin=f"{prefix}.search_strategy.params gates",
+            origin="search_strategy.params gates",
             required=policy == "error",
             detail=f"missing environment: {', '.join(missing_env)}",
         ))
@@ -845,12 +902,9 @@ def deploy_requirements(
     going to run locally. `strategy=None` is the doctor's view, with no
     call in flight: it maps which targets this machine could serve.
     """
-    deployment = {
-        **load_deployment_defaults(), **(config.get("deployment") or {})
-    }
+    deployment = config["deployment"]
     coding_agent = coding_agent or deployment["coding_agent"]
-    manifest = load_agent_manifest()["agents"]
-    model = (manifest.get(coding_agent) or {}).get("default_model") or coding_agent
+    model = deployment["model"]
     requirements = cli_requirements([SessionSpec(
         cli=coding_agent,
         model=str(model),
@@ -993,14 +1047,10 @@ def _specs_for(
     """Every session spec a verb (or the whole config) can spawn. Built by
     re-walking the same subtrees the requirement builders use, so the live
     tier can never probe a model the static tier does not know about."""
-    mode_name, block = _mode_block(config, context.get("mode"))
     learning = config.get("learning") or {}
     inference = config.get("inference") or {}
     research_spec = {**(inference.get("default") or {}),
                      **((inference.get("roles") or {}).get("research") or {})}
-    agent_block = dict(block.get("coding_agent") or {})
-    if context.get("coding_agent"):
-        agent_block["type"] = context["coding_agent"]
 
     research_specs = (
         [SessionSpec(
@@ -1015,22 +1065,10 @@ def _specs_for(
         # web-search session when a question is researched (the union a
         # bare doctor reports includes it).
         "experience": (
-            session_specs(block.get("learner") or {}, f"modes.{mode_name}.learner")
+            session_specs(config["learner"], "learner")
             + (research_specs if verb is None or context.get("research") else [])
         ),
-        "build": (
-            session_specs(
-                (block.get("search_strategy") or {}).get("params") or {},
-                f"modes.{mode_name}.search_strategy.params",
-            )
-            + session_specs(
-                agent_block, f"modes.{mode_name}.coding_agent"
-            )
-            + session_specs(
-                block.get("feedback_generator") or {},
-                f"modes.{mode_name}.feedback_generator",
-            )
-        ),
+        "build": build_session_specs(config, build_params(config, context.get("coding_agent"))),
         "learn": (
             session_specs(learning.get("mining") or {}, "learning.mining")
             + session_specs(

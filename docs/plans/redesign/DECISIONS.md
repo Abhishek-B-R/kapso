@@ -6,6 +6,475 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-26, WP4 (taken while building)
+
+**The hosts a build runs on are the adapters with a staging, declared in
+the registry.** `agents.yaml` names the staging each build-capable adapter
+gets (`host: claude_code` on the three Claude adapters, `host: codex` on
+Codex); `check_hosts` refuses the other adapters with those four, and the
+staging's own table is read from the same key. This reverses the earlier
+entry that every registered adapter stages and the staging's refusal is
+unreachable: the pull-request review showed `hosts.gemini` passing
+validation and failing at the first session. Alternative rejected: a
+staging for `gemini`, `openhands`, `aider` and `openai_compatible`, which
+have no layout to stage into. Shows in the hosts table and the `-a` row.
+
+**A judge session that fails to start leaves the attempt unjudged with
+its error.** The generator reads the invocation's `success`: a failed
+launch (a quota, a login revoked, a crashed CLI) is `the judge's session
+failed: <error>`, nothing to parse or resume; the raise for a completed
+turn with no session handle stays, that being a wiring bug. The feedback
+flow's existing catch marks the attempt unjudged too, so no scored
+candidate stays deliverable after a judge error. Why: the review showed
+the proof run's exhausted quota ending a campaign with a traceback in the
+one state the field exists for.
+
+**An implementation not launched is an attempt with no branch.** The lane
+returns the attempt with the error and `unjudged` saying the
+implementation was not launched; nothing resolves its commit, verifies or
+judges it. Why: the review reached GitPython's `BadName` from a refused
+session.
+
+**Ideation deadlines are shares, never raised, bounded by their own
+timeouts.** The sixty-second floors on a member's share and on its retry
+window are gone (a share under the floor is a short session, as
+everywhere else at the budget's end); the selector's share is bounded by
+the room read when it launches, the members done, so time they left
+flows to it and time they spent is not promised twice; a member's or the
+selector's own `timeout` bounds its deadline further. The split test
+reads the clamp twice: the shares from the first reading, the selector's
+bound from the second.
+
+**The web switch disables Codex's native search by config.** With `web:
+false` the adapter and the raw ideation pass `web_search="disabled"`
+(verified against the CLI, which accepts `disabled` and rejects a
+nonsense value); omitting `--search` alone leaves the CLI's default
+cached search on.
+
+**A cut is attributed from the invocation it cut.** The judge's rooms
+(the first invocation's, the retry's) are remembered and the finishing
+cut noted when the room of the one that was cut was the budget's; a retry
+refused for want of room is a finishing cut too. A verification's cut is
+attributed from the invocation's own outcome (killed at its deadline
+without completing), not from a comparison of its timeouts, so a verifier
+that fails at once with room to spare keeps its retry.
+
+**The trace's `stopped` row carries the sentence the campaign stopped
+on.** The status file's recent ring holds it as `stopping: …` (the
+admission refusal, the finishing cut); the trace reads the last such line
+into `stop_note` and renders it after the detail. Alternative rejected: a
+new status key, since the ring already carries the sentence and the
+prefix is the convention.
+
+**The resolver refuses a mapping where a value stood, expands `~`, and
+opens the adapters' own maps.** `enabled: {typo: false}` is refused as
+`bool expected, got a mapping` (a mapping is truthy, so it would have
+read as true); `learner.ingestor.agent_specific`,
+`learner.merger.agent_specific` and the new `inference.default.
+agent_specific: {}` are open namespaces; a spec's `cli`, `model` and
+`effort` must be non-empty strings when set, a list or `false` refused
+rather than read as unset. `ConfigError`'s docstring is narrowed to what
+the messages carry: the key and what is allowed, the file from the
+resolver; a build has one override file, so the key locates the line.
+
+**The orchestrator validates its config at construction, as the facade
+and the doctor do.** A benchmark runner constructs it directly. And the
+RelBench runner threads the bank serving as the engine's override (as the
+facade does), not as a key of its runtime file, which the resolver
+refuses.
+
+**The engine's own sessions: one record each, only their own servers.**
+The engine's inference sessions on Claude set `strict_mcp_config`, as
+every build session does; the session records are numbered under the
+staging lock, so parallel lanes minting their commit messages take
+distinct records.
+
+**The preflight skips the ideation role's row under an ensemble.** The
+members' sessions replace the role's own, so its host is not asked for.
+
+**The budget's floors are sourced from the packaged config** at import
+(`PACKAGED_BUDGET`); the dataclass defaults are no longer literals that
+could drift from `budget.min_iteration_seconds`.
+
+**The admission's finishing span is said, not changed.** The round's
+duration counts its finishing, which the reserve also holds back; the
+admission errs early by about one finishing span, never late. The page
+says so; the owner may want the round measured to its last lane's
+implementation instead.
+
+**The replanner's guidance is staged for the planner's own host.** The
+one staging call that still named `claude_code` follows
+`ideation.lens_planner.cli`, so a Codex planner reads Codex's guidance
+and no Claude layout is written into the ideation worktree.
+
+**The engine recorder is wired by the strategy, at the workspace's
+birth.** The earlier decision wired it in the orchestrator after the
+strategy existed, which left the strategy constructor's own inference
+session (the repo-memory bootstrap) unrecorded in every campaign of the
+proof run; the S4 readers found the gap. The strategy owns the workspace
+and its records directory, so it wires the recorder the moment the
+workspace exists and before its first inference. The import the earlier
+decision avoided (`kapso.core.cli_inference` into the harness package) is
+not needed: the strategy already imports the staging.
+
+**The derived reserve is bounded like a set one.** The plan bounded a
+set `reserve_minutes` by a quarter of the budget and left the derived
+reserve to the obligations themselves. The proof run's ten-minute trading
+build derived 11.5 minutes (the harness's ten verification minutes, the
+judge's floor, the delivery) and launched its setup session with a
+negative deadline; the forty-minute builds kept under three quarters of
+their minutes for the search. Both reserves now take the quarter bound;
+a finishing session takes what its room leaves, as before. And the setup
+session follows the launch predicate every other session follows: a room
+under the floor is a refusal with the reason, since the setup is the
+campaign's precondition.
+
+**The retired-name check reads code and prose differently.** A retired
+config key is a leftover wherever it stands in a page, a README, a skill
+or a config file, and in code only in its quoted-key form (`params[
+"implementation_gates"]`, a dict literal): the strategy keeps attributes
+and arguments of those names for what it resolved (`self.ideation_gates`,
+`implementation_fallback_model=`), which are identifiers, not
+configuration. The two session timeouts stay the benchmark runners' own
+cap names in code and are retired as config keys in prose only. The
+tests that refuse a retired form by name are allowed by path.
+
+**The live and manual tests take override files.** The inbox live
+fixture writes an override file for every variant (the gates off, the
+implementation lane on the CLI under test) and marks the fixtures that
+launch through the Python API with a file, so the CLI form passes
+`--config` where it passed `-m MINIMAL`; the manual Bedrock test's config
+is a hosts entry. Neither suite runs under the gate; both now describe
+the design that exists.
+
+**A changed harness is refused by file name.** The loaded harness keeps
+each file's own digest beside the whole-tree hash, and the staging's
+refusal says `changed a; added b; removed c` with the way out. Why: a
+hash alone sends the person diffing a directory to find what a session's
+shell (or their own editor) touched; the per-file digests live on the
+loaded harness in memory, not in the launch record, which keeps the one
+hash it has always kept.
+
+**The hooks file is written for every staged session.** With the engine's
+`protect-harness` hook there is no harness session without hooks, so the
+file is written, listed among the staging's writes and recorded on every
+module; a session repository that tracks `.claude/harness-hooks.json` or
+`.codex/hooks.json` is refused by name for every module, as it was for
+one with hooks of its own.
+
+**The engine sessions' record is wired in, not imported.** The
+inference client (`kapso.core`) records its sessions through a callable
+the orchestrator sets once the workspace exists (the staging's
+`engine_session_record` over the campaign's records directory); the
+client imports nothing from the harness package. Why: `kapso.core
+.cli_inference` importing `kapso.harness.staging` closed an import cycle
+(staging reaches the adapters, the adapters' modules reach the client).
+An inference with no campaign records nothing.
+
+**The reconstruction's record says `implementation`, labelled
+`difficulties/<branch>`.** It is staged with the implementation module
+(its host, its servers and hooks, in the campaign directory like the
+setup session) under its own session id; the trace's label grammar
+places it with its attempt. Alternative rejected: a `difficulties`
+module of the harness manifest, which would make every harness author
+decide what a reconstruction may see.
+
+**The judge says "its deadline"; the strategy says whose.** The
+generator does not know whether the deadline that cut the judge was the
+budget's room or the role's own timeout, so its reason reads `the
+judge's session ended at its deadline`; the strategy, which computed
+the deadline, rewrites it to `the budget's deadline` and reports the
+finishing cut only when the budget set it. Why: a judge cut by its own
+configured timeout with an hour of budget left is not a budget's end,
+and stopping the campaign on it would be wrong. The plan's wording is
+kept for the case it described. Shows in `feedback_generator.py`,
+`strategy.py`.
+
+**No verdict is a field of the result, not an exception.**
+`FeedbackResult.unjudged` carries the reason (no tags after a retry,
+the deadline, no room for a retry); the flow sets `SearchNode.unjudged`
+from it and skips the verdict. The one exception kept is the missing
+session handle, a wiring bug. Alternative rejected: raising for every
+unjudged outcome, which would turn a budget's end into a failed
+campaign.
+
+**The launch predicate guards the lane's sessions; ideation's inner
+sessions take the room they have.** The implementation, the evaluation
+run, the verification, the judge and the reconstruction each check
+their room against the floor before launching and record why when
+refused. The ensemble members, the selector and the lens planner start
+inside an admitted round (admission already covered the floor and the
+last round), so they are clamped to their room without a launch check:
+a selector that finds less than the floor runs with what remains and is
+cut at it, recorded as timed out, rather than skipped with a second
+mechanism inside the ideation module. Why: one predicate at the five
+sites where a skip has a record to land in; the ideation sub-sessions'
+case is an edge of an edge (a round admitted with barely the floor).
+Shows in `strategy.py` (`_room`, `_clamped_timeout`,
+`_finishing_deadline`), `budget.py`.
+
+**The obligations are counted at the floor, not at their configured
+timeouts.** A finishing session's room is the remainder less one floor
+per session still to run (the evaluation run in cost mode, the
+verification when the harness verifies, the judge) plus the delivery's
+slice. Why: the plan says each is "protected at its floor"; counting
+configured timeouts (ten minutes of verification, say) would hand the
+end of a campaign to the reserve and starve the attempt in flight. The
+derived reserve is the other side: there the verification's configured
+minutes and the judge's observed duration count in full, so the
+searchable window is cut for the real finishing cost while a session
+already running is only asked to leave its successors their floors.
+
+**The round's duration lives in the strategy's state.** `round_seconds`
+is a key of `strategy_state` (written by `dump_state`, read strictly by
+`load_state`), not a field of the checkpoint dataclass: the strategy
+measures and consumes it, and the checkpoint carries the state whole.
+The schema stays 6.
+
+**The escrowed attempt's end is `attempt_would_not_fit`.** After the
+fidelity policy's reserved full-size run, the campaign stops with the
+admission detail (no further attempt fits) rather than a third detail:
+the closed set has two new members, as planned.
+
+**The delivery's slice without a fidelity measurement is thirty
+seconds.** The final checkout and the records; a structural constant
+(`DELIVERY_SECONDS`), not a knob, like the quarter bound on a set
+reserve (`RESERVE_FRACTION_BOUND`).
+
+**`deny-web` is the implementation module's; `deny-web-fetch` stays
+everywhere.** The trading example already denied the shell's fetchers
+(`curl`, `wget`, `aria2c`) on every module; the plan's `deny-web` is a
+second hook, on the native web tools (`WebSearch|WebFetch`), listed on
+implementation alone: ideation's web research is the example's intent
+(the engine's `ideation.web` default), the implementation's web is the
+leak the protocol forbids. Why two hooks: two rules, two reasons, each
+placed where it applies by the manifest. Alternative rejected: folding
+both into one hook on every module, which would take the web from
+ideation. Codex's native web search is not a tool call its hooks see;
+the engine's switch is the boundary there, and the page says so.
+
+**The axes live in one tag, status included.** The planner's first plan
+names the axes in an `<axes>` block (a list numbered from 1); a revision
+restates every one in the same block as `N. <axis> — <status>`, and the
+record keeps those lines as the axes, so the judge and the next
+replanner read the latest status beside each axis; a keep puts its
+statuses in its paragraph and carries the axes along. Why: one grammar
+to parse and one field in the record, and the status is what the judge's
+frontier report builds on. Alternatives rejected: a separate
+`<axis_status>` tag and an `axis_statuses` field (two things to keep in
+step, no reader that wanted them apart); statuses required on a keep
+(a terse keep would be discarded for a formality). Shows in
+`lens_planning.py`, the two planner prompts, `axis_frontier.md`.
+
+**Single-session ideation keeps the ensemble's candidate hygiene.** The
+plain path is the ensemble machinery with one member, so a candidate
+under the degenerate floor (eighty characters, or forty of content) is
+dropped and the fallback solution is implemented, where the old Claude-
+only path took any output as the plan. Why: one machinery, one rule; a
+plan that short is a skeleton on any host, and the fallback keeps the
+round alive. Shows in `ideation.py`; the direct-construction tests give
+their fake agents plan-sized outputs.
+
+**A host the table does not name is a config error, named by where the
+host is set.** `search_strategy.params.host (what --coding-agent sets):
+gemini is not in hosts (the hosts are claude_code, codex); add
+hosts.gemini: {model: …} to the config to use it`, a `ValueError` from
+the resolver before the preflight, like every other config refusal; a
+role's own `cli` is named as that role's key. The harness staging's
+"no staging" refusal is unreachable through the facade now: the hosts
+table is checked against the adapter registry, and every registered
+adapter stages. Alternative rejected: a preflight row (the preflight
+checks the machine against the config; a config that names nothing the
+engine knows is not a machine fact).
+
+**An open namespace exists in the schema, empty.** `knowledge_search.
+params: {}` is in the packaged file: the walk allows any key under an
+open namespace, but the namespace's own key must be one the packaged
+mapping names, so an override could not set it until the packaged file
+carried it. The readers take `["params"]`, not `.get`. The rule holds
+for every open namespace: `hosts`, `inference.roles`, `gates`,
+`session_env_defaults` all exist in the packaged file.
+
+**A mapping in the packaged file is a mapping in an override.** The walk
+refuses a scalar where the packaged value is a mapping (`inference:
+nonsense` → `must be a mapping, got str`) instead of letting the merge
+replace the block and the reader die later. Shows in `config.py`.
+
+**The launch record's `config_path` is `None` for the packaged
+defaults, however they were named.** `is_packaged()` (the resolver's
+own test, exported) decides it at record and resume time, so a resume
+from another install — a different site-packages path for the same
+packaged file — compares equal, as the old `_launch_config_path` made
+it. Shows in `kapso.py`.
+
+**The trace fixture generator writes the launch record at the current
+schema.** The archives predate the record without `mode`; the generator
+reconstructs the record (schema 2, no `mode`) as it already
+reconstructs the checkpoint's and the solution record's schemas, and the
+three fixtures were regenerated from their archives (the golden texts
+unchanged). The handle's words (`experiments`, `minutes`, `usd`,
+`reserve_minutes`, `host`) come with change 5.
+
+## 2026-10-26, WP4 (planned; taken while writing the sub-plan)
+
+**The build's sessions are roles over a hosts table.** The config gains
+`hosts.<cli>: {model, …}` and `search_strategy.params.host`; ideation,
+implementation and the judge are role blocks (`cli`, `model`, `effort`,
+`timeout`) that default to the host and its model; `--coding-agent` sets
+the host for the campaign. Why: the flag reached a field no session read
+(WP2's and WP6's proof runs ran every session on Claude Code under
+`--coding-agent codex`), a model the CLI could not serve was found at the
+first session, and three blocks (`coding_agent`, `feedback_generator`,
+the flat `*_model` parameters) named hosts and models with no rule
+between them. Alternatives rejected: routing the flag to
+`implementation_cli` alone (ideation and the judge stay elsewhere and the
+model mismatch remains); deleting the flag (the plugin's build on the
+host it runs in wants one word). The judge is a role under the strategy's
+parameters, not a top-level block: it is the strategy's session, named
+beside the sessions it judges. Shows in `config.yaml`,
+`search_strategies/generic/roles.py`, the preflight.
+
+**Unknown top-level keys are refused; `benchmark:` is reserved.** An
+override file may name only the packaged file's top-level keys; the
+runners' own settings live under `benchmark`, which the engine never
+reads. Why: a mode leftover or a typo did nothing silently (the "a config
+copy's `defaults:` is ignored" trap WP3 met), and the runners' keys
+(`run_defaults`, `final_eval`, their own `preflight`) collide with the
+engine's at the top level. Alternative rejected: a full nested schema;
+the open mappings (env names, inference roles, hosts) would need a schema
+language, while the blocks with validators (`budget`,
+`evaluation_maintainer`, the ensemble members, the lens planner, and now
+the strategy's parameters) keep refusing their unknown keys.
+
+**`MINIMAL` is not shipped.** A config that turns things off is an
+override file a person writes; the configuration page shows one.
+Alternative rejected: a shipped `minimal.yaml`, a second shape to keep in
+step with the first.
+
+**The web stays a switch per role, the engine's boundary; a harness that
+forbids the web lists a hook, the domain rule.** `ideation.web` and
+`implementation.web` replace `web_search` and `implementation_web` with
+one name and one meaning on both hosts: off, the two native tools leave
+Claude Code's allow-list and go on `--disallowedTools`, and Codex is not
+given `--search`; the selector and the lens planner follow ideation's.
+The master's row said `implementation_web` becomes a hook; the review
+showed the knob is the only binding denial Codex has (a hook may not see
+its native search) and the only one a config without a harness has at
+all, so the switch is kept as the engine's permission boundary and the
+hook is the per-module domain rule a harness adds. The first draft
+deleted both knobs; revised after the review.
+
+**The axes are the planner's output.** The lens planner names the design
+axes it derives from the goal and the ideation page in an `<axes>` tag;
+the plan file carries them; the replanner statuses them; the judge's
+prompt renders the plan's axes, or asks the judge to name the ones it
+sees. Why: the harness design's section 9 recommends it, and the five ML
+axes in `lens_planning.py` were domain prose in engine code. Alternative
+rejected: an axes list in the harness's ideation page that the engine
+parses, an engine-facing field in a page.
+
+**The problem text is the brief; the evaluation contract is rendered once,
+in the implementation prompt.** The generic handler renders the brief and
+the two reference lines (where the evaluation and the data live) and
+nothing else; the implementation prompt carries the contract in three
+forms (a provided suite: run it, never edit it; a registered one: the
+maintainer's; none: build your own). The first draft wrote the task
+statement for every build; the review showed that without a harness
+nothing mounts or names the file, so it stays a harness build's file.
+Alternative rejected: keeping the handler's prose, two renderings of the
+same facts that drifted (the handler said `result.json` may be created,
+the prompt said where to write it, and the provided case got the
+build-your-own text).
+
+**The budget's end: finishing obligations protected, a launch predicate,
+admission from the last round, the reserve derived.** A finishing session
+(the candidate's evaluation run, verification, the judge, the
+reconstruction) is clamped against the whole remainder less the
+obligations after it, each at its floor, the delivery's protected slice
+kept; a session is launched only when its room is at least the floor,
+and a deadline is never raised to the floor; a judge or verification the
+budget cuts leaves the attempt `unjudged` or `unverified` with the
+reason, its score kept, never delivered; an ordinary round is admitted
+when the searchable remainder covers the larger of the static floor and
+the last completed round's duration (the insured campaign keeps its own
+floor, the fidelity policy's reserved attempt its own gate); the reserve
+is derived from the obligations when `budget.reserve_minutes` is unset
+(the harness's verification minutes, the judge's observed duration, the
+delivery's slice) and bounded by a quarter of the budget when set. Why:
+every campaign of WP2's, WP3's and WP6's proof runs that reached its
+budget ended on a verification cut at its clamped deadline and a judge on
+the sixty-second floor, rejecting a scored attempt. The first draft gave
+finishing sessions the whole remainder, floored the clamp and shipped a
+ten-minute reserve; the review showed the judge starving after
+verification, a reserve refusing short builds, the insured floor lost
+and the fidelity slice unprotected. Alternatives rejected: raising
+`min_iteration_seconds` (one number for every task), per-phase fractions
+(the IOAI runner's recorded lesson: a phase sub-budget starved ideation),
+marking a cut attempt invalid (the loss WP6 found, by another route).
+
+**The judge's retry resumes its session, records its reason, and does not
+follow a deadline.** Why: both S4 readers of WP6's proof run had to dig
+the retry's reason out of the log, and a fresh session answered with none
+of the context. A deadline-killed judge is the budget's end, not a
+missing tag.
+
+**`result.json` stays in the protected directory; code added there is
+the tamper.** Moving the contract's output would break every evaluator
+written so far; the integrity verifier already rejects added source and
+executables, and what was missing was the rule stated in the pages.
+
+**The maintainer is off by default, its knobs in the config.** It runs
+its own calibration and registration sessions per build, and most builds
+bring an evaluator or a harness verification; the packaged block carries
+`enabled: false` and every knob the orchestrator held as a literal
+(Rule 1; the first draft shipped `null` and left seven literals in code),
+so a person turns it on with one key and sees what they are tuning.
+
+**No lighter ideation for small briefs here.** An effort change is a
+quality change nobody has measured; S1's time-to-first-candidate is
+recorded on this package's proof run first, and the budget's end makes a
+short campaign stop honestly rather than deliver a half-built attempt.
+
+**The budget block speaks the handle's words.** `budget.minutes`,
+`experiments`, `usd`, `reserve_minutes` replace `time_budget_minutes`,
+`cost_budget_usd` and `finalization_reserve_minutes`, and the facade's
+`DEFAULT_MAX_ITERATIONS` becomes `budget.experiments` (WP1 asked for the
+literal to move with the block). One word per dimension across the brief,
+the flags, the API and the config.
+
+**`agents.yaml` loses its model defaults and gains `serves` and
+`settings`; `build_config` requires a model.** The `default_model` lines
+(`claude-opus-4-5` for Claude Code) duplicated the config's model and had
+gone stale (Rule 1); the hosts table is the one home. `serves` names the
+model family an adapter can be asked for (`claude`, `openai`, `any`), so
+the preflight's pairing row is the adapter's fact and the OSS and Vertex
+adapters, which run Claude Code with other models, are not refused;
+`settings` names the keys a host entry may set for that adapter, so a
+misspelled adapter setting is refused rather than ignored.
+
+**The engine's `protect-harness` hook rides every staged session.** The
+harness directory is the author's: WP3's proof lost a setup session's
+minutes and dollars to a patched harness, and the identity check that
+refused the campaign was right while the rule before it was missing.
+Alternative rejected: staging the servers from a copy, whose `cwd` and
+`${PLUGIN_ROOT}` paths would diverge from the author's tree while the
+hash still moved.
+
+**The empty-workspace initialisation session is deleted.** A model call
+to write an empty `main()`, unreachable from the facade, which always
+names a workspace; the workspace writes the file.
+
+**`--config` stays explicit.** Nothing is read from the working directory
+unnamed: the brief is named with `--brief`, and a stray
+`kapso-config.yaml` applied silently is the class of surprise the
+resolver exists to remove. The build's banner and the doctor's first line
+name the layers.
+
+**The strategy's parameters are a known set, every default in the
+packaged file.** The gate-list literals WP3 flagged and every other
+`params.get(key, literal)` move into `config.yaml`; the strategy reads
+without defaults; a misspelled parameter is refused by name.
+
 ## 2026-10-25, WP6 (taken while building)
 
 **A run's files are the host's account; the delivered files are the

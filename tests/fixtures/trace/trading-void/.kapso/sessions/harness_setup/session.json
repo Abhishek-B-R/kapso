@@ -1,0 +1,76 @@
+{
+  "module": "setup",
+  "host": "codex",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "8fbc403632afe85c95fd15470afbe12b1f324026cb62a1a1bbb9aea6b06984ae",
+    "source": "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp4/devbox/examples/harnesses/trading"
+  },
+  "session_dir": "/campaign",
+  "pages": [
+    "guardrails.md",
+    "setup.md"
+  ],
+  "skills": [
+    "market-data"
+  ],
+  "mcp_servers": [
+    "market-data"
+  ],
+  "agents": [],
+  "hooks": [
+    "protect-harness",
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared"
+  ],
+  "prepared": [],
+  "stream": "/campaign/.kapso/sessions/harness_setup/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-26T14:16:09+00:00",
+      "ended": "2026-10-26T14:17:58+00:00",
+      "duration_seconds": 109.566,
+      "model": "gpt-5.6-sol",
+      "cli_session_id": "01a17891-95a3-72c0-81fd-24c0fb3e753a",
+      "exit": "success",
+      "error": null,
+      "retry_reason": null,
+      "cost_usd": null,
+      "cost_cumulative": null,
+      "turns": 1,
+      "usage": {
+        "input_tokens": 383434,
+        "cached_input_tokens": 351488,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6471,
+        "reasoning_output_tokens": 3094
+      },
+      "tools": {
+        "command_execution": 10,
+        "mcp__market-data__snapshot": 1,
+        "mcp__market-data__list_instruments": 1,
+        "mcp__market-data__get_calendar": 3,
+        "file_change": 1
+      },
+      "gates": {
+        "market-data": {
+          "snapshot": 1,
+          "list_instruments": 1,
+          "get_calendar": 3
+        }
+      },
+      "hooks": null,
+      "delegates": [],
+      "host_errors": [
+        "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.",
+        "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."
+      ],
+      "files_changed": [
+        ".kapso/harness_setup/statement.md"
+      ],
+      "last_message": "Prepared:\n\n- `market-data`: pinned ALPHA, BETA, and GAMMA daily OHLCV bars for 2021-01-04\u20132023-12-29, with matching hashes and [MANIFEST.json](/campaign/prepared/market-data/MANIFEST.json).\n- Wrote the required [domain statement](/campaign/.kapso/harness_setup/statement.md), covering instruments, frequency, windows, costs, timing, limits, evaluation, metrics, and budget.\n\nNot found or ambiguous:\n\n- Adjustment, survivorship, venue, and session-close metadata.\n- Conflicting time budgets: 75 minutes in the Brief versus 40 minutes in the Budget section.\n\nNo named input was missing. Evaluation and training were not run, and protected directories were not modified."
+    }
+  ]
+}

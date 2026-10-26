@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from kapso.core.config import load_platform_defaults, load_config
+from kapso.core.config import load_config
 from kapso.execution.observability import (
     credits_summary,
     knowledge_summary,
@@ -227,7 +227,7 @@ def test_watch_json_is_a_pure_passthrough(tmp_path, capsys):
 def test_config_carries_the_observability_keys():
     # The wiring reads these (Rule 1: config is the single source) — a
     # missing key kills learn()/solve() at status construction.
-    defaults = load_platform_defaults()
+    defaults = load_config()
     assert defaults["budget"]["checkpoint_heartbeat_seconds"] > 0
     packaged = load_config(
         str(Path(__file__).parent.parent / "src/kapso/config.yaml")

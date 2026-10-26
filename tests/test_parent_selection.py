@@ -4,12 +4,15 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
+from strategy_support import generic_params, packaged_hosts
+from kapso.core.roles import resolve_role
+
 import pytest
 
 
 
-import kapso.execution.coding_agents.adapters.claude_code_agent as claude_module
-import kapso.gated_mcp as gated_mcp_module
+import kapso.execution.coding_agents.factory as factory_module
+import kapso.execution.search_strategies.generic.ideation as ideation_module
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.base import SearchStrategy
@@ -18,6 +21,11 @@ from kapso.execution.search_strategies.generic.strategy import (
     ParentSelection,
     normalize_parent_policy,
 )
+
+
+# A plan long enough for the ideation pool's hygiene: a candidate under
+# 80 characters is a skeleton, dropped before selection.
+SELECTED_SOLUTION = ("selected solution: " + "a concrete codable step. " * 4).strip()
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +80,7 @@ def test_invalid_policy_fails_before_workspace_initialization(monkeypatch):
         super_called.append(True)
 
     monkeypatch.setattr(SearchStrategy, "__init__", fake_super)
-    config = SimpleNamespace(params={"parent_policy": "random"})
+    config = SimpleNamespace(params=generic_params(parent_policy="random"), hosts=packaged_hosts())
 
     with pytest.raises(ValueError, match="parent_policy"):
         GenericSearch(config)
@@ -119,6 +127,7 @@ def test_iteration_uses_the_same_selected_parent_everywhere(
     strategy = strategy_with_history(policy)
     strategy.iteration_count = 0
     strategy.workspace_dir = "/workspace"
+    strategy._attempt_commit = lambda branch_name: "c" * 40
     calls = {}
 
     def generate(problem, parent_branch):
@@ -177,7 +186,7 @@ def test_ideation_reads_from_a_detached_view_of_the_selected_ref(
         def generate_code(self, prompt):
             return SimpleNamespace(
                 success=True,
-                output="<solution>selected solution</solution>",
+                output=f"<solution>{SELECTED_SOLUTION}</solution>",
                 error=None,
                 metadata={"tool_calls": []},
             )
@@ -193,11 +202,9 @@ def test_ideation_reads_from_a_detached_view_of_the_selected_ref(
         return {}, ["mcp__repo_memory__get_repo_memory_summary"]
 
     monkeypatch.setattr(
-        claude_module,
-        "ClaudeCodeCodingAgent",
-        FakeAgent,
+        factory_module.CodingAgentFactory, "create", classmethod(lambda cls, config: FakeAgent(config)),
     )
-    monkeypatch.setattr(gated_mcp_module, "get_mcp_config", fake_mcp_config)
+    monkeypatch.setattr(ideation_module, "get_mcp_config", fake_mcp_config)
     monkeypatch.setattr(
         RepoMemoryManager,
         "load_from_git_branch",
@@ -220,21 +227,24 @@ def test_ideation_reads_from_a_detached_view_of_the_selected_ref(
     strategy.kg_index_path = None
     strategy.experience_intro_path = None
     strategy.hosted = None
-    strategy.idea_generation_model = "model"
-    strategy._claude_auth_settings = {"auth_mode": "oauth"}
+    strategy.hosts = packaged_hosts()
+    strategy.ideation_role = resolve_role(strategy.hosts, generic_params(ideation={"timeout": 10}), "ideation")
     strategy.shared_artifacts_brief = "No shared-cache artifacts registered yet."
     strategy.node_expansion_value = 1
     strategy.expansion_lane_env = None
-    strategy.aws_region = "us-east-1"
-    strategy.ideation_timeout = 10
     strategy.budget_snapshot = None
     strategy.iteration_count = 0
-    strategy.session_effort = None
     strategy.env_strip = []
     strategy.env_defaults = {}
-    strategy._web_disallowed_tools = []
-    strategy.ideation_web_search = True
     strategy.ideation_ensemble = None
+    strategy.ideation_selector = None
+    strategy.ideation_lens_planner = None
+    strategy.ideation_candidates_per_member = 1
+    strategy.ensemble_time_split = None
+    strategy.budget_snapshot_monotonic = None
+    strategy.shared_cache_dir = None
+    strategy.node_history = []
+    strategy.problem_handler = SimpleNamespace(maximize_scoring=True)
     strategy.llm = None
 
     solutions, sections, telemetry = strategy._generate_solution(
@@ -242,7 +252,7 @@ def test_ideation_reads_from_a_detached_view_of_the_selected_ref(
         "candidate-7",
     )
 
-    assert solutions == ["selected solution"]
+    assert solutions == [SELECTED_SOLUTION]
     assert sections == []
     assert telemetry["cost_usd"] == 0.0
     assert telemetry["duration_seconds"] >= 0
@@ -271,6 +281,7 @@ def test_checkpoint_preserves_policy_and_validates_lineage():
     source.previous_errors = []
     source.scores_evaluator_id = ""
     source.evaluator_transition = None
+    source.last_round_seconds = None
     state = source.dump_state()
 
     restored = GenericSearch.__new__(GenericSearch)
@@ -309,6 +320,7 @@ def test_checkpoint_without_policy_uses_historical_best_default():
     source.previous_errors = []
     source.scores_evaluator_id = ""
     source.evaluator_transition = None
+    source.last_round_seconds = None
     state = source.dump_state()
     state.pop("parent_policy")
 

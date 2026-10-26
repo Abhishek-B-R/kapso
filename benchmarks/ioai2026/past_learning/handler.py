@@ -29,7 +29,7 @@ class LocalTaskHandler(ProblemHandler):
         session_caps: dict,
         eval_spec: dict,
     ):
-        super().__init__(additional_context="")
+        super().__init__()
         if not isinstance(session_caps, dict) or not {
             "ideation_timeout",
             "implementation_timeout",

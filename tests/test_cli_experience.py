@@ -24,7 +24,7 @@ def _run(monkeypatch, *argv):
 @pytest.fixture
 def settings(monkeypatch, tmp_path):
     values = settings_for(tmp_path)
-    monkeypatch.setattr(experience_cli, "load_experience_defaults", lambda config=None: dict(values))
+    monkeypatch.setattr(experience_cli, "experience_settings", lambda config: dict(values))
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("LEEROOPEDIA_API_KEY", raising=False)
     return values

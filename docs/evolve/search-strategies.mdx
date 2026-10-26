@@ -26,20 +26,30 @@ flowchart LR
 ### Configuration
 
 ```yaml
+hosts:
+  claude_code: {model: claude-opus-5, auth_mode: oauth}
+  codex: {model: gpt-5.6-sol, effort: xhigh}
 search_strategy:
-  type: "generic"
+  type: generic
   params:
-    idea_generation_model: "claude-opus-5"
-    implementation_model: "claude-opus-5"
-    auth_mode: "oauth"
-    gate_failure_policy: "warn"
-    ideation_gates: ["research", "experiment_history", "repo_memory", "leeroopedia"]
-    implementation_gates: ["research", "repo_memory", "leeroopedia"]
+    host: claude_code
+    ideation:
+      gates: [research, experiment_history, repo_memory]
+    implementation:
+      cli: codex
+      gates: [research, repo_memory]
+    judge: {}
+    gate_failure_policy: warn
 ```
 
-`auth_mode` names the Claude Code credential source: `oauth` (the shipped
-default — subscription login), `api_key`, or `auto` to let the adapter
-resolve one. AWS Bedrock support was removed on 26 August 2026.
+Three roles name the sessions: `ideation`, `implementation` (the
+verification, the harness setup and the reconstruction sessions follow it)
+and `judge`. Each takes a `cli`, `model`, `effort` and `timeout`, the host's
+values where it says nothing; `host` is the default host, what
+`--coding-agent` sets. A host's `auth_mode` names the Claude Code credential
+source: `oauth` (the packaged value, the CLI's stored login), `api_key`, or
+`auto` to let the adapter resolve one. See
+[Configuration](/docs/reference/configuration#search_strategy).
 
 Gate requirements are checked before each agent is configured. `warn` (the
 default) removes unavailable gates and logs a warning, `skip` removes them
@@ -56,14 +66,21 @@ semantics.
 ### Usage
 
 ```python
+from kapso.core.config import load_config
+from kapso.core.roles import resolve_role
+from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.search_strategies import SearchStrategyFactory
 
+config = load_config("kapso-config.yaml")
+params = config["search_strategy"]["params"]
+role = resolve_role(config["hosts"], params, "implementation")
 strategy = SearchStrategyFactory.create(
     strategy_type="generic",
     problem_handler=handler,
     llm=llm,
-    coding_agent_config=config,
-    params={"ideation_timeout": 300},
+    coding_agent_config=CodingAgentFactory.session_config(role, {}),
+    hosts=config["hosts"],
+    params=params,
 )
 
 strategy.run(context, budget_progress=0.0)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
 from kapso.handles import Budget
 from kapso.harness import HarnessError, load_harness
 from tests.handles_support import facade, fake_orchestrator, git_workspace, solve_result
@@ -30,7 +30,7 @@ def harness_copy(tmp_path: Path, server: str, variable: str) -> Path:
 
 def loaded_facade(tmp_path: Path, harness_dir: Path):
     kapso = facade()
-    kapso._harness_settings = dict(load_harness_defaults(), store=str(tmp_path / "store"))
+    kapso._harness_settings = dict(load_config()["harness"], store=str(tmp_path / "store"))
     kapso._harness = load_harness(str(harness_dir), settings=kapso._harness_settings, say=lambda line: None)
     return kapso
 
@@ -98,12 +98,17 @@ def test_a_program_every_module_runs_refuses_with_its_fix(tmp_path, monkeypatch)
     assert "python3 (command, for the SessionStart hook): install python3 and put it on PATH" in str(caught.value)
 
 
-def test_a_coding_agent_with_no_staging_is_refused_before_anything_starts(tmp_path, monkeypatch):
+@pytest.mark.preflight
+def test_a_host_the_table_does_not_name_is_refused_before_anything_starts(tmp_path, monkeypatch):
+    """A `--coding-agent` outside the config's hosts table is refused by
+    name before the harness stages anything; every host the table may
+    name is an adapter with staging (the table is checked against the
+    registry)."""
     monkeypatch.chdir(tmp_path)
     workspace = tmp_path / "ws"
     git_workspace(workspace)
     calls = fake_orchestrator(monkeypatch, workspace, solve_result())
     kapso = loaded_facade(tmp_path, TRADING)
-    with pytest.raises(HarnessError, match="coding agent 'gemini' has no staging"):
+    with pytest.raises(ValueError, match="gemini is not in hosts"):
         kapso.build("g", output=str(workspace), budget=Budget(experiments=1), coding_agent="gemini")
     assert not (workspace / "kapso_task.md").exists()

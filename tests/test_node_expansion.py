@@ -98,7 +98,9 @@ def make_stub(monkeypatch, expansion, scores, stop_flags):
         calls["lanes"].append((solution, node_id, lane_index))
         node = SimpleNamespace(
             node_id=node_id,
+            branch_name=f"generic_exp_{node_id}",
             score=None,
+            unjudged="",
             should_stop=False,
             phase_telemetry={"implementation": {"cost_usd": 1.0}},
             evaluation_integrity_error=None,
@@ -116,6 +118,7 @@ def make_stub(monkeypatch, expansion, scores, stop_flags):
         return node
 
     monkeypatch.setattr(strategy, "_run_expansion_lane", fake_lane)
+    monkeypatch.setattr(strategy, "_attempt_commit", lambda branch_name: "c" * 40)
     monkeypatch.setattr(strategy, "enforce_evaluation_integrity", fake_integrity)
     monkeypatch.setattr(strategy, "_generate_feedback", fake_feedback)
     monkeypatch.setattr(

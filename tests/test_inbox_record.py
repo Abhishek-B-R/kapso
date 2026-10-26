@@ -168,10 +168,10 @@ def test_a_credential_shaped_reply_is_refused_by_the_record_itself(tmp_path):
 
 def test_launch_record_round_trip_and_missing_default(tmp_path):
     assert read_launch_record(tmp_path) is None
-    write_launch_record(tmp_path, {"output_path": str(tmp_path), "max_iterations": 4})
+    write_launch_record(tmp_path, {"output_path": str(tmp_path), "experiments": 4})
     record = read_launch_record(tmp_path)
     assert record["schema_version"] == LAUNCH_SCHEMA_VERSION
-    assert record["max_iterations"] == 4
+    assert record["experiments"] == 4
     Path(tmp_path, ".kapso", "launch.json").write_text('{"schema_version": 99}')
     with pytest.raises(ValueError, match="launch record"):
         read_launch_record(tmp_path)
@@ -214,35 +214,31 @@ def test_registry_lists_a_relaunched_campaign_once(tmp_path):
 def test_resume_arguments_fill_only_what_the_caller_left_unset():
     """`kapso build --output <dir> --resume` with nothing else must run
     with the launch's arguments; an explicit value (a bigger budget) wins."""
-    record = {
-        "mode": "MINIMAL", "eval_dir": "eval", "max_iterations": 3,
-        "time_budget_minutes": 60.0, "additional_context": "", "context": None,
-    }
+    record = {"host": "codex", "eval_dir": "eval", "experiments": 3, "minutes": 60.0, "usd": None}
     merged = resume_arguments(record, {
-        "mode": None, "eval_dir": None, "max_iterations": None,
-        "time_budget_minutes": 90.0, "additional_context": "", "context": None,
+        "host": None, "eval_dir": None, "experiments": None, "minutes": 90.0, "usd": None,
     })
-    assert merged["mode"] == "MINIMAL" and merged["eval_dir"] == "eval"
-    assert merged["max_iterations"] == 3
-    assert merged["time_budget_minutes"] == 90.0
-    assert merged["additional_context"] == "" and merged["context"] is None
+    assert merged["host"] == "codex" and merged["eval_dir"] == "eval"
+    assert merged["experiments"] == 3
+    assert merged["minutes"] == 90.0
+    assert merged["usd"] is None
 
 
 def test_launch_mismatches_name_fingerprinted_changes_and_ignore_respelled_paths(tmp_path):
-    """The checkpoint refuses a changed eval-dir or mode with a bare
+    """The checkpoint refuses a changed eval-dir or host with a bare
     fingerprint mismatch; the record can say which setting changed. A
     respelled path to the same directory is not a change."""
     (tmp_path / "eval").mkdir()
     record = {
-        "mode": "MINIMAL", "coding_agent": None, "eval_dir": str(tmp_path / "eval"),
-        "config_path": "/x/config.yaml", "time_budget_minutes": 60.0,
+        "host": None, "eval_dir": str(tmp_path / "eval"),
+        "config_path": "/x/config.yaml", "minutes": 60.0,
     }
-    respelled = {**record, "eval_dir": str(tmp_path / "sub" / ".." / "eval"), "time_budget_minutes": 120.0}
+    respelled = {**record, "eval_dir": str(tmp_path / "sub" / ".." / "eval"), "minutes": 120.0}
     assert launch_mismatches(record, respelled) == {}
 
-    changed = {**record, "eval_dir": None, "mode": "GENERIC"}
+    changed = {**record, "eval_dir": None, "host": "codex"}
     assert launch_mismatches(record, changed) == {
-        "mode": ("MINIMAL", "GENERIC"),
+        "host": (None, "codex"),
         "eval_dir": (record["eval_dir"], None),
     }
     # The loaded experience is identity by reference and scope: a bank

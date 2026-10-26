@@ -30,8 +30,7 @@ MAXIMUM_CONCURENT_RUNS = 7
 
 class AleBench(ProblemHandler):
     def __init__(self, problem_id = "ahc008"):
-        # Initialize with domain knowledge as additional context
-        super().__init__(additional_context=self._get_domain_knowledge())
+        super().__init__()
         self.session = ale_bench.start(
             problem_id=problem_id,
             lite_version=False,
@@ -102,7 +101,9 @@ class AleBench(ProblemHandler):
         }
  
     def get_problem_context(self, budget_progress = 0):
-        return self.problem_context
+        # The domain knowledge is the handler's own prose (until WP8 ports
+        # the benchmark to a harness).
+        return self.problem_context + "\n\n# Domain knowledge\n" + self._get_domain_knowledge()
         
     def get_lite_problems_list(self):
         return LITE_VERSION_PROBLEMS_LIST

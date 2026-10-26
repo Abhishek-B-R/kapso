@@ -9,7 +9,7 @@ GenericSearch assembles arguments from its state and delegates here.
 
 import json
 import re
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.harness.verdict import is_void, render_verification
@@ -45,9 +45,10 @@ def generate_feedback(
     *,
     feedback_generator,
     goal: str,
-    design_axes: str,
+    axes: str,
     session_end_facts: str,
-    clamped_timeout: Callable[[float], float],
+    deadline_seconds: Optional[float],
+    retry_deadline: Callable[[], Tuple[Optional[float], Optional[str]]],
     manifest_of_record: Callable[[SearchNode], Optional[Dict[str, Any]]],
     finalize_run_selection: Callable[[Dict[str, Any], bool], None],
     execution_valid: bool = True,
@@ -89,14 +90,23 @@ def generate_feedback(
             evaluation_script_path=node.evaluation_script_path,
             evaluation_result=node.evaluation_output,
             workspace_dir=node.workspace_dir,
-            design_axes=design_axes,
+            axes=axes,
             session_end_facts=session_end_facts,
             domain_guidance=staged.guidance,
             verification=render_verification(verification),
-            timeout_seconds=clamped_timeout(
-                feedback_generator.configured_timeout_seconds
-            ),
+            timeout_seconds=deadline_seconds,
+            retry_deadline=retry_deadline,
         )
+        if feedback_result.unjudged:
+            # No verdict: the attempt is unjudged, by reason, keeping its
+            # score; the judge's spend and time are still the attempt's.
+            node.unjudged = feedback_result.unjudged
+            node.phase_telemetry["feedback"] = {
+                "cost_usd": feedback_result.cost_usd,
+                "duration_seconds": feedback_result.duration_seconds,
+            }
+            print(f"[GenericSearch] node {node.node_id} unjudged: {node.unjudged}")
+            return node
 
         # Update node with feedback results. A harness verdict of void is
         # ANDed in after the judge, so the judge's default cannot
@@ -162,6 +172,9 @@ def generate_feedback(
         print(f"[GenericSearch] Error generating feedback: {e}")
         node.feedback = f"Error generating feedback: {e}"
         node.should_stop = False
+        # No judgment reached the record: the attempt keeps its score and
+        # is never a parent or delivered, as every unjudged attempt.
+        node.unjudged = f"the judge failed: {e}"
         if is_void(verification):
             # The harness's void holds whether or not the judge spoke.
             node.evaluation_valid = False

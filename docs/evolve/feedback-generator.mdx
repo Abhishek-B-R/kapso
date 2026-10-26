@@ -143,14 +143,15 @@ else:
 
 ## Configuration
 
-The feedback generator is integrated within the search strategy. You can configure the agent type in the search strategy configuration:
+The judge is the `judge` role of the search strategy: its own `cli`, `model`, `effort` and `timeout`, the build's host where unset. A judge that answers in full without its tags is resumed once in its own session with the nudge; one cut at the budget's deadline leaves the attempt `unjudged` (see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends)).
 
 ```yaml
-feedback_generator:
-  type: "claude_code"
-  model: "claude-opus-5"
-  agent_specific:
-    auth_mode: "oauth"
+search_strategy:
+  params:
+    judge:
+      cli: codex
+      effort: xhigh
+      timeout: 900
 ```
 
 ## How does the search strategy use it?

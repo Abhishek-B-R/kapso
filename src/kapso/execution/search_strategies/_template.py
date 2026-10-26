@@ -7,7 +7,7 @@ Steps:
 1. Copy this file: cp _template.py my_strategy.py
 2. Rename the class and update the @register_strategy decorator
 3. Implement the abstract methods
-4. Add presets to strategies.yaml (optional but recommended)
+4. Give its parameters a home in config.yaml (search_strategy.params)
 5. Test: python -c "from kapso.execution.search_strategies import SearchStrategyFactory; print(SearchStrategyFactory.list_available())"
 
 Your strategy will be auto-discovered when the module loads!
@@ -40,7 +40,7 @@ class MyStrategy(SearchStrategy):
     - How does it explore solutions?
     - What makes it different from other strategies?
     
-    Config params (from strategies.yaml or config.yaml):
+    Config params (config.yaml, search_strategy.params):
         - param1: Description of param1
         - param2: Description of param2
     """
@@ -76,20 +76,6 @@ class MyStrategy(SearchStrategy):
         # Optional: Print initialization info
         print(f"[MyStrategy] Initialized with param1={self.param1}, param2={self.param2}")
         
-        # Optional: Initialize workspace with empty main file
-        # self._initialize_workspace()
-    
-    def _initialize_workspace(self) -> None:
-        """Optional: Create initial files in workspace."""
-        session = self.workspace.create_experiment_session(
-            branch_name=self.workspace.get_current_branch()
-        )
-        session.generate_code(
-            f"<problem>\n{self.problem_handler.get_problem_context()}\n</problem>\n\n"
-            + "Create an empty main.py file with a main() function placeholder."
-        )
-        self.workspace.finalize_session(session)
-        self.workspace.repo.git.stash()
 
     # =========================================================================
     # STEP 3: Implement the main search loop
@@ -243,43 +229,3 @@ class MyStrategy(SearchStrategy):
         else:
             print("[MyStrategy] No successful experiments to checkout")
             return None
-
-
-# =============================================================================
-# STEP 5 (Optional): Add presets to strategies.yaml
-# =============================================================================
-"""
-Add this to strategies.yaml:
-
-  my_strategy:
-    description: "Brief description of your strategy"
-    presets:
-      FAST:
-        params:
-          param1: 5
-          param2: "fast_mode"
-          code_debug_tries: 2
-      THOROUGH:
-        params:
-          param1: 20
-          param2: "thorough_mode"
-          code_debug_tries: 5
-    default_preset: "FAST"
-"""
-
-
-# =============================================================================
-# STEP 6 (Optional): Add tests
-# =============================================================================
-if __name__ == "__main__":
-    # Quick test that the strategy is registered
-    from kapso.execution.search_strategies import (
-        SearchStrategyFactory
-    )
-    
-    print("Available strategies:", SearchStrategyFactory.list_available())
-    
-    if SearchStrategyFactory.is_available("my_strategy"):
-        print("✓ my_strategy is registered!")
-    else:
-        print("✗ my_strategy is NOT registered - check decorator name")

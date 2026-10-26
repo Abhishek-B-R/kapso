@@ -18,7 +18,9 @@ import git
 import pytest
 
 import kapso.execution.search_strategies.generic.strategy as strategy_module
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
+from kapso.core.roles import SessionRole
+from kapso.execution.budget import BudgetSnapshot
 from kapso.execution.coding_agents.base import CodingAgentConfig, CodingResult
 from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
 from kapso.execution.search_strategies.base import SearchNode
@@ -37,6 +39,7 @@ class FakeVerifier:
     calls: List[dict] = []
     script: Callable[[Path, str], None] = staticmethod(lambda verdict_path, prompt: None)
     error: Optional[str] = None   # a session that dies instead of finishing
+    killed: bool = False          # ... cut at its deadline, the turn unfinished
 
     def __init__(self, config):
         self.config = config
@@ -50,7 +53,8 @@ class FakeVerifier:
         FakeVerifier.calls.append({"workspace": self.workspace, "prompt": prompt, "config": self.config, "verdict_path": verdict_path})
         FakeVerifier.script(verdict_path, prompt)
         if FakeVerifier.error:
-            return CodingResult(success=False, output="", error=FakeVerifier.error)
+            metadata = {"deadline_exceeded": True, "completed_before_kill": False} if FakeVerifier.killed else {}
+            return CodingResult(success=False, output="", error=FakeVerifier.error, metadata=metadata)
         return CodingResult(success=True, output="done")
 
     def get_cumulative_cost(self) -> float:
@@ -72,7 +76,7 @@ class FakeJudge:
 
     def generate(self, **kwargs):
         self.seen.append(kwargs)
-        return SimpleNamespace(feedback="a solid attempt", evaluation_valid=True, score=0.9, stop=False, duration_seconds=1.0, cost_usd=0.0, cards_load_bearing=[])
+        return SimpleNamespace(feedback="a solid attempt", evaluation_valid=True, score=0.9, stop=False, duration_seconds=1.0, cost_usd=0.0, cards_load_bearing=[], unjudged="")
 
 
 class Workspace:
@@ -102,7 +106,7 @@ def void_verdict(verdict_path: Path, prompt: str) -> None:
 def harness(tmp_path):
     copy = tmp_path / "h" / "trading"
     shutil.copytree(TRADING, copy)
-    return load_harness(str(copy), settings=dict(load_harness_defaults(), store=str(tmp_path / "store")), say=lambda line: None)
+    return load_harness(str(copy), settings=dict(load_config()["harness"], store=str(tmp_path / "store")), say=lambda line: None)
 
 
 @pytest.fixture
@@ -124,23 +128,20 @@ def strategy(tmp_path, harness, monkeypatch):
 
     s = GenericSearch.__new__(GenericSearch)
     s.harness = harness
-    s.implementation_cli = "claude_code"
-    s.implementation_model = "implementer"
+    s.implementation_role = SessionRole(name="implementation", cli="claude_code", model="implementer", effort=None, timeout=None)
     s.workspace_dir = str(campaign)
     s.workspace = Workspace(campaign)
     s.feedback_generator = FakeJudge()
     s.goal = "Raise the Sharpe above 1"
-    s.design_axes = ("signal",)
     s.budget_snapshot = None
     s.budget_snapshot_monotonic = None
+    s.finishing_cut = None
     s.registered_evaluation_command = ""
     s.registered_evaluator_id = ""
     s.node_history = []
     s.iteration_count = 0
-    s._claude_auth_settings = {}
     s.env_strip = []
     s.env_defaults = {}
-    s.session_effort = None
     s._clamped_timeout = lambda seconds: seconds
     s.problem_handler = SimpleNamespace(maximize_scoring=True, finalize_run_selection=lambda manifest, valid: None)
     return s
@@ -247,13 +248,32 @@ def test_a_session_that_dies_is_said_so_and_a_budget_clamp_ends_the_retries(stra
     assert node.verification["summary"] == "the verification session failed: Deadline of 102.2s reached — terminating Claude Code"
 
     FakeVerifier.calls = []
-    strategy._clamped_timeout = lambda seconds: 60.0   # the budget's end
+    # The budget's end: 200s remain, the judge's floor and the delivery's
+    # slice follow, so the session gets 110s of its 600 and no retry.
+    strategy.budget_snapshot = BudgetSnapshot(
+        iteration_index=0, max_iterations=3, elapsed_seconds=800, cost_usd=0.0, time_budget_seconds=1000,
+        finalization_reserve_seconds=0.0, min_agent_timeout_seconds=60, delivery_seconds=30,
+    )
+    FakeVerifier.killed = True
     clamped = node_for(strategy, "generic_exp_0", node_id=1)
     strategy._verify_attempt(clamped)
     assert len(FakeVerifier.calls) == 1
+    assert FakeVerifier.calls[0]["config"].agent_specific["timeout"] == 110
     assert clamped.verification["summary"].startswith("the verification session failed: Deadline")
+    assert strategy.finishing_cut.startswith("the verification of node 1 was cut")
+
+    FakeVerifier.calls = []
+    FakeVerifier.killed = False
+    FakeVerifier.error = "the CLI crashed at startup"
+    strategy.finishing_cut = None
+    crashed = node_for(strategy, "generic_exp_0", node_id=3)
+    strategy._verify_attempt(crashed)
+    # Under the same clamp, a session that fails at once is retried: the
+    # cut is the invocation's own outcome, not the clamp's arithmetic.
+    assert len(FakeVerifier.calls) == 2 and strategy.finishing_cut is None
     FakeVerifier.error = None
-    strategy._clamped_timeout = lambda seconds: seconds
+    strategy.budget_snapshot = None
+    strategy.finishing_cut = None
 
     FakeVerifier.calls = []
     silent = node_for(strategy, "generic_exp_0", node_id=2)
@@ -279,7 +299,7 @@ def test_a_harness_without_verification_content_runs_no_session(strategy, harnes
     text = manifest.read_text()
     start, end = text.index("  verification:\n"), text.index("  feedback:\n")
     manifest.write_text(text[:start] + text[end:])
-    settings = dict(load_harness_defaults(), store=str(Path(strategy.workspace_dir).parent / "store"))
+    settings = dict(load_config()["harness"], store=str(Path(strategy.workspace_dir).parent / "store"))
     strategy.harness = load_harness(str(harness.path), settings=settings, say=lambda line: None)
     node = node_for(strategy)
     strategy._verify_attempt(node)

@@ -1,0 +1,36 @@
+{
+  "module": "engine",
+  "host": "codex",
+  "harness": null,
+  "session_dir": "/tmp/kapso-inference-kwg1z0v0",
+  "pages": [],
+  "skills": [],
+  "mcp_servers": [],
+  "agents": [],
+  "hooks": [],
+  "prepared": [],
+  "stream": "/campaign/.kapso/sessions/engine/repo_memory/1/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-26T14:12:02+00:00",
+      "ended": "2026-10-26T14:12:04+00:00",
+      "duration_seconds": 2.003,
+      "model": "gpt-5.6-sol",
+      "cli_session_id": "01a1788d-d064-7fa2-a899-5f4ef3f2b562",
+      "exit": "error",
+      "error": "Codex CLI exited with code 1: Reading prompt from stdin...\n{\"type\":\"thread.started\",\"thread_id\":\"01a1788d-d064-7fa2-a899-5f4ef3f2b562\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"error\",\"message\":\"Quota exceeded. Check your plan and billing details.\"}\n{\"type\":\"turn.failed\",\"error\":{\"message\":\"Quota exceeded. Check your plan and billing details.\"}}\n",
+      "retry_reason": null,
+      "cost_usd": null,
+      "cost_cumulative": null,
+      "turns": 0,
+      "usage": null,
+      "tools": {},
+      "gates": {},
+      "hooks": null,
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": null
+    }
+  ]
+}

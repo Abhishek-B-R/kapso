@@ -22,7 +22,7 @@ from kapso.execution.evaluation_integrity import EvaluationIntegrityError
 from kapso.execution.inbox import launch_receipt_path, list_registered_campaigns, register_campaign
 from kapso.execution.observability import BuildStatus, LessonStatus, campaign_listing, render_listing
 from tests.handles_support import facade
-from tests.harness_support import patch_engine
+from tests.harness_support import fake_config, patch_engine
 
 
 def campaign(tmp_path, name, *, state=None, stopped_reason=None, stale=False, dead=False, started=False):
@@ -95,8 +95,9 @@ def test_the_listing_keeps_the_alive_and_the_waiting(tmp_path):
 def test_watch_with_no_path_lists_and_follow_needs_a_campaign(tmp_path, monkeypatch, capsys):
     registry = tmp_path / "registry.jsonl"
     campaign(tmp_path, "running")
-    monkeypatch.setattr(watch_module, "load_mode_config", lambda path: {"inbox": {"registry": str(registry)}})
-    monkeypatch.setattr(watch_module, "load_config", lambda path: {"learning": {"status_dir": str(tmp_path / "none")}})
+    monkeypatch.setattr(watch_module, "load_config", lambda path: fake_config(
+        inbox={"registry": str(registry)}, learning={"status_dir": str(tmp_path / "none")},
+    ))
     cmd_watch(SimpleNamespace(path=None, json=True, follow=False, all=False, config=None))
     [entry] = json.loads(capsys.readouterr().out)
     assert entry["path"] == str(tmp_path / "running") and entry["state"] == "running"
@@ -137,7 +138,7 @@ def test_a_launch_refused_at_a_check_is_registered_all_the_same(tmp_path, monkey
     with pytest.raises(EvaluationIntegrityError, match="left by an earlier run"):
         facade().build("Improve support", evaluation=str(evaluation), output=str(workspace))
     assert not workspace.exists()
-    registry = kapso_module.load_mode_config(None, None)["inbox"]["registry"]
+    registry = kapso_module.load_config()["inbox"]["registry"]
     [line] = Path(registry).read_text().splitlines()
     assert json.loads(line)["path"] == str(workspace.resolve()) and json.loads(line)["goal"] == "Improve support"
     # A foreground launch leaves no receipt and no directory: nothing to

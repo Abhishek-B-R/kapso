@@ -1,0 +1,51 @@
+{
+ "operation": "build",
+ "phases": [
+  "setup",
+  "harness_setup",
+  "lens_planning",
+  "ideation",
+  "implementation",
+  "evaluation",
+  "verification",
+  "feedback"
+ ],
+ "state": "done",
+ "pid": 2436958,
+ "started_at": "2026-10-26T14:15:06+00:00",
+ "heartbeat_at": "2026-10-26T14:38:16+00:00",
+ "phase": "verification",
+ "phase_started_at": "2026-10-26T14:29:34+00:00",
+ "recent": [
+  "14:17 iteration 1 started (budget 5%)",
+  "14:38 node 0 completed score=None",
+  "14:38 stopping: the remaining 0.7 min would not cover an attempt (the last took 20.3 min)"
+ ],
+ "harness": {
+  "name": "trading",
+  "version": "0.1.0",
+  "hash": "8fbc403632afe85c95fd15470afbe12b1f324026cb62a1a1bbb9aea6b06984ae",
+  "source": "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp4/devbox/examples/harnesses/trading"
+ },
+ "experience": [],
+ "heartbeat_seconds": 60.0,
+ "harness_setup": {
+  "prepared": [
+   "market-data"
+  ]
+ },
+ "budget": {
+  "elapsed_min": 22.1,
+  "total_min": 40.0,
+  "reserve_min": 17.2
+ },
+ "iteration": 1,
+ "last": {
+  "score": null,
+  "node": 0
+ },
+ "best": null,
+ "finished_at": "2026-10-26T14:38:16+00:00",
+ "stopped_reason": "budget_exhausted",
+ "stop_detail": "attempt_would_not_fit"
+}

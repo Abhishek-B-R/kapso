@@ -30,7 +30,7 @@ and names `kapso watch`.
 | `base_commit` | The seed commit, `diff()`'s base |
 | `score` | The delivered candidate's measurement under the registered evaluator |
 | `goal_achieved` | The judge's verdict that the objective was met |
-| `stopped_reason`, `stop_detail` | `goal_achieved`, `max_iterations`, `budget_exhausted` (with the dial) or `waiting_for_user` |
+| `stopped_reason`, `stop_detail` | `goal_achieved`, `max_iterations`, `budget_exhausted` (with the detail: `time_budget`, `cost_budget`, `attempt_would_not_fit`, `finishing_cut`) or `waiting_for_user` |
 | `experiments`, `experiments_total` | Experiments this run, and across every resume |
 | `cost_usd` | Model spend |
 | `requests` | What you must answer, when `stopped_reason` is `waiting_for_user` |

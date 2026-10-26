@@ -59,14 +59,14 @@ The status file lives under `learning.status_dir` with the phase (`ingest`, `mer
 
 | Requirement | Why |
 |---|---|
-| the ingestor's and the merger's coding-agent CLI, logged in (`modes.<mode>.learner.ingestor`, `.merger`; `claude_code` as shipped) | every phase of the pipeline is one session |
+| the ingestor's and the merger's coding-agent CLI, logged in (`learner.ingestor`, `.merger`; `claude_code` as shipped) | every phase of the pipeline is one session |
 | `git` | a repository is cloned |
 | `OPENAI_API_KEY` in `.env` | the pages are embedded (OpenAI as shipped; Vertex AI with `embedding_provider: vertex`) |
 | Weaviate and Neo4j | the index's namespace: vectors and links |
 | with `--research`, the `research` role's CLI | the web-search session |
 | with `learner.ingestor.publish_workflows`, `GH_TOKEN` | the extracted workflows are published as repositories |
 
-The stores run in Docker; from a source checkout `bash scripts/start_infra.sh` starts Weaviate on `localhost:8080` and Neo4j on `localhost:7687` (`neo4j` / `password`), `bash scripts/stop_infra.sh` stops them, `--volumes` wipes the data. The endpoints, the embedding provider and model are `knowledge_search.params` in the [config](/docs/reference/configuration#knowledge-search); the Neo4j password is read from `NEO4J_PASSWORD`. An index records its endpoints and embedding model in `index.json`, so a build that loads it reaches the stores it was built on and embeds queries the same way.
+The stores run in Docker; from a source checkout `bash scripts/start_infra.sh` starts Weaviate on `localhost:8080` and Neo4j on `localhost:7687` (`neo4j` / `password`), `bash scripts/stop_infra.sh` stops them, `--volumes` wipes the data. The endpoints, the embedding provider and model are `knowledge_search.params` in the [config](/docs/reference/configuration#knowledge_search); the Neo4j password is read from `NEO4J_PASSWORD`. An index records its endpoints and embedding model in `index.json`, so a build that loads it reaches the stores it was built on and embeds queries the same way.
 
 ### How an index is built
 
@@ -107,6 +107,6 @@ A build that loads an index mounts two tools in its ideation and implementation 
   </Card>
 </CardGroup>
 
-Related pages: [What experience is](/docs/experience) · [Use experience on a build](/docs/experience/use) · [Share a bank](/docs/experience/share) · [Experience reference](/docs/reference/experience) · [Configuration](/docs/reference/configuration#knowledge-search)
+Related pages: [What experience is](/docs/experience) · [Use experience on a build](/docs/experience/use) · [Share a bank](/docs/experience/share) · [Experience reference](/docs/reference/experience) · [Configuration](/docs/reference/configuration#knowledge_search)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

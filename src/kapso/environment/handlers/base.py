@@ -55,15 +55,6 @@ class ProblemHandler(ABC):
     # is required" while sitting 0.0056 under the leader.
     honor_agent_stop: bool = True
     
-    def __init__(self, additional_context: str = ""):
-        """
-        Initialize problem handler.
-        
-        Args:
-            additional_context: Extra context to include (tips, domain knowledge, etc.)
-        """
-        self.additional_context = additional_context
-
     @abstractmethod
     def get_problem_context(self, budget_progress: float = 0, **kwargs) -> str:
         """Return problem description (may vary with budget progress)."""

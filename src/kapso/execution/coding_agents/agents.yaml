@@ -13,8 +13,6 @@
 #   - adapter_class: Class name in the adapter module
 #   - adapter_module: Full Python module path to the adapter
 #   - supports_native_git: Whether agent handles its own git commits
-#   - default_model: Default model for code generation
-#   - default_debug_model: Default model for debugging
 #   - env_vars: Required environment variables
 #   - install_command: How to install dependencies
 #   - agent_specific: Default agent-specific options
@@ -35,9 +33,11 @@ agents:
     description: "Git-centric pair programming agent with diff-based editing"
     adapter_class: "AiderCodingAgent"
     adapter_module: "kapso.execution.coding_agents.adapters.aider_agent"
+    # The model family the adapter can be asked for (claude, openai, any)
+    # and the keys a host entry may set for it (the config's hosts table).
+    serves: any
+    settings: []
     supports_native_git: true
-    default_model: "gpt-4.1-mini"
-    default_debug_model: "gpt-4.1-mini"
     env_vars:
       - "OPENAI_API_KEY"
     install_command: "pip install aider-chat"
@@ -55,9 +55,11 @@ agents:
     description: "Google Gemini SDK for code generation with file parsing"
     adapter_class: "GeminiCodingAgent"
     adapter_module: "kapso.execution.coding_agents.adapters.gemini_agent"
+    # The model family the adapter can be asked for (claude, openai, any)
+    # and the keys a host entry may set for it (the config's hosts table).
+    serves: any
+    settings: []
     supports_native_git: false
-    default_model: "gemini-2.5-flash"
-    default_debug_model: "gemini-2.5-flash"
     env_vars:
       - "GOOGLE_API_KEY"
     install_command: "pip install google-generativeai"
@@ -75,9 +77,14 @@ agents:
     description: "Anthropic Claude Code CLI for complex refactoring and planning"
     adapter_class: "ClaudeCodeCodingAgent"
     adapter_module: "kapso.execution.coding_agents.adapters.claude_code_agent"
+    # The model family the adapter can be asked for (claude, openai, any)
+    # and the keys a host entry may set for it (the config's hosts table).
+    serves: claude
+    settings: [auth_mode, aws_region]
+    # The staging a build session on this adapter gets (the Claude Code
+    # layout): an adapter without one cannot host a build session.
+    host: claude_code
     supports_native_git: false
-    default_model: "claude-opus-4-5"
-    default_debug_model: "claude-opus-4-5"
     env_vars:
       - "ANTHROPIC_API_KEY"
     install_command: "npm install -g @anthropic-ai/claude-code"
@@ -103,9 +110,12 @@ agents:
     description: "Claude Code CLI driven by an OSS model via an Anthropic-compatible endpoint (e.g. GLM 5.2 on Fireworks)"
     adapter_class: "OssClaudeCodeCodingAgent"
     adapter_module: "kapso.execution.coding_agents.adapters.oss_claude_code_agent"
+    # The model family the adapter can be asked for (claude, openai, any)
+    # and the keys a host entry may set for it (the config's hosts table).
+    serves: any
+    settings: [base_url, auth_token_env]
+    host: claude_code
     supports_native_git: false
-    default_model: "accounts/fireworks/models/glm-5p2"
-    default_debug_model: "accounts/fireworks/models/glm-5p2"
     # The credential var NAME is configured per use via agent_specific.auth_token_env
     # (e.g. FIREWORKS_API_KEY); no fixed env var requirement here.
     env_vars: []
@@ -128,9 +138,12 @@ agents:
     description: "Claude Code CLI driven by a Vertex AI Model Garden open model (e.g. GLM 5.2) through a local LiteLLM bridge"
     adapter_class: "VertexClaudeCodeCodingAgent"
     adapter_module: "kapso.execution.coding_agents.adapters.vertex_claude_code_agent"
+    # The model family the adapter can be asked for (claude, openai, any)
+    # and the keys a host entry may set for it (the config's hosts table).
+    serves: any
+    settings: [vertex_project, vertex_location, bridge_startup_timeout]
+    host: claude_code
     supports_native_git: false
-    default_model: "zai-org/glm-5.2-maas"
-    default_debug_model: "zai-org/glm-5.2-maas"
     # Authenticates with Google application-default credentials (gcloud auth
     # application-default login); the bridge reads them, Kapso never does.
     env_vars: []
@@ -147,10 +160,6 @@ agents:
       vertex_location: "global"
       # Seconds to wait for the local bridge to start serving.
       bridge_startup_timeout: 60
-      # The open model's reasoning effort, set on the bridge for every
-      # request (Vertex accepts minimal / low / medium / high / max for
-      # GLM 5.2; xhigh is sent as max). null would leave the model's default.
-      effort: "xhigh"
       # Open models write big files in one turn; the CLI's default 32k
       # output cap killed 1 of 48 fleet runs (Vertex accepts 100k for GLM 5.2).
       # Set-if-absent in the CLI's environment.
@@ -172,9 +181,11 @@ agents:
     description: "OpenHands agent SDK with sandboxed execution environment"
     adapter_class: "OpenHandsCodingAgent"
     adapter_module: "kapso.execution.coding_agents.adapters.openhands_agent"
+    # The model family the adapter can be asked for (claude, openai, any)
+    # and the keys a host entry may set for it (the config's hosts table).
+    serves: any
+    settings: []
     supports_native_git: false
-    default_model: "gpt-4.1-mini"
-    default_debug_model: "gpt-4.1-mini"
     env_vars:
       - "OPENAI_API_KEY"
     install_command: "pip install openhands-ai litellm"
@@ -194,10 +205,12 @@ agents:
     description: "Text-only inference for OpenAI-compatible Chat Completions endpoints"
     adapter_class: "OpenAICompatibleInferenceAgent"
     adapter_module: "kapso.execution.coding_agents.adapters.openai_compatible_agent"
+    # The model family the adapter can be asked for (claude, openai, any)
+    # and the keys a host entry may set for it (the config's hosts table).
+    serves: any
+    settings: []
     supports_native_git: false
     inference_only: true
-    default_model: "gpt-4o-mini"
-    default_debug_model: "gpt-4o-mini"
     env_vars:
       - "OPENAI_API_KEY"
     install_command: "Included in the standard leeroo-kapso install"
@@ -217,17 +230,18 @@ agents:
     description: "OpenAI Codex CLI, non-interactive exec with full-access sandbox"
     adapter_class: "CodexCodingAgent"
     adapter_module: "kapso.execution.coding_agents.adapters.codex_agent"
+    # The model family the adapter can be asked for (claude, openai, any)
+    # and the keys a host entry may set for it (the config's hosts table).
+    serves: openai
+    settings: []
+    host: codex
     supports_native_git: false
-    default_model: "gpt-5.6-sol"
-    default_debug_model: "gpt-5.6-sol"
     # Auth comes from ~/.codex/auth.json (ChatGPT login) or CODEX_API_KEY;
     # OPENAI_API_KEY is deliberately stripped from the child environment.
     env_vars: []
     install_command: "npm install -g @openai/codex"
     documentation_url: "https://github.com/openai/codex"
     agent_specific:
-      # OpenAI reasoning ceiling is xhigh (no "max" tier)
-      effort: "xhigh"
       timeout: 3600
       sandbox: "danger-full-access"
       web_search: true

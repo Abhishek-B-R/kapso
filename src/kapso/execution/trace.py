@@ -32,7 +32,7 @@ from kapso.harness.verdict import VOID
 from kapso.learning.bank_invariants import INDEXED_ONLY
 from kapso.learning.serving_launch import PULL_LOG_FILE, SERVING_DIR, SERVING_RECORD_FILE
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 COMPLETE = "complete"
 PARTIAL = "partial"
 # Where the campaign's cost figure comes from: every session, or the
@@ -46,6 +46,7 @@ FAILED_EXITS = (EXIT_ERROR, EXIT_TIMEOUT, EXIT_REFUSED)
 IDEATION = "ideation"
 VERIFICATION = "verification"
 FEEDBACK = "feedback"
+DIFFICULTIES = "difficulties"
 IMPLEMENTATION = "implementation"
 ITERATION_PREFIX = "iter"
 PHASE_ORDER = {IDEATION: 0, IMPLEMENTATION: 1, VERIFICATION: 2, FEEDBACK: 3}
@@ -189,6 +190,33 @@ def _first(*values):
     return None
 
 
+def _budget_source(launch) -> Optional[str]:
+    """Which budget won when the brief and the launch both named minutes:
+    the launch's, said with the brief's figure; None when they agree or
+    only one named one."""
+    if launch is None:
+        return None
+    named = launch["brief"]["budget"]["minutes"]
+    if named is None or launch["minutes"] is None or float(named) == float(launch["minutes"]):
+        return None
+    return f"the launch's over the brief's {float(named):.1f} min"
+
+
+STOPPING = "stopping: "
+
+
+def _stop_note(status) -> Optional[str]:
+    """The sentence the campaign stopped on (an admission refusal, a
+    finishing cut), from the status file's recent lines; None without one."""
+    if status is None:
+        return None
+    for line in reversed(status.get("recent") or []):
+        _stamp, _, text = line.partition(" ")
+        if text.startswith(STOPPING):
+            return text[len(STOPPING):]
+    return None
+
+
 def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sources) -> Dict[str, Any]:
     brief = _first(
         record.brief.to_dict() if record is not None else None,
@@ -215,6 +243,7 @@ def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sourc
         "experience": [source_line(source) for source in sources],
         "evaluator": evaluator,
         "budget": status.get("budget") if status is not None else None,
+        "budget_source": _budget_source(launch),
         "cost": {
             "usd": cost,
             "coverage": COVERAGE_CLAUDE if any(session["host"] == CODEX_HOST for session in sessions) else COVERAGE_ALL,
@@ -232,6 +261,7 @@ def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sourc
             record.stop_detail if record is not None else None,
             status.get("stop_detail") if status is not None else None,
         ),
+        "stop_note": _stop_note(status),
         "experiments": _first(
             record.experiments_total if record is not None else None,
             checkpoint.completed_iterations if checkpoint is not None else None,
@@ -277,7 +307,7 @@ def _owner(label: str) -> Tuple[str, Any]:
     if head == IDEATION:
         iteration, _, _ = rest.partition("/")
         return ("iteration", int(iteration[len(ITERATION_PREFIX):]))
-    if head in (VERIFICATION, FEEDBACK):
+    if head in (VERIFICATION, FEEDBACK, DIFFICULTIES):
         return ("branch", rest)
     return ("branch", head)
 
@@ -309,7 +339,9 @@ def _attempts(nodes, sessions, pulls) -> Tuple[List[Dict[str, Any]], Set[str]]:
                 "integrity_error": node["evaluation_integrity_error"] or None,
                 "output": node["evaluation_output"],
             },
+            "commit": node["commit"],
             "verification": node["verification"],
+            "unjudged": node["unjudged"],
             "judge": {"stop": node["should_stop"], "valid": node["evaluation_valid"], "feedback": node["feedback"]},
             "cards": {
                 "read": _cards_read(pulls, [session["label"] for session in own]),
@@ -535,7 +567,12 @@ def _header_lines(data: Dict[str, Any]) -> List[str]:
     ))
     budget = header["budget"]
     if budget and budget.get("total_min"):
-        lines.append(_row("budget", f"{float(budget.get('elapsed_min') or 0.0):.1f} of {float(budget['total_min']):.1f} min"))
+        text = f"{float(budget.get('elapsed_min') or 0.0):.1f} of {float(budget['total_min']):.1f} min"
+        if budget.get("reserve_min") is not None:
+            text += f", {float(budget['reserve_min']):.1f} min reserved for finishing"
+        if header["budget_source"]:
+            text += f" ({header['budget_source']})"
+        lines.append(_row("budget", text))
     cost = header["cost"]
     if cost["usd"] is None:
         lines.append(_row("cost", "not recorded"))
@@ -549,6 +586,8 @@ def _header_lines(data: Dict[str, Any]) -> List[str]:
     stopped = header["stopped_reason"] or "not stopped"
     if header["stop_detail"]:
         stopped += f" ({header['stop_detail']})"
+    if header["stop_note"]:
+        stopped += f": {header['stop_note']}"
     experiments = f"{header['experiments']} experiment{'s' if header['experiments'] != 1 else ''}"
     if header["rejected"]:
         experiments += f", {header['rejected']} rejected"
@@ -581,7 +620,10 @@ def _state_line(data: Dict[str, Any]) -> str:
 
 
 def _attempt_lines(attempt: Dict[str, Any], full: bool) -> List[str]:
-    head = f"node {attempt['node']}  {attempt['branch']}  from {attempt['parent']}"
+    head = f"node {attempt['node']}  {attempt['branch']}"
+    if attempt["commit"]:
+        head += f" @ {attempt['commit'][:12]}"
+    head += f"  from {attempt['parent']}"
     if attempt["duration_seconds"] is not None:
         head += f"  {attempt['duration_seconds'] / 60:.1f} min"
     if attempt["cost_usd"] is not None:
@@ -619,7 +661,9 @@ def _attempt_lines(attempt: Dict[str, Any], full: bool) -> List[str]:
         lines.append(_row("  verification", f"{verification['verdict']}: {_headline(verification['summary'])}"))
     judge = attempt["judge"]
     verdict = ("valid" if judge["valid"] else "not valid") + (", stop" if judge["stop"] else ", continue")
-    if full:
+    if attempt["unjudged"]:
+        lines.append(_row("  judge", f"unjudged: {attempt['unjudged']}"))
+    elif full:
         lines.append(_row("  judge", verdict))
         lines += _indent(judge["feedback"] or "(no feedback recorded)", "    ")
     else:
@@ -651,6 +695,8 @@ def _session_lines(session: Dict[str, Any], full: bool, indent: str = "  ") -> L
 def _run_summary(run: Dict[str, Any]) -> str:
     parts = [f"{run['exit']:<8}"]
     parts.append(f"{run['duration_seconds'] / 60:5.1f} min" if run["duration_seconds"] is not None else "    - min")
+    if run["retry_reason"]:
+        parts.append(f"retry: {run['retry_reason']}")
     if run["cost_usd"] is not None:
         parts.append(f"${run['cost_usd']:.3f}")
     elif run["usage"]:

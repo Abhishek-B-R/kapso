@@ -6,6 +6,7 @@ the same hook through `main()`, so its log shows the message."""
 import sys
 from typing import Type
 
+from kapso.core.config import ConfigError
 from kapso.core.git_reference import GitReferenceError
 from kapso.core.preflight import PreflightError
 from kapso.execution.evaluation_integrity import EvaluationIntegrityError
@@ -23,6 +24,7 @@ from kapso.harness.reference import HarnessReferenceError
 
 ENGINE_ERRORS = (
     BriefError,
+    ConfigError,
     HarnessError,
     HarnessReferenceError,
     ManifestError,

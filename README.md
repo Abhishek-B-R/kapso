@@ -85,7 +85,7 @@ CLIs logged in before anything works:
 npm install -g @openai/codex            # research, judging, utilities
 codex login
 
-npm install -g @anthropic-ai/claude-code  # ideation + implementation (default mode)
+npm install -g @anthropic-ai/claude-code  # ideation + implementation (the default host)
 claude auth login
 ```
 

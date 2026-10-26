@@ -10,6 +10,7 @@ import git
 import pytest
 
 from kapso.environment.handlers.generic import GenericProblemHandler
+from kapso.execution.search_strategies.generic.registered_evaluation import evaluation_instructions
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.evaluation_integrity import (
     AGENT_GENERATED,
@@ -319,7 +320,6 @@ def test_feedback_invalidity_cannot_stop_or_retain_a_score(tmp_path: Path) -> No
     strategy.budget_snapshot_monotonic = None
     strategy.registered_evaluation_command = ""
     # Stub gotcha: _generate_feedback threads the design-axis brief.
-    strategy.design_axes = ("input representation — features",)
     strategy.feedback_generator = SimpleNamespace(
         configured_timeout_seconds=120.0,
         agent_type="claude_code",
@@ -332,6 +332,7 @@ def test_feedback_invalidity_cannot_stop_or_retain_a_score(tmp_path: Path) -> No
             duration_seconds=None,
             cost_usd=0.0,
             cards_load_bearing=[],
+            unjudged="",
         ),
     )
     node = SearchNode(
@@ -397,14 +398,16 @@ def test_integrity_state_round_trip_and_resume_mismatch() -> None:
 def test_provided_evaluation_prompt_warns_against_modification(
     tmp_path: Path,
 ) -> None:
+    """The problem text names where the suite lives; the contract (run it,
+    never edit it) is the implementation prompt's provided form."""
     suite = tmp_path / "suite"
     _write_suite(suite)
     handler = GenericProblemHandler("Improve support", eval_dir=str(suite))
 
-    context = handler.get_problem_context()
-
-    assert "Do not modify, delete, replace" in context
-    assert "result.json" in context
+    assert "provided in `kapso_evaluation/`" in handler.get_problem_context()
+    contract = evaluation_instructions(None, provided=True)
+    assert "Never modify, delete,\n   replace or add evaluator source files" in contract
+    assert "result.json" in contract
 
 
 def test_data_tampering_voids_the_score(tmp_path: Path) -> None:

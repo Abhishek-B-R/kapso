@@ -562,7 +562,7 @@ def test_runner_stages_knowledge_bank_and_fails_loud(tmp_path):
     # and the real runner module wires the same semantics from config
     runner_source = open(runner_mod.__file__).read()
     assert "INDEX.md" in runner_source and "book_index.md to INDEX.md" in runner_source
-    cfg = yaml.safe_load(open(runner_mod.CONFIG_PATH))["modes"]["KAGGLE"]
+    cfg = yaml.safe_load(open(runner_mod.CONFIG_PATH))["benchmark"]
     assert cfg["knowledge_bank_dir"] == "benchmarks/ioai2026/knowledge_bank"
     # Deliberately no isdir() on the bank itself: the bank is gitignored,
     # launch-shipped material — its presence is a box-provisioning fact, not a
@@ -646,19 +646,22 @@ def test_preflight_spec_owns_scaffolding_and_brief_authority():
         in spec.replace("**", "")
 
 
-def test_kaggle_mode_config_minimal_knobs():
+def test_kaggle_config_minimal_knobs():
+    """The benchmark's file is an override over the packaged config: the
+    engine's settings at the top level, the runner's own under `benchmark`."""
     with open(CONFIG_PATH) as f:
-        mode = yaml.safe_load(f)["modes"]["KAGGLE"]
-    assert "kaggle" not in mode  # slug comes from the run root, not config
-    assert "contest_economics" not in mode
-    assert mode["budget"] == {"min_iteration_seconds": 900}
+        config = yaml.safe_load(f)
+    benchmark = config["benchmark"]
+    assert "kaggle" not in benchmark  # slug comes from the run root, not config
+    assert "contest_economics" not in benchmark
+    assert config["budget"] == {"min_iteration_seconds": 900}
     # Zero harvest carve-out (user-set 2026-08-05): lanes own in-window
     # shipping; the campaign runs to the wall and the post-window harvest
     # is a no-op.
-    assert mode["session_budget"]["harvest_window_minutes"] == 0
-    assert mode["final_eval"]["harvest_budget_seconds"] == 0
+    assert benchmark["session_budget"]["harvest_window_minutes"] == 0
+    assert benchmark["final_eval"]["harvest_budget_seconds"] == 0
     # Contest 5 (2026-08-06): the provider's safety classifier killed both
     # lanes' codex sessions on an adversarial task; a crash now retries once
     # on a second model instead of forfeiting the lane's remaining time.
-    params = mode["search_strategy"]["params"]
-    assert params["implementation_fallback_model"] == "gpt-5.5"
+    params = config["search_strategy"]["params"]
+    assert params["implementation"]["fallback_model"] == "gpt-5.5"

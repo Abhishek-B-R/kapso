@@ -1,0 +1,40 @@
+trace of <campaign> — complete
+objective       Raise the strategy's out-of-sample Sharpe above 1.0 on the 2024
+harness         trading 0.1.0 (8fbc403632af)
+served          nothing
+evaluator       none registered: the agent's own evaluation
+budget          22.1 of 40.0 min, 17.2 min reserved for finishing (the launch's over the brief's 75.0 min)
+cost            $3.543 (Claude Code sessions only; Codex reports no cost)
+stopped         budget_exhausted (attempt_would_not_fit): the remaining 0.7 min would not cover an attempt (the last took 20.3 min); 1 experiment, 1 rejected
+delivered       none succeeded
+
+ATTEMPTS
+node 0  generic_exp_0 @ 99dbf84a8439  from main  20.3 min  $3.543
+  idea          Core Idea: Replace the slow long-only MA cross with “SoftRisk TSMOM”: a causal long/short ensemble of 15- and 20-day volatility-normalized momentum, softly bou…
+  sessions
+    ideation/iter1/codex_gpt-5.6-sol codex       success     4.9 min  899k in, 16.1k out tokens  1 turns  tools command_execution 9  hooks not reported by this host
+    generic_exp_0                  codex       success     5.4 min  1458k in, 18.9k out tokens  1 turns  tools command_execution 18, file_change 5  gates market-data 4  hooks not reported by this host  collab wait 1
+    verification/generic_exp_0     codex       success     2.0 min  496k in, 5.6k out tokens  1 turns  tools command_execution 19, file_change 1  hooks not reported by this host  collab wait 1
+    feedback/generic_exp_0         claude_code success     6.7 min  $3.543  46 turns  tools Bash 37, ListAgents 5, TaskStop 5, ToolSearch 2, Agent 1, +2 more  hooks 3 fired  delegates risk-reviewer stopped
+  evaluation    no score (provided), not valid
+  verification  void: The prescribed final-diff look-ahead scan returned no findings; the independent lookahead auditor passed the strategy as causal and leakage-free; all three con…
+  judge         not valid, continue: Status: VOID — nothing was banked. The champion is still the 0.14 baseline.
+  cards read    none
+  load-bearing  none
+
+OTHER SESSIONS
+  engine/repo_memory/1           codex       success     1.3 min  48k in, 6.8k out tokens  1 turns  hooks not reported by this host
+  harness_setup                  codex       success     1.8 min  383k in, 6.5k out tokens  1 turns  tools command_execution 10, file_change 1  gates market-data 5  hooks not reported by this host
+
+LESSONS
+  nothing served
+
+VOIDED OR REJECTED
+node 0  generic_exp_0  void: The prescribed final-diff look-ahead scan returned no findings; the independent lookahead auditor passed the strategy as causal and leakage-free; all three contract tests passed; and the saved 262-day artifacts reproduce the reported Sharpe and drawdown with ample trades and losing periods. Nevertheless, the attempt is void because it added a hand-authored file inside the task's explicitly protected kapso_evaluation directory, which the task says a candidate may not modify; evaluate.py itself was unchanged and the evaluator-generated result.json is not the basis for this finding.
+    - The candidate must not modify the protected kapso_evaluation/ directory.: /tmp/kapso_candidate_wpmof1ky/kapso_task.md:32 says a candidate that modifies kapso_evaluation/ is rejected; /campaign/.kapso/verification/generic_exp_0/diff.patch:75-80 shows the attempt adding kapso_evaluation/eval_profile.md, and git history identifies commit f0b29ad as 'docs: profile trading evaluation'.
+
+SESSIONS FAILED
+  none
+
+DELIVERED
+none succeeded

@@ -67,10 +67,13 @@ def mcp_config_overrides(mcp_servers: Dict[str, Any]) -> List[str]:
             overrides += ["-c", f"mcp_servers.{name}.url={json.dumps(spec['url'])}"]
             overrides += ["-c", f"mcp_servers.{name}.tool_timeout_sec={spec['timeout'] // 1000}"]
             # Under a read-only sandbox codex refuses MCP calls that "require
-            # approval" (exec never prompts); a knowledge gate is read-only
-            # by nature, so its tools are pre-approved; a harness server
-            # says its own mode (approve). The key is written once.
-            mode = spec.get("approval_mode") or "auto"
+            # approval" (exec never prompts), and `auto` does not pre-approve
+            # them (verified 2026-10-26 with the hosted gate: the call failed
+            # "requires approval, but approval policy is never"; `approve`
+            # ran it). A knowledge gate is read-only by nature, so its tools
+            # are pre-approved; a harness server says its own mode (approve).
+            # The key is written once.
+            mode = spec.get("approval_mode") or "approve"
             overrides += ["-c", f"mcp_servers.{name}.default_tools_approval_mode={json.dumps(mode)}"]
             # Headers: a literal goes as it is; a `${VAR}` reference is
             # forwarded by name through env_http_headers (verified
@@ -204,7 +207,7 @@ class CodexCodingAgent(CodingAgentInterface):
         super().__init__(config)
         spec = config.agent_specific or {}
         self._effort: Optional[str] = spec.get("effort")
-        # None is what a lane with no implementation_timeout and no time budget
+        # None is what a lane with no implementation timeout and no time budget
         # passes (the strategy clamps to "unbounded"); the adapter needs a
         # deadline, so that is the default one (live L2, 2026-09-04).
         configured_timeout = spec.get("timeout")
@@ -274,27 +277,32 @@ class CodexCodingAgent(CodingAgentInterface):
         cli_session_id: str,
         follow_up: str,
         timeout_seconds: Optional[float] = None,
+        reason: Optional[str] = None,
     ) -> CodingResult:
         """Continue a stored thread with one more user message (the inbox
-        continuation): `codex exec <options> resume <thread> -`, the
-        message on stdin. Exec options precede `resume` (verified on
-        codex-cli 0.144.1)."""
+        continuation, the judge's retry): `codex exec <options> resume
+        <thread> -`, the message on stdin. Exec options precede `resume`
+        (verified on codex-cli 0.144.1). ``reason`` is recorded on the run
+        entry (`retry_reason`)."""
         if not self._workspace:
             raise RuntimeError("CodexCodingAgent used before initialize()")
         timeout = float(timeout_seconds) if timeout_seconds is not None else self._timeout
         return self._run_session(
-            self.config.model, ["resume", cli_session_id, "-"], follow_up, timeout
+            self.config.model, ["resume", cli_session_id, "-"], follow_up, timeout, reason=reason,
         )
 
     def _exec_command(self, model: str, last_message_path: str) -> List[str]:
         """`codex [--search] exec <exec options>` — the shared head of a
-        fresh session and a resumed one."""
+        fresh session and a resumed one. With the web off, the native
+        search is disabled by its config key (omitting `--search` alone
+        leaves Codex's default cached search on)."""
         cmd = ["codex"]
         if self._web_search:
             cmd.append("--search")
         cmd.extend(
             [
                 "exec",
+                *([] if self._web_search else ["-c", 'web_search="disabled"']),
                 "--sandbox",
                 self._sandbox,
                 "--skip-git-repo-check",
@@ -318,13 +326,15 @@ class CodexCodingAgent(CodingAgentInterface):
         return cmd
 
     def _run_session(
-        self, model: str, tail: List[str], prompt: str, timeout: float
+        self, model: str, tail: List[str], prompt: str, timeout: float, reason: Optional[str] = None,
     ) -> CodingResult:
         """One host invocation, recorded in the session's record whatever
         way it ends (wp6-observability.md): the turn runs, and its run
         entry is appended in a `finally`, with the exception in flight
         when there is one, which then propagates."""
-        recorder = start_run(CODEX_HOST, model, self._session_record_path, self._stream_artifact_path)
+        recorder = start_run(
+            CODEX_HOST, model, self._session_record_path, self._stream_artifact_path, reason=reason, deadline_seconds=timeout,
+        )
         result: Optional[CodingResult] = None
         try:
             result = self._run_session_turn(model, tail, prompt, timeout)

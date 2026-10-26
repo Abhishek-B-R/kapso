@@ -20,6 +20,7 @@ import pytest
 from kapso.execution.inbox import file_requests, inbox_path, load_requests, record_reply
 from kapso.execution.observability import OperationStatusView
 from kapso.execution.orchestrator import OrchestratorAgent
+from tests.harness_support import fake_config
 from kapso.execution.run_checkpoint import RunCheckpointStore
 from kapso.execution.search_strategies.base import SearchNode
 
@@ -86,6 +87,8 @@ class InboxFakeStrategy:
     def __init__(self, workspace_dir: str):
         self.workspace_dir = workspace_dir
         self.workspace = FakeWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.node_history: List[SearchNode] = []
         self.runs = 0
         self.inbox = inbox_path(workspace_dir)
@@ -158,16 +161,15 @@ def patched(monkeypatch, tmp_path):
 
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "inbox": {"enabled": True, "stop_grace_seconds": 1, "registry": str(tmp_path / "registry.jsonl")},
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(
+            inbox={"enabled": True, "stop_grace_seconds": 1, "registry": str(tmp_path / "registry.jsonl")},
+        ),
     )
-    monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self, coding_agent=None: object())
+    monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self: object())
     strategies: List[InboxFakeStrategy] = []
 
-    def create_strategy(self, coding_agent, workspace_dir, start_from_checkpoint):
+    def create_strategy(self, workspace_dir, start_from_checkpoint):
         strategy = InboxFakeStrategy(workspace_dir)
         strategies.append(strategy)
         return strategy

@@ -137,24 +137,6 @@ class ExperimentWorkspace:
         # in the workspace repo status.
         self._ensure_workspace_gitignore()
 
-    @classmethod
-    def with_default_config(
-        cls,
-        workspace_dir: Optional[str] = None,
-        initial_repo: Optional[str] = None,
-    ) -> 'ExperimentWorkspace':
-        """
-        Create ExperimentWorkspace with default coding agent from agents.yaml.
-        
-        Returns:
-            ExperimentWorkspace configured with default agent
-        """
-        config = CodingAgentFactory.build_config()
-        # Keep this helper usable in standalone scripts.
-        # If workspace_dir is not provided, create a unique temp path.
-        workspace_dir = workspace_dir or os.path.join("tmp", "experiment_workspace", str(uuid.uuid4()))
-        return cls(coding_agent_config=config, workspace_dir=workspace_dir, initial_repo=initial_repo)
-
     def get_current_branch(self) -> str:
         """Get the current active branch name."""
         return self.repo.active_branch.name
@@ -494,27 +476,3 @@ class ExperimentWorkspace:
             Total cost in dollars
         """
         return self.previous_sessions_cost
-
-
-if __name__ == "__main__":
-    # Test with default agent from agents.yaml
-    print("Testing ExperimentWorkspace with default config...")
-    
-    workspace = ExperimentWorkspace.with_default_config()
-    print(f"Workspace: {workspace.workspace_dir}")
-    print(f"Agent type: {workspace.coding_agent_config.agent_type}")
-    
-    session = workspace.create_experiment_session("test_branch")
-    result = session.generate_code("implement a main.py file that prints 'Hello World'")
-    
-    print(f"Success: {result['success']}")
-    print(f"Code: {result['code'][:200]}..." if result['code'] else "No code")
-    if result['error']:
-        print(f"Error: {result['error']}")
-    
-    workspace.finalize_session(session)
-    print(f"Cumulative cost: ${workspace.get_cumulative_cost():.4f}")
-    
-    # Cleanup
-    workspace.cleanup()
-    print("Done!")

@@ -146,7 +146,6 @@ src/kapso/
 │   ├── search_strategies/   # Solution exploration
 │   │   ├── base.py          # SearchStrategy ABC
 │   │   ├── factory.py       # SearchStrategyFactory
-│   │   ├── strategies.yaml  # Strategy presets
 │   │   └── generic/         # The shipped strategy
 │   │       ├── strategy.py
 │   │       ├── ideation.py / implementation.py
@@ -243,24 +242,30 @@ strategy = SearchStrategyFactory.create(
 )
 ```
 
-### Configuration modes
+### Configuration layers
 
-Configuration is organized into modes that bundle related settings:
+Two layers, one file of yours: the packaged `config.yaml` carries every
+default and is the schema at every depth, and an override file carries only
+what you change, merged over it key by key. The coding-agent CLIs a build may
+run on are the `hosts` table; the build's sessions are the roles under
+`search_strategy.params`, each resolving to a host:
 
 ```yaml
-modes:
-  GENERIC:
-    search_strategy:
-      type: "generic"
-      params: { ... }
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-    knowledge_search:
-      type: "kg_graph_search"
-      enabled: true
-      preset: "DEFAULT"
+hosts:
+  claude_code: {model: claude-opus-5, auth_mode: oauth}
+  codex: {model: gpt-5.6-sol, effort: xhigh}
+search_strategy:
+  type: generic
+  params:
+    host: claude_code
+    ideation: {gates: [research, experiment_history, repo_memory], web: true}
+    implementation: {gates: [research, repo_memory], web: true}
+    judge: {}
+budget:
+  experiments: 10
 ```
+
+See [Configuration](/docs/reference/configuration).
 
 ### Git-based experiment isolation
 

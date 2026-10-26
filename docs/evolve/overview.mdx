@@ -94,19 +94,27 @@ When `build()` is called, the system initializes the workspace:
 | GitHub URL | Clone repository and use as starting point |
 | `None` (default) | Search for a relevant workflow in a loaded index. If found, clone its repository. Otherwise, start from an empty repository. |
 
-## Configuration modes
+## Configuration
 
-Two ship, both running the generic strategy:
+One configuration ships, the packaged `config.yaml`, and an override file of
+yours changes what you name in it. The gates off, for a quick experiment, is
+such a file:
 
-| Mode | Description | Best For |
-|------|-------------|----------|
-| `GENERIC` | The default: MCP gates, the loaded experience served, full feedback loop | General problem solving |
-| `MINIMAL` | The same loop with the gates off | Quick experiments, simple problems |
+```yaml
+# minimal.yaml
+search_strategy:
+  params:
+    ideation:
+      gates: []
+    implementation:
+      gates: []
+```
 
 ```python
-# Use a specific mode
-solution = kapso.build("...", mode="MINIMAL")
+solution = Kapso(config="minimal.yaml").build("...")
 ```
+
+See [Configuration](/docs/reference/configuration).
 
 Each experiment runs on its own Git branch (`generic_exp_N`), so attempts stay isolated and every one can be checked out later — see [Experiment lifecycle](/docs/evolve/experiment-lifecycle).
 

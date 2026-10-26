@@ -74,11 +74,10 @@ def test_goal_none_omits_target(tmp_path, capsys):
 
 
 def test_time_budget_threading(tmp_path):
-    path = _write_runtime_config("RELBENCH_GENERIC", str(tmp_path), tmp_path,
-                                 time_budget_hours=7.5)
+    path = _write_runtime_config(str(tmp_path), tmp_path, time_budget_hours=7.5)
     config = yaml.safe_load(Path(path).read_text())
-    assert config["modes"]["RELBENCH_GENERIC"]["budget"]["time_budget_minutes"] == 450.0
-    # no override -> config default untouched
-    path = _write_runtime_config("RELBENCH_GENERIC", str(tmp_path), tmp_path)
+    assert config["budget"]["minutes"] == 450.0
+    # no override -> the benchmark's own default untouched
+    path = _write_runtime_config(str(tmp_path), tmp_path)
     config = yaml.safe_load(Path(path).read_text())
-    assert config["modes"]["RELBENCH_GENERIC"]["budget"]["time_budget_minutes"] == 600
+    assert config["budget"]["minutes"] == 600

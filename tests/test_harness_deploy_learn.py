@@ -17,7 +17,7 @@ import pytest
 
 import kapso.deployment.adapter.agent as adapter_module
 import kapso.deployment.selector.agent as selector_module
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
 from kapso.deployment.adapter.agent import AdapterAgent
 from kapso.deployment.selector.agent import SelectorAgent
 from kapso.execution.coding_agents.base import CodingResult
@@ -44,7 +44,7 @@ def harness_dir(tmp_path):
 
 
 def loaded(tmp_path, harness_dir):
-    return load_harness(str(harness_dir), settings=dict(load_harness_defaults(), store=str(tmp_path / "store")), say=lambda line: None)
+    return load_harness(str(harness_dir), settings=dict(load_config()["harness"], store=str(tmp_path / "store")), say=lambda line: None)
 
 
 def solution_with(tmp_path, harness, campaign_name="campaign"):
@@ -55,7 +55,7 @@ def solution_with(tmp_path, harness, campaign_name="campaign"):
 
 def kapso_for(tmp_path, harness_dir=None) -> Kapso:
     kapso = facade()
-    kapso._harness_settings = dict(load_harness_defaults(), store=str(tmp_path / "store"))
+    kapso._harness_settings = dict(load_config()["harness"], store=str(tmp_path / "store"))
     if harness_dir is not None:
         kapso._harness = loaded(tmp_path, harness_dir)
     return kapso

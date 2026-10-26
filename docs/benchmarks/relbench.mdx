@@ -67,14 +67,14 @@ validation, method choice entirely the agent's — is seeded into every workspac
 PYTHONPATH=. python -m benchmarks.relbench.runner --list
 
 # Smoke test on the smallest database
-PYTHONPATH=. python -m benchmarks.relbench.runner -s rel-f1 -t driver-position -i 3 -m MINIMAL
+PYTHONPATH=. python -m benchmarks.relbench.runner -s rel-f1 -t driver-position -i 3
 
 # Full run
 PYTHONPATH=. python -m benchmarks.relbench.runner -s rel-hm -t user-item-purchase -i 25
 
 # Campaign standard, on Claude Code
 PYTHONPATH=. python -m benchmarks.relbench.runner \
-    -s rel-trial -t site-sponsor-run -i 30 -m RELBENCH_GENERIC -d claude_code
+    -s rel-trial -t site-sponsor-run -i 30 -d claude_code
 ```
 
 ## CLI options
@@ -83,8 +83,7 @@ PYTHONPATH=. python -m benchmarks.relbench.runner \
 |--------|-------------|---------|
 | `-s, --dataset` / `-t, --task` | RelBench dataset/task | Required |
 | `-i, --iterations` | Max search iterations | 20 |
-| `-m, --mode` | `RELBENCH_GENERIC`, `FAST_DEBUG` or `MINIMAL` | `RELBENCH_GENERIC` |
-| `-d, --coding-agent` | codex, gemini, claude_code, openhands | from config |
+| `-d, --coding-agent` | The host every role without a `cli` of its own runs on | `codex`, the override file's `host` |
 | `--target-val` | Early-stop validation bar | none |
 | `--rebuild-cache` | Rebuild the sanitized data cache | cached |
 

@@ -47,7 +47,6 @@ handler = GenericProblemHandler(
 # Create orchestrator — config_path=None uses the packaged config
 orchestrator = OrchestratorAgent(
     problem_handler=handler,
-    mode="GENERIC",
     coding_agent="claude_code",
     goal="Build a classifier with accuracy > 0.9",
 )
@@ -119,41 +118,34 @@ The orchestrator creates components from configuration:
 ### Search strategy
 
 ```python
-def _create_search_strategy(self, coding_agent, workspace_dir):
-    # Extract config
-    search_config = self.mode_config.get('search_strategy', {})
-    strategy_type = search_config.get('type', 'generic')
-    strategy_params = search_config.get('params', {})
-
-    # Build coding agent config
-    coding_agent_config = CodingAgentFactory.build_config(
-        agent_type=coding_agent_type,
-        model=coding_agent_model,
-    )
+def _create_search_strategy(self, workspace_dir, start_from_checkpoint):
+    # The implementation role over the hosts table: the workspace's
+    # sessions carry its host, model and settings
+    role = resolve_role(self.config["hosts"], self.strategy_params, "implementation")
+    coding_agent_config = CodingAgentFactory.session_config(role, {})
 
     # Create via factory
     return SearchStrategyFactory.create(
-        strategy_type=strategy_type,
+        strategy_type=self.strategy_type,
         problem_handler=self.problem_handler,
         llm=self.llm,
         coding_agent_config=coding_agent_config,
-        params=strategy_params,
+        hosts=self.config["hosts"],
+        params=self.strategy_params,
+        workspace_dir=workspace_dir,
+        start_from_checkpoint=start_from_checkpoint,
+        ...
     )
 ```
 
 ### Knowledge search
 
 ```python
-def _create_knowledge_search(self, is_kg_active):
-    ks_config = self.mode_config.get('knowledge_search', {})
-
-    if ks_config:
-        return KnowledgeSearchFactory.create_from_config(ks_config)
-
-    if is_kg_active:
-        return KnowledgeSearchFactory.create("kg_llm_navigation")
-
-    return KnowledgeSearchFactory.create_null()
+# The knowledge search is what the build loads: a loaded index's search
+# (the experience package builds it), else the null search
+self.knowledge_search = (
+    knowledge_search if knowledge_search is not None else KnowledgeSearchFactory.create_null()
+)
 ```
 
 ## Cost tracking
@@ -176,54 +168,60 @@ finally:
 
 ## Configuration
 
+The orchestrator loads the config with `load_config(config_path)`: the
+packaged defaults with your override file over them, an unknown key refused
+by name. The build's sessions are the roles under `search_strategy.params`,
+each resolving to a host of the `hosts` table:
+
 ```yaml
-modes:
-  GENERIC:
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        implementation_model: "claude-opus-5"
-        auth_mode: "oauth"
-        gate_failure_policy: "warn"
-        ideation_gates: ["research", "experiment_history", "repo_memory", "leeroopedia"]
+# kapso-config.yaml, an override file over the packaged config
+hosts:
+  claude_code:
+    model: claude-opus-5
+    auth_mode: oauth
+  codex:
+    model: gpt-5.6-sol
+    effort: xhigh
 
-    retry:
-      max_attempts: 2
-      initial_delay_seconds: 5
-      max_delay_seconds: 60
-      multiplier: 2
-      jitter: true
+search_strategy:
+  type: generic
+  params:
+    host: claude_code
+    ideation:
+      gates: [research, experiment_history, repo_memory]
+    implementation:
+      cli: codex
+      gates: [research, repo_memory]
+    judge: {}
+    gate_failure_policy: warn
 
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-      agent_specific:
-        auth_mode: "oauth"
-
-    knowledge_search:
-      type: "kg_graph_search"
-      enabled: true
-      preset: "DEFAULT"
+retry:
+  max_attempts: 2
+  initial_delay_seconds: 5
+  max_delay_seconds: 60
+  multiplier: 2
+  jitter: true
 ```
+
+See [Configuration](/docs/reference/configuration).
 
 ## Constructor parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `problem_handler` | `ProblemHandler` | Handles problem context |
-| `config_path` | `str` | Path to config.yaml |
-| `mode` | `str` | Configuration mode (GENERIC, MINIMAL, etc.) |
-| `coding_agent` | `str` | Override coding agent type |
-| `is_kg_active` | `bool` | Whether to enable knowledge graph |
-| `knowledge_search` | `KnowledgeSearch` | Pre-configured search instance |
+| `config_path` | `str` | Your override file over the packaged config; `None` is the packaged defaults |
+| `coding_agent` | `str` | The host every role without a `cli` of its own runs on (`search_strategy.params.host`) |
+| `knowledge_search` | `KnowledgeSearch` | The loaded index's search; `None` is the null search |
 | `workspace_dir` | `str` | Custom workspace directory |
 | `initial_repo` | `str` | Starting repo (local path or GitHub URL) |
 | `goal` | `str` | The campaign goal, fingerprinted into the checkpoint |
 | `resume` | `bool` | Continue from the workspace's run checkpoint |
 | `eval_dir` / `data_dir` | `str` | Caller-owned evaluation and data directories |
 | `iteration_evaluator` | `IterationEvaluator` | Optional [external evaluator](/docs/evolve/external-evaluation) |
-| `strategy_params_overrides` | `dict` | Per-campaign overrides merged over the mode's params |
+| `strategy_params_overrides` | `dict` | Per-campaign overrides merged over `search_strategy.params` (the facade threads the bank serving this way) |
+| `harness` | `Harness` | The loaded harness, staged into every session |
+| `experience` | `list[dict]` | The loaded sources, as records |
 
 ## Related
 

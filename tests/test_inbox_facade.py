@@ -19,7 +19,9 @@ from typing import Any, Dict, List
 import git
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
+from tests.handles_support import facade
+from tests.harness_support import fake_config
 import kapso.kapso as kapso_module
 from kapso.execution.inbox import (
     file_requests,
@@ -56,15 +58,11 @@ def _init_git_workspace(path: Path) -> None:
     repo.git.branch("-M", "main")
 
 
-def _facade() -> Kapso:
-    kapso = Kapso.__new__(Kapso)
-    kapso.config_path = None
-    kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    kapso._config = {}
-    kapso._bank_home = None
-    kapso._harness = None
-    kapso._harness_settings = load_harness_defaults()
-    kapso._experience = []
+def _facade(registry: Path) -> Kapso:
+    """The facade stub with the inbox on and its registry in the test's
+    directory (every launch registers the campaign)."""
+    kapso = facade()
+    kapso._config = fake_config(inbox={"enabled": True, "stop_grace_seconds": 120, "registry": str(registry)})
     return kapso
 
 
@@ -102,29 +100,21 @@ def _fake_orchestrator(workspace: Path, monkeypatch):
     monkeypatch.setattr(kapso_module, "OrchestratorAgent", Orchestrator)
 
 
-def _inbox_on(monkeypatch, registry: Path):
-    monkeypatch.setattr(
-        kapso_module, "load_mode_config",
-        lambda config_path, mode: {"inbox": {"enabled": True, "stop_grace_seconds": 120, "registry": str(registry)}},
-    )
-
-
 def test_a_fresh_campaign_writes_the_launch_record_and_registers(tmp_path, monkeypatch):
     workspace = tmp_path / "campaign"
     _init_git_workspace(workspace)
     registry = tmp_path / "registry.jsonl"
     _fake_orchestrator(workspace, monkeypatch)
-    _inbox_on(monkeypatch, registry)
 
-    _facade().build(
+    _facade(registry).build(
         "Improve support\nmore detail", output=str(workspace),
-        budget=Budget(experiments=7, minutes=120), mode="GENERIC", context=["a hint"],
+        budget=Budget(experiments=7, minutes=120),
     )
 
     record = read_launch_record(workspace)
-    assert record["max_iterations"] == 7 and record["time_budget_minutes"] == 120
-    assert record["mode"] == "GENERIC" and record["output_path"] == str(workspace)
-    assert record["context"] == ["a hint"] and record["resumable_from_inbox"] is True
+    assert record["experiments"] == 7 and record["minutes"] == 120
+    assert record["output_path"] == str(workspace)
+    assert record["host"] is None and record["resumable_from_inbox"] is True
     assert "dotenv_path" in record
     assert record["brief"]["objective"] == "Improve support\nmore detail"
     listed = list_registered_campaigns(registry)
@@ -140,10 +130,9 @@ def test_the_launch_record_keeps_every_path_absolute(tmp_path, monkeypatch):
     (tmp_path / "eval" / "evaluate.py").write_text("print(1)\n")
     (tmp_path / "data").mkdir()
     _fake_orchestrator(workspace, monkeypatch)
-    _inbox_on(monkeypatch, tmp_path / "registry.jsonl")
     monkeypatch.chdir(tmp_path)
 
-    _facade().build("g", output="campaign", evaluation="eval", data="data")
+    _facade(tmp_path / "registry.jsonl").build("g", output="campaign", evaluation="eval", data="data")
 
     record = read_launch_record(workspace)
     assert record["eval_dir"] == str((tmp_path / "eval").resolve())
@@ -172,8 +161,9 @@ def test_resume_and_reply_load_the_campaigns_dotenv(tmp_path, monkeypatch):
     monkeypatch.undo()
     loaded.clear()
     monkeypatch.setattr(kapso_module, "load_dotenv", lambda path: loaded.append(path))
+    monkeypatch.setattr(kapso_module, "run_preflight", lambda *args, **kwargs: None)
     _fake_orchestrator(workspace, monkeypatch)
-    _facade().build(output=str(workspace), resume=True)
+    _facade(tmp_path / "registry.jsonl").build(output=str(workspace), resume=True)
     assert loaded == [str(dotenv)]
 
 
@@ -181,8 +171,7 @@ def test_a_callback_makes_the_campaign_not_resumable_from_the_inbox(tmp_path, mo
     workspace = tmp_path / "campaign"
     _init_git_workspace(workspace)
     _fake_orchestrator(workspace, monkeypatch)
-    _inbox_on(monkeypatch, tmp_path / "registry.jsonl")
-    _facade().build("g", output=str(workspace), iteration_evaluator=lambda context: None)
+    _facade(tmp_path / "registry.jsonl").build("g", output=str(workspace), iteration_evaluator=lambda context: None)
     assert read_launch_record(workspace)["resumable_from_inbox"] is False
 
 
@@ -191,8 +180,7 @@ def test_a_resume_writes_neither_record(tmp_path, monkeypatch):
     _init_git_workspace(workspace)
     registry = tmp_path / "registry.jsonl"
     _fake_orchestrator(workspace, monkeypatch)
-    _inbox_on(monkeypatch, registry)
-    _facade().build("g", output=str(workspace), resume=True)
+    _facade(registry).build("g", output=str(workspace), resume=True)
     assert read_launch_record(workspace) is None and not registry.exists()
 
 
@@ -209,10 +197,9 @@ def _paused_campaign(tmp_path, *, requests=1, resumable=True, completed=2, max_i
         strategy_state={"node_history": [node.to_dict()]}, last_stop="waiting_for_user",
     ))
     write_launch_record(workspace, {
-        "config_path": None, "mode": "GENERIC", "coding_agent": "codex",
-        "output_path": str(workspace), "max_iterations": max_iterations, "time_budget_minutes": 90,
-        "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": "./eval",
-        "data_dir": None, "additional_context": "", "context": None,
+        "config_path": None, "host": "codex",
+        "output_path": str(workspace), "experiments": max_iterations, "minutes": 90,
+        "usd": None, "reserve_minutes": None, "eval_dir": "./eval", "data_dir": None,
         "resumable_from_inbox": resumable, "dotenv_path": "",
     })
     return workspace

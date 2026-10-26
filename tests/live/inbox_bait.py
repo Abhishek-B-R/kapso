@@ -35,7 +35,7 @@ import git
 import yaml
 from dotenv import dotenv_values
 
-from inbox_live_support import CODEX_MODEL, PACKAGED_CONFIG, WORKTREE, init_repo
+from inbox_live_support import CODEX_MODEL, WORKTREE, init_repo
 
 STUB = Path(__file__).resolve().parent / "inbox_bait_stub.py"
 CLAUDE_MODEL = "claude-opus-5"
@@ -227,14 +227,19 @@ def _substitute(text: str, values: Dict[str, str]) -> str:
 
 
 def _config(path: Path, cli: str, bait: Bait, values: Dict[str, str]) -> None:
-    config = yaml.safe_load(PACKAGED_CONFIG.read_text())
-    params = config["modes"]["MINIMAL"]["search_strategy"]["params"]
-    params["implementation_cli"] = "codex" if cli == "codex" else "claude_code"
-    params["implementation_model"] = CODEX_MODEL if cli == "codex" else CLAUDE_MODEL
-    params["implementation_timeout"] = IMPLEMENTATION_TIMEOUT_SECONDS
-    params["env_strip"] = list(bait.env_strip)
-    params["session_env_defaults"] = {
-        name: _substitute(value, values) for name, value in bait.session_env.items()
+    """An override file over the packaged config: the host the sessions
+    run on and its model, the implementation cap, the bait's environment."""
+    host = "codex" if cli == "codex" else "claude_code"
+    config = {
+        "hosts": {host: {"model": CODEX_MODEL if cli == "codex" else CLAUDE_MODEL}},
+        "search_strategy": {"params": {
+            "host": host,
+            "implementation": {"timeout": IMPLEMENTATION_TIMEOUT_SECONDS},
+            "env_strip": list(bait.env_strip),
+            "session_env_defaults": {
+                name: _substitute(value, values) for name, value in bait.session_env.items()
+            },
+        }},
     }
     path.write_text(yaml.safe_dump(config, sort_keys=False))
 
@@ -323,7 +328,7 @@ def api_build(root: Path, *, resume: bool = False) -> None:
     solution = Kapso(config=str(root / "config.yaml")).build(
         (root / "goal.txt").read_text(), output=str(root / "campaign"),
         repo=None if resume else str(root / "seed"), budget=Budget(experiments=1),
-        mode="MINIMAL", resume=resume,
+        resume=resume,
     )
     print(f"stopped_reason={solution.stopped_reason} requests={solution.requests}")
 

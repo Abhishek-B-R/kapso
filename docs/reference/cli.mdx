@@ -50,13 +50,12 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `--budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
 | `--budget-experiments` | Maximum experiments this call may run. A resume keeps the launch's cap | `10` |
 | `--budget-usd` | Best-effort model-spend budget in USD | — |
-| `--budget-reserve-minutes` | Wall clock escrowed for the final checkout and evaluation | — |
+| `--budget-reserve-minutes` | Wall clock kept out of the search for finishing: the last attempt's evaluation, verification and judgment, and the delivery. Unset, it is derived from those obligations each round; see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends) | — |
 | `--resume` | Continue the campaign in `--output` from its checkpoint. The brief and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
 | `--detach` | Start the campaign in a session of its own and return at once with its pid, the log, the status path and the `watch` command. Needs `--output`. The run outlives the shell that started it, a coding agent's tool call included | off |
 | `--log` | Where a detached run's output goes | `<output>.log`, beside the campaign directory |
-| `-m`, `--mode` | Config mode: `GENERIC` or `MINIMAL` | from config (`default_mode`) |
-| `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code`, `vertex_claude_code`. In mode `GENERIC` the implementation and verification sessions run on the strategy parameter `implementation_cli` (`claude_code` unless a config sets it); this flag does not change that | from config |
-| `--config` | Config path | the packaged `config.yaml` |
+| `-a`, `--coding-agent` | The host every role without a `cli` of its own runs on, with that host's model: an entry of the config's `hosts` table (`claude_code`, `codex`, `oss_claude_code`, `vertex_claude_code`: the adapters with a staging). Recorded in the launch record and fingerprinted, so a resume runs on the launch's host. The engine's own inference sessions (the repo memory, the commit messages) follow `inference.default` instead, Codex as packaged, whatever the host; an all-Claude run sets `inference.default.cli: claude_code` in its override file | `search_strategy.params.host`, `claude_code` as packaged |
+| `--config` | Your override file, layered over the packaged config; see [Configuration](/docs/reference/configuration) | the packaged defaults |
 
 A budget flag wins over the brief's `Budget` line; on a resume the launch record fills what is still unset, the experience included: a bare resume is served the sources the launch pinned, and a resume that names a different list is refused by name.
 
@@ -110,7 +109,7 @@ kapso harness update acme/harnesses@main#trading
 kapso harness remove acme/harnesses@v3#trading
 ```
 
-`check` and `add` print the report: a summary line such as `check ok (7 skills, 2 agents, 2 servers, 6 hooks)`, then one line per `fail`, `warn` or `needs`, then the harness's name and version. A failure exits 1; what the machine lacks never does.
+`check` and `add` print the report: a summary line such as `check ok (7 skills, 2 agents, 2 servers, 7 hooks)`, then one line per `fail`, `warn` or `needs`, then the harness's name and version. A failure exits 1; what the machine lacks never does.
 
 ### kapso harness list
 
@@ -396,20 +395,22 @@ kapso inbox reply 1 "added the key" --detach
 
 ## kapso doctor
 
-Reports the requirements your **active config** implies, and exits non-zero when a required item is missing.
+Reports the requirements your **effective config** implies, and exits non-zero when a required item is missing. The first line names the layers a run uses and what your file sets: `config: packaged defaults + kapso-config.yaml (overrides: search_strategy.params.host, hosts.codex.model)`.
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
 | `verb` | Narrow the report to `build`, `learn`, `deploy` or `experience` (what an ingest needs) | union of all four |
 | `--models` | Live-probe each configured CLI and model pair, spending a few one-token calls | off |
-| `--json` | Print the report as data: `{scope, version, kapso, python, config_path, ok, requirements: [{label, ok, required, origin, fix, detail}]}`; the exit code is the text form's | off |
-| `--config` | Config to check | packaged `config.yaml` |
+| `--json` | Print the report as data: `{scope, version, kapso, python, config_path, config, overrides, ok, requirements: [{label, ok, required, origin, fix, detail}]}`, `config` the effective config and `overrides` the dotted paths your file sets; the exit code is the text form's | off |
+| `--show-config` | Print the effective config, the packaged defaults with your file over them, as YAML, and exit | off |
+| `--config` | Your override file, layered over the packaged config | the packaged defaults |
 
 ```bash
 kapso doctor
 kapso doctor build
 kapso doctor build --models
 kapso doctor build --json | jq '.requirements[] | select(.ok | not)'
+kapso doctor --config kapso-config.yaml --show-config
 ```
 
 See [How do I check my setup?](/docs/installation#how-do-i-check-my-setup) for the output format and what each marker means.

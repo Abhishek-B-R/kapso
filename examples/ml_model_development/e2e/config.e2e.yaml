@@ -1,97 +1,35 @@
-# E2E track configuration for examples/ml_model_development.
+# The e2e track's standing full run: 45 minutes, fidelity on, the reserve
+# derived from committed_run_fraction. An override file over the packaged
+# config (`kapso doctor --show-config --config <this file>` prints what a
+# run uses); run_e2e.py --config selects it.
 #
-# Single source for every budget/fidelity knob the track uses
-# (docs/evolve/budget-aware-experimentation.mdx, "End-to-end verification
-# track"). run_e2e.py selects a mode and derives its hard wall (2x the
-# mode's time budget) from this file.
-#
-# The agent stack mirrors the production GENERIC mode (same strategy,
-# timeouts, gates) so the track measures the budget layer, not a different
-# agent configuration. Auth is the one deviation: the track runs on the
-# local claude CLI login (auth_mode: oauth) instead of Bedrock.
+# The agent stack is the packaged one (same strategy, gates); the track
+# measures the budget layer, not a different agent configuration. The
+# model and the session ceilings are the track's own.
+hosts:
+  claude_code:
+    model: claude-opus-4-6
+    auth_mode: oauth
 
-default_mode: E2E_BUDGET
-
-x-e2e-anchors:
-  base: &e2e_base
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-4-6"
-        implementation_model: "claude-opus-4-6"
-        auth_mode: "oauth"
-        gate_failure_policy: "warn"
-        ideation_timeout: 300
-        implementation_timeout: 600
-        ideation_gates: ["research", "experiment_history", "repo_memory"]
-        implementation_gates: ["research", "repo_memory"]
-
-    retry:
-      max_attempts: 2
-      initial_delay_seconds: 5
-      max_delay_seconds: 60
-      multiplier: 2
-      jitter: true
-
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-4-6"
-      debug_model: "claude-opus-4-6"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-        timeout: 600
-
-    feedback_generator:
-      type: "claude_code"
-      model: "claude-opus-4-6"
-      debug_model: "claude-opus-4-6"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-        timeout: 120
-
-  evaluation_maintainer: &e2e_maintainer
-    type: "claude_code"
-    model: "claude-opus-4-6"
-    debug_model: "claude-opus-4-6"
-    agent_specific:
-      auth_mode: "oauth"
-      streaming: true
+search_strategy:
+  params:
+    ideation:
+      timeout: 300
+    implementation:
       timeout: 600
-    subsample_seed: 1337
-    calibration_timeout_seconds: 300
-    protected_data_paths: ["data"]
+    judge:
+      timeout: 120
 
-modes:
-  # The standing full-track run: 45 minutes, fidelity on, reserve derived
-  # from committed_run_fraction. Covers the M1/M2/M3/M5/M6 rows.
-  E2E_BUDGET:
-    <<: *e2e_base
-    budget:
-      time_budget_minutes: 45
-      fidelity:
-        mode: "on"
-        committed_run_fraction: 0.4
-        eval:
-          fast_fraction: 0.2
-    evaluation_maintainer: *e2e_maintainer
+budget:
+  minutes: 45
+  fidelity:
+    mode: "on"
+    committed_run_fraction: 0.4
+    eval:
+      fast_fraction: 0.2
 
-  # M6 byte-equivalence row: identical campaign with fidelity off must
-  # behave like the pre-fidelity budget layer (explicit reserve, every
-  # attempt full-fidelity).
-  E2E_BUDGET_FIDELITY_OFF:
-    <<: *e2e_base
-    budget:
-      time_budget_minutes: 45
-      finalization_reserve_minutes: 6
-    evaluation_maintainer: *e2e_maintainer
-
-  # M4 row: a budget small enough that the reserve gate and deadline clamps
-  # must fire (implementation_timeout alone exceeds the whole budget), and
-  # the campaign must still end with a checked-out artifact.
-  GATE_BUDGET:
-    <<: *e2e_base
-    budget:
-      time_budget_minutes: 8
-      finalization_reserve_minutes: 2
+evaluation_maintainer:
+  enabled: true
+  timeout: 600
+  calibration_timeout_seconds: 300
+  protected_data_paths: [data]

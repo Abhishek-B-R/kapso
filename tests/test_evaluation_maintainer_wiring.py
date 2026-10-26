@@ -18,6 +18,7 @@ from kapso.execution.evaluation_maintainer import EvaluationMaintainerError
 from kapso.execution.run_checkpoint import RunCheckpointStore
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from tests.harness_support import fake_config
 
 from tests.test_run_checkpoint import (
     _init_git_workspace,
@@ -27,7 +28,7 @@ from tests.test_run_checkpoint import (
 
 
 MAINTAINER_BLOCK = {
-    "type": "claude_code",
+    "enabled": True,
     "max_change_requests": 1,
     "calibration_timeout_seconds": 5,
 }
@@ -80,12 +81,8 @@ def manifest_stdout():
 def patch_maintainer_environment(monkeypatch, agent):
     ScriptedMaintainerAgent.calls = []
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "evaluation_maintainer": MAINTAINER_BLOCK,
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(evaluation_maintainer=MAINTAINER_BLOCK),
     )
     monkeypatch.setattr(
         maintainer_module.CodingAgentFactory,
@@ -206,6 +203,7 @@ def test_registered_integrity_enforced_in_agent_generated_mode(tmp_path):
 
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
+    strategy.provided_evaluation_manifest = {}
     strategy.workspace = FakeWorkspace()
     strategy.evaluation_provenance = AGENT_GENERATED
     strategy.registered_evaluation_manifest = {
@@ -223,6 +221,7 @@ def test_registered_integrity_enforced_in_agent_generated_mode(tmp_path):
 def test_evaluation_instructions_swap_with_registration():
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
+    strategy.provided_evaluation_manifest = {}
 
     strategy.registered_evaluation_command = ""
     assert (
@@ -253,6 +252,7 @@ def test_change_request_guidance_teaches_the_mismeasurement_diagnostics():
     the numbers-not-suspicion bar, and stay free of benchmark vocabulary."""
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
+    strategy.provided_evaluation_manifest = {}
     strategy.registered_evaluation_command = (
         "python kapso_evaluation/kapso_eval.py --fidelity full "
         "--fraction 1.0 --seed 1337"
@@ -282,6 +282,7 @@ def test_registered_evaluation_syncs_into_sessions(tmp_path):
 
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
+    strategy.provided_evaluation_manifest = {}
     strategy.workspace_dir = str(workspace)
     strategy._sync_registered_evaluation(str(session))
 
@@ -300,31 +301,21 @@ def test_fast_fraction_is_single_sourced_from_the_fidelity_block(
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "budget": {
-                "fidelity": {"mode": "auto", "eval": {"fast_fraction": 0.2}}
-            },
-            "evaluation_maintainer": MAINTAINER_BLOCK,
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(
+            budget={"fidelity": {"mode": "auto", "eval": {"fast_fraction": 0.2}}},
+            evaluation_maintainer=MAINTAINER_BLOCK,
+        ),
     )
     orchestrator = _orchestrator(workspace)
     assert orchestrator.evaluation_maintainer.fast_fraction == 0.2
 
     # The maintainer block has no fraction knob of its own.
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "evaluation_maintainer": dict(
-                MAINTAINER_BLOCK, fast_fraction=0.3
-            ),
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(evaluation_maintainer=dict(MAINTAINER_BLOCK, fast_fraction=0.3)),
     )
-    with pytest.raises(ValueError, match="evaluation_maintainer config keys"):
+    with pytest.raises(ValueError, match="evaluation_maintainer: unknown key fast_fraction"):
         _orchestrator(str(tmp_path / "workspace_two"))
 
 
@@ -376,14 +367,8 @@ def test_protected_data_is_registered_and_guarded_on_resume(
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "evaluation_maintainer": dict(
-                MAINTAINER_BLOCK, protected_data_paths=["data"]
-            ),
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(evaluation_maintainer=dict(MAINTAINER_BLOCK, protected_data_paths=["data"])),
     )
 
     orchestrator = _orchestrator(workspace)

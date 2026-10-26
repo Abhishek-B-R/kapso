@@ -110,10 +110,7 @@ def test_inbox_names_a_campaign_from_elsewhere(tmp_path, monkeypatch, capsys):
 def test_inbox_from_elsewhere_reads_the_registry(tmp_path, monkeypatch, capsys):
     registry = tmp_path / "registry.jsonl"
     config = tmp_path / "config.yaml"
-    config.write_text(
-        "default_mode: GENERIC\nmodes:\n  GENERIC:\n    inbox:\n"
-        f"      registry: {registry}\n"
-    )
+    config.write_text(f"inbox:\n  registry: {registry}\n")
     monkeypatch.chdir(tmp_path)
     _run(monkeypatch, "inbox", "--config", str(config))
     assert capsys.readouterr().out.strip() == "Nothing waiting on you."

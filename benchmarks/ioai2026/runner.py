@@ -31,6 +31,7 @@ load_dotenv()
 
 import yaml
 
+from kapso.core.config import read_yaml
 from kapso.execution.orchestrator import OrchestratorAgent
 from benchmarks.ioai2026 import kernel_slots
 from benchmarks.ioai2026.handler import KaggleNotebookHandler
@@ -63,7 +64,7 @@ AUDIT_PATTERNS = [
 ]
 
 
-def shape_session_timeouts(mode_cfg: dict, total_run_seconds: float) -> dict:
+def shape_session_timeouts(config: dict, total_run_seconds: float) -> dict:
     """Per-session ceilings, bounded only by the run itself.
 
     There is deliberately no per-phase fraction: a phase sub-budget starved
@@ -73,24 +74,24 @@ def shape_session_timeouts(mode_cfg: dict, total_run_seconds: float) -> dict:
     budget that remains — so a session that finishes early hands its unused
     time to the next phase instead of forfeiting it.
     """
-    params = mode_cfg["search_strategy"]["params"]
+    params = config["search_strategy"]["params"]
     return {
         "ideation_timeout": int(min(
-            params["ideation_timeout"], total_run_seconds)),
+            params["ideation"]["timeout"], total_run_seconds)),
         "implementation_timeout": int(min(
-            params["implementation_timeout"], total_run_seconds)),
+            params["implementation"]["timeout"], total_run_seconds)),
     }
 
 
-def build_runtime_config(mode: str, task_dir: str, session_timeouts: dict,
+def build_runtime_config(task_dir: str, session_timeouts: dict,
                          shared_cache_dir: "str | None" = None,
                          node_expansion: "int | None" = None) -> str:
-    """Write the per-run config with shaped session deadlines."""
-    with open(CONFIG_PATH) as f:
-        config = yaml.safe_load(f)
-    mode_cfg = config["modes"][mode]
-    params = mode_cfg["search_strategy"]["params"]
-    params.update(session_timeouts)
+    """Write the per-run override file: this benchmark's own file with the
+    shaped session deadlines (and the lanes) over it."""
+    config = read_yaml(CONFIG_PATH)
+    params = config["search_strategy"]["params"]
+    params["ideation"]["timeout"] = session_timeouts["ideation_timeout"]
+    params["implementation"]["timeout"] = session_timeouts["implementation_timeout"]
     if shared_cache_dir:
         params["shared_cache_dir"] = os.path.abspath(shared_cache_dir)
     if node_expansion and node_expansion > 1:
@@ -532,10 +533,9 @@ def main():
                         help="Run wall-clock hours (default: config run_defaults.hours)")
     parser.add_argument("--guard-minutes", type=int, default=None)
     parser.add_argument("--iterations", type=int, default=20)
-    parser.add_argument("--mode", default="KAGGLE")
     parser.add_argument("--coding-agent", default=None,
-                        help="Override the config's coding_agent.type "
-                             "(default: None — the config block wins, codex here)")
+                        help="The host every role without a cli of its own runs on "
+                             "(default: the config's search_strategy.params.host, codex here)")
     parser.add_argument("--cost-budget", type=float, default=None)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--skip-final-eval", action="store_true")
@@ -556,8 +556,8 @@ def main():
     with open(kaggle_meta_path) as f:
         competition = json.load(f)["competition"]
 
-    with open(CONFIG_PATH) as f:
-        mode_cfg = yaml.safe_load(f)["modes"][args.mode]
+    config = read_yaml(CONFIG_PATH)
+    mode_cfg = config["benchmark"]
 
     if args.final_eval_only:
         report = run_final_eval(root, competition, mode_cfg["final_eval"])
@@ -664,7 +664,7 @@ def main():
     # shipping scores nothing. The handler hands most of it back once a public
     # score is banked (deliverable_ready_reserve_seconds).
     reserve_minutes = knobs["finalization_reserve_minutes"]
-    session_timeouts = shape_session_timeouts(mode_cfg, budget_minutes * 60)
+    session_timeouts = shape_session_timeouts(config, budget_minutes * 60)
 
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")):
         print("WARNING: neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set")
@@ -673,7 +673,7 @@ def main():
     if not shutil.which("kaggle"):
         print("WARNING: kaggle CLI not on PATH — submissions will fail")
 
-    config_path = build_runtime_config(args.mode, task_dir, session_timeouts,
+    config_path = build_runtime_config(task_dir, session_timeouts,
                                        shared_cache_dir=args.shared_cache_dir,
                                        node_expansion=node_expansion)
 
@@ -706,7 +706,6 @@ def main():
     orchestrator = OrchestratorAgent(
         handler,
         config_path=config_path,
-        mode=args.mode,
         coding_agent=args.coding_agent,
         workspace_dir=os.path.join(task_dir, "kapso_campaign"),
         # The statement plus the one fact the feedback judge needs: this goal

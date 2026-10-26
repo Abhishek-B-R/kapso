@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_harness_defaults
+from kapso.core.config import PACKAGED_CONFIG_PATH, load_config
 from kapso.handles import HarnessRef
 from kapso.harness import BUILD_MODULES, DEPLOY_MODULES, HarnessError, harness_hash, load_harness, reload_harness
 from kapso.kapso import Kapso
@@ -17,7 +17,7 @@ TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "t
 
 
 def settings(tmp_path, **overrides):
-    values = dict(load_harness_defaults(), store=str(tmp_path / "store"))
+    values = dict(load_config()["harness"], store=str(tmp_path / "store"))
     values.update(overrides)
     return values
 
@@ -80,15 +80,15 @@ def test_reload_sees_an_edit_made_after_the_load(tmp_path):
 
 
 def test_the_harness_block_reaches_the_loader_from_any_config_file(tmp_path):
-    platform = load_harness_defaults()
+    platform = load_config()["harness"]
     assert platform["store"] == "~/.kapso/harnesses" and platform["page_warning_lines"] == 40
-    assert load_harness_defaults(str(PLATFORM_CONFIG_PATH)) == platform
+    assert load_config(str(PACKAGED_CONFIG_PATH))["harness"] == platform
     bare = tmp_path / "mine.yaml"
-    bare.write_text("default_mode: GENERIC\nmodes:\n  GENERIC: {}\n")
-    assert load_harness_defaults(str(bare)) == platform
+    bare.write_text("inbox:\n  enabled: false\n")
+    assert load_config(str(bare))["harness"] == platform
     tuned = tmp_path / "tuned.yaml"
     tuned.write_text("harness:\n  page_warning_lines: 5\n")
-    merged = load_harness_defaults(str(tuned))
+    merged = load_config(str(tuned))["harness"]
     assert merged["page_warning_lines"] == 5 and merged["store"] == platform["store"]
 
 

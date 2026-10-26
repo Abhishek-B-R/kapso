@@ -155,10 +155,7 @@ build(
     on_status = None,
     iteration_evaluator: IterationEvaluator | None = None,
     iteration_evaluator_failure_policy: str = "record",
-    mode: str | None = None,
     coding_agent: str | None = None,
-    context: list | None = None,
-    additional_context: str = "",
 ) -> Solution
 ```
 
@@ -170,14 +167,11 @@ build(
 | `repo` | The starting repository: a local path (copied, never modified) or a GitHub URL (cloned). `None` starts empty, or from a workflow the knowledge graph knows | `None` |
 | `output` | The campaign directory, the solution's `trace`. Empty for a fresh build; the campaign itself for a resume | a temporary directory |
 | `budget` | What the build may spend. Its set fields win over the brief's `Budget` line; on a resume the launch record fills what is still unset; the config's defaults fill the rest | `None` |
-| `resume` | Continue the campaign in `output` from its checkpoint. The mode, coding agent, evaluation, config and knowledge index must match the launch's; a difference is refused by name | `False` |
+| `resume` | Continue the campaign in `output` from its checkpoint. The host, evaluation, config and experience must match the launch's; a difference is refused by name | `False` |
 | `on_status` | Callback fired after every status write and heartbeat | `None` |
 | `iteration_evaluator` | Score every finalized candidate with your own evaluator, in an isolated worktree | `None` |
 | `iteration_evaluator_failure_policy` | `record` stores your evaluator's error on the candidate; `raise` stops the run | `"record"` |
-| `mode` | Config mode, `GENERIC` or `MINIMAL` | from config |
-| `coding_agent` | Override the coding agent. In mode `GENERIC` the implementation and verification sessions run on the strategy parameter `implementation_cli` (`claude_code` unless a config sets it), which this argument does not change | from config |
-| `context` | Extra context passed to the campaign, such as research findings | `None` |
-| `additional_context` | Free text appended to the campaign context | `""` |
+| `coding_agent` | The host every role without a `cli` of its own runs on, with that host's model: an entry of the config's `hosts` table. Recorded and fingerprinted, so a resume runs on the launch's host | `search_strategy.params.host` |
 
 ```python
 solution = kapso.build(
@@ -225,7 +219,7 @@ class Budget:
     minutes: float | None = None           # wall clock, durable across resumes
     experiments: int | None = None         # experiments this call may run
     usd: float | None = None               # model spend, USD
-    reserve_minutes: float | None = None   # escrowed for the final checkout and evaluation
+    reserve_minutes: float | None = None   # kept out of the search for finishing the last attempt and delivering
 ```
 
 Every field optional; a field left `None` keeps the brief's, the launch's
@@ -247,7 +241,7 @@ read back by `Solution.open(path)`.
 | `score` | `float \| None` | The delivered candidate's measurement under the registered evaluator |
 | `goal_achieved` | `bool` | The judge's verdict that the objective was met |
 | `stopped_reason` | `str` | `goal_achieved`, `max_iterations`, `budget_exhausted`, `waiting_for_user` |
-| `stop_detail` | `str \| None` | Which budget dial stopped it, when one did |
+| `stop_detail` | `str \| None` | Why a budget stop happened: `time_budget`, `cost_budget`, `attempt_would_not_fit` or `finishing_cut`; see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends) |
 | `experiments`, `experiments_total` | `int` | Experiments this call, and across every resume |
 | `cost_usd` | `float` | Model spend |
 | `requests` | `list[dict]` | What you must answer when `stopped_reason` is `waiting_for_user`; empty otherwise |

@@ -6,7 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from kapso.core.config import load_experience_defaults
+from kapso.core.config import load_config
+from kapso.experience.sources import experience_settings
 from kapso.experience import (
     HOSTED,
     HOSTED_KEY,
@@ -35,7 +36,7 @@ def cmd_experience(args) -> None:
     if args.experience_command == "remove":
         Kapso(config=args.config).remove_experience(args.ref)
         return
-    settings = load_experience_defaults(args.config)
+    settings = experience_settings(load_config(args.config))
     home = Path(settings["bank_home"]).expanduser()
     if args.experience_command == "list":
         _list(settings, home)
@@ -60,7 +61,7 @@ def _add(args) -> None:
         # record); it reads the config itself.
         Kapso(config=args.config).add_experience(repo=args.repo, research=args.research, name=args.name)
         return
-    settings = load_experience_defaults(args.config)
+    settings = experience_settings(load_config(args.config))
     home = Path(settings["bank_home"]).expanduser()
     if args.ref == MINE:
         if home.exists():

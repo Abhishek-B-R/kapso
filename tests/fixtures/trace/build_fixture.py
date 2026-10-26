@@ -6,19 +6,20 @@ redesign/wp6-observability.md, change 11).
 
 `build` keeps the campaign's records (the status, the launch record, the
 checkpoint, the experiment history, the solution record, the serving
-record, the pull log, each verification's verdict and evaluation output),
-rebuilds every session record with its run entries by running the
-transcript digests over the archived streams, and drops the streams, the
-diffs, the bank clones and the caches. The archives predate three things
-the engine writes now, which the build reconstructs from the record
-itself, deterministically: the run entries (one per invocation, a Claude
-Code stream split at its `result` events, a trailing slice without one
-being a killed invocation; the times from the node's start and its
+record, the pull log, each verification's verdict and evaluation output)
+and every session record with its run entries, and drops the streams, the
+diffs, the bank clones and the caches. The WP2 and WP3 archives predate
+three things the engine writes now, which the build reconstructs from the
+record itself, deterministically: the run entries (one per invocation, a
+Claude Code stream split at its `result` events, a trailing slice without
+one being a killed invocation; the times from the node's start and its
 phases' durations), the pull log's `session` key (the event's time
 against the same windows) and the current schemas (the solution record's
 `session_failures`, the checkpoint's `experience`, a node's fields the
-dataclass has gained). The checkpoint's `agent_output` is blanked (the
-trace does not read it; the diff it does, for the delivered files).
+dataclass has gained, the launch record in the handle's words). A record
+that carries its runs (the WP4 proof runs on) keeps them as written. The
+checkpoint's `agent_output` is blanked (the trace does not read it; the
+diff it does, for the delivered files).
 Paths under the campaign's own directory are rebased to `/campaign`.
 
 `render` writes `<fixture-dir>/trace.txt`, the golden `kapso trace`
@@ -37,6 +38,7 @@ import yaml
 
 from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_SUCCESS, EXIT_TIMEOUT, append_run, relative_files, run_entry
 from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, digest_claude, truncated
+from kapso.execution.inbox import LAUNCH_SCHEMA_VERSION
 from kapso.execution.run_checkpoint import RunCheckpoint
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.trace import FEEDBACK, IDEATION, IMPLEMENTATION, VERIFICATION, failed_runs, read_trace
@@ -60,7 +62,7 @@ SETUP_MODULE = "setup"
 IMPLEMENTATION_FAILED = "Implementation failed: "
 DEADLINE_ERROR = "Claude Code CLI exceeded its deadline and was terminated"
 ENDED_WITHOUT_RESULT = "the invocation ended without a result event and the session was resumed (the archive predates the run entries)"
-KEPT_RECORDS = ("status.json", "launch.json", "experiment_history.json")
+KEPT_RECORDS = ("status.json", "experiment_history.json")
 VERIFICATION_KEPT = ("verdict.json", "evaluation_output.txt")
 
 
@@ -70,7 +72,9 @@ def build(archive: Path, fixture: Path) -> None:
     with tempfile.TemporaryDirectory() as scratch:
         with tarfile.open(archive) as tar:
             tar.extractall(scratch, filter="data")
-        campaign = Path(scratch) / "campaign"
+        # The campaign directory, whatever the run called it: the one
+        # holding the launch record.
+        campaign = next(path.parent.parent for path in sorted(Path(scratch).glob("*/.kapso/launch.json")))
         _build_from(campaign, fixture)
 
 
@@ -83,27 +87,46 @@ def _build_from(campaign: Path, fixture: Path) -> None:
     rebase = lambda text: text.replace(root, REBASED_ROOT)
     for name in KEPT_RECORDS:
         (out / name).write_text(rebase((kapso / name).read_text(encoding="utf-8")), encoding="utf-8")
+    # The launch record at the current schema (wp4-config.md): the
+    # archives predate the record in the handle's words, without the
+    # mode and the context arguments.
+    renamed = {
+        "max_iterations": "experiments", "time_budget_minutes": "minutes", "cost_budget": "usd",
+        "finalization_reserve_minutes": "reserve_minutes", "coding_agent": "host",
+    }
+    launch_record = {
+        renamed.get(key, key): value for key, value in launch.items()
+        if key not in ("mode", "context", "additional_context")
+    }
+    launch_record["schema_version"] = LAUNCH_SCHEMA_VERSION
+    (out / "launch.json").write_text(rebase(json.dumps(launch_record, indent=2, sort_keys=True) + "\n"), encoding="utf-8")
     status = json.loads((kapso / "status.json").read_text(encoding="utf-8"))
     checkpoint = json.loads((kapso / "run_state.json").read_text(encoding="utf-8"))
     nodes = checkpoint["strategy_state"]["node_history"]
     windows = _windows(status, checkpoint, nodes)
 
     # The sessions: the record (or one made for a session the archive
-    # recorded only as a stream), then the run entries from the stream.
+    # recorded only as a stream) with its run entries, kept when the record
+    # carries them and rebuilt from the stream when it predates them.
     sessions_in = kapso / SESSIONS_DIR.name
-    for stream in sorted(sessions_in.rglob(STREAM_FILE)):
-        label = stream.parent.relative_to(sessions_in).as_posix()
-        record_file = next((stream.parent / name for name in (SESSION_RECORD_FILE, OLD_RECORD_FILE) if (stream.parent / name).is_file()), None)
+    session_dirs = {path.parent for name in (SESSION_RECORD_FILE, OLD_RECORD_FILE, STREAM_FILE) for path in sessions_in.rglob(name)}
+    for session_in in sorted(session_dirs):
+        label = session_in.relative_to(sessions_in).as_posix()
+        record_file = next((session_in / name for name in (SESSION_RECORD_FILE, OLD_RECORD_FILE) if (session_in / name).is_file()), None)
         record = json.loads(record_file.read_text(encoding="utf-8")) if record_file else _record_for(label, root)
+        written = record.get("runs") or []
         record = {key: value for key, value in record.items() if key != "runs"}
         # WP2's records named no stream; the path is where the staging puts it.
         record["stream"] = rebase(record.get("stream") or f"{root}/{SESSIONS_DIR.as_posix()}/{label}/{STREAM_FILE}")
         session_dir = record["session_dir"]
         record["session_dir"] = rebase(session_dir)
-        record["runs"] = []
+        record["runs"] = json.loads(rebase(json.dumps(written)))
         record_path = fixture / SESSIONS_DIR / label / SESSION_RECORD_FILE
         record_path.parent.mkdir(parents=True)
         record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        stream = session_in / STREAM_FILE
+        if written or not stream.is_file():
+            continue
         node = next((n for n in nodes if n["branch_name"] == label), None)
         for entry in _run_entries(stream, label, windows[label], node, session_dir):
             append_run(record_path, entry)

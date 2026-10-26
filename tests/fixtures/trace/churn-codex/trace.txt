@@ -1,0 +1,43 @@
+trace of <campaign> — complete
+objective       Raise the churn model's out-of-sample ROC AUC above 0.85
+harness         none
+served          nothing
+evaluator       none registered: the agent's own evaluation
+budget          25.8 of 45.0 min, 3.4 min reserved for finishing
+cost            $0.000 (Claude Code sessions only; Codex reports no cost)
+stopped         budget_exhausted (attempt_would_not_fit): the remaining 15.8 min would not cover an attempt (the last took 25.8 min); 1 experiment
+delivered       generic_exp_0 @ 9ee5956a1bf9
+
+ATTEMPTS
+node 0  generic_exp_0 @ 9ee5956a1bf9  from main  25.8 min  $0.000
+  idea          Core Idea: Replace the linear pipeline with a variance-controlled ensemble of shallow, native-categorical XGBoost and ordered CatBoost models. Remove two unsta…
+  sessions
+    ideation/iter1/codex_gpt-5.6-sol codex       success    17.2 min  3219k in, 25.8k out tokens  1 turns  tools command_execution 21  hooks not reported by this host
+    generic_exp_0                  codex       success     3.9 min  618k in, 12.5k out tokens  1 turns  tools command_execution 10, file_change 5  hooks not reported by this host
+    feedback/generic_exp_0         codex       success     2.9 min  522k in, 9.9k out tokens  1 turns  tools command_execution 10  hooks not reported by this host
+  evaluation    score 0.849 (provided), valid
+  verification  none (no harness verification)
+  judge         valid, continue: FIRST ACTION: bank the reproducible 0.8491 XGBoost/CatBoost blend. The saved blend predictions are strictly better on the same 3,000-row evaluation, while the …
+  cards read    none
+  load-bearing  none
+
+OTHER SESSIONS
+  engine/repo_memory/1           codex       success     1.8 min  150k in, 8.4k out tokens  1 turns  hooks not reported by this host
+
+LESSONS
+  nothing served
+
+VOIDED OR REJECTED
+  none
+
+SESSIONS FAILED
+  none
+
+DELIVERED
+generic_exp_0 @ 9ee5956a1bf9 (base 525033782312)
+files changed   .kapso/repo_memory.json, PLAN.md, changes.log, kapso_evaluation/eval_profile.md, kapso_evaluation/result.json, output_data_generic_exp_0/fallback_predictions.csv, output_data_generic_exp_0/predictions.csv, predict.py, predictions.csv
+verification    none (no harness verification)
+integrity       provided; intact
+hooks           none staged in its sessions (no hook could deny anything); 3 runs on a host that reports no hook events
+failures        none in its sessions
+judge           FIRST ACTION: bank the reproducible 0.8491 XGBoost/CatBoost blend. The saved blend predictions are strictly better on the same 3,000-row evaluation, while the …  (--branch generic_exp_0 for the words in full)

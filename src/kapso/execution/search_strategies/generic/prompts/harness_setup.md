@@ -18,6 +18,7 @@ Leaving no prepared resource is fine when the domain needs none.
 - Do not modify anything under `kapso_evaluation/` or `kapso_datasets/`: they are the campaign's pinned evaluation and data, and Kapso verifies them after you finish.
 - Do not run the task's evaluation or train anything; that is the experiments' work.
 - Do not fetch secrets or ask for one through a tool; a missing credential is named by its variable.
+- Do not modify the harness itself (the directory `$KAPSO_HARNESS_ROOT` names, read-only in every session): fix the environment or your own files, never the harness. A harness that needs a change is reported in your domain statement, for its author.
 {{inbox_line}}
 ## Available tools
 

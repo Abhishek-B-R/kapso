@@ -17,6 +17,7 @@ import logging
 import math
 from abc import ABC, abstractmethod
 from dataclasses import MISSING, dataclass, field, fields
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from kapso.execution.types import ContextData
@@ -26,6 +27,7 @@ from kapso.execution.observability import BuildStatus
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.environment.handlers.base import ProblemHandler
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.harness.staging import engine_session_record
 from kapso.execution.fidelity import (
     FIDELITIES,
     EvaluationAttempt,
@@ -92,6 +94,13 @@ class SearchNode:
     # own state beside the judge's validity; None when no harness
     # verification ran.
     verification: Optional[Dict[str, Any]] = None
+    # Why the judge did not read this attempt: empty when judged, else
+    # the budget's reason (the budget's end, wp4-config.md). An unjudged
+    # attempt keeps its score, is not a parent and is never delivered.
+    unjudged: str = ""
+    # The branch's head when the attempt was evaluated; None for an
+    # attempt never evaluated (suspended, rejected before evaluation).
+    commit: Optional[str] = None
     # The served cards the judge found load-bearing for this result (the
     # citation contract's attribution, kept on the node so the trajectory
     # carries it); empty when none or when nothing was served.
@@ -474,6 +483,9 @@ class SearchStrategyConfig:
     # resolved, head, provenance, scope), written into the status file
     # from the first second; empty when nothing is loaded.
     experience: List[Dict[str, Any]] = field(default_factory=list)
+    # The config's hosts table (`hosts.<cli>: {model, …}`), over which the
+    # strategy's roles resolve their sessions (kapso.core.roles).
+    hosts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 class SearchStrategy(ABC):
@@ -513,6 +525,12 @@ class SearchStrategy(ABC):
         # burned since the snapshot was taken.
         self.budget_snapshot: Optional["BudgetSnapshot"] = None
         self.budget_snapshot_monotonic: Optional[float] = None
+        # The budget's end: the last completed round's wall time (what the
+        # next admission must cover; restored with the state) and the
+        # reason a finishing session of this round was not launched or
+        # was cut, None when none was.
+        self.last_round_seconds: Optional[float] = None
+        self.finishing_cut: Optional[str] = None
         # The executive's granted workload profile for this iteration.
         self.fidelity_decision: Optional["FidelityDecision"] = None
         self.evaluation_provenance = (
@@ -576,6 +594,12 @@ class SearchStrategy(ABC):
             repo_memory_max_retries=self.repo_memory_max_retries,
             llm_backend=self.llm,
         )
+        # The engine's own inference sessions (the repo-memory bootstrap
+        # below, the updates after each experiment, the commit messages)
+        # are recorded with the campaign's, under engine/<role>/<n>, from
+        # the workspace's first second: wired here, before the first one.
+        records = Path(self.workspace_dir) / ".kapso" / "sessions"
+        self.llm.record_session = lambda role, host, session_dir: engine_session_record(records, role, host, session_dir)
 
         # Observability (design §1): the status file is born the moment the
         # workspace exists — phase `setup`, state `starting` — so a watcher

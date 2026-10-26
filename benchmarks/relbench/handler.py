@@ -74,7 +74,7 @@ class RelBenchHandler(ProblemHandler):
         extra_knowledge_file: Optional[str] = None,
         rebuild_sanitized_cache: bool = False,
     ):
-        super().__init__(additional_context="")
+        super().__init__()
         self.dataset_name = dataset_name
         self.task_name = task_name
         self.problem_id = f"{dataset_name}--{task_name}"

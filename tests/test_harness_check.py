@@ -46,8 +46,8 @@ def test_the_trading_example_is_clean():
     report = check(TRADING)
     assert report.failures == []
     assert report.warnings == []
-    assert report.counts == {"skills": 7, "agents": 2, "servers": 2, "hooks": 6}
-    assert report.summary() == "check ok (7 skills, 2 agents, 2 servers, 6 hooks)"
+    assert report.counts == {"skills": 7, "agents": 2, "servers": 2, "hooks": 7}
+    assert report.summary() == "check ok (7 skills, 2 agents, 2 servers, 7 hooks)"
     assert report.manifest is not None and report.manifest.name == "trading"
 
 
@@ -291,7 +291,7 @@ def test_render_shows_the_summary_then_each_kind(harness, monkeypatch):
     monkeypatch.setattr("kapso.harness.check.shutil.which", lambda name: None if name == "python3" else "/usr/bin/" + name)
     text = check(harness).render()
     lines = text.splitlines()
-    assert lines[0] == "check ok (7 skills, 2 agents, 2 servers, 7 hooks)"
+    assert lines[0] == "check ok (7 skills, 2 agents, 2 servers, 8 hooks)"
     assert any(line.startswith("  warn   hooks/extra/") for line in lines)
     assert any(line.startswith("  needs  python3 (command") and line.endswith("]") for line in lines)
 

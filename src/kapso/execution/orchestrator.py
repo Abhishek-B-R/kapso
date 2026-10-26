@@ -30,7 +30,6 @@ from kapso.execution.search_strategies import (
     SearchStrategy,
     SearchStrategyFactory,
 )
-from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.search_strategies.generic import FeedbackGenerator, FeedbackResult
 from kapso.execution.search_strategies.generic.implementation import render_inbox_section
@@ -45,10 +44,12 @@ from kapso.execution.inbox import (
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.gated_mcp.presets import get_mcp_config, knowledge_tools_block
 from kapso.harness.load import HarnessError
-from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE
+from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE, engine_session_record
 from kapso.harness.task_statement import prepared_names, setup_statement_path, write_task_statement
+from kapso.core.agent_manifest import load_agent_manifest
 from kapso.core.cli_inference import CliInference
-from kapso.core.config import load_mode_config
+from kapso.core.config import load_config
+from kapso.core.roles import BUILD_CONFIG_BLOCKS, SPEC_KEYS, check_maintainer, resolve_role, resolve_spec, validate_config
 from kapso.execution.search_strategies.base import ExperimentResult, SearchNode
 from kapso.execution.memories.experiment_memory import ExperimentHistoryStore
 from kapso.execution.cost_estimator import (
@@ -82,10 +83,14 @@ from kapso.execution.run_checkpoint import (
     config_fingerprint,
 )
 from kapso.execution.budget import (
+    ATTEMPT_WOULD_NOT_FIT,
+    DELIVERY_SECONDS,
+    FINISHING_CUT,
     BudgetLedger,
     BudgetSnapshot,
     BudgetSpec,
     CostEntry,
+    admission_refusal,
 )
 from kapso.execution.evaluation_maintainer import (
     EvaluationChangeRequest,
@@ -105,22 +110,6 @@ CHANGE_REQUEST_PATTERN = re.compile(
     re.DOTALL,
 )
 
-# The fast fraction is deliberately absent: it is single-sourced in the
-# fidelity block (budget.fidelity.eval.fast_fraction).
-_MAINTAINER_BLOCK_KEYS = {
-    "type",
-    "model",
-    "debug_model",
-    "agent_specific",
-    "subsample_seed",
-    "calibration_fraction",
-    "calibration_timeout_seconds",
-    "fast_variant_threshold_minutes",
-    "overhead_factor",
-    "max_change_requests",
-    "transition_freeze_fraction",
-    "protected_data_paths",
-}
 
 
 # The harness setup session (kapso.harness): its inbox identity, the node
@@ -152,8 +141,9 @@ class SolveResult:
     iterations_run: int
     total_cost: float
     cumulative_iterations: int = 0
-    # Which budget dial triggered a budget_exhausted stop:
-    # "time_budget" | "cost_budget" | "finalization_reserve" | None
+    # Which budget dial triggered a budget_exhausted stop: "time_budget",
+    # "cost_budget", "attempt_would_not_fit" (admission), "finishing_cut"
+    # (a finishing session not launched or cut), or None.
     stop_detail: Optional[str] = None
     # The open inbox requests when stopped_reason is "waiting_for_user":
     # what the person must answer before the campaign continues.
@@ -176,9 +166,10 @@ class OrchestratorAgent:
     
     Args:
         problem_handler: Handler for the problem being solved
-        config_path: Path to benchmark-specific config.yaml file
-        mode: Configuration mode to use (if None, uses default_mode from config)
-        coding_agent: Coding agent to use (overrides config if specified)
+        config_path: The override file over the packaged config (None: the
+            packaged defaults alone)
+        coding_agent: The host every session runs on unless its role names
+            one (`search_strategy.params.host`)
         goal: The goal text of the build (the rendered brief)
         iteration_evaluator: Optional observational callback for each finalized
             candidate Git ref
@@ -189,7 +180,6 @@ class OrchestratorAgent:
         self, 
         problem_handler: ProblemHandler,
         config_path: Optional[str] = None,
-        mode: Optional[str] = None,
         coding_agent: Optional[str] = None,
         knowledge_search: Optional[KnowledgeSearch] = None,
         workspace_dir: Optional[str] = None,
@@ -224,7 +214,6 @@ class OrchestratorAgent:
         # the checkpoint records it for the MCP history process.
         self.maximize_scoring = getattr(problem_handler, "maximize_scoring", True)
         self.config_path = config_path
-        self.mode = mode
         self.goal = goal or ""
         # Per-campaign strategy-param overrides merged over the mode
         # config's params (the facade's serving hook uses this to thread
@@ -234,9 +223,13 @@ class OrchestratorAgent:
         self._strategy_params_overrides = dict(strategy_params_overrides or {})
         # Load once before constructing shared services so model roles and retry
         # behavior apply consistently across strategy, memory, and commit calls.
-        self.mode_config = load_mode_config(config_path, mode)
-        model_routes = self.mode_config.get("models")
-        retry_config = self.mode_config.get("retry")
+        self.config = load_config(config_path)
+        # The checks the walk cannot make (the hosts against the adapters,
+        # the roles, the maintainer), here as in the facade and the doctor:
+        # a benchmark runner constructs the campaign directly.
+        validate_config(self.config, load_agent_manifest()["agents"])
+        model_routes = self.config["models"]
+        retry_config = self.config["retry"]
         # CLI-only inference (cli-only-inference-design.md): the object
         # every consumer receives as `llm` runs completions as coding-agent
         # sessions; embeddings and the cost meter delegate to the inner
@@ -260,7 +253,7 @@ class OrchestratorAgent:
         (
             self.strategy_type,
             self.strategy_params,
-        ) = self._resolve_search_strategy_config()
+        ) = self._resolve_search_strategy_config(coding_agent)
         self.cost_config = normalize_cost_config(self.strategy_params.get("cost"))
         self.strategy_params["cost"] = self.cost_config
         if self.cost_config["enabled"] and self.strategy_type != "generic":
@@ -269,7 +262,7 @@ class OrchestratorAgent:
         # The campaign inbox (docs/research/evolve-hub-design.md v4) rides
         # the mode config into the strategy params — fingerprinted like
         # every other setting, so a resume never flips it silently.
-        inbox_block = self.mode_config.get("inbox")
+        inbox_block = self.config["inbox"]
         if inbox_block is not None:
             self.strategy_params = {
                 **self.strategy_params, "inbox": dict(inbox_block),
@@ -278,17 +271,11 @@ class OrchestratorAgent:
         # max_iterations (a solve() argument that was never fingerprinted).
         # Excluding the budget block keeps "resume with a bigger budget"
         # possible under strict resume validation.
-        self._config_budget = dict(self.mode_config.get("budget") or {})
+        self._config_budget = dict(self.config["budget"])
         fingerprint_config = {
             "strategy_type": self.strategy_type,
             "strategy_params": self.strategy_params,
-            "mode": self.mode,
-            "mode_config": {
-                key: value
-                for key, value in self.mode_config.items()
-                if key != "budget"
-            },
-            "coding_agent_override": coding_agent,
+            "config": {key: self.config[key] for key in BUILD_CONFIG_BLOCKS},
         }
         self._provided_evaluation_manifest: Optional[Dict[str, str]] = None
         if eval_dir:
@@ -318,6 +305,7 @@ class OrchestratorAgent:
         # budget is resolved. Lives at <workspace>/.kapso/status.json.
         self.operation_status: Optional[BuildStatus] = None
         self._status_budget_total_min: Optional[float] = None
+        self._status_reserve_seconds: Optional[float] = None
         self._resume_checkpoint: Optional[RunCheckpoint] = None
         self.completed_iterations = 0
         self._prior_cost = 0.0
@@ -364,7 +352,7 @@ class OrchestratorAgent:
         self.experiment_store: Optional[ExperimentHistoryStore] = None
         
         # Create feedback generator FIRST (needed by search strategy)
-        self.feedback_generator = self._create_feedback_generator(coding_agent)
+        self.feedback_generator = self._create_feedback_generator()
         
         # Track feedback for next iteration
         self.current_feedback: Optional[str] = (
@@ -376,7 +364,6 @@ class OrchestratorAgent:
         
         # Create search strategy (uses feedback_generator)
         self.search_strategy = self._create_search_strategy(
-            coding_agent=coding_agent,
             workspace_dir=workspace_dir,
             start_from_checkpoint=self.resume,
         )
@@ -413,9 +400,7 @@ class OrchestratorAgent:
 
         # Resolved before the maintainer: the fast fraction is single-sourced
         # in the fidelity block and the maintainer calibrates at that value.
-        self.fidelity_spec = FidelitySpec.resolve(
-            self._config_budget.get("fidelity")
-        )
+        self.fidelity_spec = FidelitySpec.resolve(self._config_budget["fidelity"])
         if self.cost_config["enabled"] and self.fidelity_spec.mode != "off":
             raise ValueError("cost.enabled requires budget.fidelity.mode: off")
         (
@@ -447,7 +432,7 @@ class OrchestratorAgent:
         # shipped default) the store is recency-only — a documented
         # capability absence, not an embedding call that fails at the
         # first node's bookkeeping.
-        embedding_model = (self.mode_config.get("models") or {}).get("embedding")
+        embedding_model = self.config["models"]["embedding"]
         self.experiment_store = ExperimentHistoryStore(
             json_path=experiment_history_path,
             goal=self.goal,
@@ -470,105 +455,31 @@ class OrchestratorAgent:
         )
         self._owns_knowledge_search = False
     
-    def _create_feedback_generator(
-        self,
-        coding_agent: Optional[str] = None,
-    ) -> FeedbackGenerator:
-        """
-        Create feedback generator.
-        
-        Uses the same coding agent type as the developer agent by default.
-        """
-        # Get coding agent config from mode config
-        mode_config = self.mode_config
-        # Check for dedicated feedback_generator config first, fall back to coding_agent
-        feedback_config = mode_config.get('feedback_generator', {}) if mode_config else {}
-        coding_config = mode_config.get('coding_agent', {}) if mode_config else {}
-        
-        # Use feedback_generator config if available, otherwise fall back to coding_agent config
-        if feedback_config:
-            agent_type = feedback_config.get('type', 'claude_code')
-            agent_model = feedback_config.get('model')
-            agent_debug_model = feedback_config.get('debug_model')
-            agent_specific = feedback_config.get('agent_specific', {})
-        else:
-            # Fall back to coding_agent config
-            agent_type = coding_agent or coding_config.get('type', 'claude_code')
-            agent_model = coding_config.get('model')
-            agent_debug_model = coding_config.get('debug_model')
-            agent_specific = coding_config.get('agent_specific', {})
-        
-        # Build config for feedback generator
-        feedback_agent_config = CodingAgentFactory.build_config(
-            agent_type=agent_type,
-            model=agent_model,
-            debug_model=agent_debug_model,
-            agent_specific=agent_specific,
-        )
-        
+    def _create_feedback_generator(self) -> FeedbackGenerator:
+        """The judge: the `judge` role over the hosts table (kapso.core.roles)."""
+        role = resolve_role(self.config["hosts"], self.strategy_params, "judge")
         return FeedbackGenerator(
-            coding_agent_config=feedback_agent_config,
+            coding_agent_config=CodingAgentFactory.session_config(
+                role, {"streaming": True, "timeout": role.timeout},
+            ),
         )
 
     def _create_search_strategy(
         self,
-        coding_agent: Optional[str],
         workspace_dir: Optional[str],
         start_from_checkpoint: bool,
     ) -> SearchStrategy:
-        """
-        Create search strategy from config.
-        
-        Args:
-            coding_agent: Override coding agent type
-            
-        Returns:
-            Configured SearchStrategy instance
-        """
-        mode_config = self.mode_config
-        strategy_type = self.strategy_type
-        strategy_params = self.strategy_params
-
-        if not mode_config:
-            coding_agent_type = coding_agent or "claude_code"
-            coding_agent_model = None
-            coding_agent_debug_model = None
-            coding_agent_specific = None
-        else:
-            # Extract coding agent config
-            coding_config = mode_config.get('coding_agent', {})
-            if coding_agent:
-                coding_agent_type = coding_agent
-                coding_agent_model = None
-                coding_agent_debug_model = None
-                coding_agent_specific = None
-            elif coding_config:
-                coding_agent_type = coding_config.get('type', 'aider')
-                coding_agent_model = coding_config.get('model')
-                coding_agent_debug_model = coding_config.get('debug_model')
-                # Support agent_specific from YAML config (e.g., auth_mode for Claude Code)
-                coding_agent_specific = coding_config.get('agent_specific')
-            else:
-                coding_agent_type = 'aider'
-                coding_agent_model = None
-                coding_agent_debug_model = None
-                coding_agent_specific = None
-        
-        # Build coding agent config
-        coding_agent_config = CodingAgentFactory.build_config(
-            agent_type=coding_agent_type,
-            model=coding_agent_model,
-            debug_model=coding_agent_debug_model,
-            agent_specific=coding_agent_specific,
-        )
-        
-        # Create strategy via factory
+        """The search strategy from the resolved config; the workspace's
+        sessions carry the implementation role's host."""
+        role = resolve_role(self.config["hosts"], self.strategy_params, "implementation")
+        coding_agent_config = CodingAgentFactory.session_config(role, {})
         return SearchStrategyFactory.create(
-            strategy_type=strategy_type,
+            strategy_type=self.strategy_type,
             problem_handler=self.problem_handler,
             llm=self.llm,
             coding_agent_config=coding_agent_config,
-            params=strategy_params,
+            hosts=self.config["hosts"],
+            params=self.strategy_params,
             workspace_dir=workspace_dir,
             start_from_checkpoint=start_from_checkpoint,
             initial_repo=self.initial_repo,
@@ -585,30 +496,18 @@ class OrchestratorAgent:
     def _status_heartbeat_seconds(self) -> Optional[float]:
         """The status file's cadence: the same budget key that paces the
         checkpoint heartbeat (Rule 1 — one knob for both beats)."""
-        interval = self._config_budget.get("checkpoint_heartbeat_seconds")
+        interval = self._config_budget["checkpoint_heartbeat_seconds"]
         return float(interval) if interval else None
 
-    def _resolve_search_strategy_config(self) -> Tuple[str, Dict[str, Any]]:
-        """Resolve strategy identity before a resume mutates the workspace."""
-        mode_config = self.mode_config
-        if not mode_config:
-            return "generic", dict(self._strategy_params_overrides)
-
-        search_config = mode_config.get("search_strategy", {})
-        if search_config:
-            return (
-                search_config.get("type", "generic"),
-                {
-                    **(search_config.get("params", {}) or {}),
-                    **self._strategy_params_overrides,
-                },
-            )
-
-        # A mode without a search_strategy block gets the same plain
-        # generic default as running with no mode config at all. (The old
-        # branch here resolved eleven mode-level tree-search knobs that no
-        # config ever defined — stale-code audit 2026-08-26, R1.)
-        return "generic", dict(self._strategy_params_overrides)
+    def _resolve_search_strategy_config(self, coding_agent: Optional[str]) -> Tuple[str, Dict[str, Any]]:
+        """The strategy's type and parameters: the config's block, the
+        engine's own parameters over it, and `--coding-agent` as the host
+        every role without a `cli` of its own runs on."""
+        search_config = self.config["search_strategy"]
+        params = {**search_config["params"], **self._strategy_params_overrides}
+        if coding_agent:
+            params["host"] = coding_agent
+        return search_config["type"], params
 
     def _live_phase_costs(self) -> Dict[str, float]:
         """Attributed agent spend from nodes created in this process slice."""
@@ -626,45 +525,36 @@ class OrchestratorAgent:
 
     def _create_evaluation_maintainer(self):
         """Build the maintainer when the mode config declares one."""
-        block = self.mode_config.get("evaluation_maintainer")
-        if not block:
+        block = self.config["evaluation_maintainer"]
+        check_maintainer(block)
+        if not block["enabled"]:
             return None, 0, 1.0
-        unknown = sorted(set(block) - _MAINTAINER_BLOCK_KEYS)
-        if unknown:
-            raise ValueError(
-                "Unknown evaluation_maintainer config keys: "
-                + ", ".join(unknown)
-            )
-        agent_config = CodingAgentFactory.build_config(
-            agent_type=block.get("type", "claude_code"),
-            model=block.get("model"),
-            debug_model=block.get("debug_model"),
-            agent_specific=block.get("agent_specific", {}),
+        role = resolve_spec(
+            self.config["hosts"], self.strategy_params["host"],
+            {key: block[key] for key in SPEC_KEYS if key in block},
+            name="evaluation_maintainer", origin="evaluation_maintainer",
         )
+        agent_config = CodingAgentFactory.session_config(role, {"timeout": role.timeout})
         maintainer = EvaluationMaintainer(
             coding_agent_config=agent_config,
             workspace_dir=self.search_strategy.workspace_dir,
             # Single-sourced in the fidelity block: the fraction the policy
             # requests is the fraction the maintainer calibrates and registers.
             fast_fraction=self.fidelity_spec.eval_fast_fraction,
-            subsample_seed=block.get("subsample_seed", 1337),
-            calibration_fraction=block.get("calibration_fraction", 0.03),
-            calibration_timeout_seconds=block.get(
-                "calibration_timeout_seconds", 900
-            ),
-            fast_variant_threshold_seconds=(
-                block.get("fast_variant_threshold_minutes", 20) * 60
-            ),
-            overhead_factor=block.get("overhead_factor", 1.25),
-            protected_data_paths=block.get("protected_data_paths", []),
+            subsample_seed=block["subsample_seed"],
+            calibration_fraction=block["calibration_fraction"],
+            calibration_timeout_seconds=block["calibration_timeout_seconds"],
+            fast_variant_threshold_seconds=block["fast_variant_threshold_minutes"] * 60,
+            overhead_factor=block["overhead_factor"],
+            protected_data_paths=list(block["protected_data_paths"]),
         )
-        freeze_fraction = block.get("transition_freeze_fraction", 0.85)
+        freeze_fraction = block["transition_freeze_fraction"]
         if not 0.0 < freeze_fraction <= 1.0:
             raise ValueError(
                 "transition_freeze_fraction must be in (0, 1], got "
                 f"{freeze_fraction!r}"
             )
-        return maintainer, block.get("max_change_requests", 3), freeze_fraction
+        return maintainer, int(block["max_change_requests"]), freeze_fraction
 
     def _record_maintainer_spend(self) -> None:
         telemetry = self.evaluation_maintainer.last_transaction_telemetry
@@ -732,9 +622,20 @@ class OrchestratorAgent:
         if harness is None or not harness.has_content("setup") or self._harness_setup is not None:
             return
         strategy = self.search_strategy
+        # The launch predicate, as for every session: no room under the
+        # floor, no launch — and the setup is the campaign's precondition,
+        # so the campaign stops here with the reason.
+        room = strategy._room()
+        if room is not None and room < strategy.budget_snapshot.min_agent_timeout_seconds:
+            raise HarnessError(
+                f"the budget leaves {max(room, 0.0) / 60:.1f} min for the harness setup session of "
+                f"{harness.label()}, under the {strategy.budget_snapshot.min_agent_timeout_seconds:.0f} s floor "
+                f"({strategy.budget_snapshot.finalization_reserve_seconds / 60:.1f} min of the budget are kept for "
+                "finishing); give the campaign more minutes"
+            )
         campaign = Path(strategy.workspace_dir)
         strategy._status_phase("harness_setup")
-        host = strategy.implementation_cli
+        host = strategy.implementation_role.cli
         staged = strategy.stage_harness_for("setup", str(campaign), HARNESS_SETUP_SESSION, host)
         pinned = {name: _directory_manifest(campaign / name) for name in PINNED_DIRECTORIES}
 
@@ -768,23 +669,15 @@ class OrchestratorAgent:
             *[tool for tool in mcp_tools if tool.startswith("mcp__")],
             *staged.allowed_tools,
         ]
-        own = {
-            **(strategy._claude_auth_settings if host != "codex" else {}),
+        config = CodingAgentFactory.session_config(strategy.implementation_role, {
             "env_strip": strategy.env_strip,
             "env_defaults": strategy.env_defaults,
             "mcp_servers": mcp_servers,
             "allowed_tools": allowed,
             "timeout": strategy._clamped_timeout(float(harness.settings["setup_minutes"]) * 60.0),
             "streaming": True,
-            "effort": strategy.session_effort,
             **inbox_agent_settings,
-        }
-        config = CodingAgentConfig(
-            agent_type=host,
-            model=strategy.implementation_model,
-            debug_model=strategy.implementation_model,
-            agent_specific=staged.merged_agent_specific(own),
-        )
+        }, staged)
         answered = (
             render_inbox_section(load_requests(inbox["path"]), dotenv_path=inbox.get("dotenv_path", ""))
             if inbox_on else ""
@@ -1194,11 +1087,47 @@ class OrchestratorAgent:
             self.checkpoint_store.save(checkpoint)
 
     def _status_budget_view(self) -> Dict[str, Any]:
-        """The status file's time-only budget payload (observability §1)."""
+        """The status file's time-only budget payload (observability §1):
+        the clock, the budget and the round's reserve for finishing."""
         return {
             "elapsed_min": round(self.get_elapsed_seconds() / 60, 1),
             "total_min": self._status_budget_total_min,
+            "reserve_min": (
+                round(self._status_reserve_seconds / 60, 1)
+                if self._status_reserve_seconds is not None and self._status_budget_total_min is not None
+                else None
+            ),
         }
+
+    def _delivery_seconds(self) -> float:
+        """The delivery's protected slice: the fidelity measurement when a
+        maintainer measures the delivered artifact, the final checkout's
+        seconds otherwise."""
+        if self._fidelity_active:
+            return self.evaluation_maintainer.timing(1.0).upper_seconds
+        return DELIVERY_SECONDS
+
+    def _round_reserve_seconds(self, budget_spec: BudgetSpec) -> float:
+        """The reserve this round keeps out of the search: the set one,
+        else derived from the obligations — the harness's verification
+        minutes when it verifies, the judge's last observed duration (the
+        floor before one), the delivery's slice; either bounded by a
+        quarter of the budget."""
+        bounded = budget_spec.bounded_reserve_seconds()
+        if bounded is not None:
+            return bounded
+        verification = (
+            float(self.harness.settings["verification_minutes"]) * 60.0
+            if self.harness is not None and self.harness.has_content("verification")
+            else 0.0
+        )
+        observed = [
+            node.phase_telemetry["feedback"]["duration_seconds"]
+            for node in self.search_strategy.get_experiment_history()
+            if "feedback" in node.phase_telemetry
+        ]
+        judge = observed[-1] if observed else budget_spec.min_agent_timeout_seconds
+        return budget_spec.bound_reserve(verification + judge + self._delivery_seconds())
 
     def _platform_budget_view(self) -> Optional[Dict[str, Any]]:
         """The campaign's platform spend against its budget, in the
@@ -1516,6 +1445,7 @@ class OrchestratorAgent:
             # Pinned for components that run outside the iteration loop (the
             # evaluator-transition bridge derives its deadline from it).
             self.budget_spec = budget_spec
+            self._fidelity_active = False
             self.budget_ledger.start_clock()
             # With a harness, the task statement every session reads first is
             # written before any session runs (and again after harness setup).
@@ -1525,7 +1455,10 @@ class OrchestratorAgent:
                 experiments=experiment_max_iter,
                 minutes=budget_spec.time_budget_seconds / 60.0 if budget_spec.time_budget_seconds is not None else None,
                 usd=budget_spec.cost_budget_usd,
-                reserve_minutes=budget_spec.finalization_reserve_seconds / 60.0,
+                reserve_minutes=(
+                    budget_spec.bounded_reserve_seconds() / 60.0
+                    if budget_spec.bounded_reserve_seconds() is not None else None
+                ),
             )
             self._write_task_statement(**self._task_budget)
             # The harness's own setup session, once, before the evaluation is
@@ -1544,8 +1477,9 @@ class OrchestratorAgent:
                     cost_usd=self.get_cumulative_cost(),
                     time_budget_seconds=budget_spec.time_budget_seconds,
                     cost_budget_usd=budget_spec.cost_budget_usd,
-                    finalization_reserve_seconds=budget_spec.finalization_reserve_seconds,
+                    finalization_reserve_seconds=self._round_reserve_seconds(budget_spec),
                     min_agent_timeout_seconds=budget_spec.min_agent_timeout_seconds,
+                    delivery_seconds=self._delivery_seconds(),
                 ))
             self._run_harness_setup()
             # The maintainer's setup transaction runs inside the budgeted clock,
@@ -1684,7 +1618,7 @@ class OrchestratorAgent:
                     )
                     if fidelity_active
                     and budget_spec.time_budget_seconds is not None
-                    else budget_spec.finalization_reserve_seconds
+                    else self._round_reserve_seconds(budget_spec)
                 )
                 # Handler-level insurance: a confirmed deliverable on disk
                 # means the endgame risk is already covered — the reserve
@@ -1706,6 +1640,7 @@ class OrchestratorAgent:
                         )
                         insured_logged = True
                     effective_reserve_seconds = shrunk
+                self._status_reserve_seconds = effective_reserve_seconds
                 # Build the per-iteration budget view from the durable clock,
                 # so a resumed campaign continues its budget instead of
                 # resetting it. Strategies get the snapshot read-only.
@@ -1720,6 +1655,7 @@ class OrchestratorAgent:
                     min_agent_timeout_seconds=(
                         budget_spec.min_agent_timeout_seconds
                     ),
+                    delivery_seconds=self._delivery_seconds(),
                 )
                 self.search_strategy.observe_budget(snapshot)
                 budget_progress = snapshot.progress_percent
@@ -1743,19 +1679,20 @@ class OrchestratorAgent:
                     )
                     break
 
-                # The reserve gate: refuse admission when what remains
-                # outside the escrowed finalization reserve cannot hold one
-                # more iteration. Hard arithmetic only — no estimation. With
-                # fidelity active and no full-size result yet, the trip does
-                # not merely stop: it grants the guaranteed reserve run.
+                # Admission (the budget's end, wp4-config.md): an ordinary
+                # round is admitted when the searchable remainder covers
+                # the larger of the floor and the last completed round; an
+                # insured campaign uses its own floor alone, the handler
+                # vouching for its endgame. With fidelity active and no
+                # full-size result yet, a refusal grants the guaranteed
+                # reserve run instead of stopping.
                 remaining_after_reserve = snapshot.remaining_after_reserve
-                if (
-                    remaining_after_reserve is not None
-                    and remaining_after_reserve
-                    <= budget_spec.effective_min_iteration_seconds(
-                        insured=insured_reserve_seconds is not None
-                    )
-                ):
+                insured = insured_reserve_seconds is not None
+                needed_seconds = budget_spec.effective_min_iteration_seconds(insured=insured)
+                last_round = self.search_strategy.last_round_seconds
+                if not insured and last_round is not None:
+                    needed_seconds = max(needed_seconds, last_round)
+                if remaining_after_reserve is not None and remaining_after_reserve < needed_seconds:
                     champion = (
                         fidelity_policy.full_champion(
                             self.search_strategy.get_experiment_history()
@@ -1797,15 +1734,18 @@ class OrchestratorAgent:
                             min_agent_timeout_seconds=(
                                 budget_spec.min_agent_timeout_seconds
                             ),
+                            delivery_seconds=self._delivery_seconds(),
                         )
                         self.search_strategy.observe_budget(snapshot)
                     else:
-                        print(
-                            "[Orchestrator] Stopping: finalization reserve "
-                            "reached — protecting the endgame window"
+                        prose = admission_refusal(
+                            remaining_after_reserve, needed_seconds,
+                            None if insured else last_round,
                         )
+                        print(f"[Orchestrator] Stopping: {prose}")
+                        self.operation_status.note(f"stopping: {prose}")
                         stopped_reason = "budget_exhausted"
-                        stop_detail = "finalization_reserve"
+                        stop_detail = ATTEMPT_WOULD_NOT_FIT
                         self._save_run_checkpoint(
                             status="running",
                             last_stop=stop_detail,
@@ -1974,6 +1914,17 @@ class OrchestratorAgent:
                         status="running", last_stop=stopped_reason,
                     )
                     break
+                cut = self.search_strategy.finishing_cut
+                if cut is not None:
+                    # A finishing session of this round was not launched
+                    # or was cut: the budget's end, said by name.
+                    prose = f"a finishing session was cut: {cut}"
+                    print(f"[Orchestrator] Stopping: {prose}")
+                    self.operation_status.note(f"stopping: {prose}")
+                    stopped_reason = "budget_exhausted"
+                    stop_detail = FINISHING_CUT
+                    self._save_run_checkpoint(status="running", last_stop=stop_detail)
+                    break
                 time_budget_exhausted = (
                     budget_spec.time_budget_seconds is not None
                     and self.get_elapsed_seconds()
@@ -2053,12 +2004,11 @@ class OrchestratorAgent:
                             f"{'recorded' if measured else 'failed'} for "
                             f"node {node.node_id}"
                         )
-                    print(
-                        "[Orchestrator] Reserve run complete — stopping "
-                        "with the finalization window honored"
-                    )
+                    prose = "the escrowed full-size attempt was the last the budget covers"
+                    print(f"[Orchestrator] Stopping: {prose}")
+                    self.operation_status.note(f"stopping: {prose}")
                     stopped_reason = "budget_exhausted"
-                    stop_detail = "finalization_reserve"
+                    stop_detail = ATTEMPT_WOULD_NOT_FIT
                     self._save_run_checkpoint(
                         status="running",
                         last_stop=stop_detail,

@@ -35,7 +35,7 @@ AGGREGATE_BRIEF = os.path.join(HERE, "aggregate_prompt.md")
 
 def _harvest_config() -> dict:
     with open(CONFIG_PATH) as f:
-        harvest = yaml.safe_load(f)["harvest"]
+        harvest = yaml.safe_load(f)["benchmark"]["harvest"]
     for key in ("model", "effort", "timeout_seconds", "allowed_tools"):
         if key not in harvest:
             raise ValueError(f"config harvest block missing '{key}'")

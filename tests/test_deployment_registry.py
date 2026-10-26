@@ -46,11 +46,11 @@ def test_deploy_config_defaults_are_the_packaged_deployment_block():
     """The selector and adapter used to hardcode claude-opus-4-5: a model
     the config never named, and one the codex agent cannot serve. The
     defaults now come from config.yaml's deployment block, one source."""
-    from kapso.core.config import load_deployment_defaults
+    from kapso.core.config import load_config
     from kapso.deployment.base import DeployConfig
     from tests.handles_support import make_solution
 
-    block = load_deployment_defaults()
+    block = load_config()["deployment"]
     config = DeployConfig(solution=make_solution("/nowhere", "g"))
     assert (config.coding_agent, config.model) == (block["coding_agent"], block["model"])
     assert block["model"] == "claude-opus-5"

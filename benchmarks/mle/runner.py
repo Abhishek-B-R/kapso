@@ -13,7 +13,6 @@ Usage:
 Options:
     --competition, -c       Competition ID to solve
     --iterations, -i        Maximum iterations (default: 20)
-    --mode, -m              Config mode: MLE_GENERIC (default), MINIMAL
     --coding-agent, -d      Coding agent: aider, gemini, claude_code, openhands
     --no-kg                 Disable knowledge graph
     --list                  List all available competitions
@@ -33,6 +32,7 @@ import mlebench
 from mlebench.registry import registry
 
 from kapso.execution.orchestrator import OrchestratorAgent
+from kapso.core.config import read_yaml
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from benchmarks.mle.handler import MleBenchHandler
 
@@ -69,7 +69,6 @@ def list_agents() -> None:
 def solve_competition(
     competition_id: str,
     max_iterations: int = 20,
-    mode: Optional[str] = None,
     use_kg: bool = True,
     coding_agent: Optional[str] = None,
 ) -> dict:
@@ -79,31 +78,24 @@ def solve_competition(
     Args:
         competition_id: The Kaggle competition ID
         max_iterations: Maximum experiment iterations
-        mode: Config mode (MLE_GENERIC, MINIMAL)
         use_kg: Whether to use the knowledge graph
         coding_agent: Coding agent to use (aider, gemini, claude_code, openhands)
         
     Returns:
         Dictionary with cost and evaluation results
     """
-    # Load config to get settings
-    import yaml
-    with open(CONFIG_PATH, 'r') as f:
-        config_data = yaml.safe_load(f)
-    active_mode = mode or config_data.get('default_mode', 'MLE_GENERIC')
-    mode_config = config_data.get('modes', {}).get(active_mode, {})
-    fetch_huggingface = mode_config.get('fetch_huggingface_models', True)
-    
+    # The runner's own settings live under `benchmark:` in this
+    # benchmark's override file; the engine reads the rest.
+    benchmark = read_yaml(CONFIG_PATH)["benchmark"]
+    fetch_huggingface = benchmark["fetch_huggingface_models"]
     # use_kg from CLI overrides config (--no-kg forces disable)
-    # If CLI didn't disable it, check config
-    use_kg_config = mode_config.get('use_knowledge_graph', True)
-    effective_use_kg = use_kg and use_kg_config
+    effective_use_kg = use_kg and benchmark["use_knowledge_graph"]
     
     print(f"\n{'='*60}")
     print(f"Solving: {competition_id}")
     print(f"{'='*60}")
     print(f"  Max iterations: {max_iterations}")
-    print(f"  Config mode: {active_mode}")
+    print(f"  Config: {CONFIG_PATH}")
     print(f"  Coding agent: {coding_agent or 'from config'}")
     print(f"  Knowledge graph: {'enabled' if effective_use_kg else 'disabled'}")
     print(f"  Fetch HuggingFace models: {fetch_huggingface}")
@@ -114,7 +106,6 @@ def solve_competition(
     orchestrator = OrchestratorAgent(
         problem_handler,
         config_path=CONFIG_PATH,
-        mode=mode,
         coding_agent=coding_agent,
     )
     
@@ -176,12 +167,6 @@ def main():
         help="Maximum experiment iterations (default: 20)"
     )
     parser.add_argument(
-        "-m", "--mode",
-        type=str,
-        default=None,
-        help="Configuration mode (default: MLE_GENERIC)"
-    )
-    parser.add_argument(
         "-d", "--coding-agent",
         type=str,
         choices=AVAILABLE_AGENTS,
@@ -237,7 +222,6 @@ def main():
     result = solve_competition(
         competition_id=args.competition,
         max_iterations=args.iterations,
-        mode=args.mode,
         use_kg=not args.no_kg,
         coding_agent=args.coding_agent,
     )

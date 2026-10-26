@@ -3,7 +3,7 @@ objective       Raise the churn model's out-of-sample ROC AUC above 0.85
 harness         none
 served          mine at a9ddad3d302d, measured by you
 evaluator       none registered: the agent's own evaluation
-budget          14.0 of 15.0 min
+budget          14.0 of 15.0 min (the launch's over the brief's 45.0 min)
 cost            $2.814
 stopped         max_iterations; 1 experiment
 delivered       generic_exp_0 @ ff9d7bdd774b

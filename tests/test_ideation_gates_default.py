@@ -9,6 +9,11 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from strategy_support import generic_params, packaged_hosts
+
+
+def config(**overrides):
+    return SimpleNamespace(params=generic_params(**overrides), hosts=packaged_hosts())
 
 
 @contextmanager
@@ -21,6 +26,8 @@ def _patched_super_init(workspace_dir):
         self.params = config.params or {}
         self.workspace_dir = workspace_dir
         self.feedback_generator = None
+        self.budget_snapshot = None
+        self.budget_snapshot_monotonic = None
 
     SearchStrategy.__init__ = fake_init
     yield
@@ -29,7 +36,7 @@ def _patched_super_init(workspace_dir):
 
 def test_default_gates_include_research(tmp_path):
     with _patched_super_init(str(tmp_path)):
-        strategy = GenericSearch(SimpleNamespace(params={}), str(tmp_path))
+        strategy = GenericSearch(config(), str(tmp_path))
     assert strategy.ideation_gates == [
         "research", "experiment_history", "repo_memory",
     ]
@@ -42,14 +49,14 @@ def test_the_hosted_gate_rides_on_the_loaded_source_never_on_a_config_list(tmp_p
     # name. What is loaded is what is served: the list's entry is dropped,
     # the loaded source appends the gate with its own address.
     with _patched_super_init(str(tmp_path)):
-        listed = GenericSearch(SimpleNamespace(params={
-            "ideation_gates": ["research", "leeroopedia"], "implementation_gates": ["leeroopedia", "repo_memory"],
-        }), str(tmp_path))
+        listed = GenericSearch(config(
+            ideation={"gates": ["research", "leeroopedia"]}, implementation={"gates": ["leeroopedia", "repo_memory"]},
+        ), str(tmp_path))
     assert listed.ideation_gates == ["research"] and listed.implementation_gates == ["repo_memory"]
     assert listed.hosted is None
     hosted = {"url": "https://staging.example/mcp?token={LEEROOPEDIA_API_KEY}", "tool_timeout_seconds": 45}
     with _patched_super_init(str(tmp_path)):
-        loaded = GenericSearch(SimpleNamespace(params={"hosted": hosted}), str(tmp_path))
+        loaded = GenericSearch(config(hosted=hosted), str(tmp_path))
     assert loaded.ideation_gates[-1] == "leeroopedia" and loaded.implementation_gates[-1] == "leeroopedia"
     assert loaded.hosted == hosted
 
@@ -67,7 +74,7 @@ def test_staged_memory_stores_mount_their_own_gates(tmp_path):
         "hosted": True,
     }
     with _patched_super_init(str(tmp_path)):
-        strategy = GenericSearch(SimpleNamespace(params=params), str(tmp_path))
+        strategy = GenericSearch(config(**params), str(tmp_path))
     for gates in (strategy.ideation_gates, strategy.implementation_gates):
         assert "bank" in gates
         assert {"idea", "code"} <= set(gates)
@@ -79,7 +86,7 @@ def test_staged_memory_stores_mount_their_own_gates(tmp_path):
 def test_gates_unchanged_without_staged_stores(tmp_path):
     # The mount is conditional: no staged store, no extra gates.
     with _patched_super_init(str(tmp_path)):
-        strategy = GenericSearch(SimpleNamespace(params={}), str(tmp_path))
+        strategy = GenericSearch(config(), str(tmp_path))
     for gates in (strategy.ideation_gates, strategy.implementation_gates):
         assert "bank" not in gates
         assert "idea" not in gates and "code" not in gates

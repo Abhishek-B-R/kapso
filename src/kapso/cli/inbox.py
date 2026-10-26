@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from kapso.kapso import Kapso, DEFAULT_CONFIG_PATH
-from kapso.core.config import load_mode_config
+from kapso.core.config import load_config
 from kapso.execution.inbox import (
     list_registered_campaigns,
     looks_like_a_secret,
@@ -99,7 +99,7 @@ def cmd_inbox(args) -> None:
     if campaign is not None:
         print(_render_campaign_inbox(campaign))
         return
-    registry = load_mode_config(args.config or DEFAULT_CONFIG_PATH)["inbox"]["registry"]
+    registry = load_config(args.config)["inbox"]["registry"]
     waiting = [
         Path(entry["path"])
         for entry in list_registered_campaigns(registry)

@@ -1,0 +1,38 @@
+{
+  "module": "implementation",
+  "host": "claude_code",
+  "harness": null,
+  "session_dir": "/campaign/sessions/generic_exp_0",
+  "pages": [],
+  "skills": [],
+  "mcp_servers": [],
+  "agents": [],
+  "hooks": [],
+  "prepared": [],
+  "stream": "/campaign/.kapso/sessions/generic_exp_0/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-26T14:08:29+00:00",
+      "ended": "2026-10-26T14:12:02+00:00",
+      "duration_seconds": 212.117,
+      "model": "claude-opus-5",
+      "cli_session_id": "9175accc-1f99-4f00-be28-28c2f38d4265",
+      "exit": "success",
+      "error": null,
+      "retry_reason": null,
+      "cost_usd": 0.887155,
+      "cost_cumulative": 0.887155,
+      "turns": 12,
+      "usage": null,
+      "tools": {
+        "Bash": 11
+      },
+      "gates": {},
+      "hooks": [],
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": "<code_changes_summary>\nReplaced the logistic-regression baseline in `predict.py` with a deliberately shallow, seed-averaged `HistGradientBoostingClassifier` (`max_leaf_nodes=3`, `learning_rate=0.05`, `min_samples_leaf=40`, `categorical_features='from_dtype'`, native NaN routing), with the boosting round count chosen by internal 5-fold stratified CV (early stopping, `best_iter = round(1.15 * mean(n_iter_)) = 876`) and the final model refit on all 10,000 training rows across 7 seeds with the probabilities averaged. Fixed the blocking latent crash: under pandas 3.1.0 the CSV string columns load as `str` (StringDtype), not `object`, so the shipped `dtype == object` detection routed `contract` into the median imputer and died \u2014 categoricals are now detected with `not is_numeric_dtype(s) or s.dtype == bool`, and train/holdout features are concatenated before the category cast so levels align. The prediction contract is untouched (same argparse, `id,churn_probability`, 3,000 rows in holdout order, clipped to `[0,1]`, finiteness asserted). Added `kapso_evaluation/eval_profile.md` (metric mechanics, measured input distribution, environment, and the OOF depth sweep) and `PLAN.md`; the evaluator source was never modified.\n</code_changes_summary>\n\n<evaluation_script_path>\nkapso_evaluation/evaluate.py\n</evaluation_script_path>\n\n<evaluation_output>\nrows: 3000  seconds: 15.0  fast: False\nauc: 0.8454\n\nresult.json:\n{\n  \"evaluation_script_path\": \"kapso_evaluation/evaluate.py\",\n  \"evaluation_output\": \"auc: 0.8454 (rows=3000, fast=False, seconds=15.0)\",\n  \"score\": 0.8454\n}\n\nSelf-check printed by predict.py during the run:\noof auc (max_leaf_nodes=3, learning_rate=0.05): 0.8553  best_iter: 876\nwrote predictions.csv: 3000 rows\n\nConfirmation sweep (5-fold OOF on train only, random_state=0):\n{'max_leaf_nodes': 3, 'learning_rate': 0.05} 0.8553 876\n{'max_leaf_nodes': 4, 'learning_rate': 0.03} 0.8544 881\n{'max_leaf_nodes': 4, 'learning_rate': 0.05} 0.8537 643\n{'max_leaf_nodes': 5, 'learning_rate': 0.03} 0.8547 660\n</evaluation_output>\n\n<score>\n0.8454\n</score>\n\n<technical_difficulties>\n1. **`python` is not on PATH** (`/bin/bash: line 13: python: command not found`). Only `python3` \u2192 `/usr/bin/python3.12` exists. This does not break the evaluator, which builds its command from `sys.executable`, but every manual invocation must use `python3`.\n\n2. **`python3 -I` hides pandas** \u2014 `ModuleNotFoundError: No module named 'pandas'` under `-I`, while plain `python3` imports pandas 3.1.0 / sklearn 1.9.1 fine. Root cause: pandas lives in the user site-packages, which `-I` (isolated mode) disables. Fix: drop `-I` for profiling scripts in this workspace.\n\n3. **The shipped baseline's categorical detection is broken here, confirmed.** pandas 3.1.0 loads the CSV string columns with dtype `str` (StringDtype), so `features[c].dtype == object` is `False` and `contract`/`plan`/etc. were classed as numeric and sent to `SimpleImputer(strategy=\"median\")`. Fix: `not pd.api.types.is_numeric_dtype(s) or s.dtype == bool`. Any future submission inheriting the old check scores nothing regardless of model quality.\n\n4. **Profiling with `value_counts()` over the `id` column flooded the output** (~20 KB truncated, 10,000 unique ids) and cost one wasted tool round-trip. `id` is a `str` column, so a naive \"print value counts for every non-numeric column\" loop includes it. Exclude `id` and the label from that loop.\n\n5. **OOF overstates the holdout by about one bootstrap SE.** OOF 0.8553 \u2192 holdout 0.8454, so the result lands below the 0.85 target despite the OOF clearing it; the solution's own note that the margin was under 1 SE proved accurate. Not a crash \u2014 a calibration warning for the next iteration: OOF deltas smaller than ~0.010 are not resolvable on this 3,000-row holdout. The specified fallback (`leaves=4, lr=0.03`) was *not* triggered because OOF 0.8553 > the 0.853 floor, and a 4-config sweep independently confirmed `leaves=3/lr=0.05` as the OOF-best of the candidates, so switching to the fallback would have been selection against noise. Solution step 5's optional spline-logistic rank blend was left out: at this measured noise level it is unresolvable, and the 12-minute budget did not allow a trustworthy OOF comparison.\n\n6. **Repo memory book is empty.** Every `book.sections[*]` in `.kapso/repo_memory.json` has `claims: []` and `content: []`, so the MCP section tools had nothing to return; only `repo_map` and `baseline` carry information. Recorded as \"none consulted\" in `changes.log` with that explanation.\n</technical_difficulties>"
+    }
+  ]
+}
