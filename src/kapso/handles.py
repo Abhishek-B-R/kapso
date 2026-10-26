@@ -18,6 +18,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 
+class SolutionError(FileNotFoundError):
+    """A path with no solution to open: not a campaign directory, or a
+    build that has not returned. The CLI prints the message as one line,
+    with the other engine errors."""
+
+
 class BriefError(ValueError):
     """A brief that does not follow the grammar, with the line it failed on."""
 
@@ -640,13 +646,13 @@ class Solution:
         record = campaign / SOLUTION_RECORD
         if not record.is_file():
             if (campaign / ".kapso").is_dir():
-                raise FileNotFoundError(
+                raise SolutionError(
                     f"no solution in {campaign} yet: the build has not returned "
                     f"(follow it with `kapso watch {campaign}`; a build that just "
                     "ended is writing its record), or it stopped before delivering "
                     "(its log says where)"
                 )
-            raise FileNotFoundError(f"{campaign} is not a campaign directory")
+            raise SolutionError(f"{campaign} is not a campaign directory")
         data = json.loads(record.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or data.get("schema_version") != SOLUTION_SCHEMA:
             raise ValueError(

@@ -174,6 +174,12 @@ the diff of the winning branch, the risk line beside the return metric
 
 ## 3. Deploy
 
+*Superseded on 2026-10-26 by `docs/plans/redesign/wp5-deploy.md`: the
+campaign is the verb's positional argument (`kapso deploy ../btc-momentum
+--harness trading --target paper-trading`), `options` carry the target's
+options, and a harness target is a deployment skill holding
+`scripts/deploy.sh`.*
+
 ```
 kapso deploy --solution ../btc-momentum --harness trading --target paper-trading
 ```

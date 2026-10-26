@@ -1,0 +1,212 @@
+---
+title: "Deploy a solution to a target"
+sidebarTitle: "Targets"
+description: "What kapso deploy does with a finished build: the target it deploys to (auto, one of the five bundled targets, or a target your harness ships), the session that adapts and proves the solution, the record under the campaign, and the Software handle that runs, stops, starts and reads it from any process."
+keywords: ["kapso deploy", "deployment target", "Software.open", "docker", "modal", "bentoml", "langgraph", "paper trading"]
+---
+
+`deploy()` turns the solution a build delivered into running software on a
+target. One session adapts a copy of the solution to the target, deploys it
+with the target's own scripts, proves one call, and writes a result the
+engine checks; the deployment is recorded under the campaign, and you get
+a `Software` handle that runs, stops, starts and reads it, from this
+process or any later one.
+
+```bash
+kapso deploy campaign --target docker --env API_KEY=...
+```
+
+```python
+from kapso import Kapso, Solution, Software
+
+software = Kapso().deploy(Solution.open("campaign"), target="docker", env={"API_KEY": "..."})
+software.run(software.proof["inputs"])      # the call the session proved
+software.stop()
+Software.open("campaign", software.number).start()   # the same deployment, later, from anywhere
+```
+
+## Which target?
+
+The target is the call's; with none named, the config's `deployment.target`
+decides (`auto` as packaged).
+
+| Target | Where the solution runs | How `run()` calls it | What the machine needs |
+|---|---|---|---|
+| `auto` | The session chooses among the targets below and the harness's, by their descriptions and what this machine has for each, and records why | | |
+| `local` | A worker process in the engine's interpreter, `main.predict` loaded once | a function call | nothing; the solution's requirements are installed into the engine's own interpreter, which a kapso upgrade replaces (reinstall them after one) |
+| `docker` | A container built from the solution, serving HTTP on a port of this machine | `POST /predict` | `docker`, its daemon running |
+| `modal` | A serverless function on Modal.com, a GPU when the model needs one | the Modal SDK, by app name | `pip install "leeroo-kapso[modal]"`, `modal token new` |
+| `bentoml` | A BentoML service on BentoCloud | the BentoML SDK, by deployment name | `pip install "leeroo-kapso[bentoml]"`, `bentoml cloud login` |
+| `langgraph` | A stateful agent on LangGraph Platform, one thread kept across calls; a stop ends the thread and leaves the platform deployment (its output says how to delete it) | the platform's SDK | `pip install "leeroo-kapso[langgraph]"`, `LANGSMITH_API_KEY` |
+| a harness target | What the harness's skill says: the trading example's `paper-trading` runs the strategy against a paper account on a schedule | the skill's `run.py` (one cycle on demand) | the harness's own prerequisites |
+
+A harness target is a skill the build's harness lists on its deployment
+module and that holds `scripts/deploy.sh`; `kapso deploy campaign --target
+k8s` is refused in one line naming the targets available, the bundled
+ones and the harness's (and, on a build without a harness, that a
+harness's target needs `--harness`). `kapso doctor deploy` shows the
+session's host and the targets' tools: required for the configured
+target (with its probe, `docker info` for docker), advisory for the
+others.
+
+The three cloud targets ship with scripts exercised against fake
+executables and SDKs, not against an account: the first run under yours
+is the proof. Check first, in this order: `modal app stop <app> --yes`
+and `modal.Function.from_name(app, "predict").hydrate()`; that
+`modal.Secret.from_dotenv()` resolves at deploy time in the workspace;
+`bentoml deploy . --name`, the `endpoint_urls` field of `bentoml
+deployment get -o json`, and whether `get_client().predict(inputs=…)`
+carries the credentials `bentoml cloud login` saved for a protected
+endpoint; `langgraph deploy --name` from a local workspace and what it
+prints.
+
+## What a deployment is
+
+- **The session.** One coding-agent session on a copy of the solution,
+  on the host `deployment.cli` names (the build's host when null), staged
+  with the target's skill and, on a build made with a harness, the
+  harness's deployment page, skills, servers and hooks. It adapts the copy
+  to the target's entry point, runs the target's `scripts/deploy.sh`,
+  proves one call with real inputs and writes `kapso_deployment.json`.
+- **The acceptance.** The engine checks the result against what it can
+  observe: the file parses and has its shape, the target requested (or
+  offered, under `auto`), the run kind the target's skill declares, the
+  function's module in the workspace, the artifacts inside it, the
+  target's health check, and the proof call run again (what it answered
+  is recorded as `observed` and printed beside the session's own answer).
+  The record stays `deploying` until every check passed. A check that
+  fails goes back to the session once with the finding, under the same
+  deadline (`deployment.timeout`, thirty minutes as packaged); failing
+  again, the deployment is `failed` with the reason.
+- **The record.** `<campaign>/.kapso/deployments/<n>/` holds
+  `deployment.json`, written before the session starts (`state:
+  deploying`) and completed at its end (`running`, or `failed` with the
+  error); the target's skill directory copied beside it as soon as the
+  target is known (before the session for a named target, at the
+  session's choice under `auto`), whose scripts every later call runs, a
+  failed deployment's `--stop` included; `engine.log`, what the engine
+  did to the deployment; and `workspace/`, the solution's working tree at
+  the delivered commit, adapted and deployed, its own git repository.
+  Each deployment is a full copy of the solution with its data: three
+  deploys of a campaign with a large dataset hold it three times. A
+  stopped deployment's directory may be deleted; its `open` then refuses
+  by name.
+- **The identity.** Each deployment has a name (`<campaign>-<hash>-<n>`,
+  what the targets name their containers, apps and services after) and,
+  when its target uses one, a port of this machine: the first nothing
+  listened on when the deployment was allocated, from
+  `deployment.port_base` within `port_span`. The port is probed, not
+  held; the target's `deploy.sh` binds it minutes later and fails naming
+  it if something took it since. A second deployment leaves the first
+  running under its own name and port.
+
+## `env` and `options`
+
+`--env KEY=VALUE` (`env={...}`) are the variables the software needs at
+runtime: written to `.env` at the workspace root (owner-only; an existing
+file's other lines kept), named but never valued in the session's prompt,
+and set on every runtime the engine and the target's scripts manage (the
+local worker, the container through `--env-file`, a Modal secret). Each
+value is taken verbatim, as docker's `--env-file` takes it: no quotes
+removed, nothing expanded; a value with a line break is refused. The
+docker target keeps `.env` out of its image. A solution that carries its
+own `.env` has it loaded the same way, `env` or not.
+
+`--option KEY=VALUE` (`options={...}`) are for the target's workflow:
+exported to its scripts as `KAPSO_OPTION_<KEY>`. The bundled targets read
+none; a harness target's skill says which it takes (`paper-trading` takes
+`schedule` and `cash`).
+
+## `Software`
+
+| Member | What it does |
+|---|---|
+| `run(inputs)`, `software(inputs)` | One call: `{"status": "success", "output": …}` or `{"status": "error", "error": …}` (a non-2xx reply or no reply at all, a script's non-zero exit, a function that raised, a call past `call_timeout`); refused with the state while the deployment is not running |
+| `run_batch(inputs_list)` | `run` over each, in order |
+| `proof`, `observed` | The call the session proved, `{"inputs": …, "output": …}`, the example of what `run()` takes; and what the engine's own call of it answered at the acceptance |
+| `stop()`, `start()` | The target's stop and start scripts (a function's worker ended or started); the state written to the record, so another process's handle sees it; `start()` recreates the same deployment. Each returns the lines it noted (the script's own output, `the docker target has nothing to start` for a target without the script), which `logs()` repeats |
+| `is_healthy()` | Running by the record and answering the target's health check (a function: its worker answers a ping) |
+| `close()` | This handle's worker ended, the deployment left running for the next handle |
+| `logs()` | The engine's lines (`engine.log`), the target's logs script, a function's worker log |
+| `number`, `state`, `target`, `endpoint`, `workspace`, `record` | The record's facts; `target` is `None` for a deployment whose session under `auto` chose none |
+| `Software.open(campaign, number=None, config=None)` | The campaign's deployment of that number, or its highest, whatever its state; refuses a campaign with none, and a record whose workspace, target directory or harness is gone |
+| `with kapso.deploy(...) as software:` | `stop()` on exit |
+
+A `function` deployment runs in a worker process per handle: the module
+imports once, a raising function ends the worker (its traceback is the
+error) and the next call starts one again. It has no process of its own
+between handles, so `--status` and `--start` prove what they can, that
+the module imports in a worker of that call's, and say so.
+
+## The verb's lifecycle flags
+
+```bash
+kapso deploy campaign --status                 # every deployment: number, state, target, endpoint, health
+kapso deploy campaign --status --number 2      # that one
+kapso deploy campaign --logs --number 2
+kapso deploy campaign --stop --number 2
+kapso deploy campaign --start --number 2
+```
+
+`--stop`, `--start` and `--logs` act on `--number`, the highest by
+default; `--status` lists every deployment (a failed row carries its
+error, a deploying row the target requested), or the one `--number`
+names. `--stop` and `--start` print the script's own lines under theirs.
+One of the four at a time, and none of the deploy flags beside it. The
+summary after a deployment prints these lines pinned to the new number
+(with `--config` when one was passed), with the Python line, the proof
+call and the engine's own answer to it, and the interpreter the function
+runs in; a deploy that fails prints the record's path and the `--stop`
+line, since what its deploy script started may be running (a session
+under `auto` that named no target leaves nothing for `--stop` to run, and
+the line says so).
+
+## Deploying a harness build
+
+On a build made with a harness, `deploy()` takes the harness from the
+campaign's record (or the one you loaded, another version of the same name
+allowed) and stages its deployment module into the session: the page as
+guidance, its skills, servers and hooks. A harness that ships a target
+describes it in its own skill; see [Write a target skill](/docs/deploy/write-a-target-skill).
+
+```bash
+kapso deploy campaign --harness ./trading --target paper-trading --option schedule="*/5 * * * *"
+kapso deploy campaign --logs        # the runner's cycles
+```
+
+## The config block
+
+```yaml
+deployment:
+  target: auto         # what deploy() targets when the call names none
+  cli: null            # the session's host; null follows search_strategy.params.host
+  model: null          # the host entry's when null
+  effort: null
+  timeout: 1800        # the session's deadline, seconds
+  call_timeout: 300    # one run() call
+  script_timeout: 600  # one lifecycle script
+  port_base: 8000      # the host ports a deployment takes
+  port_span: 1000
+```
+
+See [Configuration](/docs/reference/configuration#deployment).
+
+## What is refused, in one line
+
+- A build that delivered no candidate, or a campaign not checked out at
+  the delivered candidate, or whose tracked files changed since (restore
+  the delivered tree, or build again).
+- A target that is neither bundled nor the harness's; a harness target on
+  a build made without a harness.
+- A harness changed since it was loaded.
+- `--env FOO` (no value), a variable name that is not one, a value with
+  a line break or a control character.
+- A deploy flag beside a lifecycle flag, `--number` on a deploy, two
+  lifecycle flags at once.
+- A session cut at its deadline or failed to run; a result the engine
+  could not accept after the session's one resume. The record stays, with
+  the reason and the way to stop what the deploy script started.
+
+Related pages: [Write a target skill](/docs/deploy/write-a-target-skill) · [Review the result](/docs/build/review) · [Use a harness](/docs/harnesses/use) · [Configuration](/docs/reference/configuration#deployment) · [CLI](/docs/reference/cli#kapso-deploy) · [Python API](/docs/reference/kapso-api#deploy)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

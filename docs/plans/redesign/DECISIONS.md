@@ -6,6 +6,326 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-26, WP5 (after the pull-request review of #160)
+
+**The target's scripts are beside the record before the session runs.**
+A named target's skill directory is copied into `deployments/<n>/target/`
+right after the record is minted; under `auto` the session is told to
+write the result file with `target` and `reasoning` the moment it
+decides, and the engine copies the chosen target's directory as soon as
+it reads that (at the acceptance, or when a failed session left a
+parseable file naming an offered target). The plan said "copied at deploy
+time", which the build read as "after the result passed", so a failed
+deployment's `--stop` line could not run (both reviewers' first P1).
+`Software.open` opens a record whose target was never chosen, and
+`stop()` says there is nothing to run.
+
+**The result file is validated at a process boundary.** Rule 2 says a
+malformed JSON document raises; the Interface says a malformed result
+comes back to the session as a finding. Both hold: the engine checks the
+parse by running the interpreter on the file (`json.load` in a
+subprocess, its exit code the verdict, its last stderr line the finding),
+then reads what parsed. A session's sloppy file is a resume, never a
+traceback, and the engine's own code catches nothing. The alternative, a
+`DeployError` that fails the deployment at once, would spend the resume
+the Interface promises on the most ordinary model slip.
+
+**The record stays `deploying` through the acceptance, and the handle
+that proved the deployment is the one returned.** `Software` has
+state-free `_call` and `_answers` the acceptance uses, so `running` is
+written once every check passed; no other process can call a deployment
+still being proved, and a crash mid-acceptance leaves `deploying`, never
+a false `running`. One handle is built before the session and returned
+at the end with its worker alive (the proof call started it); a resume
+closes it first, since the session may rewrite the module.
+
+**HTTP transport failures are answers, read off a future.** `run()` on an
+`http` deployment posts in a thread; the request's exception (refused,
+reset, timed out) is read with `Future.exception()` and becomes the
+`{"status": "error"}` answer the Interface promises, with the exception's
+name and message. No `try`: the boundary is the executor's. A 2xx body
+that is not JSON still raises, as the Interface says.
+
+**The run kind is the target's to declare.** `metadata.run_kinds` in a
+target skill's front matter (every bundled target and `paper-trading`
+declare theirs) and the acceptance refuses a result naming another; a
+`function` module must be a file of the workspace; artifacts must be
+relative paths inside it. Without this a session could pass the checks
+by pointing `run.url` at any service that answers 2xx.
+
+**A tool's probe lives in its skill's front matter.** `metadata.requires`
+takes an optional `probe` (`command`, `timeout`, `fix`); `readiness` and
+the doctor run it bounded (killed at its timeout, a readiness line rather
+than an exception). The docker skill declares `docker info`. The engine
+no longer names `docker` anywhere: the two docker-specific branches
+(`_readiness_line`, the doctor's daemon row) are gone, and any target can
+declare what proves its tool usable.
+
+**Env values are verbatim, in docker's format, and the worker has its
+own six-line loader.** `.env` is `NAME=VALUE` per line, the value to the
+end of the line: what `docker --env-file` reads. The worker reads it the
+same way (no python-dotenv: it unquoted and expanded, so the function
+and the container saw different values for `"a b"` or `${X}`), and the
+local target's `deploy.sh` proves the entry point through the worker
+itself instead of sourcing the file as shell. Names are matched whole;
+values may not hold a line break, a carriage return or a NUL. The modal
+skill says its dotenv secret unquotes.
+
+**The engine notes what it does in `engine.log` beside the record.**
+Stop and start lines, a stop script's failure, "the local target has
+nothing to stop": written to the file as they happen, so a later handle's
+`logs()` and a later `--logs` show them (before, they lived in the handle
+that made them). `stop()` and `start()` return the lines they noted and
+the verb prints them under its own, so a cloud stop that leaves a
+platform deployment behind says so where the person is looking.
+
+**A stop keeps a failed deployment's error.** `--stop` on a failed record
+runs the scripts and writes `stopped` with the error kept, so `--status`
+still says why it failed; `start()` clears it.
+
+**Every child the engine runs is its own session, killed as a group.**
+Lifecycle scripts, `run.py` and the worker start with
+`start_new_session=True`; a timeout kills the process group, so a build
+or a runner a script started dies with it and the deadline is a bound,
+not a hope.
+
+**Record writes are atomic and every change re-reads first.**
+`DeploymentRecord.write` replaces the file through a temporary one;
+`update(**changes)` reloads, applies, writes. Two handles on one
+deployment never undo each other's fields; there is no inter-process
+lock, which the plan's findings say.
+
+**A new endpoint from a lifecycle script re-routes an `http`
+deployment's calls.** `KAPSO_ENDPOINT=` from `start.sh` updates the
+record's `endpoint` and, for the `http` kind, `result.run.url`: BentoCloud
+gives a started deployment a new URL, and `run()` must follow it.
+
+**The verb's lifecycle flags exclude each other, and a deploy flag beside
+one is refused.** `--status --stop` chose silently before; argparse's
+group refuses two lifecycle flags, the verb refuses `--target` with
+`--stop` and `--number` on a deploy. `--status --number n` shows that one
+row; a running row whose files are gone, a failed row's error and a
+deploying row's requested target are shown.
+
+**The summary's next step is Python, not JSON.** The proof's inputs were
+printed with `json.dumps`, which emits `false`, `true` and `null` inside
+a Python line; the line now carries the import, the path and the config
+quoted for Python, and the inputs as Python literals; the CLI lines quote
+the path for the shell and carry `--config`. The summary also prints the
+engine's own answer to the proof call beside the session's when they
+differ (a stateful target answers differently), and the interpreter a
+function runs in.
+
+**The engine's targets are listed by the deployment prompt, not the
+guidance.** The plan's Consumed paragraph asked the guidance builder to
+list them with the harness's skills; the build lists them in the prompt's
+target block, with each one's readiness beside it, and the session record
+names them under `engine_skills`. The guidance stays the harness's page.
+Recorded here since the plan's text said otherwise.
+
+## 2026-10-26, WP5 (taken while building)
+
+**The front-matter reader lives in `kapso.core`.** The preflight imports
+the targets' registry (for the doctor's rows), and the harness check
+imports the preflight (for its requirement rows): a registry that read
+front matter through the harness check would close a cycle. One reader,
+`kapso.core.front_matter.read_front_matter`, serves the check, the staging
+and the registry.
+
+**`KAPSO_INTERPRETER` is one of the deployment's variables.** The engine's
+own interpreter runs the function worker and every `run.py`, so the
+solution's requirements must be installed into it and the scripts must
+run it; the plan's list of variables lacked it. The recorded interpreter
+is what every later lifecycle call uses, from any process.
+
+**The deployment role is the roles module's.** `deployment_role(config,
+coding_agent)` sits beside `check_deployment` in `kapso.core.roles`, so
+the preflight's rows, the live tier and the session resolve the one spec
+from one definition.
+
+**An inference-only adapter as the deployment's host is refused by key,
+not by the preflight's inference-only row.** The hosts table never holds
+one (an adapter without a staging cannot enter it), so `deployment.cli:
+openai_compatible` is `deployment.cli: openai_compatible is not in
+hosts`, from the config or from the call; the verb's `--coding-agent`
+keeps argparse's choice of the adapters that can code.
+
+**Only the engine's targets are staged as engine skills.** A harness
+target arrives with the harness's deployment module, as every skill of
+the module does; staging it twice would list it twice in the record.
+
+**The changed-harness check runs before the record is minted.** The
+staging's hash check is shared (`check_harness_unchanged`) and the session
+calls it first, so a harness edited since its load deploys nothing and
+leaves no `deploying` record behind.
+
+**The function worker takes the env file as an argument.** The engine
+hands the worker the file's path on its command line and the worker loads
+it before the import; reading `KAPSO_ENV_FILE` from the environment inside
+the engine's own code would be configuration from the environment.
+
+**The docker scripts probe health with the interpreter, not curl.** The
+proof machine's host may lack `curl`; `urllib` in `$KAPSO_INTERPRETER` is
+always there. The `.dockerignore` lines are appended once each, the
+person's own lines kept.
+
+**`logs()` says when its script failed.** A logs script that exits
+non-zero would otherwise read as "no logs"; the line names the exit and
+the stderr.
+
+**`Software.open` takes a config path for the timeouts.** The handle
+needs `call_timeout` and `script_timeout`; `open(campaign, number,
+config=None)` reads them from the file named, the packaged defaults
+without one, as the CLI's `--config` threads it.
+
+**The cutover and the trading example's target landed in one commit.**
+The example's test needs the session, the session's harness-target test
+needs the example's scripts; one commit keeps both green (the plan listed
+them as changes 6 and 7).
+
+**The retired `--strategy` is scoped to the deploy verb.** RelBench's
+runner keeps `--strategy generic|tree` for its search strategy; the
+guard's pattern is `kapso deploy … --strategy`.
+
+## 2026-10-26, WP5 (planned; taken while writing the sub-plan, revised after its review)
+
+**One deployment session, not a selector and an adapter.** Today's
+selector session exists because the adapter is prompted with one target's
+instructions pasted in; with the targets as skills the session opens the
+skill it needs, so the choice under `auto` and the adaptation are one
+session's work: the choice first, with its reasoning and the readiness of
+every offered target, then the adaptation. One record, one cost, one
+place to read. Alternative rejected: keeping the selector as a cheaper
+first session, which would stage the skills twice and record a choice
+nobody can act on without the second session.
+
+**The deployment result is a file the engine names and checks, not tags
+in the output.** `kapso_deployment.json` at the workspace root, in the
+shape WP2's `verdict.json` set for verification. The engine accepts it
+only against what it can observe: the session completed, the shape, the
+target requested or offered, the artifacts on disk, the health script,
+and the proof call run again by the engine. A completed session whose
+file fails a check is resumed once with the finding under the same
+deadline; a session killed or failed is a failed deployment, never a
+missing file. The `<run_interface>` and `<endpoint_url>` tags parsed out
+of the transcript go with the adapter.
+
+**A deployment has an identity of its own and a record from its first
+second.** `<slug>-<hash6>-<n>` and a port bound free at allocation, both
+recorded; `deployments/<n>/` minted by an atomic `mkdir`; the record
+written with `state: deploying` before the session starts and completed
+at its end (`running`, or `failed` with the error), so what `deploy.sh`
+started is always reachable through `Software.open(campaign, n).stop()`
+or `kapso deploy --stop`. Re-deploying takes a new number and leaves the
+earlier deployment running under its own name and port. Why: the review
+showed the first plan's path-derived identity letting deployment 1's
+`stop()` remove deployment 2's container, and a bad result leaving a live
+container nobody could reach.
+
+**The record is the whole handle.** It carries the commit, both harness
+identities and the harness root, the interpreter, the name and port, the
+values the session recorded, the options, the env names (the values live
+only in the workspace's `.env`), the target's skill directory copied
+beside it (the scripts every later call runs), and paths relative to its
+own directory, so a moved campaign still opens and a removed harness or
+package version does not change what a deployment runs.
+
+**Three run kinds; the `function` kind runs in a worker process.** `http`
+and `script` as before; `function` is a worker per handle
+(`kapso.deployment.worker`) that imports the module once and answers one
+JSON line per call, started in the workspace with the `.env` values:
+isolation by process, the model loaded once, a reopen from any
+interpreter, and no module eviction or `sys.path` surgery in the engine.
+A raising function ends its worker and the traceback is the error; the
+next call starts one again (the rules forbid a catch in the worker, and
+the exit code is the honest channel). The `none` kind of the first plan
+is gone: a target with nothing to call ships no `run.py`, and the
+paper-trading target's `run()` is one cycle on demand, which is the flow's
+"the engineer tries one cycle".
+
+**The lifecycle is the target's scripts, with a contract.** `bash` for
+`.sh`, `sys.executable` for `run.py`, the workspace as working directory,
+the deployment's values as `KAPSO_*` variables (transport of resolved
+values, never configuration read by the engine), `script_timeout` and
+`call_timeout` from the config, stdout lines `KAPSO_ENDPOINT=` and
+`KAPSO_VALUE_<KEY>=` writing back into the record (a cloud target's new
+URL after a restart), a non-zero exit as `DeployError` with the stderr
+except in `stop()`. The scripts are the target's, never the session's to
+edit. Deterministic parts of today's runners move into them: docker saves
+its logs before removing the container and recreates it from the recorded
+values (the container port, the GPU request); modal stops with `--yes`;
+bentoml asks BentoCloud for its URL and posts with the SDK's own
+credentials; langgraph keeps its thread in the workspace.
+
+**`options` is the channel the example harness already documented.**
+`deploy(options={"schedule": …})`, `--option k=v`, `KAPSO_OPTION_<NAME>`
+on the scripts, recorded; a bundled target reads none. Why: the trading
+example's `paper-trading` skill and `harness-design.md` §3 both say the
+deployment module receives the call's options, and the first plan had no
+way to pass one.
+
+**A harness target is a deployment skill that holds `scripts/deploy.sh`.**
+The structural mark of a workflow, so a reference skill listed on the
+module (`market-data`) is not a target and no manifest field names one
+(`harness-design.md`: no engine-facing fields). A harness target named
+like a bundled target or `auto` is refused when the harness is loaded for
+a deploy. `metadata.requires` is read from the engine's bundled targets
+only; a harness target's tools are `environment.commands`, which `check`
+already reads.
+
+**The `deployment` block is a session spec over the hosts table, plus the
+target, three deadlines and the ports.** `cli: null` follows
+`search_strategy.params.host`, so a project that moves to Codex changes
+one key; `model: null` takes the host's, which removes a packaged
+duplicate of `hosts.claude_code.model`; `timeout` (the session),
+`call_timeout` (a call), `script_timeout` (a lifecycle script),
+`port_base` and `port_span` are the operational values the rules want in
+the config. `coding_agent` leaves the block, `--model` the verb, `model=`
+the call, as they left `build()`.
+
+**The workspace is its own repository under `.kapso/deployments/<n>/`.**
+A copy of the campaign's working tree at the delivered commit (dirty
+tracked files refused by name), without the engine's and the hosts' own
+directories, with the untracked data the solution reads, then `git init`
+and one commit, so a session's git commands and the staging's collision
+check stop at the workspace and never reach the campaign above it. The
+docker target writes a `.dockerignore` so `.env` and the staged files stay
+out of its image. Nothing new appears beside the campaign; the page says
+what a campaign grows by.
+
+**The verb stops, starts and reads what it started.** `kapso deploy
+<campaign> --status | --stop | --start | --logs [--number N]`, through
+`Software.open`; `--interactive` is gone (for the `function` kind it
+blocked the one process that could call the software; for the others the
+deployment outlives the process anyway). A CLI user is never sent to
+Python to stop what the CLI started.
+
+**The engine's target skills are staged like the engine's hook.** The
+staging takes `engine_skills`, directories copied beside the harness's
+skills into the session's skills directory on either host, with or
+without a harness (the no-harness path stages them and writes the
+record), in `writes()` and the record, listed by the guidance builder with
+the host's opening syntax. Alternative rejected: the deployment package
+copying into `.claude/skills` or `.agents/skills` itself, which would
+duplicate the staging's knowledge of the hosts.
+
+**`DeployError` is the engine's own refusal around a deployment**, printed
+as one line by the CLI with the other engine errors; WP1's two refusals on
+the solution keep their wording and take the type, and a dirty campaign
+joins them.
+
+**The engine skill's deploy section is this package's.** Deploy once in
+the foreground with a tool timeout above the session's; the record is
+written at the start; reopen by number; stop with the verb. The plugin
+command stays WP7's. Why: the repository's own findings record a coding
+agent backgrounding the verb and polling to its turn limit.
+
+**The cloud targets ship unproven live.** Modal, BentoCloud and LangGraph
+Platform need accounts the proof machine does not have; their scripts are
+what today's runners did, exercised against fake executables, and the
+release gate runs them where the owner's credentials are. The plan says
+so rather than claiming a proof it cannot make.
+
 ## 2026-10-26, WP4 (taken while building)
 
 **The hosts a build runs on are the adapters with a staging, declared in

@@ -262,28 +262,42 @@ kapso build --experience mine,leeroopedia,org-repo --brief kapso-brief.md ...
 
 ## Deploy
 
-Deploy runs one claude session that adapts a copy of the solution
-(`<path>_adapted_<strategy>`) for the target and returns when it is ready. It
-takes a few minutes, not hours: run it in the foreground with a long tool
-timeout and use the result, rather than backgrounding it and polling.
+Deploy runs one session that adapts a copy of the solution to a target,
+deploys it with the target's scripts, proves one call, and returns when the
+engine has checked the result. It takes minutes (up to thirty, the
+session's deadline). Run it in the foreground when your tool's timeout
+allows; when it does not (Claude Code's Bash tool stops at ten minutes),
+run it once in the background writing to a log and wait for the summary
+to appear there, never a second time. The record is written when the
+deploy starts, so `kapso deploy <campaign> --status` says what is
+deploying even while the call runs or after a host call is cut.
 
 ```bash
 kapso doctor deploy
-kapso deploy ../churn-campaign --strategy local   # auto|local|docker|modal|bentoml|langgraph
+kapso deploy ../churn-campaign --target local    # auto|local|docker|modal|bentoml|langgraph, or a harness target
+kapso deploy ../churn-campaign --status           # every deployment of the campaign, with its state
+kapso deploy ../churn-campaign --logs --number 1
+kapso deploy ../churn-campaign --stop --number 1
 ```
 
-To call what was deployed, use the Python API, which hands back the running
-software:
+The summary names the deployment's number, how `run()` calls it, the call
+the session proved (the example of what it takes) and the next actions
+pinned to that number. To call what was deployed, reopen that number from
+Python:
 
 ```python
-from kapso import Kapso, DeployStrategy, Solution
-solution = Solution.open("../churn-campaign")   # or the object build() returned
-software = Kapso().deploy(solution, strategy=DeployStrategy.LOCAL)
-print(software.run({"tenure_months": 3, "monthly_spend": 92.0, "support_tickets": 4, "logins_per_week": 1.0, "plan": "basic"}))
+from kapso import Software
+software = Software.open("../churn-campaign", 1)
+print(software.proof["inputs"])                     # what run() takes: the call the session proved
+print(software.run(software.proof["inputs"]))       # the same call; your own inputs take this shape
 software.stop()
 ```
 
-The original solution is untouched. `AUTO` lets a selector pick the target.
+A scheduled target (the trading example's `paper-trading`) runs on its own;
+read `--logs`, and `run()` runs one cycle on demand. The original solution
+is untouched: the deployment lives under `<campaign>/.kapso/deployments/<n>/`.
+`--target auto` lets the session choose among the targets this machine can
+serve and records why.
 
 ## Models and config
 
@@ -320,7 +334,7 @@ are doing and why; never launch a campaign the user did not ask for.
 - Trajectory learning: https://docs.leeroo.com/docs/learning/overview.md
 - Experience: https://docs.leeroo.com/docs/experience.md
 - Harnesses: https://docs.leeroo.com/docs/harnesses.md
-- Deployment: https://docs.leeroo.com/docs/deployment/strategies.md
+- Deploy: https://docs.leeroo.com/docs/deploy/targets.md
 - Index of every page: https://docs.leeroo.com/llms.txt
 
 The whole site is also an MCP server:

@@ -330,6 +330,12 @@ facts for the next task.
 How to adapt the winner to each target the domain uses. Which skill carries
 the workflow for which target, what never happens, what to return as the
 endpoint. The target itself comes from the `deploy()` call or the config.
+A target the harness ships is a deployment skill holding `scripts/deploy.sh`
+(and the lifecycle scripts the engine runs after: `start.sh`, `stop.sh`,
+`health.sh`, `logs.sh`, and `run.py` for a call on demand), as the
+`paper-trading` skill below; the engine runs them with the deployment's
+variables (`KAPSO_*`) and reads the result file the session writes
+(docs/deploy/write-a-target-skill).
 
 ```markdown
 The target comes from the `deploy()` call or the Kapso config, never from this

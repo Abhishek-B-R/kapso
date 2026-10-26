@@ -100,12 +100,10 @@
             ]
           },
           {
-            "group": "Deployment",
+            "group": "Deploy",
             "pages": [
-              "docs/deployment/overview",
-              "docs/deployment/architecture",
-              "docs/deployment/strategies",
-              "docs/deployment/adding-strategies"
+              "docs/deploy/targets",
+              "docs/deploy/write-a-target-skill"
             ]
           },
           {
@@ -130,7 +128,6 @@
               "docs/reference/brief-format",
               "docs/reference/harness",
               "docs/reference/experience",
-              "docs/deployment/api-reference",
               "docs/reference/configuration"
             ]
           }
@@ -139,6 +136,26 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/docs/deployment/overview",
+      "destination": "/docs/deploy/targets"
+    },
+    {
+      "source": "/docs/deployment/architecture",
+      "destination": "/docs/deploy/targets"
+    },
+    {
+      "source": "/docs/deployment/strategies",
+      "destination": "/docs/deploy/targets"
+    },
+    {
+      "source": "/docs/deployment/adding-strategies",
+      "destination": "/docs/deploy/write-a-target-skill"
+    },
+    {
+      "source": "/docs/deployment/api-reference",
+      "destination": "/docs/reference/kapso-api#deploy"
+    },
     {
       "source": "/docs/evolve/reliability-roadmap",
       "destination": "/docs/evolve/overview"

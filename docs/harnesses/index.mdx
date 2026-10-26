@@ -28,7 +28,7 @@ A campaign is made of sessions, and each session belongs to one of seven modules
 | `implementation` | The session that implements one candidate on its branch | `build` |
 | `verification` | One session per attempt, between its evaluation and the judge: valid or void, with evidence | `build` |
 | `feedback` | The judge, reading the evaluation and the verdict | `build` |
-| `deployment` | The selector and the adapter that turn a solution into running software | `deploy` |
+| `deployment` | The session that turns a solution into running software on a target | `deploy` |
 | `learning` | The crews that mine a finished campaign into lessons | `learn` |
 
 Two pages reach every session of a module: `instructions/guardrails.md`, the domain's standing rules, and `instructions/<module>.md`, that module's own page. Skills, servers, delegates and hooks are defined once in the directory and listed on each module that gets them; nothing is inherited between modules.

@@ -3,13 +3,13 @@
 # Long-running agents that optimize AI and Data systems, and learn from every experience.
 #
 # Usage:
-#     from kapso import Kapso, DeployStrategy
+#     from kapso import Kapso
 #
 #     kapso = Kapso()
 #     kapso.add_experience(repo="https://github.com/user/repo", name="user-repo")
 #     kapso.load_experience("user-repo")
 #     solution = kapso.build("Create a triage agent")
-#     software = solution.deploy()
+#     software = kapso.deploy(solution, target="local")
 #     result = software.run({"symptoms": "headache"})
 #
 # CLI:
@@ -32,7 +32,7 @@ warnings.filterwarnings(
 #
 # Why lazy? The MCP server subprocess (gated_mcp.server) imports from this
 # package on every cold start. Eager imports of Source, Solution, and
-# DeployStrategy pull in the full execution stack (gitpython, weaviate, etc.)
+# Software pull in the full execution stack (gitpython, weaviate, etc.)
 # and add ~8 seconds to that cold start. With lazy loading the MCP subprocess
 # boots in under 1 second and Claude Code's MCP connection check succeeds.
 _LAZY_IMPORTS = {
@@ -46,9 +46,7 @@ _LAZY_IMPORTS = {
     "ExperienceRef":    ("kapso.handles",            "ExperienceRef"),
     "BriefError":       ("kapso.handles",            "BriefError"),
     "Software":         ("kapso.deployment",          "Software"),
-    "DeployStrategy":   ("kapso.deployment",          "DeployStrategy"),
-    "DeployConfig":     ("kapso.deployment",          "DeployConfig"),
-    "DeploymentFactory":("kapso.deployment",          "DeploymentFactory"),
+    "DeployError":      ("kapso.deployment",          "DeployError"),
     "RunCheckpointError": (
         "kapso.execution.run_checkpoint",
         "RunCheckpointError",
@@ -120,9 +118,7 @@ __all__ = [
     "BriefError",
     # Deployment
     "Software",
-    "DeployStrategy",
-    "DeployConfig",
-    "DeploymentFactory",
+    "DeployError",
     # Resume errors
     "RunCheckpointError",
     "RunCheckpointMissingError",

@@ -1,0 +1,147 @@
+---
+title: "Write a target skill"
+sidebarTitle: "Write a target skill"
+description: "The contract a deployment target meets: a skill directory with the workflow in SKILL.md and the deterministic parts as scripts, the variables the engine sets for them, the result file the session writes, and where a target lives, in your harness or in the package."
+keywords: ["deployment target skill", "scripts/deploy.sh", "kapso_deployment.json", "KAPSO_DEPLOYMENT_NAME", "harness deployment module"]
+---
+
+A deployment target is a skill: a directory with `SKILL.md`, the workflow
+the deployment session follows, and `scripts/`, the deterministic parts
+the session runs and the engine runs again later. The five bundled targets
+are written this way under the package's `kapso/deployment/targets/`; a
+harness ships its own under `skills/<name>/`, listed on its deployment
+module.
+
+```
+<name>/
+├── SKILL.md            the front matter and the workflow
+└── scripts/
+    ├── deploy.sh       build and start the deployment (the session runs it); required
+    ├── start.sh        start it again after a stop, the same deployment
+    ├── stop.sh         stop it and release what it holds
+    ├── health.sh       exit 0 while it answers
+    ├── logs.sh         its logs on stdout
+    └── run.py          one call, when the deployment is called through a script
+```
+
+## The front matter
+
+```yaml
+---
+name: paper-trading
+description: "The paper-trading deployment target: runs the selected strategy against the broker server's paper account on the pinned market-data feed, as a scheduled runner. Use when deploy() names the paper-trading target; never for a live account."
+---
+```
+
+`name` is the directory's name; `description` says what the target deploys
+to and when to choose it, in the `Use when …` form: under `--target auto`
+the session chooses by it. `scripts/deploy.sh` is what makes a listed
+skill a target: a skill without one (a reference, `market-data` in the
+trading example) is never offered as a target. `metadata.run_kinds`
+(optional) lists the run kinds the workflow ends in, `[script]` for
+`paper-trading`: a result naming another kind is refused at the
+acceptance, so a session cannot pass by pointing `run.url` at something
+else. A harness target declares the tools it needs in `harness.yaml`'s
+`environment`, which `kapso harness check` and the deploy's prerequisite
+check already read; the bundled targets name theirs in the front matter's
+`metadata.requires` (`binary`, `install`, and for docker a `probe`:
+the command, its timeout and the fix, since the daemon's absence is what
+a binary on PATH does not show), which the engine reads from its own
+files only.
+
+## The body
+
+What the session has, the steps, what to write, what never happens. The
+session's prompt already names the workspace, the variables below, the
+caller's variables and options, and the result file; the body says what
+is specific to the target: the entry point to adapt the solution to, the
+files to write, the value keys to export before `deploy.sh`, how to prove
+one call, and which run kind the result names.
+
+## The scripts
+
+The engine runs `bash <target>/scripts/<name>.sh` and `<interpreter>
+<target>/scripts/run.py`: no executable bit, no shebang needed. Every
+script runs with the workspace as its working directory and these
+variables set:
+
+| Variable | What it holds |
+|---|---|
+| `KAPSO_DEPLOYMENT_NAME` | The deployment's name, `<campaign>-<hash>-<n>`; name containers, apps and services `kapso-$KAPSO_DEPLOYMENT_NAME` |
+| `KAPSO_PORT` | The host port allocated to this deployment, when the target uses one |
+| `KAPSO_NUMBER`, `KAPSO_WORKSPACE`, `KAPSO_RECORD_DIR`, `KAPSO_TARGET_DIR` | The deployment's number, workspace, record directory, and the target's directory the scripts run from |
+| `KAPSO_INTERPRETER` | The Python the engine runs the deployed software with; `run.py` runs in it, and the solution's requirements are installed into it |
+| `KAPSO_ENDPOINT` | The endpoint the session reported, once there is one |
+| `KAPSO_ENV_FILE` | `.env` at the workspace root, when the workspace holds one: the caller's variables, or the solution's own; one `NAME=VALUE` per line, the value verbatim |
+| `KAPSO_OPTION_<NAME>` | Each option of the call |
+| `KAPSO_VALUE_<KEY>` | Each value the session recorded in the result (`container_port`, `app`, …): what `start.sh` needs to recreate the same deployment |
+| `KAPSO_HARNESS_ROOT` | The harness directory, for a harness target |
+
+A script's non-zero exit is an error with its stderr (`stop.sh` is the
+exception: its failure is noted, and the deployment is stopped all the
+same). A lifecycle script's stdout lines of the form
+`KAPSO_ENDPOINT=<url>` or `KAPSO_VALUE_<KEY>=<value>` write back into the
+record when the script exits 0 (a new endpoint is where an `http`
+deployment's calls go from then on): a cloud target whose `start.sh`
+gets a new URL prints it. `deploy.sh` runs in the session, not in the
+engine, so what it learns reaches the record through the result file.
+The other lines `stop.sh` and `start.sh` print are noted in the record's
+`engine.log` and printed by the verb, so a stop that leaves something
+behind on a platform says so there. Every lifecycle script is bounded by
+`deployment.script_timeout`, `run.py` by `call_timeout`; one still
+running at it is killed with the processes it started.
+
+`run.py` reads the call's inputs as one JSON document on stdin and writes
+exactly one JSON document on stdout; stderr is the error text when it
+exits non-zero. A target with nothing to call ships no `run.py`, and
+`run()` says so.
+
+## The result file
+
+The session writes `kapso_deployment.json` at the workspace root:
+
+```json
+{"target": "docker",
+ "reasoning": "a FastAPI app with system packages; docker is present",
+ "endpoint": "http://localhost:8123",
+ "run": {"kind": "http", "url": "http://localhost:8123", "path": "/predict"},
+ "values": {"container_port": "8000", "gpu": "none"},
+ "proof": {"inputs": {"tenure_months": 3, "plan": "basic"}, "output": {"churn_probability": 0.41}},
+ "artifacts": ["Dockerfile", "app.py", "requirements.txt", ".dockerignore"],
+ "summary": "the container answered the proof row in 0.4 s"}
+```
+
+Three run kinds: `function` (`module`, `callable`: the engine's worker
+imports `<workspace>/<module>.py` once and calls the function), `http`
+(`url`, `path`: a POST to `<url><path>` with the inputs as JSON) and
+`script` (the target's `run.py`). `reasoning` is required when the
+session chose the target; `endpoint` may be null; `values` is a string
+map the skill documents; `proof` is the one call the session made;
+`artifacts` lists the files it wrote or changed, as paths inside the
+workspace. The engine checks the file (one that is not JSON comes back
+to the session as a finding), the run kind against the skill's
+`run_kinds`, the module's presence in the workspace, the artifacts, the
+health script and the proof call before the deployment is `running`.
+
+## Where a target lives, and testing one
+
+In a harness: `skills/<name>/` with `scripts/deploy.sh`, listed under
+`modules.deployment.skills` in `harness.yaml`, and named on the
+deployment page (`instructions/deployment.md`) in the sentence that says
+when to follow it. `kapso harness check` reads the skill's front matter as
+it reads every skill's. The trading example's `paper-trading` is the
+reference: a scheduled runner the session writes (`deploy/run_paper.py`,
+with `--once` and `--loop`), started by `deploy.sh` with its pid file,
+stopped by `stop.sh`, healthy while it runs, its log as the endpoint, one
+cycle on demand through `run.py`.
+
+To test a target, run its scripts the way the engine does: from a
+workspace, with the variables above set (`KAPSO_INTERPRETER` the Python
+you run, a free `KAPSO_PORT`), `bash scripts/deploy.sh` then
+`scripts/health.sh`, then `echo '{...}' | python scripts/run.py`. Then
+deploy a finished build with `kapso deploy campaign --target <name>` and
+read the summary.
+
+Related pages: [Targets](/docs/deploy/targets) · [Write a harness](/docs/harnesses/write) · [The trading example](/docs/harnesses/example-trading) · [Harness reference](/docs/reference/harness)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

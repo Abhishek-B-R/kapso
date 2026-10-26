@@ -111,17 +111,17 @@ you can provide; `kapso inbox campaign` shows the request and
 ## Deploy it, learn from it
 
 ```python
-from kapso import Kapso, DeployStrategy, Solution
+from kapso import Kapso, Solution
 
 kapso = Kapso()
 solution = Solution.open("campaign")
-software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
+software = kapso.deploy(solution, target="local")
 software.run({"tenure_months": 3, "monthly_spend": 92.0, "support_tickets": 4})
 lesson = kapso.learn(solution)
 ```
 
 ```bash
-kapso deploy campaign --strategy local
+kapso deploy campaign --target local
 ```
 
 ## Related

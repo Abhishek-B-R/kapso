@@ -227,11 +227,9 @@ sources you will search, not every source you have.
 And to turn a solution into running software:
 
 ```python
-from kapso import DeployStrategy
-
-deployed = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
-result = deployed.run({"input": "data"})
-deployed.stop()
+software = kapso.deploy(solution, target="local")   # or docker, modal, bentoml, langgraph, auto
+result = software.run(software.proof["inputs"])     # the call the deployment proved
+software.stop()
 ```
 
 ### How do I bound a campaign?

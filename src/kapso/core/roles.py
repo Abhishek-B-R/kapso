@@ -11,6 +11,7 @@ parameters a config file may set are a known set, refused by name
 otherwise. Design: docs/plans/redesign/wp4-config.md.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -122,14 +123,58 @@ def check_maintainer(block: Any) -> None:
         raise ConfigError("evaluation_maintainer.enabled must be true or false")
 
 
+# The deployment block (docs/plans/redesign/wp5-deploy.md): a session spec,
+# the target the call defaults to, the deadlines and the ports.
+DEPLOYMENT_KEYS = SPEC_KEYS | {"target", "call_timeout", "script_timeout", "port_base", "port_span"}
+DEPLOYMENT = "deployment"
+MAX_PORT = 65535
+
+
+def deployment_role(config: Dict[str, Any], coding_agent: Optional[str] = None) -> SessionRole:
+    """The deployment session's spec over the hosts table: the call's
+    host, else the block's `cli`, else the build's host
+    (`search_strategy.params.host`); the block's model and effort, else
+    the host entry's."""
+    block = config[DEPLOYMENT]
+    spec = {key: block[key] for key in SPEC_KEYS if block.get(key) is not None}
+    if coding_agent is not None:
+        spec["cli"] = coding_agent
+    host = spec.get("cli") or config["search_strategy"]["params"]["host"]
+    return resolve_spec(config["hosts"], host, spec, name=DEPLOYMENT, origin=DEPLOYMENT)
+
+
+def check_deployment(config: Dict[str, Any]) -> None:
+    block = config[DEPLOYMENT]
+    if not isinstance(block, dict):
+        raise ConfigError(f"{DEPLOYMENT} must be a mapping, got {type(block).__name__}")
+    _unknown(block, DEPLOYMENT_KEYS, DEPLOYMENT)
+    target = block.get("target")
+    if not isinstance(target, str) or not target.strip():
+        raise ConfigError(f"{DEPLOYMENT}.target must be a non-empty string: auto, a bundled target or a harness's")
+    for key in ("timeout", "call_timeout", "script_timeout"):
+        value = block.get(key)
+        if key == "timeout" and value is None:
+            continue   # no deadline on the session, as a role's null timeout means
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ConfigError(f"{DEPLOYMENT}.{key} must be a positive number of seconds")
+    for key in ("port_base", "port_span"):
+        value = block.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ConfigError(f"{DEPLOYMENT}.{key} must be a positive integer")
+    if block["port_base"] + block["port_span"] - 1 > MAX_PORT:
+        raise ConfigError(f"{DEPLOYMENT}.port_base + port_span must stay within the ports (1..{MAX_PORT})")
+    deployment_role(config)
+
+
 def validate_config(config: Dict[str, Any], manifest: Dict[str, Any]) -> None:
     """What the walk against the packaged file cannot check: the hosts'
     entries against the adapters, the strategy's parameters and roles,
-    the maintainer's block. Called before any launch, by the facade and
-    the doctor."""
+    the maintainer's block, the deployment's. Called before any launch,
+    by the facade, the doctor and the orchestrator."""
     check_hosts(config["hosts"], manifest)
     check_params(config["search_strategy"]["params"])
     check_maintainer(config["evaluation_maintainer"])
+    check_deployment(config)
 
 
 def build_hosts(manifest: Dict[str, Any]) -> List[str]:

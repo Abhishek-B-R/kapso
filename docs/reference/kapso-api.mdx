@@ -8,7 +8,7 @@ keywords: ["Kapso Python API", "Kapso class", "build", "Brief", "Budget", "Solut
 Everything public is importable from the top-level `kapso` package.
 
 ```python
-from kapso import Kapso, Brief, Budget, Solution, Source, DeployStrategy
+from kapso import Kapso, Brief, Budget, Solution, Source, Software
 
 kapso = Kapso()
 ```
@@ -325,28 +325,43 @@ On a campaign built with a harness, the learning module is staged into the minin
 ```python
 deploy(
     solution: Solution,
-    strategy: DeployStrategy = DeployStrategy.AUTO,
-    env_vars: dict[str, str] | None = None,
+    target: str | None = None,
+    env: dict[str, str] | None = None,
+    options: dict[str, str] | None = None,
     coding_agent: str | None = None,
-    model: str | None = None,
 ) -> Software
 ```
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `solution` | The `Solution` from `build()`, or `Solution.open(path)` | required |
-| `strategy` | `AUTO`, `LOCAL`, `DOCKER`, `MODAL`, `BENTOML` or `LANGGRAPH` | `AUTO` |
-| `env_vars` | Environment variables for the deployed software | `None` |
-| `coding_agent` | Agent behind the selector and adapter sessions | from config (`deployment.coding_agent`) |
-| `model` | The model that agent is asked for | from config (`deployment.model`) |
+| `solution` | The `Solution` from `build()`, or `Solution.open(path)`; its campaign checked out at the delivered candidate, tracked files unchanged | required |
+| `target` | `auto` (the session chooses), a bundled target (`local`, `docker`, `modal`, `bentoml`, `langgraph`) or a target the build's harness ships | from config (`deployment.target`) |
+| `env` | Variables the software needs at runtime: written to `.env` in the deployment's workspace, named (never valued) in the prompt, set on every runtime the engine manages | `None` |
+| `options` | Options for the target's workflow, exported to its scripts as `KAPSO_OPTION_<NAME>` | `None` |
+| `coding_agent` | The host the deployment session runs on | from config (`deployment.cli`, else the build's host) |
 
 ```python
-deployed = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
-result = deployed.run({"data_path": "./test.csv"})
-deployed.stop()
+software = kapso.deploy(solution, target="docker", env={"API_KEY": "..."})
+result = software.run({"tenure_months": 3, "plan": "basic"})   # software.proof["inputs"] is the example
+software.stop()
+Software.open("../churn-build", software.number).start()      # the same deployment, from any process
 ```
 
-`AUTO` picks a strategy for you. See [Deployment strategies](/docs/deployment/strategies). On a solution built with a harness, the selector and the adapter carry its deployment module: the pages in their prompts, its skills, servers and hooks beside them (see [Use a harness](/docs/harnesses/use#deploy-and-learn)).
+A `DeployError` names what refused the deployment (no such target, a dirty campaign, a result the engine could not accept, a session that failed) and the record's path. On a solution built with a harness, the session carries its deployment module (the page, the skills, servers and hooks) beside the target's skill. See [Deploy](/docs/deploy/targets).
+
+### Software
+
+| Member | What it does |
+|--------|--------------|
+| `run(inputs)`, `software(inputs)` | One call, by the deployment's run kind: `{"status": "success", "output": …}` or `{"status": "error", "error": …}`; refused while the deployment is not running |
+| `run_batch(inputs_list)` | `run` over each, in order |
+| `stop()`, `start()` | The target's stop and start scripts (a function's worker ended or started); the state written to the record; each returns the lines it noted, which `logs()` repeats |
+| `is_healthy()` | Running by the record and answering its health check (a function: its worker answers a ping) |
+| `close()` | This handle's worker ended, the deployment left running |
+| `logs()` | The engine's lines, the target's logs script, a function's worker log |
+| `number`, `state`, `target`, `endpoint`, `workspace`, `record`, `proof`, `observed` | The record's facts; `proof` is the call the session proved, what `run()` takes, `observed` what the engine's own call of it answered; `target` is `None` when a session under `auto` chose none |
+| `Software.open(campaign, number=None, config=None)` | The campaign's deployment of that number, or its highest, whatever its state |
+| `with kapso.deploy(...) as software:` | `stop()` on exit |
 
 ## memory
 
