@@ -85,7 +85,9 @@ def test_the_implementation_module_on_claude_code(harness, tmp_path):
     hooks = json.loads(hooks_text)["hooks"]
     assert "${" not in hooks_text and str(harness.path) in hooks_text
     assert list(hooks) == ["SessionStart", "PreToolUse", "PostToolUse", "Stop"]
-    assert [entry.get("matcher") for entry in hooks["PreToolUse"]] == ["Bash", "WebSearch|WebFetch", "Edit|Write|MultiEdit", "mcp__market-data__snapshot"]
+    # The engine's protect-harness hook first, then the module's.
+    assert [entry.get("matcher") for entry in hooks["PreToolUse"]] == ["Edit|Write|MultiEdit", "Bash", "WebSearch|WebFetch", "Edit|Write|MultiEdit", "mcp__market-data__snapshot"]
+    assert hooks["PreToolUse"][0]["hooks"][0]["command"].endswith("engine_hooks/protect_harness/protect_harness.py")
     agents = json.loads((session_dir / ".claude" / "harness-agents.json").read_text())
     assert list(agents) == ["lookahead-auditor"]
     assert agents["lookahead-auditor"]["description"].startswith("Audits one attempt")
@@ -184,10 +186,11 @@ def test_ideation_gets_its_own_lists_and_nothing_more(harness, tmp_path):
 
 def test_a_module_without_an_entry_still_gets_its_pages(harness, tmp_path):
     staged = stage(harness, "learning", "codex", tmp_path)
-    assert tree(staged.session_dir) == []
+    assert tree(staged.session_dir) == [".codex/hooks.json"]   # the engine's own hooks, nothing of the module's
     assert (harness.path / "instructions" / "guardrails.md").read_text().strip() in staged.guidance
     assert (harness.path / "instructions" / "learning.md").read_text().strip() in staged.guidance
     assert staged.agent_specific == {
+        "hooks_trust_bypass": True,
         "stream_artifact_path": str(tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "stream.jsonl"),
         "session_record_path": str(tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "session.json"),
     }
@@ -331,8 +334,12 @@ def test_a_tracked_collision_is_refused_by_name(harness, tmp_path):
 def test_a_harness_changed_since_the_load_is_refused(harness, tmp_path):
     page = harness.path / "instructions" / "guardrails.md"
     page.write_text(page.read_text() + "\n- one more rule\n")
-    with pytest.raises(HarnessError, match="the harness changed since launch"):
+    (harness.path / "instructions" / "notes.md").write_text("new\n")
+    with pytest.raises(HarnessError, match="the harness changed since launch") as caught:
         stage(harness, "implementation", "claude_code", tmp_path)
+    # Named: the changed and the added files, and the way out.
+    assert "changed instructions/guardrails.md; added instructions/notes.md" in str(caught.value)
+    assert "restore the recorded content" in str(caught.value)
 
 
 def test_the_adapters_carry_the_staged_keys(harness, tmp_path, monkeypatch):
@@ -374,13 +381,14 @@ def test_staging_another_module_into_the_same_directory_leaves_only_its_attachme
     second = stage(harness, "feedback", "claude_code", tmp_path, session="", session_id="feedback/generic_exp_0")
     assert sorted(p.name for p in (root / ".claude" / "skills").iterdir()) == ["risk-limits"]
     assert json.loads((root / ".claude" / "harness-agents.json").read_text()).keys() == {"risk-reviewer"}
-    assert second.record["skills"] == ["risk-limits"] and second.record["hooks"] == ["session-brief", "deny-web-fetch", "protect-prepared"]
+    assert second.record["skills"] == ["risk-limits"] and second.record["hooks"] == ["protect-harness", "session-brief", "deny-web-fetch", "protect-prepared"]
 
     third = stage(harness, "learning", "claude_code", tmp_path, session="", session_id="learning")
-    assert not (root / ".claude" / "harness-hooks.json").exists()
+    # A module with no hooks of its own still gets the engine's.
+    assert list(json.loads((root / ".claude" / "harness-hooks.json").read_text())["hooks"]) == ["PreToolUse"]
     assert not (root / ".claude" / "harness-agents.json").exists()
     assert list((root / ".claude" / "skills").iterdir()) == []
-    assert third.record["skills"] == [] and third.record["hooks"] == [] and third.record["agents"] == []
+    assert third.record["skills"] == [] and third.record["hooks"] == ["protect-harness"] and third.record["agents"] == []
 
 
 def test_the_record_names_the_stream_a_session_writes(harness, tmp_path):

@@ -8,6 +8,21 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**A changed harness is refused by file name.** The loaded harness keeps
+each file's own digest beside the whole-tree hash, and the staging's
+refusal says `changed a; added b; removed c` with the way out. Why: a
+hash alone sends the person diffing a directory to find what a session's
+shell (or their own editor) touched; the per-file digests live on the
+loaded harness in memory, not in the launch record, which keeps the one
+hash it has always kept.
+
+**The hooks file is written for every staged session.** With the engine's
+`protect-harness` hook there is no harness session without hooks, so the
+file is written, listed among the staging's writes and recorded on every
+module; a session repository that tracks `.claude/harness-hooks.json` or
+`.codex/hooks.json` is refused by name for every module, as it was for
+one with hooks of its own.
+
 **The engine sessions' record is wired in, not imported.** The
 inference client (`kapso.core`) records its sessions through a callable
 the orchestrator sets once the workspace exists (the staging's

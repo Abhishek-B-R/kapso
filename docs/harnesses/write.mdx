@@ -130,7 +130,7 @@ You audit one attempt ...
 
 ## Hooks
 
-A hook is a directory under `hooks/` with a `hook.json` in Claude Code's hooks format and its script beside it. The engine merges every hook a module lists into one file per session, in manifest order, and hands it to the host: `--settings` on Claude Code, `.codex/hooks.json` on Codex. Both hosts run the script with the event on stdin and read its decision from stdout.
+A hook is a directory under `hooks/` with a `hook.json` in Claude Code's hooks format and its script beside it. The engine merges every hook a module lists into one file per session, in manifest order, after its own `protect-harness` hook, and hands it to the host: `--settings` on Claude Code, `.codex/hooks.json` on Codex. Both hosts run the script with the event on stdin and read its decision from stdout. The engine's hook denies a file-tool write under the harness directory with the reason: the harness is yours, read-only in every session, and a session that finds it wanting reports that for you rather than patching it. A write through the shell is caught at the next session, which refuses to start on a harness that no longer hashes as recorded and names the files that changed.
 
 ```json
 {

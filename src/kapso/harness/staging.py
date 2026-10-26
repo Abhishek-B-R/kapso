@@ -28,8 +28,8 @@ import git
 from kapso.execution.coding_agents.adapters.codex_agent import agent_role_overrides, mcp_config_overrides
 from kapso.execution.coding_agents.session_record import write_whole
 from kapso.harness.check import read_front_matter
-from kapso.harness.hash import harness_hash
-from kapso.harness.hooks import expand_plugin_root, merge_hooks
+from kapso.harness.hash import describe_change, harness_files, harness_hash, short
+from kapso.harness.hooks import ENGINE_HOOKS, engine_hooks, expand_plugin_root, merge_hooks
 from kapso.harness.load import Harness, HarnessError
 from kapso.harness.manifest import MODULES
 
@@ -199,9 +199,12 @@ def stage_harness(
         raise HarnessError(f"unknown host {host!r}; the hosts are {', '.join(_SKILLS_DIR)}")
     current = harness_hash(harness.path)
     if current != harness.hash:
+        # Named: a session's file-tool write is denied by the engine's
+        # protect-harness hook, so what changed came through a shell or
+        # by hand; this check is what catches it.
         raise HarnessError(
-            f"the harness changed since launch: {harness.label()} recorded, "
-            f"{harness.name} now hashes {current[:12]}; {harness.restore_hint()}"
+            f"the harness changed since launch: {harness.label()} recorded, now {short(current)} "
+            f"({describe_change(harness.files, harness_files(harness.path))}); {harness.restore_hint()}"
         )
     stager = _Stager(harness, module, session_dir, campaign_dir, session_id, host, records)
     # Ensemble members stage into one directory from several threads; the
@@ -252,8 +255,7 @@ class _Stager:
     def writes(self) -> List[Path]:
         """Every path under the session directory this staging writes."""
         paths = [self.session_dir / _SKILLS_DIR[self.host] / name for name in self.attachments.skills]
-        if self.attachments.hooks:
-            paths.append(self.session_dir / _HOOKS_FILE[self.host])
+        paths.append(self.session_dir / _HOOKS_FILE[self.host])   # always: the engine's own hooks
         if self.attachments.agents:
             paths.append(self.session_dir / _AGENTS_PATH[self.host])
         if not self.at_campaign_root():
@@ -340,12 +342,14 @@ class _Stager:
             self.staged.allowed_tools.append(f"mcp__{name}")
 
     def hooks(self) -> None:
+        """The engine's own hooks first (the harness directory is read-only
+        in every session that mounts a harness), then the module's in
+        manifest order; every harness session has the file, so a Codex
+        session with a harness carries the hook trust bypass."""
         file = self.session_dir / _HOOKS_FILE[self.host]
-        if not self.attachments.hooks:
-            if file.is_file():
-                file.unlink()   # another module's, staged here before
-            return
         merged = merge_hooks(self.harness.path, self.attachments.hooks)
+        for event, entries in engine_hooks()["hooks"].items():
+            merged["hooks"][event] = entries + merged["hooks"].get(event, [])
         write_whole(file, json.dumps(merged, indent=2) + "\n")
         if self.host == CLAUDE_HOST:
             self.staged.agent_specific["settings_path"] = str(file)
@@ -390,7 +394,7 @@ class _Stager:
             "skills": list(self.attachments.skills),
             "mcp_servers": list(self.attachments.mcp_servers),
             "agents": list(self.attachments.agents),
-            "hooks": list(self.attachments.hooks),
+            "hooks": [*ENGINE_HOOKS, *self.attachments.hooks],
             "prepared": list(self.prepared),
             "stream": self.staged.agent_specific["stream_artifact_path"],
             # The host invocations the adapter appends, one entry each; a

@@ -10,6 +10,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
 PLUGIN_ROOT = "${PLUGIN_ROOT}"
+# The engine's own hooks, merged first into every harness session's file
+# whenever a harness is staged, user hooks or none: their commands name
+# the package's path, not the harness's. `protect-harness` denies a
+# file-tool write under the harness root on both hosts (a shell write is
+# not caught here; the hash check at the next staging catches it).
+ENGINE_HOOKS_DIR = Path(__file__).resolve().parent / "engine_hooks"
+PROTECT_HARNESS = "protect-harness"
+ENGINE_HOOKS = (PROTECT_HARNESS,)
 
 
 def expand_plugin_root(value: Any, root: Path) -> Any:
@@ -22,6 +30,18 @@ def expand_plugin_root(value: Any, root: Path) -> Any:
     if isinstance(value, dict):
         return {key: expand_plugin_root(item, root) for key, item in value.items()}
     return value
+
+
+def engine_hooks() -> Dict[str, Any]:
+    """The engine's own hooks as one `{"hooks": {<event>: [entries...]}}`,
+    each command's `${PLUGIN_ROOT}` expanded to the hook's own directory."""
+    merged: Dict[str, List[Any]] = {}
+    for name in ENGINE_HOOKS:
+        directory = ENGINE_HOOKS_DIR / name.replace("-", "_")
+        data = json.loads((directory / "hook.json").read_text(encoding="utf-8"))
+        for event, entries in data["hooks"].items():
+            merged.setdefault(event, []).extend(expand_plugin_root(entries, directory))
+    return {"hooks": merged}
 
 
 def merge_hooks(root: Path, names: Sequence[str]) -> Dict[str, Any]:
