@@ -309,6 +309,12 @@ class Software:
             parts.append(self._worker_log().read_text(encoding="utf-8").rstrip("\n"))
         return "\n".join(part for part in parts if part)
 
+    def close(self) -> None:
+        """This handle's worker ended, the deployment's state untouched: a
+        function deployment keeps running for the next handle, which
+        starts a worker of its own."""
+        self._end_worker()
+
     def __enter__(self) -> "Software":
         return self
 

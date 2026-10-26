@@ -109,6 +109,14 @@ def test_stop_and_start_on_a_function_deployment(tmp_path):
     assert software.state == STOPPED
 
 
+def test_close_ends_the_handles_worker_and_leaves_the_deployment_running(tmp_path):
+    software = deployed(tmp_path, run={"kind": "function", "module": "main", "callable": "predict"})
+    assert software.is_healthy() and software._worker is not None
+    software.close()
+    assert software._worker is None and software.state == RUNNING
+    assert Software.open(software.campaign).run({})["status"] == "success"
+
+
 def test_a_function_that_hangs_is_an_error_naming_the_timeout(tmp_path):
     (tmp_path / "campaign").mkdir()
     software = deployed(tmp_path, run={"kind": "function", "module": "main", "callable": "predict"}, call_timeout=1.0)

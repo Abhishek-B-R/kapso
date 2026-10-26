@@ -100,6 +100,7 @@ none; a harness target's skill says which it takes (`paper-trading` takes
 | `proof` | The call the session proved, `{"inputs": …, "output": …}`: the example of what `run()` takes |
 | `stop()`, `start()` | The target's stop and start scripts (a function's worker ended or started); the state written to the record, so another process's handle sees it; `start()` recreates the same deployment |
 | `is_healthy()` | Running by the record and answering the target's health check |
+| `close()` | This handle's worker ended, the deployment left running for the next handle |
 | `logs()` | The engine's lines, the target's logs script, a function's worker log |
 | `number`, `state`, `target`, `endpoint`, `workspace`, `record` | The record's facts |
 | `Software.open(campaign, number=None, config=None)` | The campaign's deployment of that number, or its highest; refuses a campaign with none, and a record whose files are gone |

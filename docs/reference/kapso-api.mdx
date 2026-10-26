@@ -357,6 +357,7 @@ A `DeployError` names what refused the deployment (no such target, a dirty campa
 | `run_batch(inputs_list)` | `run` over each |
 | `stop()`, `start()` | The target's stop and start scripts (a function's worker ended or started); the state written to the record |
 | `is_healthy()` | Running by the record and answering its health check |
+| `close()` | This handle's worker ended, the deployment left running |
 | `logs()` | The engine's lines, the target's logs script, a function's worker log |
 | `number`, `state`, `target`, `endpoint`, `workspace`, `record`, `proof` | The record's facts; `proof` is the call the session proved, what `run()` takes |
 | `Software.open(campaign, number=None, config=None)` | The campaign's deployment of that number, or its highest |

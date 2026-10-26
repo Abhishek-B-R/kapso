@@ -76,7 +76,9 @@ def lifecycle(args) -> None:
         for record in found:
             healthy = ""
             if record.state == RUNNING:
-                healthy = " (healthy)" if Software.open(campaign, record.number, config=args.config).is_healthy() else " (not answering)"
+                software = Software.open(campaign, record.number, config=args.config)
+                healthy = " (healthy)" if software.is_healthy() else " (not answering)"
+                software.close()
             print(
                 f"  {record.number}  {record.state}{healthy}  {record.data['target']}  "
                 f"{record.data['endpoint'] or 'no endpoint'}  {record.data['state_at']}"
@@ -89,6 +91,7 @@ def lifecycle(args) -> None:
     elif args.start:
         software.start()
         print(f"started deployment {software.number} of {campaign}" + (" (healthy)" if software.is_healthy() else " (not answering)"))
+        software.close()
     else:
         print(software.logs())
 
@@ -108,6 +111,7 @@ def cmd_deploy(args) -> None:
         solution, target=args.target, env=env or None, options=options or None, coding_agent=args.coding_agent,
     )
     print("\n".join(summary(software, args.campaign)))
+    software.close()
 
 
 def add_parser(subparsers):
