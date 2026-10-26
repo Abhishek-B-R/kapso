@@ -71,6 +71,7 @@ RETIRED = re.compile(
     r"|^\s*(?:feedback_generator|coding_agent):\s*$"
     r"|strategies\.yaml"
     r"|additional_context"
+    r"|design_axes"
     + r"|[\"'](?:" + "|".join(RETIRED_KEYS) + r")[\"']\s*[\]:]"
 )
 # In every text a person or a model reads (the pages, READMEs, skills and

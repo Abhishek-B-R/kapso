@@ -810,7 +810,7 @@ class TestDataAccessRules:
 
 
 class TestDesignAxes:
-    def test_design_axes_configured_and_fe_standing_direction(self):
+    def test_the_handler_declares_its_axes_and_the_standing_fe_direction(self):
         """Anti-freeze integration (user-directed 2026-07-27): the relbench
         handler's context declares task-specific design axes with feature
         engineering as the first axis (domain vocabulary, so it lives in

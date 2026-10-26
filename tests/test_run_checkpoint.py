@@ -399,7 +399,7 @@ def test_generic_strategy_state_round_trip() -> None:
     source.previous_errors = ["old error"]
     source.scores_evaluator_id = ""
     source.evaluator_transition = None
-    source.last_round_seconds = None
+    source.last_round_seconds = 812.5
 
     restored = GenericSearch.__new__(GenericSearch)
     restored.harness = None
@@ -408,6 +408,8 @@ def test_generic_strategy_state_round_trip() -> None:
     assert restored.node_history[0].branch_name == "generic_exp_0"
     assert restored.iteration_count == 1
     assert restored.previous_errors == ["old error"]
+    # The last round's duration: a resume admits its next round from it.
+    assert restored.last_round_seconds == 812.5
 
     # A VALIDATE short-circuit consumes an iteration without minting a
     # node, so iteration_count may legitimately exceed node_history —
