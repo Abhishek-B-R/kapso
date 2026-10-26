@@ -887,6 +887,11 @@ def _bank_push_requirements(
     )]
 
 
+def docker_daemon_running() -> bool:
+    """`docker info` answers: the daemon is up and this user may talk to it."""
+    return subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=30).returncode == 0
+
+
 def deploy_requirements(
     config: Dict[str, Any],
     *,

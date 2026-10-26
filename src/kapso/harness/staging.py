@@ -65,6 +65,13 @@ _ASK_AGENT = {
 GUIDANCE_HEADING = "## Domain guidance"
 
 
+def skills_dir(session_dir: Path, host: str) -> Path:
+    """Where a session on this host finds its staged skills."""
+    if host not in _SKILLS_DIR:
+        raise HarnessError(f"unknown host {host!r}; the hosts are {', '.join(_SKILLS_DIR)}")
+    return Path(session_dir) / _SKILLS_DIR[host]
+
+
 def open_skill_instruction(host: str, name: str) -> str:
     """How a session on this host opens a staged skill by name: `/name`
     on Claude Code, `$name` on Codex. A prompt that lists skills of its
