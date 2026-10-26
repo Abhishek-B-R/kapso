@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 from kapso.core import config as config_module
-from kapso.core.config import PACKAGED_CONFIG_PATH, deep_merge, load_config, override_paths, read_yaml
+from kapso.core.config import ConfigError, PACKAGED_CONFIG_PATH, deep_merge, load_config, override_paths, read_yaml
 from kapso.core.roles import ROLES, check_params, resolve_role
 
 
@@ -68,9 +68,9 @@ def test_an_empty_or_non_mapping_file(tmp_path):
     assert load_config(str(empty)) == load_config()
     wrong = tmp_path / "list.yaml"
     wrong.write_text("- a\n")
-    with pytest.raises(ValueError, match="a config file is a mapping"):
+    with pytest.raises(ConfigError, match="a config file is a mapping"):
         load_config(str(wrong))
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ConfigError, match="missing.yaml: no such file"):
         load_config(str(tmp_path / "missing.yaml"))
 
 

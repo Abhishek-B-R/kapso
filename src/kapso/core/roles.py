@@ -14,6 +14,8 @@ otherwise. Design: docs/plans/redesign/wp4-config.md.
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from kapso.core.config import ConfigError
+
 ROLES = ("ideation", "implementation", "judge")
 # The selector reads the worktree to verify candidates: the two first-party
 # CLIs.
@@ -72,7 +74,7 @@ class SessionRole:
 def _unknown(keys: Iterable[str], known: frozenset, origin: str) -> None:
     unknown = sorted(set(keys) - known)
     if unknown:
-        raise ValueError(
+        raise ConfigError(
             f"{origin}: unknown key{'s' if len(unknown) > 1 else ''} {', '.join(unknown)}; "
             f"the keys are {', '.join(sorted(known))}"
         )
@@ -88,13 +90,13 @@ def check_params(params: Dict[str, Any], *, engine: bool = False) -> None:
         if block is None:
             continue
         if not isinstance(block, dict):
-            raise ValueError(f"{ORIGIN}.{role} must be a mapping, got {type(block).__name__}")
+            raise ConfigError(f"{ORIGIN}.{role} must be a mapping, got {type(block).__name__}")
         _unknown(block, ROLE_KEYS[role], f"{ORIGIN}.{role}")
         if "web" in block and not isinstance(block["web"], bool):
-            raise ValueError(f"{ORIGIN}.{role}.web must be true or false")
+            raise ConfigError(f"{ORIGIN}.{role}.web must be true or false")
     policy = params.get("gate_failure_policy")
     if policy is not None and policy not in GATE_FAILURE_POLICIES:
-        raise ValueError(
+        raise ConfigError(
             f"{ORIGIN}.gate_failure_policy must be one of {', '.join(GATE_FAILURE_POLICIES)}, got {policy!r}"
         )
 
@@ -114,10 +116,10 @@ BUILD_CONFIG_BLOCKS = ("hosts", "search_strategy", "inference", "retry", "models
 
 def check_maintainer(block: Any) -> None:
     if not isinstance(block, dict):
-        raise ValueError(f"evaluation_maintainer must be a mapping, got {type(block).__name__}")
+        raise ConfigError(f"evaluation_maintainer must be a mapping, got {type(block).__name__}")
     _unknown(block, MAINTAINER_KEYS, "evaluation_maintainer")
     if not isinstance(block.get("enabled"), bool):
-        raise ValueError("evaluation_maintainer.enabled must be true or false")
+        raise ConfigError("evaluation_maintainer.enabled must be true or false")
 
 
 def validate_config(config: Dict[str, Any], manifest: Dict[str, Any]) -> None:
@@ -135,12 +137,12 @@ def check_hosts(hosts: Any, manifest: Dict[str, Any]) -> None:
     adapter's own settings (`settings` in the registry); an adapter the
     registry does not know is refused."""
     if not isinstance(hosts, dict) or not hosts:
-        raise ValueError("hosts must be a mapping of at least one CLI to its entry")
+        raise ConfigError("hosts must be a mapping of at least one CLI to its entry")
     for cli, entry in hosts.items():
         if cli not in manifest:
-            raise ValueError(f"hosts.{cli}: no adapter of that name; the adapters are {', '.join(sorted(manifest))}")
+            raise ConfigError(f"hosts.{cli}: no adapter of that name; the adapters are {', '.join(sorted(manifest))}")
         if not isinstance(entry, dict) or not isinstance(entry.get("model"), str) or not entry["model"].strip():
-            raise ValueError(f"hosts.{cli} needs a model")
+            raise ConfigError(f"hosts.{cli} needs a model")
         allowed = HOST_KEYS | set(manifest[cli].get("settings") or [])
         _unknown(entry, allowed, f"hosts.{cli}")
 
@@ -153,24 +155,24 @@ def resolve_spec(
     its own `model` and `effort`, else the host entry's; ``web`` the
     switch the session follows."""
     if not isinstance(spec, dict):
-        raise ValueError(f"{origin} must be a mapping, got {type(spec).__name__}")
+        raise ConfigError(f"{origin} must be a mapping, got {type(spec).__name__}")
     _unknown(spec, keys, origin)
     cli = spec.get("cli") or host
     if cli not in hosts:
         where = f"{origin}.cli" if spec.get("cli") else f"{ORIGIN}.host (what --coding-agent sets)"
-        raise ValueError(
+        raise ConfigError(
             f"{where}: {cli} is not in hosts (the hosts are {', '.join(sorted(hosts))}); "
             f"add hosts.{cli}: {{model: …}} to the config to use it"
         )
     entry = hosts[cli]
     if not isinstance(entry, dict) or not isinstance(entry.get("model"), str) or not entry["model"].strip():
-        raise ValueError(f"hosts.{cli} needs a model")
+        raise ConfigError(f"hosts.{cli} needs a model")
     model = spec.get("model") or entry["model"]
     if not isinstance(model, str) or not model.strip():
-        raise ValueError(f"{origin}.model must be a non-empty string")
+        raise ConfigError(f"{origin}.model must be a non-empty string")
     timeout = spec.get("timeout")
     if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0):
-        raise ValueError(f"{origin}.timeout must be a positive number of seconds")
+        raise ConfigError(f"{origin}.timeout must be a positive number of seconds")
     settings = {key: value for key, value in entry.items() if key not in HOST_KEYS}
     effort = spec.get("effort")
     if effort is None:
@@ -186,7 +188,7 @@ def resolve_spec(
 def resolve_role(hosts: Dict[str, Dict[str, Any]], params: Dict[str, Any], role: str) -> SessionRole:
     """The role's session: the role block's own keys over the host's."""
     if "host" not in params:
-        raise ValueError(f"{ORIGIN}.host is required")
+        raise ConfigError(f"{ORIGIN}.host is required")
     block = params.get(role) or {}
     spec = {key: block[key] for key in SPEC_KEYS if key in block}
     return resolve_spec(
@@ -201,7 +203,7 @@ def resolve_members(
     if members is None:
         return None
     if not isinstance(members, list) or not members:
-        raise ValueError(f"{ORIGIN}.ideation.ensemble must be a non-empty list of member specs")
+        raise ConfigError(f"{ORIGIN}.ideation.ensemble must be a non-empty list of member specs")
     web = bool((params.get("ideation") or {}).get("web", True))
     return [
         resolve_spec(

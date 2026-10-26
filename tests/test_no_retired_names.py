@@ -88,6 +88,7 @@ ALLOWED_PATHS = (
     "tests/test_config_resolution.py",
     "tests/test_session_roles.py",
     "tests/test_problem_text.py",
+    "tests/test_cli_errors.py",
 )
 
 

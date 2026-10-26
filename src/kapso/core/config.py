@@ -30,6 +30,11 @@ OPEN_NAMESPACES = frozenset({
 })
 
 
+class ConfigError(ValueError):
+    """A config file the engine refuses: its message names the file, the
+    key and the keys allowed, and is written to be read alone."""
+
+
 def read_yaml(path: Any) -> Dict[str, Any]:
     """One YAML mapping from disk: a missing file raises, an empty file is
     an empty mapping, anything but a mapping is refused."""
@@ -37,7 +42,7 @@ def read_yaml(path: Any) -> Dict[str, Any]:
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise ValueError(f"{path}: a config file is a mapping, got {type(data).__name__}")
+        raise ConfigError(f"{path}: a config file is a mapping, got {type(data).__name__}")
     return data
 
 
@@ -68,6 +73,8 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     packaged = read_yaml(PACKAGED_CONFIG_PATH)
     if is_packaged(config_path):
         return packaged
+    if not Path(config_path).expanduser().is_file():
+        raise ConfigError(f"{config_path}: no such file")
     override = read_yaml(config_path)
     _check_keys(override, packaged, "", str(config_path))
     return deep_merge(packaged, override)
@@ -86,7 +93,7 @@ def _check_keys(override: Dict[str, Any], packaged: Dict[str, Any], path: str, s
         keys = ", ".join(sorted(packaged))
         if not path:
             keys += f" (and `{RUNNER_KEY}`, a benchmark runner's own)"
-        raise ValueError(
+        raise ConfigError(
             f"{source}: {where}: unknown key{'s' if len(unknown) > 1 else ''} "
             f"{', '.join(unknown)}; the keys are {keys}"
         )
@@ -94,7 +101,7 @@ def _check_keys(override: Dict[str, Any], packaged: Dict[str, Any], path: str, s
         if isinstance(packaged.get(key), dict):
             child = f"{path}.{key}" if path else key
             if not isinstance(value, dict):
-                raise ValueError(f"{source}: {child}: must be a mapping, got {type(value).__name__}")
+                raise ConfigError(f"{source}: {child}: must be a mapping, got {type(value).__name__}")
             _check_keys(value, packaged[key], child, source)
 
 
