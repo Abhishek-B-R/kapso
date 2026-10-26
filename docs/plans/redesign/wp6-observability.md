@@ -202,7 +202,9 @@ buys nothing).
   `header.cost.unpriced_runs` (the Claude Code runs that ended with no
   cost figure); `attempts[].evaluation.output`, `attempts[].cost_usd`,
   `attempts[].duration_seconds` and `attempts[].cards.listed`;
-  `lessons[].kind`. The delivered candidate's `files_changed` are the
+  `sessions[].hooks_staged` (what the session was staged with, so "no
+  hook fired" is told from "no hook could"); `lessons[].kind`. The
+  delivered candidate's `files_changed` are the
   files its branch's diff names; a run entry's are the host's own
   account of what it wrote.
 - **The summary's failed-sessions line.** `Solution.session_failures`
@@ -425,11 +427,11 @@ call `solve()` as today).
 
 ## Tests
 
-- Syntactic: `test_session_record.py` (1), `test_transcripts.py` (2,
+- Syntactic: `test_harness_staging.py` (1, the record for every session), `test_transcripts.py` (2,
   goldens on captured excerpts), `test_run_entries.py` (3),
-  `test_codex_paths_records.py` (4), `test_bank_pull.py` extended (5),
-  `test_record_lifecycle.py` (6), `test_watch_header.py` and
-  `test_launch_receipt.py` (7), `test_live_campaigns.py` (8),
+  `test_codex_paths_records.py` (4), `test_bank_pull_session.py` (5),
+  `test_record_lifecycle.py` (6), `test_watch_header.py` (7, the receipt
+  included), `test_live_campaigns.py` (8),
   `test_cli_doctor.py` extended (9), `test_cli_errors.py` (10),
   `test_trace.py` (11, goldens from the generator), `test_mining_refusal.py`
   (12), `test_orchestrator_fixture.py` (13), `test_no_retired_names.py`
@@ -579,3 +581,296 @@ and how each was answered in this revision:
 | P3-8 nothing points at the trace | the summary and the done frame end with `kapso trace <campaign>` |
 | P3-9 `--all` is not every campaign | the registry written on every launch; the learn and ingest statuses listed from `learning.status_dir`; taking `watch --all` off the deferred list is a decision |
 | P3-10 Ownership contradicts itself and MASTER | rewritten; the staging and the pull log are this package's asks of WP2 and WP3, both merged |
+
+## Proof run
+
+**The fresh machine, `kapso-fresh-wp6`** (`e2-standard-4`, Ubuntu
+24.04, created 22:05 UTC on 2026-10-25, the wheel from `cc4190d8` as a
+`uv` tool, Claude on the shared token, Codex on the API key), the
+trading harness and the trading and churn examples from the branch with
+their data generated on the machine, `mcp` pinned below 2, WP3's learned
+bank carried over as the machine's own (`mine  ~/.kapso/bank.git  head
+a9ddad3d302d  15 cards  no remote`). `kapso harness check` printed `check
+ok (7 skills, 2 agents, 2 servers, 6 hooks)`; `kapso doctor build`
+passed its six checks and `kapso doctor build --json` printed the same
+six rows as data (`scope kapso doctor build, ok true, version 0.7.10`,
+exit 0).
+
+**The first launch died at a check, and the receipt did not say so.**
+The fixture had carried the development checkout's gitignored
+`evaluation/result.json` again (WP3's finding, the other way round);
+the launch refused it before any session, and the detached child's log
+carried the one line change 10 promised, `Error: …/evaluation/result.json
+is the evaluator's own output, left by an earlier run; … Remove it and
+launch again.`, with no traceback. But `kapso watch campaign` two
+seconds later said `no status yet at campaign — the campaign is still
+starting…`, and `kapso watch` with no path listed nothing: the receipt
+was read only once the campaign directory existed, which a launch that
+dies at a check never creates; the registry was written after the
+orchestrator's construction; and its reader dropped a path with no
+directory. Fixed in `2faa4078` (the receipt read regardless, a launch
+with an output directory registered before its checks, the reader
+keeping a path with a receipt beside it; a decision in DECISIONS.md),
+the wheel rebuilt and reinstalled, the stale file removed, and the build
+relaunched at 22:12.
+
+**The trading build, 22:12 to 22:59 UTC**, `kapso build --harness
+../harnesses/trading --experience mine`, forty-five minutes and two
+experiments. Within three seconds `kapso watch campaign` showed the
+header the plan asked for:
+
+```
+STARTING ♥ 3s ago      pid 5250
+harness: trading 0.1.0 (83b6c0b60d6a)
+served: mine at a9ddad3d302d, measured by you
+phase: setup — 0.1m elapsed
+```
+
+and `kapso watch` with no path listed it (`RUNNING   build
+harness_setup      20s ago  best -        /home/ubuntu/fixture/examples/trading/campaign`).
+`kapso trace campaign` while it ran rendered partial (`— partial: the
+campaign is running (phase harness_setup)`, the header from the status,
+`harness_setup … no run recorded`, `15 cards served … read by nobody`).
+`kapso watch --follow` returned the moment the campaign was done and
+`Solution.open` in the same breath returned the record (`branch None,
+score None, stopped_reason budget_exhausted, 3 session failures`).
+
+What the campaign did: two attempts, both scored by the provided
+evaluator (Sharpe 1.9233 and 1.8647), neither delivered. The first's
+verification session wrote a `valid` verdict with no findings (the
+lookahead scan clean, the number reproduced byte-identically) and then
+ran past its ten-minute deadline waiting on its auditor; its judge
+session answered `stop true, valid, 1.9233` in a first run whose last
+message was a stray alarm note without the tags, so the engine asked
+again in a fresh session that had no context and answered that it had
+nothing to judge, which is the answer the record kept. The second's
+verification was cut at its clamped deadline (380 s) and stayed
+unverified; its judge's first run was killed at the sixty-second floor
+and the retry answered likewise. `budget_exhausted` at 46.1 of 45
+minutes, `2 rejected`, $16.21. The summary's new row read `Sessions
+failed: feedback on claude_code ×1 (Claude Code CLI exceeded its 60.0s
+deadline …); verification on claude_code ×2 (… 380.5 s …)`. Every one of
+these facts is on the trace (the archive:
+`scripts/redesign/runs/wp6/campaign1.tgz`, with the trace's text and
+JSON beside the campaign): the two feedback runs per attempt (`run 2 …
+0.1 min  $0.055  1 turns`), the verification timeouts with the verdict
+that survived one of them, the five cards read in iteration 1 and the
+fifteen listed in both, the lookahead-auditor delegates with their
+reports in `--branch`, the `SessionStart` hook in every session, the
+judge's `cards_load_bearing` parsed as a card named `false` (a finding
+below).
+
+
+**The Codex session, on the development box, 22:33 to 22:50 UTC.** The
+trading example with its harness, the implementation on Codex
+(`search_strategy.params.implementation_cli: codex`,
+`implementation_model: gpt-5.6-sol` in a config copy whose homes lie
+under a scratch directory), twenty minutes and one experiment: the
+setup session, the implementation and the verification ran on Codex,
+the ideation and the judge on Claude Code. The attempt scored a Sharpe
+of 1.7295, the verifier found it `valid`, the judge stopped the campaign
+on it, and it was delivered (`generic_exp_0 @ 4f37ae900580`). The trace
+(`scripts/redesign/runs/wp6/devbox-codex.tgz`) renders the Codex runs
+as the plan said a Codex host reports: `codex  success  1.5 min  712k
+in, 5.4k out tokens  1 turns  tools command_execution 10, file_change 2
+gates gated-knowledge 4, market-data 4  hooks not reported by this host
+collab wait 1`, the campaign's cost line `$4.379 (Claude Code sessions
+only; Codex reports no cost)`, and the delivered files from the
+branch's diff. A first launch of the same build with `--coding-agent
+codex` had run every session on Claude Code (a finding below;
+`devbox-claude.tgz`), and its judge's retry on the sixty-second floor
+is the same shape as the machine's.
+
+**The churn build with S5's injections, 23:00 to 23:43 UTC (the
+machine's clock)**, `kapso build --experience mine`, no harness, sixty
+minutes and three experiments, with an injector armed beside it: ninety
+seconds into the first implementation phase it sent `SIGTERM` to the
+Claude Code CLI (`23:23:40 sent SIGTERM to 13518`) and then touched the
+marker that makes the fixture's evaluator raise once. The record and
+the trace (`scripts/redesign/runs/wp6/campaign2.tgz`):
+
+- The killed session is one run entry, `generic_exp_0  claude_code
+  error  1.7 min  cost n/a  0 turns  tools Bash 7, Write 1  CLI exited
+  with code 143`, and the campaign went on truthfully: node 0 completed
+  with no score, the judge said `a complete, correct artifact exists but
+  was NEVER SCORED … Do not rebuild it — validate it`, iteration 2
+  started at 49% of the budget, and the second attempt scored 0.8508 on
+  the provided evaluator, cleared the 0.85 target and was delivered
+  (`generic_exp_1 @ 6bc3e8c47d9f`, `goal_achieved`, $6.39). The summary
+  read `Sessions failed: implementation on claude_code ×1 (CLI exited
+  with code 143)`; the trace lists it under SESSIONS FAILED and the
+  delivered candidate's `failures  none in its sessions`.
+- The evaluator's crash was absorbed by the implementer: the second
+  attempt ran the evaluator itself first, met the injected
+  `RuntimeError`, ran it again (its judge's words: "Three evaluator
+  invocations ≈ 8 s total (one absorbing the documented one-shot crash
+  injection …)"), so the engine's own evaluation of the attempt
+  succeeded. The injection reached a session, not the engine's
+  evaluation; the engine-side crash stays for WP9's S5 to inject
+  differently (a crash the engine's evaluation meets would show in the
+  attempt's `evaluation.output` and the judge's rejection, the path the
+  trace already prints).
+- A gap the trace exposed and the branch fixed: without a harness, the
+  judge's sessions had records but no run entries
+  (`feedback/generic_exp_0  claude_code  no run recorded`); the judge
+  attached its staged session only when a harness gave guidance. Fixed
+  in the commit after the proof run; the archive keeps the gap as it
+  was.
+
+**A detached launch that dies at a check, on the reinstalled wheel.**
+With a stale `result.json` in the churn example's evaluation directory,
+`kapso build … --output campaign-dead --detach` returned the launch
+banner and the pid; one second later `kapso watch campaign-dead` said
+`stopped before writing a status; the log says why:
+…/campaign-dead.log` (exit 1), the log held the one line (`Error:
+…/evaluation/result.json is the evaluator's own output, left by an
+earlier run; … Remove it and launch again.`, no traceback), and `kapso
+watch --all` listed it `STOPPED   build      -                        -
+best -        …/campaign-dead` above the two `DONE` campaigns, `--json`
+giving `"state": "stopped"`. A launch whose `--harness` names nothing
+is refused in the parent before it detaches (`Error: no directory
+…/nowhere (and ./nowhere is not a bundled name or a git reference); the
+forms are: …`, exit 1): nothing to watch, by design.
+
+The machine was deleted at 23:49 UTC after 1.77 hours ($0.24); the run's
+local record (`scripts/redesign/runs/wp6/`) holds the create and install
+logs, three wheel hashes, the run logs and the two archives beside the
+development box's two.
+
+**S4's first reading, the trading build.** Both readers were given the trace's text and JSON, the campaign directory (streams and bank clones left out) and the log, and the brief in `s4/campaign1/brief.md`. Graded against `run_state.json`, the session records, the verdicts, the pull log and the log.
+
+| Question | Codex (gpt-6-astra, xhigh) | Claude Code (opus-5) | The record |
+|---|---|---|---|
+| 1 What won | nothing delivered; the two attempts' own Sharpe 1.9233 and 1.8647; measured by the provided evaluator, no registered evaluator — correct | the same, plus the evaluator's hash pin and the verifier's byte-identical reproduction — correct | `solution.json` branch/commit/score null; `evaluation_output` 1.9233 / 1.8647 |
+| 2 Why | both judges invalidated for "no attempt to analyse", then the time budget — correct; found the first judge's valid/1.9233/stop answer in the log — correct | the same, and traced the mechanism: run 1's last message was a stray alarm note without the tags, the engine re-asked in a fresh session that had no context — correct | `sessions/feedback/generic_exp_0/session.json` runs[0] (success, no tags in the last message), runs[1] (a different `cli_session_id`, 1 turn, $0.055) |
+| 3 Voided, evidence | nothing voided by the verifier; node 0 `valid` with no findings, node 1 unverified; the trace's section lists "judged not valid", not verifier voids — correct | the same, with the verifier's evidence listed and its three non-voiding caveats — correct | `verification/generic_exp_0/verdict.json` valid, findings []; `verification/generic_exp_1/` has no verdict |
+| 4 Rejected, why | both by the judge's invalidation; no integrity failure; the timeouts distinguished — correct | the same; node 1 also unverified — correct | `evaluation_integrity_error` "" on both; `rejected_candidates` 2 |
+| 5 Cost | $16.210, split 9.874 / 4.774 / 1.562; one killed run with no cost; `coverage: all` is not "every run costed" — correct, a fair reading of the label | the same, plus the phase split (verification 35%), delegates in tokens only, money never a budget — correct | `cumulative_cost`, `cost_by_component`; `feedback/generic_exp_1` runs[0] `cost_usd` null |
+| 6 Safe to merge | would not approve: nothing delivered, the first attempt's verification conflicts with its judge, the second unverified — a defensible conclusion from the evidence | the code change on `generic_exp_0` is safe on the evidence (verification strong, integrity clean, no denial in its sessions) but nothing names the commit to merge; `generic_exp_1` is not — a defensible conclusion; the missing commit is a real gap | no node carries its commit; the only denial in the campaign was the setup session's |
+
+No claim either reader made was wrong against the record. Both had to open files for the same two facts the trace did not carry: why the judge's session had a second run (the first run's answer lacked the tags; the retry ran with no context), and that the setup session's `deny-web-fetch` hook denied a shell command, which the log shows and the session record does not (Claude Code reports a blocking PreToolUse hook as the tool's error result, not as a `hook_response` event — the digest read only the latter; fixed below). Both read `coverage: all` as weaker than it sounds, and both noted the brief's 75-minute budget line against the launch's 45 (the flag wins, by design; the record shows both).
+
+What the readings changed in the trace: a hook's denial reported through the tool result is now a hook entry (`decision: deny`, the reason the hook printed); the header's cost line names the runs that ended with no cost figure; the cards line shows how many cards a session listed beside the ones it read. Left for later packages: the judge's retry must leave its reason in the record (WP4, with the retry itself); a node should record the commit it was evaluated at (WP4's checkpoint, or WP1's record); the judge's `cards_load_bearing` parsed `false` as a card (WP4).
+
+**S4's second reading, the churn build with the injections**
+(`scripts/redesign/runs/wp6/s4/campaign2/`, the trace re-rendered by the
+branch at `b6d1b1df`'s parent, the records as the machine's wheel wrote
+them). The same brief, the same two readers.
+
+| Question | Codex (gpt-6-astra, xhigh) | Claude Code (opus-5) | The record |
+|---|---|---|---|
+| 1 What won | `generic_exp_1 @ 6bc3e8c4…`, AUC 0.8508 on the 3,000 held-out rows by the provided evaluator, reproduced by the judge — correct | the same, with the full SHAs, the brief's target and baseline, and the judge's re-run found in the log — correct | `solution.json`; `campaign.log` 5095–5122 |
+| 2 Why | the reproduced score over the bar, the integrity audit clean, nothing better unbanked, the margin inside noise — correct | the same, section by section of the judge's words — correct | `attempts[1].judge` |
+| 3 Voided, evidence | nothing, because no verifier ran: absent checks, not passing verdicts — correct | the same; no `.kapso/verification/` directory at all — correct | `harness: null` |
+| 4 Rejected, why | nothing rejected; the one failure is node 0's implementation killed (`exit 143`) and kept valid by its judge, who told the next iteration to validate it — correct | the same, and the engine's own failures that rejected nothing (the repo-memory bootstrap on a Codex quota, the fallback reconstruction) — correct | `rejected_candidates: 0`; `session_failures[0]` |
+| 5 Cost | $6.389, split by attempt; the killed run unpriced; the feedback phases' cost present in the checkpoint though the judge sessions recorded no run — correct | the same, by phase from the checkpoint; the three failed Codex repo-memory calls unpriced; `coverage: all` beside `unpriced_runs: 1` read as self-contradictory — a fair reading of the label | `cost_by_component`; `unpriced_runs: 1` |
+| 6 Safe to merge | yes for the stated task, with limited assurance: no verification layer, no hook policy, the judge's reproduction real — defensible | yes for `predict.py`, not for the commit as it stands: it carries build output and a new file inside the evaluator's directory; the clean hook line is uninformative because no hook was staged — defensible, and the sharper reading | the delivered diff's files; `sessions/*/session.json` `hooks: []` |
+
+No claim either reader made was wrong against the record. What they
+had to open files for: the judge sessions' runs (`no run recorded`, the
+gap fixed in `b6d1b1df` after the run), the full SHAs and the brief's
+fields (the trace prints twelve hex digits and the objective's first
+line), the meaning of `integrity provided; intact` (the manifest in the
+checkpoint), and whether `hooks none fired` meant no denial or no hook
+(the latter: the trace now says `none staged` in that case). Both named
+what the record cannot settle: who sent the `SIGTERM` (the injector,
+outside the record by design), and the killed run's own spend.
+
+
+## Findings for later packages
+
+- **The judge's retry must leave its reason in the record** (WP4, with
+  the retry carrying its prompt). Three times in the proof run a judge
+  session had two runs: the first answered in full and ended on a stray
+  message without the tags (the trading build's node 0: `stop true,
+  valid, 1.9233`, discarded), or was killed on the sixty-second floor at
+  the budget's end (node 1 of the same build, both dev-box builds), and
+  the engine asked again in a fresh session with none of the context,
+  which answered that it had nothing to judge; the record kept the
+  second answer. The trace shows the two runs and the second's words;
+  it cannot show why the second ran, because nothing in the record
+  says. The retry should record its reason (`tags missing`, `deadline`)
+  and the run entry should carry it, and the retry should resume the
+  session rather than start one (both S4 readers named this as the one
+  fact they had to dig out of the log).
+- **`--coding-agent codex` does not reach the implementation host**
+  (WP4, the `--coding-agent` routing). The generic strategy's host is
+  its own parameter (`search_strategy.params.implementation_cli`,
+  default `claude_code`); a build launched with `--coding-agent codex`
+  ran every session on Claude Code while its launch record said
+  `coding_agent: codex`. The flag must route the implementation or
+  refuse by name.
+- **The judge's `cards_load_bearing` parses `false` as a card** (WP4,
+  the judge's contract). With nothing served, or nothing load-bearing,
+  the judge wrote `false`; the parser treats only `none` as empty, so
+  the node carries a card named `false` and the trace prints
+  `load-bearing  1: false`. Accept `false` and `null`, or have the
+  prompt ask for `none`.
+- **A node should record the commit it was evaluated at** (WP1's record
+  or WP4's checkpoint). The delivered candidate's commit is in the
+  solution record alone; an attempt that was not delivered has a branch
+  but no commit anywhere in the record, so a reader who wants to merge
+  the verified attempt of a campaign that delivered nothing (the trading
+  build's node 0, verified `valid`) cannot name what to merge.
+- **The budget's end, again** (WP4's finalisation reserve): every
+  campaign of the proof run that reached its time budget spent its last
+  minutes on a verification cut at its clamped deadline and a judge on
+  the sixty-second floor, and rejected a scored attempt for it. The
+  trace now shows exactly this; the fix is the reserve.
+- **The brief's budget line and the launch's flag both stand in the
+  record** (WP1, a wording): the trading brief says `minutes=75` and the
+  launch set 45; both readers noticed and neither could tell which was
+  meant. The record is right (the flag wins); the trace could say so on
+  the budget line.
+- **The hosted gate's reads are not in the pull log** (WP3): a hosted
+  source's calls appear in the sessions' gates columns only, by tool,
+  never by page; `lessons` says so. If the hosted gate ever reports what
+  it served, the trace's `read_by` is ready for it.
+- **A killed session's fallback reconstruction misdiagnosed the loss**
+  (WP4, the session-end facts): node 0 of the churn build, whose
+  implementation was killed by the injector, got a reconstructed
+  `technical_difficulties` saying its artifact was permanently lost,
+  while the branch held it at `d9cb8e5` and the next attempt scored it.
+  The reconstruction should read the branch before it concludes.
+- **Build output committed inside the evaluator's directory** (the
+  evaluation governance, WP4): the delivered churn commit carries
+  `predictions.csv`, `kapso_evaluation/result.json` and a new
+  `kapso_evaluation/eval_profile.md`; the integrity manifest pins
+  `evaluate.py` and `private_dir.txt`, so a new file beside them passes.
+  Whether a candidate may add files to the protected directory is a rule
+  the governance should state; the trace's delivered files list shows
+  it either way.
+- **The fixture's `evaluation/result.json` rode into a proof machine a
+  second time**: the development checkout keeps the evaluator's own
+  output (gitignored) and an `rsync` of the example carries it. The
+  examples' `.gitignore` is right; the proof scripts now exclude it;
+  the launch's refusal did its job both times.
+
+## Built
+
+Branch `wp6-observability` off `redesign` at `588b44b6`, the commits
+below, each with its tests and the gate green at every one (the last
+gate before the proof run's commits: 1,616 passed, 27 skipped, 2
+deselected; the docs coverage check 43 commands and methods, the
+snippet check 6 quoted files, `mint validate` passing).
+
+| Commit | What landed |
+|---|---|
+| `fb2dae8b`, `2a68543a` | the sub-plan, and its revision after the review with the planned decisions |
+| `0c841816` | the transcript digests, one parser per host, over committed excerpts of real streams (change 2) |
+| `caf1163d` | a session record for every session, harness or not, with `runs` (change 1) |
+| `119edde7` | the adapters record every invocation in their own `finally`; the refusal (change 3) |
+| `cba0488d` | the Codex paths outside the adapters record their runs; the pull log carries the session (changes 4 and 5) |
+| `6d7ab482` | the record's lifecycle: the delivery inside the protected region, failure ownership from the first status write (change 6) |
+| `b57c7947` | `kapso watch` completed: the header, the launch receipt, the no-path listing; `--tree` retired (changes 7 and 8) |
+| `f93c43bf` | `kapso doctor --json`; the engine's errors print their message on stderr (changes 9 and 10) |
+| `b0c71667` | `kapso trace`, `Kapso.trace`, `Solution.session_failures`, the fixture generator and three fixture campaigns with goldens (change 11) |
+| `04605d32` | a refused mining lead launched again and named in the learn status (change 12) |
+| `35a83e38` | the real orchestrator over the real strategy as a test fixture; the seam test on it (change 13) |
+| `cc4190d8` | the docs: "Read the record", the CLI and API references, run-and-watch, the examples' pointers (change 14) |
+| `2faa4078`, `92b43316` | the proof run's first finding: a launch that dies at a check is told by its receipt and listed by the registry |
+| `48cd7f3a` | the proof run's second finding: a run's files from the host's own account, the delivered files from the diff |
+| `60428655`, `04635a1b` | what S4's first reading asked: a blocking hook's denial in the record, the unpriced runs on the cost line, the cards listed beside the cards read; the keys noted in the plan |
+| `b6d1b1df` | the proof run's third finding: the judge's runs recorded without a harness |
+| `5ff0b4b5` | what S4's second reading asked: whether any hook was staged, why nothing was served |
+| the last commit | the proof run's record: this section, the findings, this table |

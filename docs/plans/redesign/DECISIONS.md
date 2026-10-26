@@ -61,7 +61,10 @@ After S4's first reading, two more: `header.cost.unpriced_runs`, the
 Claude Code runs killed before their result event, whose spend the
 total lacks (both readers worked it out from a `cost n/a` line), and
 `attempts[].cards.listed`, the cards a session saw listed beside the
-ones it read (`none (15 listed)` is not `none`). Alternative rejected:
+ones it read (`none (15 listed)` is not `none`). After the second,
+`sessions[].hooks_staged`: a delivered block saying `hooks none fired
+in its sessions` meant nothing when no hook was staged, and now says
+so. Alternative rejected:
 deriving each from the text's sections at the reader's end, which WP7's
 skills would have to repeat. Shows in
 `kapso.execution.trace` and `tests/test_trace.py`; WP7 reads the keys as
