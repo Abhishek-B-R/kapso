@@ -21,6 +21,8 @@ from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 from kapso.harness.staging import engine_session_record
 from strategy_support import generic_params, packaged_hosts
+from tests.handles_support import git_workspace
+from tests.harness_support import real_orchestrator
 
 HOSTS = packaged_hosts()
 
@@ -145,3 +147,16 @@ def test_two_sessions_keep_their_own_mcp_config(tmp_path):
 
 def test_the_workspace_initialises_with_no_agent():
     assert not hasattr(GenericSearch, "_initialize_workspace")
+
+
+def test_the_recorder_is_wired_when_the_workspace_is_born(monkeypatch, tmp_path):
+    """The repo-memory bootstrap runs in the strategy's constructor: the
+    recorder is wired by the strategy the moment its workspace exists, so
+    the campaign's first engine session is recorded too (the WP4 proof
+    run's S4 reading found the bootstrap missing from the record)."""
+    workspace = tmp_path / "campaign"
+    git_workspace(workspace)
+    orchestrator = real_orchestrator(monkeypatch, workspace)
+    keys = orchestrator.llm.record_session("repo_memory", "codex", tmp_path / "scratch")
+    assert keys["session_record_path"] == str(workspace / ".kapso" / "sessions" / "engine" / "repo_memory" / "1" / "session.json")
+    assert json.loads(Path(keys["session_record_path"]).read_text())["module"] == "engine"

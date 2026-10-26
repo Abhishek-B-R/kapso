@@ -8,6 +8,16 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**The engine recorder is wired by the strategy, at the workspace's
+birth.** The earlier decision wired it in the orchestrator after the
+strategy existed, which left the strategy constructor's own inference
+session (the repo-memory bootstrap) unrecorded in every campaign of the
+proof run; the S4 readers found the gap. The strategy owns the workspace
+and its records directory, so it wires the recorder the moment the
+workspace exists and before its first inference. The import the earlier
+decision avoided (`kapso.core.cli_inference` into the harness package) is
+not needed: the strategy already imports the staging.
+
 **The derived reserve is bounded like a set one.** The plan bounded a
 set `reserve_minutes` by a quarter of the budget and left the derived
 reserve to the obligations themselves. The proof run's ten-minute trading

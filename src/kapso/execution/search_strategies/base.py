@@ -17,6 +17,7 @@ import logging
 import math
 from abc import ABC, abstractmethod
 from dataclasses import MISSING, dataclass, field, fields
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from kapso.execution.types import ContextData
@@ -26,6 +27,7 @@ from kapso.execution.observability import BuildStatus
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.environment.handlers.base import ProblemHandler
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.harness.staging import engine_session_record
 from kapso.execution.fidelity import (
     FIDELITIES,
     EvaluationAttempt,
@@ -592,6 +594,12 @@ class SearchStrategy(ABC):
             repo_memory_max_retries=self.repo_memory_max_retries,
             llm_backend=self.llm,
         )
+        # The engine's own inference sessions (the repo-memory bootstrap
+        # below, the updates after each experiment, the commit messages)
+        # are recorded with the campaign's, under engine/<role>/<n>, from
+        # the workspace's first second: wired here, before the first one.
+        records = Path(self.workspace_dir) / ".kapso" / "sessions"
+        self.llm.record_session = lambda role, host, session_dir: engine_session_record(records, role, host, session_dir)
 
         # Observability (design §1): the status file is born the moment the
         # workspace exists — phase `setup`, state `starting` — so a watcher

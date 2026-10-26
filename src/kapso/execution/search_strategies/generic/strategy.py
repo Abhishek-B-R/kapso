@@ -803,6 +803,9 @@ class GenericSearch(SearchStrategy):
                 if self._evaluate_admitted_candidate(node, lane_index=lane_index):
                     node.commit = self._attempt_commit(node.branch_name)
                     self._verify_attempt(node)
+                    # The judge's phase, published again after a verification
+                    # (which publishes its own).
+                    self._status_phase("feedback")
                     self._generate_feedback(node)
                     self._record_evaluation_attempt(node)
             else:
