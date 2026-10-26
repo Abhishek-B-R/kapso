@@ -6,6 +6,137 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-26, WP4 (planned; taken while writing the sub-plan)
+
+**The build's sessions are roles over a hosts table.** The config gains
+`hosts.<cli>: {model, …}` and `search_strategy.params.host`; ideation,
+implementation and the judge are role blocks (`cli`, `model`, `effort`,
+`timeout`) that default to the host and its model; `--coding-agent` sets
+the host for the campaign. Why: the flag reached a field no session read
+(WP2's and WP6's proof runs ran every session on Claude Code under
+`--coding-agent codex`), a model the CLI could not serve was found at the
+first session, and three blocks (`coding_agent`, `feedback_generator`,
+the flat `*_model` parameters) named hosts and models with no rule
+between them. Alternatives rejected: routing the flag to
+`implementation_cli` alone (ideation and the judge stay elsewhere and the
+model mismatch remains); deleting the flag (the plugin's build on the
+host it runs in wants one word). The judge is a role under the strategy's
+parameters, not a top-level block: it is the strategy's session, named
+beside the sessions it judges. Shows in `config.yaml`,
+`search_strategies/generic/roles.py`, the preflight.
+
+**Unknown top-level keys are refused; `benchmark:` is reserved.** An
+override file may name only the packaged file's top-level keys; the
+runners' own settings live under `benchmark`, which the engine never
+reads. Why: a mode leftover or a typo did nothing silently (the "a config
+copy's `defaults:` is ignored" trap WP3 met), and the runners' keys
+(`run_defaults`, `final_eval`, their own `preflight`) collide with the
+engine's at the top level. Alternative rejected: a full nested schema;
+the open mappings (env names, inference roles, hosts) would need a schema
+language, while the blocks with validators (`budget`,
+`evaluation_maintainer`, the ensemble members, the lens planner, and now
+the strategy's parameters) keep refusing their unknown keys.
+
+**`MINIMAL` is not shipped.** A config that turns things off is an
+override file a person writes; the configuration page shows one.
+Alternative rejected: a shipped `minimal.yaml`, a second shape to keep in
+step with the first.
+
+**The web knobs go on both roles; a harness that forbids the web lists a
+hook.** `implementation_web` (the row's own retirement) and the ideation
+`web_search` knob are the same domain rule (RelBench's temporal leakage,
+IOAI's leakage-safe harvest), and a hook is per module, which the knobs
+were not. Alternative rejected: a host-level `web` capability in `hosts`,
+not expressible per module. Whether Codex's hooks see its native web
+search is a host fact the proof run settles; the hook catches
+`curl`/`wget` on both hosts regardless.
+
+**The axes are the planner's output.** The lens planner names the design
+axes it derives from the goal and the ideation page in an `<axes>` tag;
+the plan file carries them; the replanner statuses them; the judge's
+prompt renders the plan's axes, or asks the judge to name the ones it
+sees. Why: the harness design's section 9 recommends it, and the five ML
+axes in `lens_planning.py` were domain prose in engine code. Alternative
+rejected: an axes list in the harness's ideation page that the engine
+parses, an engine-facing field in a page.
+
+**The task statement is written for every build.** One problem text for
+every session, harness or not; the generic handler renders the brief and
+the two reference lines and nothing else, and the evaluation contract
+lives in the implementation prompt once. Alternative rejected: keeping
+the handler's prose for builds without a harness, two renderings of the
+same facts that drifted (the handler said `result.json` may be created,
+the prompt said where to write it).
+
+**The finishing sessions spend the reserve; no session starts on the
+floor; admission takes the last iteration's duration.** Verification and
+the judge are clamped against the whole remainder, a session whose clamp
+is the floor is not launched and the attempt says what is missing, and an
+iteration is admitted only when the searchable remainder covers the
+larger of the static floor and the previous iteration's own duration.
+Why: every campaign of WP2's, WP3's and WP6's proof runs that reached its
+budget ended on a verification cut at its clamped deadline and a judge on
+the sixty-second floor, rejecting a scored attempt. Alternatives
+rejected: raising `min_iteration_seconds` (one number for every task),
+per-phase fractions (the IOAI runner's recorded lesson: a phase
+sub-budget starved ideation), a reserve derived from the harness's
+minutes (the judge has none). The default reserve is ten minutes, judged
+on the proof run's numbers.
+
+**The judge's retry resumes its session, records its reason, and does not
+follow a deadline.** Why: both S4 readers of WP6's proof run had to dig
+the retry's reason out of the log, and a fresh session answered with none
+of the context. A deadline-killed judge is the budget's end, not a
+missing tag.
+
+**`result.json` stays in the protected directory; code added there is
+the tamper.** Moving the contract's output would break every evaluator
+written so far; the integrity verifier already rejects added source and
+executables, and what was missing was the rule stated in the pages.
+
+**The maintainer is off by default.** It runs its own calibration and
+registration sessions per build, and most builds bring an evaluator or a
+harness verification; the block is `null` and one block turns it on.
+
+**No lighter ideation for small briefs here.** An effort change is a
+quality change nobody has measured; S1's time-to-first-candidate is
+recorded on this package's proof run first, and the budget's end makes a
+short campaign stop honestly rather than deliver a half-built attempt.
+
+**The budget block speaks the handle's words.** `budget.minutes`,
+`experiments`, `usd`, `reserve_minutes` replace `time_budget_minutes`,
+`cost_budget_usd` and `finalization_reserve_minutes`, and the facade's
+`DEFAULT_MAX_ITERATIONS` becomes `budget.experiments` (WP1 asked for the
+literal to move with the block). One word per dimension across the brief,
+the flags, the API and the config.
+
+**`agents.yaml` loses its model defaults; `build_config` requires a
+model.** The `claude-opus-4-5` there duplicated the config's model and had
+gone stale (Rule 1); the hosts table is the one home.
+
+**The engine's `protect-harness` hook rides every staged session.** The
+harness directory is the author's: WP3's proof lost a setup session's
+minutes and dollars to a patched harness, and the identity check that
+refused the campaign was right while the rule before it was missing.
+Alternative rejected: staging the servers from a copy, whose `cwd` and
+`${PLUGIN_ROOT}` paths would diverge from the author's tree while the
+hash still moved.
+
+**The empty-workspace initialisation session is deleted.** A model call
+to write an empty `main()`, unreachable from the facade, which always
+names a workspace; the workspace writes the file.
+
+**`--config` stays explicit.** Nothing is read from the working directory
+unnamed: the brief is named with `--brief`, and a stray
+`kapso-config.yaml` applied silently is the class of surprise the
+resolver exists to remove. The build's banner and the doctor's first line
+name the layers.
+
+**The strategy's parameters are a known set, every default in the
+packaged file.** The gate-list literals WP3 flagged and every other
+`params.get(key, literal)` move into `config.yaml`; the strategy reads
+without defaults; a misspelled parameter is refused by name.
+
 ## 2026-10-25, WP6 (taken while building)
 
 **A run's files are the host's account; the delivered files are the
