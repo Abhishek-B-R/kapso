@@ -1499,53 +1499,54 @@ class OrchestratorAgent:
         Returns:
             SolveResult with best_experiment, final_feedback, stopped_reason
         """
-        # Explicit arguments win over the mode config's optional budget block.
-        budget_spec = BudgetSpec.resolve(
-            config_block=self._config_budget,
-            time_budget_minutes=time_budget_minutes,
-            cost_budget=cost_budget,
-            finalization_reserve_minutes=finalization_reserve_minutes,
-        )
-        # Pinned for components that run outside the iteration loop (the
-        # evaluator-transition bridge derives its deadline from it).
-        self.budget_spec = budget_spec
-        self.budget_ledger.start_clock()
-        # With a harness, the task statement every session reads first is
-        # written before any session runs (and again after harness setup).
-        # The effective budget, as resolved: what a session reading the
-        # statement must plan against.
-        self._task_budget = dict(
-            experiments=experiment_max_iter,
-            minutes=budget_spec.time_budget_seconds / 60.0 if budget_spec.time_budget_seconds is not None else None,
-            usd=budget_spec.cost_budget_usd,
-            reserve_minutes=budget_spec.finalization_reserve_seconds / 60.0,
-        )
-        self._write_task_statement(**self._task_budget)
-        # The harness's own setup session, once, before the evaluation is
-        # registered: a domain statement and prepared resources. The data
-        # copy is pinned across it and across the maintainer's session,
-        # which carries the harness's setup module too.
-        campaign = Path(self.search_strategy.workspace_dir)
-        pinned_data = _directory_manifest(campaign / "kapso_datasets") if self.harness is not None else None
-        if self.harness is not None:
-            # The setup session's clamp reads a budget view too: without one
-            # a one-minute campaign would start a twenty-minute session.
-            self.search_strategy.observe_budget(BudgetSnapshot(
-                iteration_index=0,
-                max_iterations=experiment_max_iter,
-                elapsed_seconds=self.get_elapsed_seconds(),
-                cost_usd=self.get_cumulative_cost(),
-                time_budget_seconds=budget_spec.time_budget_seconds,
-                cost_budget_usd=budget_spec.cost_budget_usd,
-                finalization_reserve_seconds=budget_spec.finalization_reserve_seconds,
-                min_agent_timeout_seconds=budget_spec.min_agent_timeout_seconds,
-            ))
-        # The protected region starts here: from the harness setup on, an
-        # exception in flight is published as the campaign's failure in
-        # the `finally` below (wp6-observability.md, change 6), and the
-        # delivery the caller hands in as `finish` runs inside it too.
+        # The protected region is the whole of solve(): from its first
+        # statement on, an exception in flight is published as the
+        # campaign's failure in the `finally` below (wp6-observability.md,
+        # change 6), and the delivery the caller hands in as `finish` runs
+        # inside it too.
         result: Optional[SolveResult] = None
         try:
+            # Explicit arguments win over the mode config's optional budget block.
+            budget_spec = BudgetSpec.resolve(
+                config_block=self._config_budget,
+                time_budget_minutes=time_budget_minutes,
+                cost_budget=cost_budget,
+                finalization_reserve_minutes=finalization_reserve_minutes,
+            )
+            # Pinned for components that run outside the iteration loop (the
+            # evaluator-transition bridge derives its deadline from it).
+            self.budget_spec = budget_spec
+            self.budget_ledger.start_clock()
+            # With a harness, the task statement every session reads first is
+            # written before any session runs (and again after harness setup).
+            # The effective budget, as resolved: what a session reading the
+            # statement must plan against.
+            self._task_budget = dict(
+                experiments=experiment_max_iter,
+                minutes=budget_spec.time_budget_seconds / 60.0 if budget_spec.time_budget_seconds is not None else None,
+                usd=budget_spec.cost_budget_usd,
+                reserve_minutes=budget_spec.finalization_reserve_seconds / 60.0,
+            )
+            self._write_task_statement(**self._task_budget)
+            # The harness's own setup session, once, before the evaluation is
+            # registered: a domain statement and prepared resources. The data
+            # copy is pinned across it and across the maintainer's session,
+            # which carries the harness's setup module too.
+            campaign = Path(self.search_strategy.workspace_dir)
+            pinned_data = _directory_manifest(campaign / "kapso_datasets") if self.harness is not None else None
+            if self.harness is not None:
+                # The setup session's clamp reads a budget view too: without one
+                # a one-minute campaign would start a twenty-minute session.
+                self.search_strategy.observe_budget(BudgetSnapshot(
+                    iteration_index=0,
+                    max_iterations=experiment_max_iter,
+                    elapsed_seconds=self.get_elapsed_seconds(),
+                    cost_usd=self.get_cumulative_cost(),
+                    time_budget_seconds=budget_spec.time_budget_seconds,
+                    cost_budget_usd=budget_spec.cost_budget_usd,
+                    finalization_reserve_seconds=budget_spec.finalization_reserve_seconds,
+                    min_agent_timeout_seconds=budget_spec.min_agent_timeout_seconds,
+                ))
             self._run_harness_setup()
             # The maintainer's setup transaction runs inside the budgeted clock,
             # before iteration 1; on resume it validates registry consistency.

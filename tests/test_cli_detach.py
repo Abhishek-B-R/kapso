@@ -69,7 +69,7 @@ def test_build_detach_needs_an_output_directory(tmp_path, monkeypatch, popen, ca
     with pytest.raises(SystemExit) as stop:
         _run(monkeypatch, "build", "--goal", "g", "--detach")
     assert stop.value.code == 1
-    assert "--detach needs --output" in capsys.readouterr().out
+    assert "--detach needs --output" in capsys.readouterr().err
     assert popen == []
 
 

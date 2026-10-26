@@ -55,11 +55,32 @@
   "callback_primary_metric": null,
   "session_failures": [
     {
+      "label": "feedback/generic_exp_1",
+      "module": "feedback",
+      "host": "claude_code",
+      "exit": "error",
+      "error": "the invocation ended without a result event and the session was resumed (the archive predates the run entries)"
+    },
+    {
+      "label": "generic_exp_0",
+      "module": "implementation",
+      "host": "claude_code",
+      "exit": "error",
+      "error": "the invocation ended without a result event and the session was resumed (the archive predates the run entries)"
+    },
+    {
       "label": "generic_exp_1",
       "module": "implementation",
       "host": "claude_code",
       "exit": "timeout",
       "error": "Claude Code CLI exceeded its 182.63159913599975s deadline and was terminated"
+    },
+    {
+      "label": "verification/generic_exp_0",
+      "module": "verification",
+      "host": "claude_code",
+      "exit": "error",
+      "error": "the invocation ended without a result event and the session was resumed (the archive predates the run entries)"
     },
     {
       "label": "verification/generic_exp_1",

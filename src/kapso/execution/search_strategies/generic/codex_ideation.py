@@ -182,7 +182,9 @@ def _run_codex_turn(
 
     # Stream to a file, not a PIPE: codex output can exceed the 64KB pipe
     # buffer mid-run, which would deadlock a poll loop.
-    out_file = open(out_path, "w")
+    # Appended, never replaced: the run entry digests the lines this
+    # invocation added from the offset it started at.
+    out_file = open(out_path, "a")
     started = time.monotonic()
     process = subprocess.Popen(
         cmd,

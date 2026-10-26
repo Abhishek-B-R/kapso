@@ -39,7 +39,8 @@ def cmd_build(args) -> None:
     else:
         print(
             "Error: --goal, --goal-file or --brief is required "
-            "(a resume takes the brief from the checkpoint)"
+            "(a resume takes the brief from the checkpoint)",
+            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -47,14 +48,16 @@ def cmd_build(args) -> None:
         if not args.output:
             print(
                 "Error: --detach needs --output: the campaign directory is "
-                "where its status file lives and its log goes beside"
+                "where its status file lives and its log goes beside",
+                file=sys.stderr,
             )
             sys.exit(1)
         campaign = Path(args.output).expanduser().resolve()
         if args.log and _inside(Path(args.log).expanduser().resolve(), campaign):
             print(
                 "Error: --log must be outside --output: the campaign directory "
-                "must be empty for seeding, and the log would be in it"
+                "must be empty for seeding, and the log would be in it",
+                file=sys.stderr,
             )
             sys.exit(1)
         # The harness is loaded and its prerequisites checked before the

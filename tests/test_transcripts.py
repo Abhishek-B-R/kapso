@@ -14,6 +14,8 @@ import pytest
 from kapso.execution.coding_agents.transcripts import (
     CLAUDE_HOST,
     CODEX_HOST,
+    TRUNCATED_LINE,
+    codex_threads,
     _hook_decision,
     digest_claude,
     digest_codex,
@@ -136,12 +138,54 @@ def test_a_slice_from_a_resumed_turn_is_digested_alone():
 def test_an_event_shaped_line_that_does_not_parse_raises_and_others_are_skipped():
     assert digest_claude(["Reading prompt from stdin...\n", "not an event\n"])["turns"] == 0
     assert digest_codex(["2026-10-25T12:10:45Z ERROR codex_core::session: failed to load skill\n"])["turns"] == 0
+    # A malformed line in the body is not evidence: it raises.
     with pytest.raises(json.JSONDecodeError):
-        digest_claude(['{"type": "result", "num_turns": \n'])
+        digest_claude(['{"type": "result", "num_turns": }\n', '{"type":"system","subtype":"init"}\n'])
     with pytest.raises(json.JSONDecodeError):
-        digest_codex(['{"type":"item.completed", "item": \n'])
+        digest_codex(['{"type":"item.completed", "item": }\n', '{"type":"turn.completed","usage":{}}\n'])
     with pytest.raises(ValueError, match="no transcript digest for host 'aider'"):
         digest_stream("aider", [])
+
+
+def test_a_last_line_cut_by_a_kill_is_skipped_and_noted():
+    """A host killed mid-write leaves its last line without the closing
+    brace; the slice's digest keeps what came before and notes the cut
+    (the pull-request review's finding: the record used to raise, and
+    the adapter turned the raise into a failed result)."""
+    init = json.dumps({"type": "system", "subtype": "init", "session_id": "s", "model": "m", "mcp_servers": []})
+    digest = digest_claude([init + "\n", '{"type":"assistant","message":{"content":[{"type":"text","te\n'])
+    assert digest["cli_session_id"] == "s" and digest["errors"] == [TRUNCATED_LINE]
+    digest = digest_codex(['{"type":"thread.started","thread_id":"t"}\n', '{"type":"item.completed","item":{"ty\n'])
+    assert digest["cli_session_id"] == "t" and digest["errors"] == [TRUNCATED_LINE]
+
+
+def test_a_launcher_exit_with_no_thread_is_its_own_entry():
+    """A `codex exec` that died before its first event (a bad model, a
+    login, a quota) appends only the launcher's exit line; it is a thread
+    with no lines and that code, so the frame records the failure."""
+    lines = [
+        '{"type":"kapso.exit","role":"writer","code":1}\n',
+        '{"type":"thread.started","thread_id":"t2"}\n',
+        '{"type":"turn.completed","usage":{"input_tokens":1}}\n',
+        '{"type":"kapso.exit","role":"writer","code":0}\n',
+    ]
+    threads = codex_threads(lines)
+    assert [(len(thread["lines"]), thread["code"]) for thread in threads] == [(0, 1), (2, 0)]
+
+
+def test_a_delegates_final_usage_is_its_notifications():
+    """The task notification carries the delegate's final figures; the
+    progress events before it are snapshots on the way."""
+    events = [
+        {"type": "system", "subtype": "init", "session_id": "s", "model": "m", "mcp_servers": []},
+        {"type": "system", "subtype": "task_started", "task_type": "local_agent", "task_id": "a1",
+         "subagent_type": "auditor", "tool_use_id": "t1", "is_backgrounded": True},
+        {"type": "system", "subtype": "task_progress", "task_id": "a1", "usage": {"total_tokens": 10}},
+        {"type": "system", "subtype": "task_notification", "task_id": "a1", "status": "completed",
+         "summary": "done", "usage": {"total_tokens": 25, "tool_uses": 3}},
+    ]
+    [delegate] = digest_claude([json.dumps(event) + "\n" for event in events])["delegates"]
+    assert delegate["usage"] == {"total_tokens": 25, "tool_uses": 3} and delegate["report"] == "done"
 
 
 def test_a_hooks_decision_is_read_from_what_it_printed():

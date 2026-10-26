@@ -10,6 +10,7 @@ campaign is refused by name; `--branch` narrows to one attempt in full;
 `--json` round-trips through `TraceView(data)`; the generator reproduces
 the fixtures from the archives when they are present."""
 import filecmp
+import importlib.util
 import json
 import shutil
 import sys
@@ -26,10 +27,14 @@ from kapso.execution.observability import BuildStatus
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.trace import COMPLETE, PARTIAL, SCHEMA_VERSION, TraceView, failed_runs, read_trace
-from kapso.handles import Solution
+from kapso.handles import _ERROR_HEADLINE, Solution
 from kapso.harness.staging import SESSION_RECORD_FILE, SESSIONS_DIR
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "trace"
+# The fixtures' generator, a script beside them, loaded as a module.
+_GENERATOR = importlib.util.spec_from_file_location("build_fixture", FIXTURES / "build_fixture.py")
+build_fixture = importlib.util.module_from_spec(_GENERATOR)
+_GENERATOR.loader.exec_module(build_fixture)
 ARCHIVES = {
     "trading": "wp3/campaign1.tgz",
     "churn": "wp3/campaign2.tgz",
@@ -59,19 +64,28 @@ def test_the_trading_build_lays_out_the_void_the_timeout_and_the_cards():
     assert data["state"] == COMPLETE and data["branch"] is None
     header = data["header"]
     assert header["harness"]["name"] == "trading" and header["experience"] == ["mine at a9ddad3d302d, measured by you"]
-    assert header["cost"] == {"usd": 13.1687975, "coverage": "all", "unpriced_runs": 2}
+    # Three runs whose spend no figure covers: the two killed at their
+    # deadlines, and the judge's first run on the sixty-second floor, whose
+    # retry was a fresh host session; the two invocations that ended
+    # without a result and were resumed are covered by the resumed runs'
+    # cumulative figures.
+    assert header["cost"] == {"usd": 13.1687975, "coverage": "all", "unpriced_runs": 3}
     assert (header["stopped_reason"], header["stop_detail"], header["experiments"], header["rejected"]) == ("budget_exhausted", "time_budget", 2, 1)
     assert header["delivered"] == {"branch": None, "commit": None} and header["status"]["state"] == "done"
     first, second = view.attempts
     assert [session["label"] for session in first["sessions"]] == [
         "ideation/iter1/claude_code", "generic_exp_0", "verification/generic_exp_0", "feedback/generic_exp_0",
     ]
-    # The implementation was resumed twice, the verification once: one run
-    # entry per invocation, the cost the delta of the host's cumulative figure.
+    # The implementation ran as three host invocations (the first ended
+    # without a result event while its delegate still ran, and the session
+    # was resumed twice), the verification as two: one run entry per
+    # invocation, the cost the delta of the host's cumulative figure, the
+    # first resumed run carrying the whole figure so far.
     assert [len(session["runs"]) for session in first["sessions"]] == [1, 3, 2, 1]
     implementation = first["sessions"][1]
-    assert [run["exit"] for run in implementation["runs"]] == [EXIT_SUCCESS] * 3
-    assert [run["cost_usd"] for run in implementation["runs"]] == [3.92427, 0.0, 0.229677]
+    assert [run["exit"] for run in implementation["runs"]] == [EXIT_ERROR, EXIT_SUCCESS, EXIT_SUCCESS]
+    assert [run["cost_usd"] for run in implementation["runs"]] == [None, 3.92427, 0.229677]
+    assert [run["duration_seconds"] is None for run in implementation["runs"]] == [True, False, False]
     assert len({run["cli_session_id"] for run in implementation["runs"]}) == 1
     [delegate] = implementation["runs"][0]["delegates"]
     assert delegate["name"] == "lookahead-auditor" and delegate["report"].startswith("## Outcome")
@@ -87,7 +101,9 @@ def test_the_trading_build_lays_out_the_void_the_timeout_and_the_cards():
     [void] = data["voided"]
     assert void["node"] == 0 and void["reason"].startswith("void: ") and len(void["evidence"]) == 2
     assert [(failure["label"], failure["exit"], failure["every_run"]) for failure in data["failures"]] == [
-        ("generic_exp_1", EXIT_TIMEOUT, False), ("verification/generic_exp_1", EXIT_TIMEOUT, False),
+        ("feedback/generic_exp_1", EXIT_ERROR, False), ("generic_exp_0", EXIT_ERROR, False),
+        ("generic_exp_1", EXIT_TIMEOUT, False), ("verification/generic_exp_0", EXIT_ERROR, False),
+        ("verification/generic_exp_1", EXIT_TIMEOUT, False),
     ]
     assert data["delivered"] is None
     [setup] = data["sessions"]
@@ -112,7 +128,9 @@ def test_the_delivered_build_carries_its_verification_and_files():
     text = view.explain()
     assert "integrity       provided; intact" in text
     assert "hooks           4 fired in its sessions, none denied" in text
-    assert "failures        none in its sessions" in text
+    # Its three sessions each began with an invocation that ended without
+    # a result and was resumed: in its failures, as the record has them.
+    assert "failures        3 in its sessions" in text
 
 
 # ----------------------------------------------------------- the narrowing
@@ -259,20 +277,28 @@ def test_the_command_prints_the_text_the_json_and_refuses_an_unknown_branch(caps
 # ------------------------------------------------- the record's failed sessions
 
 def test_the_failed_runs_reach_the_record_and_its_summary_line():
-    assert failed_runs(FIXTURES / "trading") == [
-        {"label": "generic_exp_1", "module": "implementation", "host": CLAUDE_HOST, "exit": EXIT_TIMEOUT,
-         "error": "Claude Code CLI exceeded its 182.63159913599975s deadline and was terminated"},
-        {"label": "verification/generic_exp_1", "module": "verification", "host": CLAUDE_HOST, "exit": EXIT_TIMEOUT,
-         "error": "Claude Code CLI exceeded its deadline and was terminated"},
+    failures = failed_runs(FIXTURES / "trading")
+    assert [(failure["label"], failure["module"], failure["host"], failure["exit"]) for failure in failures] == [
+        ("feedback/generic_exp_1", "feedback", CLAUDE_HOST, EXIT_ERROR),
+        ("generic_exp_0", "implementation", CLAUDE_HOST, EXIT_ERROR),
+        ("generic_exp_1", "implementation", CLAUDE_HOST, EXIT_TIMEOUT),
+        ("verification/generic_exp_0", "verification", CLAUDE_HOST, EXIT_ERROR),
+        ("verification/generic_exp_1", "verification", CLAUDE_HOST, EXIT_TIMEOUT),
     ]
+    assert failures[2]["error"] == "Claude Code CLI exceeded its 182.63159913599975s deadline and was terminated"
     solution = Solution.open(FIXTURES / "trading")
-    assert solution.session_failures == failed_runs(FIXTURES / "trading")
+    assert solution.session_failures == failures
     lines = solution.explain().splitlines()
     [line] = [line for line in lines if line.startswith("Sessions failed:")]
-    implementation, verification = solution.session_failures
+    # One clause per kind of session, with its count and the last error's
+    # first line, clipped for the summary's width.
+    def headline(error: str) -> str:
+        return error if len(error) <= _ERROR_HEADLINE else error[: _ERROR_HEADLINE - 1] + "…"
+
     assert line == (
-        f"Sessions failed: implementation on claude_code ×1 ({implementation['error']}); "
-        f"verification on claude_code ×1 ({verification['error']})"
+        f"Sessions failed: feedback on claude_code ×1 ({headline(failures[0]['error'])}); "
+        f"implementation on claude_code ×2 ({headline(failures[2]['error'])}); "
+        f"verification on claude_code ×2 ({headline(failures[4]['error'])})"
     )
     [experiments] = [index for index, text in enumerate(lines) if text.startswith("Experiments:")]
     assert lines.index(line) == experiments + 1
@@ -286,9 +312,6 @@ def test_the_generator_reproduces_the_fixture_from_its_archive(name, tmp_path):
     archive = RUNS / ARCHIVES[name]
     if not archive.is_file():
         pytest.skip(f"the archive {archive} is not on this machine")
-    sys.path.insert(0, str(FIXTURES))
-    import build_fixture
-    sys.path.pop(0)
     rebuilt = tmp_path / name
     build_fixture.build(archive, rebuilt)
     build_fixture.render(rebuilt)

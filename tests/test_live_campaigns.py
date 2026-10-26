@@ -110,6 +110,19 @@ def test_watch_with_no_path_lists_and_follow_needs_a_campaign(tmp_path, monkeypa
     assert capsys.readouterr().out.startswith("nothing running or waiting")
 
 
+def test_the_listing_says_dead_for_a_writer_that_is_gone(tmp_path):
+    """The single-campaign screen says DEAD when the pid is gone; the
+    listing said RUNNING from the file's own word (the pull-request
+    review's finding)."""
+    registry = tmp_path / "registry.jsonl"
+    campaign(tmp_path, "dead", dead=True)
+    campaign(tmp_path, "stale", stale=True)
+    campaign(tmp_path, "live")
+    lines = render_listing(campaign_listing(registry, tmp_path / "status", everything=True)).splitlines()
+    states = {line.split()[-1].rsplit("/", 1)[-1]: line.split()[0] for line in lines}
+    assert states == {"dead": "DEAD", "stale": "DEAD", "live": "RUNNING"}
+
+
 def test_a_launch_refused_at_a_check_is_registered_all_the_same(tmp_path, monkeypatch):
     """The WP6 proof run's first launch died at the evaluation suite's
     refusal before the campaign directory existed, and `kapso watch --all`

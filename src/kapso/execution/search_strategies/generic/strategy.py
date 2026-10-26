@@ -619,6 +619,7 @@ class GenericSearch(SearchStrategy):
             parent_node_id=parent.node_id,
             solution=solution,
             workspace_dir=self.workspace_dir,
+            iteration=self.iteration_count,
         )
         node.started_at = iteration_started_at
         node.phase_telemetry["ideation"] = ideation_telemetry
@@ -1568,7 +1569,7 @@ class GenericSearch(SearchStrategy):
             # the campaign; nothing is staged into it without a harness.
             session_dir=Path(session_dir) if session_dir else Path(self.workspace_dir),
             campaign_dir=Path(self.workspace_dir),
-            session_id=session_id, host=host_for(agent_type) if self.harness is not None else agent_type,
+            session_id=session_id, host=host_for(agent_type),
         )
 
     def _ideation_artifacts_dir(self) -> str:

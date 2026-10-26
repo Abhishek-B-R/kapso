@@ -60,6 +60,7 @@ HEADLINE_WIDTH = 160
 # line after it along.
 TITLE_WIDTH = 40
 STATUS_DONE = "done"
+WAITING_FOR_USER = "waiting_for_user"
 # A unified diff's file header, the path after it.
 DIFF_HEADER = re.compile(r"^diff --git a/(.+?) b/", re.MULTILINE)
 STATUS_RUNNING = "running"
@@ -171,7 +172,12 @@ def _pull_events(campaign: Path) -> List[Dict[str, Any]]:
 
 
 def _state(status, record, checkpoint) -> str:
+    """Complete: the status says done, the record is there and as new as
+    the checkpoint, and the campaign is not waiting on the person (a
+    paused campaign has a record, and is still alive to the listing)."""
     if status is None or status["state"] != STATUS_DONE or record is None or checkpoint is None:
+        return PARTIAL
+    if record.stopped_reason == WAITING_FOR_USER:
         return PARTIAL
     return COMPLETE if record.experiments_total == checkpoint.completed_iterations else PARTIAL
 
@@ -212,12 +218,11 @@ def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sourc
         "cost": {
             "usd": cost,
             "coverage": COVERAGE_CLAUDE if any(session["host"] == CODEX_HOST for session in sessions) else COVERAGE_ALL,
-            # The Claude Code runs that ended with no cost figure (killed
-            # before their result event): their spend is not in `usd`.
-            "unpriced_runs": sum(
-                1 for session in sessions if session["host"] == CLAUDE_HOST
-                for run in session["runs"] if run["cost_usd"] is None
-            ),
+            # The Claude Code runs whose spend is in no figure: ended with
+            # no cost figure (killed before their result event) and not
+            # followed by a priced run of the same host session, whose
+            # cumulative figure would cover them.
+            "unpriced_runs": sum(_unaccounted_runs(session) for session in sessions if session["host"] == CLAUDE_HOST),
         },
         "stopped_reason": _first(
             record.stopped_reason if record is not None else None,
@@ -244,7 +249,24 @@ def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sourc
             {"state": status["state"], "phase": status.get("phase"), "error": status.get("error")}
             if status is not None else None
         ),
+        # What the person must answer when the campaign paused for them.
+        "requests": len(record.requests) if record is not None else 0,
     }
+
+
+def _unaccounted_runs(session: Dict[str, Any]) -> int:
+    runs = session["runs"]
+    count = 0
+    for index, run in enumerate(runs):
+        if run["cost_usd"] is not None:
+            continue
+        covered = any(
+            later["cli_session_id"] == run["cli_session_id"] and later["cost_cumulative"] is not None
+            for later in runs[index + 1:]
+        )
+        if not covered:
+            count += 1
+    return count
 
 
 def _owner(label: str) -> Tuple[str, Any]:
@@ -262,12 +284,13 @@ def _owner(label: str) -> Tuple[str, Any]:
 
 def _attempts(nodes, sessions, pulls) -> Tuple[List[Dict[str, Any]], Set[str]]:
     """One attempt per node of the checkpoint's history, in order, with
-    the sessions that belong to it (its branch's, and the ideation of
-    its iteration: the n-th node is iteration n's)."""
+    the sessions that belong to it: its branch's, and the ideation of
+    the iteration the node records (several nodes share one iteration
+    under node expansion, and share its ideation session)."""
     attempts: List[Dict[str, Any]] = []
     attached: Set[str] = set()
-    for index, node in enumerate(nodes):
-        keys = {("branch", node["branch_name"]), ("iteration", index + 1)}
+    for node in nodes:
+        keys = {("branch", node["branch_name"]), ("iteration", node["iteration"])}
         own = sorted(
             (session for session in sessions if _owner(session["label"]) in keys),
             key=lambda session: (PHASE_ORDER.get(session["module"], len(PHASE_ORDER)), session["label"]),
@@ -405,17 +428,23 @@ def _failures(sessions) -> List[Dict[str, Any]]:
 
 
 def _delivered(record, nodes) -> Optional[Dict[str, Any]]:
-    """The delivered candidate: the files it changed are those its
-    branch's diff against the seed names (the node's `code_diff`), not
+    """The delivered candidate: the files it changed against the seed are
+    those the diffs along its ancestry name (each node's `code_diff` is
+    against its parent, so a child inherits its parent's changes), not
     what a session's editing tools wrote, which a shell command bypasses."""
     if record is None or record.branch is None:
         return None
+    by_id = {node["node_id"]: node for node in nodes}
     node = next((node for node in nodes if node["branch_name"] == record.branch), None)
+    files: Set[str] = set()
+    while node is not None:
+        files.update(diff_files(node["code_diff"]))
+        node = by_id.get(node["parent_node_id"]) if node["parent_node_id"] is not None else None
     return {
         "branch": record.branch,
         "commit": record.commit,
         "base_commit": record.base_commit,
-        "files_changed": diff_files(node["code_diff"]) if node is not None else [],
+        "files_changed": sorted(files),
         "verification": record.verification,
         "feedback": record.feedback,
     }
@@ -542,6 +571,9 @@ def _state_line(data: Dict[str, Any]) -> str:
         return f"{PARTIAL}: no status yet"
     if status["state"] == STATUS_FAILED:
         return f"{PARTIAL}: the campaign failed: {status['error']}"
+    if data["header"]["stopped_reason"] == WAITING_FOR_USER:
+        count = data["header"]["requests"]
+        return f"{PARTIAL}: the campaign is waiting on you ({count} request{'s' if count != 1 else ''}; kapso inbox)"
     if status["state"] == STATUS_DONE:
         return f"{PARTIAL}: the record predates the checkpoint's last write"
     phase = f" (phase {status['phase']})" if status["phase"] else ""
@@ -755,10 +787,13 @@ def _delivered_lines(data: Dict[str, Any]) -> List[str]:
         evaluation = own["evaluation"]
         integrity = f"{evaluation['provenance']}; " + (f"integrity error: {evaluation['integrity_error']}" if evaluation["integrity_error"] else "intact")
         lines.append(_row("integrity", integrity))
-        fired, denials = 0, []
+        fired, denials, unreported = 0, [], 0
         for session in own["sessions"]:
             for run in session["runs"]:
-                for hook in run["hooks"] or []:
+                if run["hooks"] is None:
+                    unreported += 1
+                    continue
+                for hook in run["hooks"]:
                     fired += 1
                     if hook["decision"] == DENY:
                         denials.append(f"{session['label']}: {hook['name']} ({hook['event']}){': ' + hook['reason'] if hook['reason'] else ''}")
@@ -769,6 +804,8 @@ def _delivered_lines(data: Dict[str, Any]) -> List[str]:
             hooks = "none fired in its sessions"
         else:
             hooks = "none staged in its sessions (no hook could deny anything)"
+        if unreported:
+            hooks += f"; {unreported} run{'s' if unreported != 1 else ''} on a host that reports no hook events"
         lines.append(_row("hooks", hooks))
         for denial in denials:
             lines.append(f"  {denial}")
@@ -779,8 +816,12 @@ def _delivered_lines(data: Dict[str, Any]) -> List[str]:
         lines.append(_row("failures", "none in its sessions" if not failed else f"{len(failed)} in its sessions"))
         for line in failed:
             lines += _indent(line, "  ")
-    lines.append("judge")
-    lines += _indent(delivered["feedback"] or "(no feedback recorded)", "  ")
+    if data["branch"] is not None:
+        lines.append("judge")
+        lines += _indent(delivered["feedback"] or "(no feedback recorded)", "  ")
+    else:
+        headline = _headline(delivered["feedback"]) if delivered["feedback"] else "(no feedback recorded)"
+        lines.append(_row("judge", f"{headline}  (--branch {delivered['branch']} for the words in full)"))
     return lines
 
 

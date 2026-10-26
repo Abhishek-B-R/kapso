@@ -312,7 +312,7 @@ def test_without_a_harness_the_crews_sessions_are_unchanged(tmp_path):
     )
     launcher = (run_dir / "run-role.sh").read_text()
     assert 'cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec --json' in launcher
-    assert "export" not in launcher and "-c 'model_reasoning_effort=\"xhigh\"' | tee -a \"$STREAM\"" in launcher
+    assert "export" not in launcher and "-c 'model_reasoning_effort=\"xhigh\"' >> \"$STREAM\"" in launcher
     # Nothing staged; the sessions' records exist all the same, with no harness.
     assert not (run_dir / ".agents").exists() and not (run_dir / ".claude" / "skills").exists()
     for session in ("lead", "workers"):

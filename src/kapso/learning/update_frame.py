@@ -176,23 +176,27 @@ class UpdateFrame:
         prompt = (CREW_DIR / "lead_prompt.md").read_text()
         if staged_lead.guidance:
             prompt += "\n\n" + staged_lead.guidance
-        agent.generate_code(prompt, timeout_seconds=timeout)
+        # The workers' invocations are recorded however the lead's session
+        # ends: the launcher runs under the lead, so no adapter saw them.
+        try:
+            agent.generate_code(prompt, timeout_seconds=timeout)
 
-        findings = self._validate(run_dir, before_dir, batch)
-        repair_rounds = self.crew_config["repair_rounds"]
-        rounds_used = 0
-        while findings and rounds_used < repair_rounds:
-            rounds_used += 1
-            numbered = "\n".join(f"{i+1}. {f}" for i, f in enumerate(findings))
-            agent.generate_code(
-                prompt + "\n\nThe frame's validation found the following "
-                "violations. Fix each in place (bank/ and work/ only), then "
-                "stop:\n" + numbered,
-                timeout_seconds=timeout,
-            )
             findings = self._validate(run_dir, before_dir, batch)
-        agent.cleanup()
-        self._record_workers(staged_workers, self.crew_config["worker"]["model"])
+            repair_rounds = self.crew_config["repair_rounds"]
+            rounds_used = 0
+            while findings and rounds_used < repair_rounds:
+                rounds_used += 1
+                numbered = "\n".join(f"{i+1}. {f}" for i, f in enumerate(findings))
+                agent.generate_code(
+                    prompt + "\n\nThe frame's validation found the following "
+                    "violations. Fix each in place (bank/ and work/ only), then "
+                    "stop:\n" + numbered,
+                    timeout_seconds=timeout,
+                )
+                findings = self._validate(run_dir, before_dir, batch)
+            agent.cleanup()
+        finally:
+            self._record_workers(staged_workers, self.crew_config["worker"]["model"])
         if findings:
             raise RuntimeError(
                 f"update run {lr_id} failed validation after {rounds_used} "
@@ -223,6 +227,8 @@ class UpdateFrame:
             digest = digest_codex(thread["lines"])
             if thread["code"] is None:
                 error: Optional[str] = "the launcher recorded no exit: the lead's session ended first"
+            elif not thread["lines"]:
+                error = f"codex exec exited with code {thread['code']} before starting a thread"
             elif thread["code"] != 0:
                 error = f"codex exec exited with code {thread['code']}"
             elif not digest["turns"]:
@@ -495,8 +501,10 @@ status=0
 {exports}cat "role-prompts/$ROLE.md"{guidance_file} "$ASSIGNMENT" | codex exec --json \\
   --sandbox workspace-write --skip-git-repo-check --color never \\
   --output-last-message "$OUT" -m "{worker['model']}" \\
-  -c 'model_reasoning_effort="{worker['effort']}"'{extra} | tee -a "$STREAM" || status=$?
+  -c 'model_reasoning_effort="{worker['effort']}"'{extra} >> "$STREAM" || status=$?
 printf '{{"type":"kapso.exit","role":"%s","code":%s}}\\n' "$ROLE" "$status" >> "$STREAM"
+# The lead reads the worker's final message, not its event stream.
+cat "$OUT" 2>/dev/null
 exit "$status"
 """
         launcher_path = run_dir / "run-role.sh"

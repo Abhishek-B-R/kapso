@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from kapso.execution.inbox import launch_receipt_path, read_launch_receipt
+import kapso.cli.watch as watch_module
 from kapso.cli.watch import cmd_watch
 from kapso.execution.observability import BuildStatus, OperationStatusView, source_line
 
@@ -50,8 +51,8 @@ def test_a_source_line_per_kind():
     assert source_line(index) == "org-x (index 7c2d9e1f0000), reported by others"
 
 
-def watch(path, follow=False):
-    return cmd_watch(SimpleNamespace(path=str(path), json=False, follow=follow))
+def watch(path, follow=False, as_json=False):
+    return cmd_watch(SimpleNamespace(path=str(path), json=as_json, follow=follow))
 
 
 def test_the_receipt_tells_starting_from_stopped(tmp_path, capsys):
@@ -84,6 +85,68 @@ def test_the_receipt_tells_starting_from_stopped(tmp_path, capsys):
     receipt.write_text("{}")
     with pytest.raises(ValueError, match="a launch receipt carries a pid and a log"):
         read_launch_receipt(campaign)
+
+
+def test_the_launch_state_is_json_too_and_follow_ends_when_the_child_dies(tmp_path, capsys, monkeypatch):
+    """Before a status, `--json` prints the launch state as data (a plugin
+    reads it); `--follow` on a starting child re-reads the receipt while
+    it waits, so a child that dies at a launch check ends the wait with
+    the stopped line and exit 1 (the pull-request review's findings)."""
+    campaign = tmp_path / "campaign"
+    log = tmp_path / "campaign.log"
+    receipt = launch_receipt_path(campaign)
+    receipt.write_text(json.dumps({"pid": os.getpid(), "log": str(log), "argv": ["build"],
+                                   "started_at": "2026-10-25T22:07:49+00:00"}))
+    with pytest.raises(SystemExit):
+        watch(campaign, as_json=True)
+    state = json.loads(capsys.readouterr().out)
+    assert state["state"] == "starting" and state["pid"] == os.getpid() and state["log"] == str(log)
+    with pytest.raises(SystemExit):
+        watch(tmp_path / "nowhere", as_json=True)
+    assert json.loads(capsys.readouterr().out)["state"] == "no_status"
+
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    polls = []
+
+    def sleep(seconds):
+        # The child dies while the watcher waits: the receipt now names a
+        # pid that is gone.
+        polls.append(seconds)
+        receipt.write_text(json.dumps({"pid": gone.pid, "log": str(log), "argv": ["build"],
+                                       "started_at": "2026-10-25T22:07:49+00:00"}))
+
+    monkeypatch.setattr(watch_module.time, "sleep", sleep)
+    with pytest.raises(SystemExit) as stopped:
+        watch(campaign, follow=True)
+    assert stopped.value.code == 1 and len(polls) == 1
+    out = capsys.readouterr().out
+    assert out.startswith(f"starting (pid {os.getpid()}") and out.strip().endswith(f"stopped before writing a status; the log says why: {log}")
+
+
+def test_a_receipt_newer_than_the_status_is_a_resume_that_started_or_died(tmp_path, capsys):
+    """A detached resume writes a receipt beside a campaign that has a
+    status from its earlier run: a live pid is reported above the earlier
+    screen, a dead one as stopped, instead of the stale `DONE`."""
+    campaign = tmp_path / "campaign"
+    (campaign / ".kapso").mkdir(parents=True)
+    status = BuildStatus(campaign / ".kapso" / "status.json", heartbeat_seconds=60)
+    status.done(stopped_reason="max_iterations")
+    receipt = launch_receipt_path(campaign)
+    later = "2099-01-01T00:00:00+00:00"
+    receipt.write_text(json.dumps({"pid": os.getpid(), "log": str(tmp_path / "campaign.log"), "argv": ["build", "--resume"],
+                                   "started_at": later}))
+    watch(campaign)
+    out = capsys.readouterr().out
+    assert out.startswith(f"starting again (pid {os.getpid()}") and "DONE" in out
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    receipt.write_text(json.dumps({"pid": gone.pid, "log": str(tmp_path / "campaign.log"), "argv": ["build", "--resume"],
+                                   "started_at": later}))
+    with pytest.raises(SystemExit) as stopped:
+        watch(campaign)
+    assert stopped.value.code == 1
+    assert capsys.readouterr().out.strip() == f"stopped before writing a status; the log says why: {tmp_path / 'campaign.log'}"
 
 
 def test_the_receipt_is_read_before_the_directory_exists(tmp_path, capsys):

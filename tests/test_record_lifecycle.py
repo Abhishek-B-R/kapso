@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
+import kapso.execution.orchestrator as orchestrator_module
 import kapso.kapso as kapso_module
+from kapso.execution.inbox import launch_receipt_path
 from kapso.execution.observability import BuildStatus
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.run_checkpoint import RunCheckpointStore
@@ -68,6 +70,45 @@ def test_a_delivery_that_raises_is_published_with_a_checkpoint_a_resume_can_fini
     resumed = Kapso().build(output=str(workspace), resume=True)
     assert status_of(workspace)["state"] == "done"
     assert Solution.open(str(workspace)).stopped_reason == resumed.stopped_reason
+
+
+def test_a_constructor_that_raises_after_the_status_is_born_is_published(tmp_path, monkeypatch):
+    """The strategy's constructor makes the status file, and what raises
+    after that, in its own tail or the orchestrator's setup, has no
+    writer left to publish it: the facade marks the file failed (the
+    pull-request review's finding)."""
+    patch_engine(monkeypatch, real_strategy=True)
+    workspace = tmp_path / "campaign"
+    git_workspace(workspace)
+
+    def broken_store(*args, **kwargs):
+        raise RuntimeError("the history store could not open")
+
+    monkeypatch.setattr(orchestrator_module, "ExperimentHistoryStore", broken_store)
+    with pytest.raises(RuntimeError, match="could not open"):
+        Kapso().build("Raise the Sharpe above 1", output=str(workspace), budget=Budget(experiments=1))
+    status = status_of(workspace)
+    assert status["state"] == "failed" and "could not open" in status["error"]
+    # The receipt a detached launch left is gone once the status was born.
+    assert not launch_receipt_path(workspace).exists()
+
+
+def test_a_budget_that_fails_to_resolve_is_published(tmp_path, monkeypatch):
+    """`solve()`'s protected region starts at its first statement: a
+    budget that fails to resolve, before any session, is the campaign's
+    failure on the status (the pull-request review's finding)."""
+    patch_engine(monkeypatch)
+    workspace = tmp_path / "campaign"
+    git_workspace(workspace)
+
+    def broken_resolve(*args, **kwargs):
+        raise ValueError("a reserve larger than the budget")
+
+    monkeypatch.setattr(orchestrator_module.BudgetSpec, "resolve", staticmethod(broken_resolve))
+    with pytest.raises(ValueError, match="reserve larger"):
+        Kapso().build("Raise the Sharpe above 1", output=str(workspace), budget=Budget(experiments=1))
+    status = status_of(workspace)
+    assert status["state"] == "failed" and "reserve larger" in status["error"]
 
 
 def test_a_harness_setup_that_raises_is_published(tmp_path, monkeypatch):

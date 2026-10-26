@@ -7,6 +7,8 @@ prevent. The resolver's own behaviour is pinned in test_preflight.py —
 what lives here is the CLI contract: scope, exit code, and --config.
 """
 
+import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -157,9 +159,6 @@ def test_without_models_no_live_probe_is_ever_spent(full_machine, monkeypatch):
 def test_json_is_the_same_report_as_data(full_machine, bare_machine_rows, capsys):
     """`--json`: the scope, this install's facts and every row, nothing
     else on stdout; the exit code is the text form's."""
-    import json
-    import sys
-
     cmd_doctor(args(verb="build", json=True))
     report = json.loads(capsys.readouterr().out)
     assert report["scope"] == "kapso doctor build" and report["ok"] is True

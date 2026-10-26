@@ -42,6 +42,7 @@ load_dotenv(find_dotenv(usecwd=True))
 
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.observability import (
+    mark_failed,
     KnowledgeStatus,
     LessonStatus,
     OperationStatusView,
@@ -101,6 +102,7 @@ from kapso.harness import (
 from kapso.harness import BUNDLED_ROOT
 from kapso.harness.staging import host_for
 from kapso.execution.inbox import (
+    launch_receipt_path,
     Request,
     idea_line,
     inbox_path,
@@ -1409,30 +1411,39 @@ class Kapso:
         )
 
         # Create orchestrator
-        orchestrator = OrchestratorAgent(
-            handler,
-            config_path=self.config_path,
-            mode=mode,
-            coding_agent=coding_agent,
-            knowledge_search=self.knowledge_search if self.knowledge_search.is_enabled() else None,
-            # The orchestration layer owns the experiment workspace (a git
-            # repo with branches); `output` IS that workspace, so the
-            # solution's trace is a real git repo with the record under
-            # .kapso/.
-            workspace_dir=output_path,
-            resume=resume,
-            harness=harness,
-            experience=[vars(source.ref()) for source in self._experience],
-            iteration_evaluator=iteration_evaluator,
-            iteration_evaluator_failure_policy=(
-                iteration_evaluator_failure_policy
-            ),
-            initial_repo=resolved_repo,
-            eval_dir=eval_dir,
-            data_dir=data_dir,
-            goal=goal_text,
-            strategy_params_overrides=_memory_overrides(serving_plan),
-        )
+        # The status is born inside this construction (the strategy's
+        # constructor); whatever raises after that, in the constructor's
+        # tail or the orchestrator's own setup, is published on the file,
+        # whose writer went with the exception (wp6-observability.md).
+        try:
+            orchestrator = OrchestratorAgent(
+                handler,
+                config_path=self.config_path,
+                mode=mode,
+                coding_agent=coding_agent,
+                knowledge_search=self.knowledge_search if self.knowledge_search.is_enabled() else None,
+                # The orchestration layer owns the experiment workspace (a git
+                # repo with branches); `output` IS that workspace, so the
+                # solution's trace is a real git repo with the record under
+                # .kapso/.
+                workspace_dir=output_path,
+                resume=resume,
+                harness=harness,
+                experience=[vars(source.ref()) for source in self._experience],
+                iteration_evaluator=iteration_evaluator,
+                iteration_evaluator_failure_policy=(
+                    iteration_evaluator_failure_policy
+                ),
+                initial_repo=resolved_repo,
+                eval_dir=eval_dir,
+                data_dir=data_dir,
+                goal=goal_text,
+                strategy_params_overrides=_memory_overrides(serving_plan),
+            )
+        finally:
+            in_flight = sys.exc_info()[1]
+            if in_flight is not None and output_path is not None:
+                mark_failed(Path(output_path) / ".kapso" / "status.json", in_flight)
 
         # Stage serving now that the workspace exists (see the plan/stage
         # note above): the clones, the record and the intro file the
@@ -1505,6 +1516,11 @@ class Kapso:
                 status = getattr(orchestrator.search_strategy, "operation_status", None)
                 if status is not None and not status.terminal:
                     status.failed(in_flight)
+
+        # The status is born, so the launch receipt has told what it had
+        # to: a campaign that ran is known by its status from here on, and
+        # a deleted one is not listed forever on a leftover receipt.
+        launch_receipt_path(Path(orchestrator.search_strategy.workspace.workspace_dir)).unlink(missing_ok=True)
 
         # The delivery runs inside the orchestrator's protected region,
         # after the search and before the terminal publish: a watcher that

@@ -47,29 +47,36 @@ def cmd_watch(args) -> None:
         else:
             print("nothing running or waiting" + ("" if args.all else "; kapso watch --all lists every campaign the registry knows"))
         return
+    campaign = Path(args.path).expanduser()
+    receipt = None if campaign.is_file() else read_launch_receipt(campaign)
     if OperationStatusView.locate(args.path) is None:
-        campaign = Path(args.path).expanduser()
         expected = campaign / ".kapso" / "status.json" if campaign.is_dir() else campaign
         # A detached launch left a receipt beside the log: the child's pid
         # tells a campaign still starting from one that died before its
         # status, and the log says why (wp6-observability.md, change 7).
-        receipt = None if campaign.is_file() else read_launch_receipt(campaign)
-        if receipt is None:
-            print(
-                f"no status yet at {expected} — the campaign is still starting "
-                "(seeding its workspace), or nothing runs there"
-            )
-        elif pid_alive(receipt["pid"]) is False:
-            print(f"stopped before writing a status; the log says why: {receipt['log']}")
+        _say_launch_state(receipt, expected, args.json)
+        if receipt is not None and pid_alive(receipt["pid"]) is False:
             sys.exit(1)
-        else:
-            launched = datetime.fromisoformat(receipt["started_at"])
-            age = (datetime.now(timezone.utc) - launched).total_seconds()
-            print(f"starting (pid {receipt['pid']}, launched {age:.0f}s ago; log: {receipt['log']})")
         if not args.follow:
             sys.exit(1)
         while OperationStatusView.locate(args.path) is None:
             time.sleep(_WATCH_FALLBACK_SECONDS)
+            # The child may die at a launch check while we wait.
+            receipt = read_launch_receipt(campaign)
+            if receipt is not None and pid_alive(receipt["pid"]) is False and OperationStatusView.locate(args.path) is None:
+                _say_launch_state(receipt, expected, args.json)
+                sys.exit(1)
+    elif receipt is not None and _newer_than_status(receipt, args.path):
+        # A detached resume wrote a receipt after the status's last write:
+        # its child is starting, or died at a launch check, and the status
+        # on disk is the earlier slice's.
+        if pid_alive(receipt["pid"]) is False:
+            _say_launch_state(receipt, campaign, args.json)
+            sys.exit(1)
+        if not args.json:
+            launched = datetime.fromisoformat(receipt["started_at"])
+            age = (datetime.now(timezone.utc) - launched).total_seconds()
+            print(f"starting again (pid {receipt['pid']}, launched {age:.0f}s ago; log: {receipt['log']}); the status below is the earlier run's")
     view = Kapso.status(args.path)
     if args.json:
         print(json.dumps(view.data, indent=1))
@@ -85,6 +92,34 @@ def cmd_watch(args) -> None:
         if view.state in ("done", "failed"):
             return
         time.sleep(interval)
+
+
+def _say_launch_state(receipt, expected: Path, as_json: bool) -> None:
+    """The line (or the JSON) for a campaign with no status: starting on a
+    live pid, stopped before its status on a dead one, or no launch known."""
+    if receipt is None:
+        state = {"state": "no_status", "path": str(expected)}
+        line = (
+            f"no status yet at {expected} — the campaign is still starting "
+            "(seeding its workspace), or nothing runs there"
+        )
+    elif pid_alive(receipt["pid"]) is False:
+        state = {"state": "stopped", "pid": receipt["pid"], "log": receipt["log"], "started_at": receipt["started_at"]}
+        line = f"stopped before writing a status; the log says why: {receipt['log']}"
+    else:
+        launched = datetime.fromisoformat(receipt["started_at"])
+        age = (datetime.now(timezone.utc) - launched).total_seconds()
+        state = {"state": "starting", "pid": receipt["pid"], "log": receipt["log"], "started_at": receipt["started_at"]}
+        line = f"starting (pid {receipt['pid']}, launched {age:.0f}s ago; log: {receipt['log']})"
+    print(json.dumps(state, indent=1) if as_json else line)
+
+
+def _newer_than_status(receipt, path) -> bool:
+    """Whether the receipt's launch came after the status's last write."""
+    view = Kapso.status(path)
+    launched = datetime.fromisoformat(receipt["started_at"])
+    last_write = datetime.fromisoformat(view.data.get("finished_at") or view.data["heartbeat_at"])
+    return launched > last_write
 
 
 def add_parser(subparsers):

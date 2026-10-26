@@ -36,7 +36,7 @@ from pathlib import Path
 import yaml
 
 from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_SUCCESS, EXIT_TIMEOUT, append_run, relative_files, run_entry
-from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, digest_claude
+from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, digest_claude, truncated
 from kapso.execution.run_checkpoint import RunCheckpoint
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.trace import FEEDBACK, IDEATION, IMPLEMENTATION, VERIFICATION, failed_runs, read_trace
@@ -52,11 +52,14 @@ CAMPAIGN_PLACEHOLDER = "<campaign>"
 OLD_RECORD_FILE = "harness.json"
 EVENT_HEAD = "{"
 RESULT_EVENT = "result"
+# The events a host emits before it announces itself: its session hooks.
+HOOK_EVENTS = ("hook_started", "hook_response")
 PHASES = (IDEATION, IMPLEMENTATION, VERIFICATION, FEEDBACK)
 SETUP_LABEL = "harness_setup"
 SETUP_MODULE = "setup"
 IMPLEMENTATION_FAILED = "Implementation failed: "
 DEADLINE_ERROR = "Claude Code CLI exceeded its deadline and was terminated"
+ENDED_WITHOUT_RESULT = "the invocation ended without a result event and the session was resumed (the archive predates the run entries)"
 KEPT_RECORDS = ("status.json", "launch.json", "experiment_history.json")
 VERIFICATION_KEPT = ("verdict.json", "evaluation_output.txt")
 
@@ -134,8 +137,10 @@ def _build_from(campaign: Path, fixture: Path) -> None:
     defaults = SearchNode(node_id=0).to_dict()
     checkpoint["schema_version"] = RunCheckpoint.SCHEMA_VERSION
     checkpoint.setdefault("experience", [])
+    # The archives predate the node's `iteration`: one node per iteration
+    # in every archived campaign, so the n-th node is iteration n's.
     checkpoint["strategy_state"]["node_history"] = [
-        {**defaults, **node, "agent_output": ""} for node in nodes
+        {**defaults, **node, "iteration": number, "agent_output": ""} for number, node in enumerate(nodes, start=1)
     ]
     RunCheckpoint.from_dict(checkpoint)
     (out / "run_state.json").write_text(rebase(json.dumps(checkpoint, indent=2) + "\n"), encoding="utf-8")
@@ -213,20 +218,36 @@ def _session_at(moment: datetime, windows: dict) -> str:
 
 
 def _run_entries(stream: Path, label: str, window: tuple, node: dict | None, session_dir: str) -> list:
-    """One entry per invocation in a Claude Code stream: a slice ends at
-    its `result` event; a trailing slice without one was killed at its
-    deadline. The files changed are the edit tools' inputs, relative to
-    the session directory as the archive recorded it."""
+    """One entry per invocation in a Claude Code stream: an invocation
+    begins at its `system/init` event (the hook events just before it
+    belong to it), and holds every turn until the next init; one without
+    a `result` event was killed at its deadline. The files changed are
+    the edit tools' inputs, relative to the session directory as the
+    archive recorded it."""
     lines = stream.read_text(encoding="utf-8").splitlines(keepends=True)
-    slices, current = [], []
+    parsed = []
     for line in lines:
-        current.append(line)
-        event = json.loads(line) if line.startswith(EVENT_HEAD) else {}
-        if event.get("type") == RESULT_EVENT:
-            slices.append((current, event))
-            current = []
-    if any(line.strip() for line in current):
-        slices.append((current, None))
+        stripped = line.rstrip("\n")
+        event = json.loads(stripped) if stripped.startswith(EVENT_HEAD) and not truncated(stripped) else {}
+        parsed.append((line, event))
+    groups: list = []          # one list of (line, event) per invocation
+    current: list = []
+    for line, event in parsed:
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            carried = []
+            while current and current[-1][1].get("subtype") in HOOK_EVENTS:
+                carried.insert(0, current.pop())
+            if current:
+                groups.append(current)
+            current = carried + [(line, event)]
+            continue
+        current.append((line, event))
+    if any(line.strip() for line, _ in current):
+        groups.append(current)
+    slices = []
+    for group in groups:
+        results = [event for _, event in group if event.get("type") == RESULT_EVENT]
+        slices.append(([line for line, _ in group], results[-1] if results else None))
     entries = []
     clock = window[0]
     session_id = model = None
@@ -236,21 +257,30 @@ def _run_entries(stream: Path, label: str, window: tuple, node: dict | None, ses
         # session, and a killed slice continues the one before it.
         session_id = digest["cli_session_id"] or (result or {}).get("session_id") or session_id
         model = digest["model"] or model
-        if result is None:
+        if result is None and number < len(slices):
+            # The process ended without a result event and the adapter
+            # resumed the session (a turn ending with a delegate still
+            # running); how the adapter judged it was not recorded.
+            exit, error = EXIT_ERROR, ENDED_WITHOUT_RESULT
+        elif result is None:
             exit, error = EXIT_TIMEOUT, _deadline_error(node)
         elif result.get("is_error"):
             exit, error = EXIT_ERROR, (digest["errors"][-1] if digest["errors"] else str(result.get("result")))
         else:
             exit, error = EXIT_SUCCESS, None
+        # The host's own figure; a lone invocation killed at its deadline
+        # ran its phase's window; one resumed after ending without a
+        # result has no figure of its own.
         duration = (
             digest["duration_ms"] / 1000.0 if digest["duration_ms"] is not None
-            else (window[1] - window[0]).total_seconds() if len(slices) == 1 else 0.0
+            else (window[1] - window[0]).total_seconds() if len(slices) == 1 else None
         )
-        ended = clock + timedelta(seconds=duration)
+        ended = clock + timedelta(seconds=duration or 0.0)
         entries.append(run_entry(
             digest, model=digest["model"] or model, cli_session_id=session_id, exit=exit, error=error,
             files_changed=relative_files(digest["files"], session_dir), started=clock.isoformat(timespec="seconds"),
-            ended=ended.isoformat(timespec="seconds"), duration_seconds=round(duration, 3),
+            ended=ended.isoformat(timespec="seconds") if duration is not None else None,
+            duration_seconds=round(duration, 3) if duration is not None else None,
         ))
         clock = ended
     return entries

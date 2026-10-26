@@ -181,7 +181,10 @@ def render_listing(entries: list) -> str:
     lines = []
     for entry in entries:
         waiting = entry["state"] == "done" and entry["stopped_reason"] == "waiting_for_user"
-        state = "WAITING" if waiting else entry["state"].upper()
+        # A writer gone or silent past its beats is dead, whatever the
+        # file's own word; the single-campaign screen says the same.
+        dead = entry["alive"] is False and entry["state"] in ("running", "starting")
+        state = "WAITING" if waiting else "DEAD" if dead else entry["state"].upper()
         age = f"{entry['heartbeat_age_seconds']:.0f}s ago" if entry["heartbeat_age_seconds"] is not None else "-"
         best = entry["best"].get("score") if isinstance(entry["best"], dict) else None
         lines.append(
@@ -202,6 +205,28 @@ def _utcnow() -> str:
 
 def _parse_at(stamp: str) -> datetime:
     return datetime.fromisoformat(stamp)
+
+
+def mark_failed(path, error: BaseException) -> bool:
+    """Publish a failure on a status file whose writer is gone: the
+    strategy constructor or the orchestrator's setup raised after the
+    status was born, and the object that owned the file went with the
+    exception. The file is rewritten as the writer would have written it
+    (`failed`, the error, `finished_at`); nothing is written when there
+    is no file or it is terminal already. Returns whether it wrote."""
+    file = Path(path)
+    if not file.is_file():
+        return False
+    data = json.loads(file.read_text(encoding="utf-8"))
+    if data["state"] in _TERMINAL_STATES:
+        return False
+    data["state"] = "failed"
+    data["finished_at"] = _utcnow()
+    data["error"] = f"{type(error).__name__}: {error}"
+    temporary = file.with_name(f".{file.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(temporary, file)
+    return True
 
 
 class OperationStatus(ABC):

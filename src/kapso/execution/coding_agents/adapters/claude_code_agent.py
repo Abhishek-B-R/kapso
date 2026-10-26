@@ -493,26 +493,12 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
             timeout_seconds if timeout_seconds is not None else self._timeout
         )
 
-        try:
-            # One runner for every session: the stream-json events carry
-            # the cost, the tool calls (per-gate telemetry), the session
-            # id and the inbox stop; `streaming` only decides whether the
-            # transcript is also teed to the console. The prompt travels
-            # via stdin, never argv (see _build_command).
-            return self._run_streaming(prompt, model, effective_timeout)
-
-        except subprocess.TimeoutExpired:
-            return CodingResult(
-                success=False,
-                output="",
-                error=f"Claude Code CLI timed out after {effective_timeout} seconds"
-            )
-        except Exception as e:
-            return CodingResult(
-                success=False,
-                output="",
-                error=str(e)
-            )
+        # One runner for every session: the stream-json events carry the
+        # cost, the tool calls (per-gate telemetry), the session id and
+        # the inbox stop; `streaming` only decides whether the transcript
+        # is also teed to the console. The prompt travels via stdin, never
+        # argv (see _build_command).
+        return self._run_streaming(prompt, model, effective_timeout, convert=True)
     
     def resume(
         self,
@@ -541,17 +527,35 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         model: str,
         timeout_seconds: Optional[float],
         resume_session_id: Optional[str] = None,
+        convert: bool = False,
     ) -> CodingResult:
         """One host invocation, recorded in the session's record whatever
         way it ends (wp6-observability.md): the turn runs, and its run
-        entry is appended in a `finally`, with the exception in flight
-        when there is one, which then propagates."""
+        entry is appended in a `finally`. With `convert`, a turn that
+        raises is a failed result (`generate_code`'s own conversion,
+        inside the recorded region, so the entry carries the error);
+        without it the exception propagates, recorded in flight (the
+        inbox continuation, and a wiring error that must not pass as a
+        failed turn). The recording's own failure (a stream that is not
+        evidence) propagates past either."""
         recorder = start_run(CLAUDE_HOST, model, self._session_record_path, self._stream_artifact_path)
         result: Optional[CodingResult] = None
         try:
-            result = self._run_streaming_turn(
-                prompt, model, timeout_seconds, resume_session_id=resume_session_id
-            )
+            try:
+                result = self._run_streaming_turn(
+                    prompt, model, timeout_seconds, resume_session_id=resume_session_id
+                )
+            except subprocess.TimeoutExpired:
+                if not convert:
+                    raise
+                result = CodingResult(
+                    success=False, output="",
+                    error=f"Claude Code CLI timed out after {timeout_seconds} seconds",
+                )
+            except Exception as e:
+                if not convert:
+                    raise
+                result = CodingResult(success=False, output="", error=str(e))
         finally:
             record_run(recorder, result, sys.exc_info()[1])
         return result

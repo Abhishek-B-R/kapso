@@ -12,10 +12,12 @@ from pathlib import Path
 
 import pytest
 
+import kapso.execution.coding_agents.adapters.claude_code_agent as adapter_module
 from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
 from kapso.execution.coding_agents.adapters.codex_agent import CodexCodingAgent
 from kapso.execution.coding_agents.base import CodingAgentConfig
-from kapso.execution.coding_agents.session_record import run_exit
+from kapso.execution.coding_agents.session_record import append_run, run_entry, run_exit
+from kapso.execution.coding_agents.transcripts import digest_claude
 from tests.test_codex_agent import fake_codex  # noqa: F401  (the fixture)
 from tests.test_streaming_cost_and_deadline import stream_event
 
@@ -143,7 +145,12 @@ def test_a_refused_turn_is_a_refusal(tmp_path, monkeypatch):
     assert entry["exit"] == "refused" and entry["error"] == refusal
 
 
-def test_an_invocation_that_raises_is_recorded_and_the_error_propagates(tmp_path, monkeypatch):
+def test_an_invocation_that_raises_is_recorded_as_a_failed_result(tmp_path, monkeypatch):
+    """A turn that raises is the adapter's failed result, converted inside
+    the recorded region, so the entry carries the error and the caller
+    gets a result; the recording's own failure is not converted (the
+    pull-request review's finding: it was swallowed into a failed
+    result, the entry lost)."""
     record = session_record(tmp_path)
     agent = claude_agent(tmp_path, monkeypatch, record)
 
@@ -151,17 +158,60 @@ def test_an_invocation_that_raises_is_recorded_and_the_error_propagates(tmp_path
         raise OSError("no such binary: claude")
 
     monkeypatch.setattr(agent, "_run_streaming_turn", explode)
-    # The invocation records the exception in flight and lets it go on.
+    result = agent.generate_code("prompt", timeout_seconds=30)
+    assert not result.success and result.error == "no such binary: claude"
+    [entry] = runs(record)
+    assert entry["exit"] == "error" and entry["error"] == "no such binary: claude"
+    assert entry["turns"] == 0 and entry["files_changed"] == []
+    # The inbox continuation's path converts nothing: the exception
+    # propagates, recorded in flight.
     with pytest.raises(OSError, match="no such binary"):
         agent._run_streaming("prompt", "test-model", 30)
-    [entry] = runs(record)
-    assert entry["exit"] == "error" and entry["error"] == "OSError: no such binary: claude"
-    assert entry["turns"] == 0 and entry["files_changed"] == []
-    # Through generate_code the adapter answers with a failed result; the
-    # second invocation is recorded the same way.
-    failed = agent.generate_code("prompt")
-    assert not failed.success and "no such binary" in failed.error
     assert [run["exit"] for run in runs(record)] == ["error", "error"]
+    assert runs(record)[1]["error"] == "OSError: no such binary: claude"
+
+    def unrecordable(recorder, result, error):
+        raise ValueError("the stream is not evidence")
+
+    monkeypatch.setattr(adapter_module, "record_run", unrecordable)
+    with pytest.raises(ValueError, match="not evidence"):
+        agent.generate_code("prompt", timeout_seconds=30)
+
+
+def test_an_unpriced_run_does_not_reset_the_cost_baseline(tmp_path):
+    """A run killed before its result event carries no cumulative figure;
+    the run after it on the same host session is priced against the
+    latest figure that session reported, not charged from zero (the
+    pull-request review's finding)."""
+    record = session_record(tmp_path)
+    digest = digest_claude([])
+    entries = []
+    for cumulative, exit in ((1.0, "success"), (None, "timeout"), (1.4, "success")):
+        digest["cost_cumulative"] = cumulative
+        entry = run_entry(digest, model="m", cli_session_id="s-1", exit=exit, error=None, files_changed=[],
+                          started=None, ended=None, duration_seconds=None)
+        append_run(record, entry)
+        entries.append(entry)
+    assert [run["cost_usd"] for run in runs(record)] == [1.0, None, 0.4]
+    # A fresh host session costs its own figure.
+    digest["cost_cumulative"] = 0.3
+    append_run(record, run_entry(digest, model="m", cli_session_id="s-2", exit="success", error=None, files_changed=[],
+                                 started=None, ended=None, duration_seconds=None))
+    assert runs(record)[-1]["cost_usd"] == 0.3
+
+
+def test_the_run_names_the_host_session_its_own_transcript_names(tmp_path, monkeypatch):
+    """The adapter's memory of a session id is second to what this
+    invocation's stream says (a Codex adapter keeps its first thread id
+    across fresh invocations)."""
+    record = session_record(tmp_path)
+    agent = claude_agent(tmp_path, monkeypatch, record)
+    agent._session_id = "the-adapters-idea"
+    init = stream_event({"type": "system", "subtype": "init", "session_id": "s-from-the-stream", "model": "m",
+                         "mcp_servers": [], "tools": []})
+    run_script(agent, monkeypatch, "\n".join([init, result_event("done", 0.1)]))
+    [entry] = runs(record)
+    assert entry["cli_session_id"] == "s-from-the-stream"
 
 
 def test_without_a_record_nothing_is_written(tmp_path, monkeypatch):

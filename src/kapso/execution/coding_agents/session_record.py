@@ -62,7 +62,10 @@ def record_run(recorder: RunRecorder, result: Optional[CodingResult], error: Opt
     entry = run_entry(
         digest,
         model=recorder.model,
-        cli_session_id=metadata.get("cli_session_id") or digest["cli_session_id"],
+        # The host session this invocation's own transcript names; the
+        # adapter's figure second (a Codex adapter remembers its first
+        # thread across fresh invocations).
+        cli_session_id=digest["cli_session_id"] or metadata.get("cli_session_id"),
         exit=run_exit(result, error),
         error=_error_text(result, error),
         files_changed=digest["files"],
@@ -109,8 +112,7 @@ def append_run(record_path: Path, entry: Dict[str, Any]) -> None:
     entry before it and naming the files changed relative to the session
     directory, and write the record whole."""
     record = json.loads(Path(record_path).read_text(encoding="utf-8"))
-    previous = record["runs"][-1] if record["runs"] else None
-    entry["cost_usd"] = _cost_of_run(entry["cost_cumulative"], previous, entry["cli_session_id"])
+    entry["cost_usd"] = _cost_of_run(entry["cost_cumulative"], record["runs"], entry["cli_session_id"])
     entry["files_changed"] = relative_files(entry["files_changed"], record["session_dir"])
     record["runs"].append(entry)
     write_whole(Path(record_path), json.dumps(record, indent=2) + "\n")
@@ -150,18 +152,18 @@ def _error_text(result: Optional[CodingResult], error: Optional[BaseException]) 
     return result.error
 
 
-def _cost_of_run(cumulative: Optional[float], previous: Optional[Dict[str, Any]], cli_session_id: Optional[str]) -> Optional[float]:
+def _cost_of_run(cumulative: Optional[float], runs: list, cli_session_id: Optional[str]) -> Optional[float]:
     """The host reports the session's cumulative cost: a run that continues
-    the previous entry's host session costs the difference; a fresh host
-    session costs its own figure; a host that reports none, nothing."""
+    an earlier entry's host session costs the difference against the
+    latest entry of that session that carried a figure (a run killed
+    before its result event carries none, and must not reset the
+    baseline); a fresh host session costs its own figure; a host that
+    reports none, nothing."""
     if cumulative is None:
         return None
-    if (
-        previous is not None
-        and previous.get("cli_session_id") == cli_session_id
-        and previous.get("cost_cumulative") is not None
-    ):
-        return round(max(cumulative - float(previous["cost_cumulative"]), 0.0), 6)
+    for previous in reversed(runs):
+        if previous.get("cli_session_id") == cli_session_id and previous.get("cost_cumulative") is not None:
+            return round(max(cumulative - float(previous["cost_cumulative"]), 0.0), 6)
     return round(cumulative, 6)
 
 

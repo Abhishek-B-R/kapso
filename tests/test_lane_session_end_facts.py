@@ -42,6 +42,7 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch, tmp_path):
 
     monkeypatch.setattr(strategy_module, "run_implementation", fake_run_implementation)
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.iteration_count = 1
     strategy.harness = None
     strategy.__dict__.update(
         node_expansion_value=2, expansion_lane_env=None, node_history=[],

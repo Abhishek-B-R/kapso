@@ -70,6 +70,9 @@ def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) 
     verified 2026-09-07); every host and the skill used to reinvent the
     nohup/setsid dance for this one flag."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    # The receipt lies beside the campaign: its directory exists before the
+    # child does, so a launch under a parent not yet made still gets one.
+    launch_receipt_path(campaign).parent.mkdir(parents=True, exist_ok=True)
     # The child is meant to outlive this process, so the Popen object is let
     # go while it runs; Python would otherwise print "subprocess N is still
     # running" at the end of a successful launch.

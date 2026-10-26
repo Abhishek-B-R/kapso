@@ -7,7 +7,9 @@ session record are the digests' only readers.
 
 Lines that are not events (merged stderr, the CLI's own text, warnings)
 are skipped, as the adapters' parsers skip them; an event-shaped line
-that does not parse raises, since the stream is evidence."""
+that does not parse raises, since the stream is evidence, except the
+slice's last line when a kill cut it mid-event, which is skipped and
+noted."""
 import json
 import re
 from collections import Counter, defaultdict
@@ -33,6 +35,8 @@ EDIT_TOOLS = {"Write": "file_path", "Edit": "file_path", "MultiEdit": "file_path
 # What an event line starts with, per host.
 CLAUDE_EVENT_HEAD = "{"
 CODEX_EVENT_HEAD = '{"type":'
+# The host error noted when a stream's last line was cut by a kill.
+TRUNCATED_LINE = "the stream's last line is cut: the host was killed mid-event"
 
 
 def digest_stream(host: str, lines: Iterable[str]) -> Dict[str, Any]:
@@ -64,11 +68,27 @@ def _empty() -> Dict[str, Any]:
 
 
 def _events(lines: Iterable[str], head: str):
-    for raw in lines:
-        line = raw.strip()
+    kept = [raw.strip() for raw in lines]
+    for index, line in enumerate(kept):
         if not line.startswith(head):
             continue
+        if index == len(kept) - 1 and truncated(line):
+            continue
         yield json.loads(line)
+
+
+def truncated(line: str) -> bool:
+    """Whether an event-shaped line is cut: a host killed mid-write leaves
+    its last line without the object's closing brace."""
+    return line.startswith("{") and not line.endswith("}")
+
+
+def _cut_tail(lines: Iterable[str]) -> List[str]:
+    """The note for a slice whose last line a kill cut."""
+    kept = [raw.strip() for raw in lines]
+    if kept and truncated(kept[-1]):
+        return [TRUNCATED_LINE]
+    return []
 
 
 def _hook_decision(output: str) -> Dict[str, Optional[str]]:
@@ -100,7 +120,9 @@ def digest_claude(lines: Iterable[str]) -> Dict[str, Any]:
     and, when it ran in the foreground, the `Agent` tool's result (the
     report); the edit tools' inputs for the files written; `result` for
     the turns, the duration and the host's cumulative cost."""
+    lines = list(lines)
     digest = _empty()
+    digest["errors"] = _cut_tail(lines)
     tools: Counter = Counter()
     gates: Dict[str, Counter] = defaultdict(Counter)
     hooks: List[Dict[str, Any]] = []
@@ -141,6 +163,10 @@ def digest_claude(lines: Iterable[str]) -> Dict[str, Any]:
             elif subtype == "task_notification" and event.get("task_id") in delegates:
                 delegates[event["task_id"]]["status"] = event.get("status")
                 delegates[event["task_id"]]["summary"] = event.get("summary")
+                # The notification carries the delegate's final usage; a
+                # progress event's figure is a snapshot on the way.
+                if event.get("usage") is not None:
+                    delegates[event["task_id"]]["usage"] = event["usage"]
         elif kind == "assistant":
             for part in (event.get("message") or {}).get("content") or []:
                 if not isinstance(part, dict):
@@ -218,8 +244,11 @@ def codex_threads(lines: Iterable[str]) -> List[Dict[str, Any]]:
     """A stream several `codex exec` invocations appended to, split into
     its threads: each starts at a `thread.started` event and is closed by
     the launcher's exit line (`{"type":"kapso.exit","code":N}`), or by
-    the next thread with no exit recorded. Returns `[{"lines", "code"}]`
-    in order; lines before the first thread are nobody's."""
+    the next thread with no exit recorded. An exit line with no thread
+    open is an invocation that died before its first event (a bad model,
+    a login, a quota): a thread with no lines and that code. Returns
+    `[{"lines", "code"}]` in order; other lines before the first thread
+    are nobody's."""
     threads: List[Dict[str, Any]] = []
     current: Optional[Dict[str, Any]] = None
     for raw in lines:
@@ -227,9 +256,13 @@ def codex_threads(lines: Iterable[str]) -> List[Dict[str, Any]]:
         if line.startswith(CODEX_THREAD_HEAD):
             current = {"lines": [raw], "code": None}
             threads.append(current)
-        elif line.startswith(EXIT_LINE_HEAD) and current is not None:
-            current["code"] = int(json.loads(line)["code"])
-            current = None
+        elif line.startswith(EXIT_LINE_HEAD):
+            code = int(json.loads(line)["code"])
+            if current is None:
+                threads.append({"lines": [], "code": code})
+            else:
+                current["code"] = code
+                current = None
         elif current is not None:
             current["lines"].append(raw)
     return threads
@@ -244,7 +277,9 @@ def digest_codex(lines: Iterable[str]) -> Dict[str, Any]:
     for the host's own errors, `turn.completed` for the turns and the
     token usage. Codex reports no hook events and no cost: `hooks` and
     `cost_cumulative` stay null."""
+    lines = list(lines)
     digest = _empty()
+    digest["errors"] = _cut_tail(lines)
     tools: Counter = Counter()
     gates: Dict[str, Counter] = defaultdict(Counter)
     delegates: List[Dict[str, Any]] = []

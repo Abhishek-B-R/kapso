@@ -63,6 +63,9 @@ class SearchNode:
     """
     node_id: int
     parent_node_id: Optional[int] = None
+    # The iteration that made this node (several nodes share one under
+    # node expansion): what joins the iteration's ideation session to it.
+    iteration: int = 0
     
     # Step 1: Solution generation
     solution: str = ""
