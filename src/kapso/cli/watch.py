@@ -5,10 +5,13 @@ import argparse
 import json
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
-from kapso.kapso import Kapso
-from kapso.execution.observability import OperationStatusView
+from kapso.kapso import DEFAULT_CONFIG_PATH, Kapso
+from kapso.core.config import load_config, load_mode_config
+from kapso.execution.inbox import read_launch_receipt
+from kapso.execution.observability import OperationStatusView, campaign_listing, pid_alive, render_listing
 
 NAME = "watch"
 
@@ -24,35 +27,99 @@ def cmd_watch(args) -> None:
     A campaign that has not written its status yet (the seconds between
     `kapso build` starting and the workspace being seeded) is one line,
     not a traceback: without --follow the line and exit 1, with --follow
-    the line and a wait for the file."""
-    if OperationStatusView.locate(args.path) is None:
-        expected = Path(args.path).expanduser()
-        if expected.is_dir():
-            expected = expected / ".kapso" / "status.json"
-        print(
-            f"no status yet at {expected} — the campaign is still starting "
-            "(seeding its workspace), or nothing runs there"
+    the line and a wait for the file. With no path, the campaigns the
+    registry knows that are alive or waiting, and the learns and ingests
+    under the status directory (`--all` for every one with its state)."""
+    if args.path is None:
+        if args.follow:
+            print("kapso watch --follow needs a campaign to follow: kapso watch <campaign> --follow", file=sys.stderr)
+            sys.exit(1)
+        config_path = args.config or DEFAULT_CONFIG_PATH
+        entries = campaign_listing(
+            load_mode_config(config_path)["inbox"]["registry"],
+            load_config(config_path)["learning"]["status_dir"],
+            everything=args.all,
         )
+        if args.json:
+            print(json.dumps(entries, indent=1))
+        elif entries:
+            print(render_listing(entries))
+        else:
+            print("nothing running or waiting" + ("" if args.all else "; kapso watch --all lists every campaign the registry knows"))
+        return
+    campaign = Path(args.path).expanduser()
+    receipt = None if campaign.is_file() else read_launch_receipt(campaign)
+    if OperationStatusView.locate(args.path) is None:
+        expected = campaign / ".kapso" / "status.json" if campaign.is_dir() else campaign
+        # A detached launch left a receipt beside the log: the child's pid
+        # tells a campaign still starting from one that died before its
+        # status, and the log says why (wp6-observability.md, change 7).
+        _say_launch_state(receipt, expected, args.json)
+        if receipt is not None and pid_alive(receipt["pid"]) is False:
+            sys.exit(1)
         if not args.follow:
             sys.exit(1)
         while OperationStatusView.locate(args.path) is None:
             time.sleep(_WATCH_FALLBACK_SECONDS)
+            # The child may die at a launch check while we wait.
+            receipt = read_launch_receipt(campaign)
+            if receipt is not None and pid_alive(receipt["pid"]) is False and OperationStatusView.locate(args.path) is None:
+                _say_launch_state(receipt, expected, args.json)
+                sys.exit(1)
+    elif receipt is not None and _newer_than_status(receipt, args.path):
+        # A detached resume wrote a receipt after the status's last write:
+        # its child is starting, or died at a launch check, and the status
+        # on disk is the earlier slice's.
+        if pid_alive(receipt["pid"]) is False:
+            _say_launch_state(receipt, campaign, args.json)
+            sys.exit(1)
+        if not args.json:
+            launched = datetime.fromisoformat(receipt["started_at"])
+            age = (datetime.now(timezone.utc) - launched).total_seconds()
+            print(f"starting again (pid {receipt['pid']}, launched {age:.0f}s ago; log: {receipt['log']}); the status below is the earlier run's")
     view = Kapso.status(args.path)
-    show_tree = args.tree
     if args.json:
         print(json.dumps(view.data, indent=1))
         return
     if not args.follow:
-        print(view.explain(tree=show_tree))
+        print(view.explain())
         return
     # Follow: re-render at the operation's own heartbeat cadence.
     interval = float(view.data.get("heartbeat_seconds") or _WATCH_FALLBACK_SECONDS)
     while True:
         view = Kapso.status(args.path)
-        print("\x1b[2J\x1b[H" + view.explain(tree=show_tree), flush=True)
+        print("\x1b[2J\x1b[H" + view.explain(), flush=True)
         if view.state in ("done", "failed"):
             return
         time.sleep(interval)
+
+
+def _say_launch_state(receipt, expected: Path, as_json: bool) -> None:
+    """The line (or the JSON) for a campaign with no status: starting on a
+    live pid, stopped before its status on a dead one, or no launch known."""
+    if receipt is None:
+        state = {"state": "no_status", "path": str(expected)}
+        line = (
+            f"no status yet at {expected} — the campaign is still starting "
+            "(seeding its workspace), or nothing runs there"
+        )
+    elif pid_alive(receipt["pid"]) is False:
+        state = {"state": "stopped", "pid": receipt["pid"], "log": receipt["log"], "started_at": receipt["started_at"]}
+        line = f"stopped before writing a status; the log says why: {receipt['log']}"
+    else:
+        launched = datetime.fromisoformat(receipt["started_at"])
+        age = (datetime.now(timezone.utc) - launched).total_seconds()
+        state = {"state": "starting", "pid": receipt["pid"], "log": receipt["log"], "started_at": receipt["started_at"]}
+        line = f"starting (pid {receipt['pid']}, launched {age:.0f}s ago; log: {receipt['log']})"
+    print(json.dumps(state, indent=1) if as_json else line)
+
+
+def _newer_than_status(receipt, path) -> bool:
+    """Whether the receipt's launch came after the status's last write."""
+    view = Kapso.status(path)
+    launched = datetime.fromisoformat(receipt["started_at"])
+    last_write = datetime.fromisoformat(view.data.get("finished_at") or view.data["heartbeat_at"])
+    return launched > last_write
 
 
 def add_parser(subparsers):
@@ -62,27 +129,34 @@ def add_parser(subparsers):
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  kapso watch                            # every campaign alive or waiting, every learn or ingest running
+  kapso watch --all                      # every campaign the registry knows, with its state
   kapso watch ./campaign                 # a workspace (-> .kapso/status.json)
   kapso watch learning/status            # newest status file in a directory
   kapso watch learning/status/learn-20260826T120000.json
   kapso watch ./campaign --follow        # live re-render until terminal
-  kapso watch ./campaign --tree          # show the campaign tree
   kapso watch ./campaign --json | jq -r '[.state] | @tsv'
+  kapso trace ./campaign                 # the attempts and the record, after the fact
 """,
     )
     watch_parser.add_argument(
-        "path",
-        help="Workspace, status file, or directory of status files",
+        "path", nargs="?", default=None,
+        help="Workspace, status file, or directory of status files; none lists the campaigns alive or waiting",
     )
     output_group = watch_parser.add_mutually_exclusive_group()
     output_group.add_argument(
-        "--json", action="store_true", help="Print the status file once, as JSON",
+        "--json", action="store_true", help="Print the status file once, as JSON (with no path, the listing)",
     )
     watch_parser.add_argument(
         "--follow", action="store_true",
         help="Re-render on each heartbeat until the operation ends",
     )
-    output_group.add_argument(
-        "--tree", action="store_true", help="Show the campaign tree",
+    watch_parser.add_argument(
+        "--all", action="store_true",
+        help="With no path: every campaign the registry knows and every status file, with its state",
+    )
+    watch_parser.add_argument(
+        "--config", type=str, default=None,
+        help="Config whose inbox.registry and learning.status_dir the listing reads (default: packaged config.yaml)",
     )
     return cmd_watch

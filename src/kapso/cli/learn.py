@@ -60,7 +60,7 @@ def _dev(args, config) -> None:
         store = TrajectoryStore.from_config(config)
         upload = False if args.no_upload else None
         if bool(args.subset) == bool(args.archive):
-            print("Error: exactly one of --subset or --archive is required")
+            print("Error: exactly one of --subset or --archive is required", file=sys.stderr)
             sys.exit(1)
         if args.subset:
             report_path = import_subset(
@@ -73,7 +73,7 @@ def _dev(args, config) -> None:
     elif args.dev_command == "mine":
         frame = MiningFrame.from_config(config)
         if bool(args.trajectory) == bool(args.all):
-            print("Error: exactly one of --trajectory or --all is required")
+            print("Error: exactly one of --trajectory or --all is required", file=sys.stderr)
             sys.exit(1)
         targets = (
             [args.trajectory] if args.trajectory
@@ -89,11 +89,11 @@ def _dev(args, config) -> None:
         grading = GradingFrame(TrajectoryStore.from_config(config), config)
         run_root = config["learning"]["graders"]["run_root"]
         if bool(args.split) == bool(args.trajectory):
-            print("Error: exactly one of --split (full) or --trajectory (exam) is required")
+            print("Error: exactly one of --split (full) or --trajectory (exam) is required", file=sys.stderr)
             sys.exit(1)
         if args.split:
             if not args.learner_version:
-                print("Error: --learner-version is required in full mode")
+                print("Error: --learner-version is required in full mode", file=sys.stderr)
                 sys.exit(1)
             split = load_split(args.split)
             findings = validate_split(split, grading.store.list_manifests())
@@ -226,7 +226,7 @@ def _dev(args, config) -> None:
         runner = BehaviorRunner(TrajectoryStore.from_config(config), config)
         run_root = config["learning"]["behavior"]["run_root"]
         if bool(args.scenario) == bool(args.all):
-            print("Error: exactly one of --scenario or --all is required")
+            print("Error: exactly one of --scenario or --all is required", file=sys.stderr)
             sys.exit(1)
         if args.scenario:
             result = runner.run_scenario(args.scenario, run_root)

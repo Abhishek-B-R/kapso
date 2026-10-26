@@ -1,0 +1,51 @@
+{
+ "operation": "build",
+ "phases": [
+  "setup",
+  "harness_setup",
+  "lens_planning",
+  "ideation",
+  "implementation",
+  "evaluation",
+  "verification",
+  "feedback"
+ ],
+ "state": "done",
+ "pid": 5198,
+ "started_at": "2026-10-25T11:12:35+00:00",
+ "heartbeat_at": "2026-10-25T11:58:02+00:00",
+ "phase": "verification",
+ "phase_started_at": "2026-10-25T11:36:41+00:00",
+ "recent": [
+  "11:18 iteration 1 started (budget 8%)",
+  "11:58 node 0 completed score=1.9336; knowledge: experiment_history 2 (get_top_experiments, get_recent_experiments)"
+ ],
+ "harness": {
+  "name": "trading",
+  "version": "0.1.0",
+  "hash": "141a562fbace83553a2635f4ff7da69f4a8466438ed31324e7a21471db860d48",
+  "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+ },
+ "heartbeat_seconds": 60.0,
+ "harness_setup": {
+  "prepared": [
+   "market-data"
+  ]
+ },
+ "budget": {
+  "elapsed_min": 45.4,
+  "total_min": 75.0
+ },
+ "iteration": 1,
+ "last": {
+  "score": 1.9336,
+  "node": 0
+ },
+ "best": {
+  "score": 1.9336,
+  "node": 0
+ },
+ "finished_at": "2026-10-25T11:58:02+00:00",
+ "stopped_reason": "goal_achieved",
+ "stop_detail": null
+}

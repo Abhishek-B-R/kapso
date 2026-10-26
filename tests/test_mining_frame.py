@@ -26,6 +26,7 @@ MINING_CONFIG = {
     "critic_model": "critic-model",
     "timeout_minutes": 1,
     "repair_rounds": 1,
+    "refusal_relaunches": 1,
     "run_root": "learning/mining",
 }
 
@@ -34,6 +35,8 @@ class FakeResult:
     def __init__(self, output):
         self.success = True
         self.output = output
+        self.error = None
+        self.refused = False
 
 
 class FakeLead:

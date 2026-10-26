@@ -6,6 +6,197 @@ discussed to be written here so it can be checked later. Newest first.
 Each entry: what was decided, why, what the alternative was, and where it
 shows.
 
+## 2026-10-25, WP6 (taken while building)
+
+**A run's files are the host's account; the delivered files are the
+diff's.** Both adapters took `files_changed` from a git status of the
+session directory, which listed the engine's own `.kapso/` directories
+for a judge session and nothing for a Codex implementation that had
+committed its work (the proof run's Codex-hosted build delivered a
+candidate whose trace said `files changed: none recorded`). The run
+entry now carries what the host itself reported writing: the edit
+tools' inputs on Claude Code, the `file_change` items on Codex,
+relative to the session directory. A file written through a shell
+command is not in that account, so the trace's delivered candidate
+names the files its branch's diff touches (the checkpoint node's
+`code_diff`), the ground truth of what the branch changed. Two facts,
+two sources, neither a fallback for the other. Alternative rejected:
+keeping the git status and filtering the engine's paths, which still
+misses a committed change and still depends on when the status was
+taken. Shows in `kapso.execution.coding_agents.transcripts` (`files`),
+`session_record.record_run` and `kapso.execution.trace._delivered`.
+
+**A launch is registered before its checks, and a receipt keeps it
+listed.** The proof run's first launch died at the evaluation suite's
+refusal before the campaign directory existed; `kapso watch campaign`
+said `no status yet` (the receipt was read only once the directory
+existed) and `kapso watch --all` knew nothing of it (the registry was
+written after the orchestrator's construction, and its reader dropped
+any path with no directory). Now a launch with an output directory is
+registered as soon as the brief is read, before the evaluation refusal
+and the preflight (a resume was registered by its launch; a build with
+no output directory is registered once the orchestrator has made one);
+the registry's reader keeps a path with a launch receipt beside it; and
+the watch verb reads the receipt whether or not the directory exists.
+A foreground launch that dies at a check leaves a registry line and
+nothing else, which the listing skips. Alternative rejected: writing
+the receipt into the registry's own line, which would make the registry
+a second receipt. Shows in `Kapso.build`, `kapso.execution.inbox.
+list_registered_campaigns` and `kapso.cli.watch`.
+
+**The trace's JSON carries keys the plan did not list.** `sessions`
+(top level): the session records that belong to no attempt, the harness
+setup and a node still in flight, which the attempts' `sessions` cannot
+hold and the failures section must still see. `branch`: the branch the
+view was narrowed to, so `TraceView(data)` renders the narrowed text
+again from the data alone. `header.status`: the status file's state,
+phase and error, so a partial trace says why it is partial (running at a
+phase, failed with its error, no status yet, or a record older than the
+checkpoint). `attempts[].evaluation.output`: the evaluator's output, the
+evidence of a rejection and of a crashed evaluator (S5's injection).
+`lessons[].kind`: a hosted source renders differently from a bank (its
+reads are not logged per card). `attempts[].cost_usd` and
+`duration_seconds`: the node's own figures, "what it cost" per attempt.
+After S4's first reading, two more: `header.cost.unpriced_runs`, the
+Claude Code runs killed before their result event, whose spend the
+total lacks (both readers worked it out from a `cost n/a` line), and
+`attempts[].cards.listed`, the cards a session saw listed beside the
+ones it read (`none (15 listed)` is not `none`). After the second,
+`sessions[].hooks_staged`: a delivered block saying `hooks none fired
+in its sessions` meant nothing when no hook was staged, and now says
+so. After the pull-request review, `header.requests` (a campaign
+waiting on the person renders `partial` with the count, as the listing
+counts it alive), and the run entry's own keys beyond the sketch,
+`cost_cumulative` (the host's figure the delta is taken from), `usage`
+(the tokens, Codex's only figure) and `host_errors` (what the host
+itself reported wrong), each on the trace page. Alternative rejected:
+deriving each from the text's sections at the reader's end, which WP7's
+skills would have to repeat. Shows in
+`kapso.execution.trace` and `tests/test_trace.py`; WP7 reads the keys as
+pinned there.
+
+**The attempts come from the checkpoint's node history, not the
+experiment history store.** The checkpoint's node carries the
+verification, the load-bearing cards, the phase telemetry, the parent
+branch and the evaluation output; the store (`experiment_history.json`)
+is the gate's ranked view with fewer fields. A session's attempt is
+found by the label grammar the staging uses (the branch for the
+implementation, `verification/<branch>`, `feedback/<branch>`,
+`ideation/iter<n>` for the n-th node), so no record has to name its
+node. `complete` is decided by content, the record's `experiments_total`
+against the checkpoint's `completed_iterations` with the status `done`,
+not by file times, which an archive or a copy does not keep.
+
+**The fixture generator reconstructs what the archives predate.** The
+three archived proof runs were recorded before the run entries, the pull
+log's session key and the current record schemas existed. The committed
+generator (`tests/fixtures/trace/build_fixture.py`) rebuilds the session
+records by splitting each Claude Code stream at its `result` events (a
+trailing slice without one is a killed invocation, its error the
+adapter's deadline text), times each run from the node's start and its
+phases' durations, stamps each pull event with the session whose window
+holds its time, lifts the records to the current schemas, blanks the
+checkpoint's `agent_output` (the trace does not read it; the diffs it
+does, for the delivered files, so they stay) and rebases the campaign's
+own path to `/campaign`. The pull-request review found the generator
+splitting a stream at its `result` events, a turn each: an invocation
+begins at its `init` event (the hook events just before it are its own)
+and holds every turn until the next; one that ended without a result
+and was resumed is an `error` entry that says so, one killed at its
+deadline a `timeout`. It is deterministic and the test proves it reproduces the
+committed fixtures when the archives are on the machine. Alternative
+rejected: hand-written fixtures, which could not carry a real delegate
+report, a real void verdict or a real resumed session.
+
+**A session staged again keeps its runs.** Re-staging the same label (a
+phase re-run after a crash, a resume) used to rewrite the record with
+`runs: []`, losing the entry the failed invocation had written in its
+`finally`. The staging now keeps the entries already in the record at
+that path, so the trace shows how the first invocation ended and that a
+second one followed. Shows in `kapso.harness.staging.existing_runs`.
+
+**The summary's label column is seventeen wide.** `Sessions failed:` is
+the longest label; every pinned row in the docs and the tests moved two
+columns. A shorter label (`Failures:`) would have read as failed
+experiments.
+
+## 2026-10-25, WP6 (planned; taken while revising the sub-plan after review)
+
+**Every session has a record, and the adapters write its runs.** The
+staging writes `session.json` for every staged session, harness or not
+(WP2 wrote one only with a harness), and each adapter appends one run
+entry per host invocation at the end of that invocation, in its own
+`finally`, so a session that raises, resumes or retries is recorded as
+it happened. Alternative rejected: a `finish(result)` call at every
+site that runs a session, which has no result when the session raises
+and misses the two Codex paths that bypass the adapters.
+
+**`done` stays in `solve()`; the delivery runs inside it.** The facade
+hands `solve()` a `finish` callable (the checkout and the record) that
+runs inside the orchestrator's protected region before the terminal
+publish, and the checkpoint completes after it. Alternative rejected:
+publishing `done` from the facade after the record, which would strand
+the five benchmark runners that call `solve()` directly and the tests
+that pin `done` after it.
+
+**A launch receipt beside the log.** `--detach` writes
+`<campaign>.launch.json` with the child's pid and the log's path before
+the child starts, so `kapso watch` can tell a campaign that is starting
+from one that died before its status. Alternative rejected: a first
+status frame written by the CLI, which the strategy constructor's own
+`BuildStatus` would overwrite.
+
+**The liveness rule is the view's.** A campaign is listed when
+`OperationStatusView.alive is not False` (`starting` included, and a
+machine without `/proc` judged by the heartbeat) or when it waits on
+the person; the registry is written on every launch, inbox on or off;
+the running learns and ingests are listed from `learning.status_dir`,
+which takes `watch --all` off the observability design's deferred list.
+`kapso inbox` keeps listing requests. `watch --tree` is retired: the
+trace renders the attempts, and two renderers over one file would
+drift.
+
+**The trace prints evidence, not a merge verdict.** The six questions of
+S4 are answered by a reader from the sections; the recommendation is
+`kapso-review`'s, as its specification says. The verb keeps the master's
+name, `kapso trace`, though WP1 retired `Solution.trace` because the
+word promised a log: the trace renders the record and says so on its
+page. The cost line carries its coverage (`claude_code` when any Codex
+run exists), extending the status surface's time-only rule to a record
+reader that already prints the campaign's cost.
+
+**A refusal is read from the host's words, for now.** The Claude Code
+adapter recognises the model's safeguard refusal by the result's text
+(`API Error` and `safeguards flagged`), the shape the proof learns met;
+the pull-request review asked for the structured signal WP3's finding
+named (`model_refusal_no_fallback`), which is the API's error type
+inside that same text, not a field of the result event. Until the host
+exposes one, the words are the signal; a refusal worded otherwise would
+be a failed turn with the words in its run entry, not a silent success,
+since the digest keeps the result's text and the entry its error.
+
+**The engine's errors print their message, on stderr.** For the
+engine's own error classes the CLI prints the message alone (however
+many lines, as the preflight's report is) and no traceback; any other
+exception keeps its traceback. The CLI's own `Error:` refusals move
+from stdout to stderr with them, so a script reading stdout sees
+results only.
+
+**The pull log carries the session.** The staging passes the session's
+label to the bank gate's environment and every event records it, so
+reads are attributed to the session that made them; an ask of WP3's
+package, merged, taken here.
+
+**The refusal is a result field and a config count.**
+`CodingResult.refused` is set by the Claude Code adapter on the model's
+safeguard refusal; the mining frame relaunches a refused lead
+`learning.mining.refusal_relaunches` times (one) before any repair
+round, and notes it through the learn status it is handed.
+
+**`stopped_reason` and `requests` keep their names.** WP1 left the
+rename open; both names are in the status file, the checkpoint and the
+API, and a rename gains nothing.
+
 ## 2026-10-25, WP3 (taken after the sub-plan's review, while building)
 
 **Scope is a filter again, on the harness coordinate.** The 2026-08

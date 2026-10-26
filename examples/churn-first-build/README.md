@@ -50,6 +50,8 @@ it there.
 - `solution.explain()` and `solution.diff()`: the delivered candidate, its
   measurement, and its code against the seed.
 - `git -C campaign branch`: every experiment, kept.
+- `kapso trace campaign`: every attempt with its sessions and runs, its
+  score and the judge's words, what was rejected and why, what it cost.
 
 ## Change it
 

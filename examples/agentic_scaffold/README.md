@@ -37,6 +37,8 @@ directory: run one or the other.
 - `solution.diff()`: the extractor that won.
 - `cd campaign && python evaluate.py --max-samples 10 --num-workers 4`: a quick
   re-measurement by hand.
+- `kapso trace campaign`: every attempt with its sessions and runs, its
+  score and the judge's words, what was rejected and why, what it cost.
 
 ## Change it
 

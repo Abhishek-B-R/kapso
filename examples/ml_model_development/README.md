@@ -52,6 +52,8 @@ The same loop from the shell: `kapso experience add --research "..." --name spac
   and `test.csv` is never fitted on; the judge holds every candidate to them.
 - `solution.explain()`: the score, the stop reason, the cost.
 - `cd campaign && python evaluate.py --data-dir ./data --seed 0`: re-measured by hand.
+- `kapso trace campaign`: every attempt with its sessions and runs, its
+  score and the judge's words, what was rejected and why, what it cost.
 
 ## Change it
 

@@ -1,0 +1,65 @@
+{
+  "module": "verification",
+  "host": "claude_code",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "83b6c0b60d6ac724613c469bc1315d5cba32420bdf705d8f4c2c04c73d834f2b",
+    "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+  },
+  "session_dir": "/tmp/kapso_candidate_9l9nhskc",
+  "pages": [
+    "guardrails.md",
+    "verification.md"
+  ],
+  "skills": [
+    "backtesting",
+    "lookahead-scan"
+  ],
+  "mcp_servers": [],
+  "agents": [
+    "lookahead-auditor"
+  ],
+  "hooks": [
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared"
+  ],
+  "prepared": [
+    "market-data"
+  ],
+  "stream": "/campaign/.kapso/sessions/verification/generic_exp_1/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-25T19:02:37+00:00",
+      "ended": "2026-10-25T19:03:37+00:00",
+      "duration_seconds": 60.479,
+      "model": "claude-opus-5",
+      "cli_session_id": "5c38e4f5-539f-426f-81af-056f2b2f3a46",
+      "exit": "timeout",
+      "error": "Claude Code CLI exceeded its deadline and was terminated",
+      "cost_usd": null,
+      "cost_cumulative": null,
+      "turns": 0,
+      "usage": null,
+      "tools": {
+        "Bash": 8
+      },
+      "gates": {},
+      "hooks": [
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": "context",
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        }
+      ],
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": "This is a self-disclosed holdout read. Let me verify the facts in the repo before judging \u2014 git provenance, timeline, and whether iteration 2's scored run actually completed."
+    }
+  ]
+}

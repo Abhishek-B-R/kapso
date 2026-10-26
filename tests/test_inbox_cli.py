@@ -154,7 +154,7 @@ def test_reply_needs_the_id_when_several_are_open(tmp_path, monkeypatch, capsys)
     monkeypatch.chdir(workspace)
     with pytest.raises(SystemExit):
         _run(monkeypatch, "inbox", "reply", "done")
-    assert "which request?" in capsys.readouterr().out and calls == []
+    assert "which request?" in capsys.readouterr().err and calls == []
 
     _run(monkeypatch, "inbox", "reply", "2", "done")
     assert calls == [(str(workspace.resolve()), 2, "done", False)]
@@ -165,7 +165,7 @@ def test_reply_outside_a_campaign_must_name_it(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit):
         _run(monkeypatch, "inbox", "reply", "1", "done")
-    assert "not inside a campaign" in capsys.readouterr().out and calls == []
+    assert "not inside a campaign" in capsys.readouterr().err and calls == []
 
 
 def test_reply_refuses_a_credential_without_yes(tmp_path, monkeypatch, capsys):
@@ -187,7 +187,7 @@ def test_reply_prints_the_campaign_summary(tmp_path, monkeypatch, capsys):
     _capture_reply(monkeypatch, make_solution(workspace, "Improve support", stopped_reason="max_iterations", cost_usd=2.5))
     _run(monkeypatch, "inbox", "reply", "1", "added the key")
     out = capsys.readouterr().out
-    assert "COMPLETED" in out and "Stopped:       max_iterations" in out and "Cost:          $2.500" in out
+    assert "COMPLETED" in out and "Stopped:         max_iterations" in out and "Cost:            $2.500" in out
 
 
 def test_the_summary_says_waiting_on_you_when_the_campaign_asked_again(tmp_path, capsys):

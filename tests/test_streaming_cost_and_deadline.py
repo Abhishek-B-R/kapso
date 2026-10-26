@@ -237,7 +237,7 @@ def test_generate_code_threads_the_per_call_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(
         agent,
         "_run_streaming",
-        lambda cmd, model, timeout_seconds: seen.append(timeout_seconds),
+        lambda cmd, model, timeout_seconds, convert=False: seen.append(timeout_seconds),
     )
 
     agent.generate_code("p", timeout_seconds=7.0)

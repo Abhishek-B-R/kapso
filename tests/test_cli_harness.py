@@ -76,11 +76,11 @@ def test_new_writes_the_two_files_that_pass_check(settings, monkeypatch, capsys)
 def test_new_refuses_a_bad_name_and_an_existing_directory(settings, monkeypatch, capsys):
     with pytest.raises(SystemExit) as caught:
         _run(monkeypatch, "new", "Lending")
-    assert caught.value.code == 1 and "matches [a-z0-9][a-z0-9-]*" in capsys.readouterr().out
+    assert caught.value.code == 1 and "matches [a-z0-9][a-z0-9-]*" in capsys.readouterr().err
     (Path.cwd() / "taken").mkdir()
     with pytest.raises(SystemExit):
         _run(monkeypatch, "new", "taken")
-    assert "exists; choose another name" in capsys.readouterr().out
+    assert "exists; choose another name" in capsys.readouterr().err
 
 
 def test_check_exits_one_on_a_failure_and_zero_with_warnings(settings, monkeypatch, capsys):

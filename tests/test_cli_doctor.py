@@ -7,6 +7,8 @@ prevent. The resolver's own behaviour is pinned in test_preflight.py —
 what lives here is the CLI contract: scope, exit code, and --config.
 """
 
+import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,8 +20,8 @@ from kapso.cli.doctor import cmd_doctor
 from kapso.kapso import DEFAULT_CONFIG_PATH
 
 
-def args(verb=None, models=False, config=None):
-    return SimpleNamespace(verb=verb, models=models, config=config)
+def args(verb=None, models=False, config=None, json=False):
+    return SimpleNamespace(verb=verb, models=models, config=config, json=json)
 
 
 @pytest.fixture
@@ -152,3 +154,36 @@ def test_without_models_no_live_probe_is_ever_spent(full_machine, monkeypatch):
         lambda cli, model: pytest.fail("live probe fired without --models"),
     )
     cmd_doctor(args())
+
+
+def test_json_is_the_same_report_as_data(full_machine, bare_machine_rows, capsys):
+    """`--json`: the scope, this install's facts and every row, nothing
+    else on stdout; the exit code is the text form's."""
+    cmd_doctor(args(verb="build", json=True))
+    report = json.loads(capsys.readouterr().out)
+    assert report["scope"] == "kapso doctor build" and report["ok"] is True
+    assert report["python"] == sys.executable and report["version"] and report["kapso"]
+    assert report["config_path"] == str(DEFAULT_CONFIG_PATH)
+    labels = {row["label"] for row in report["requirements"]}
+    assert "claude CLI" in labels and "git" in labels
+    assert set(report["requirements"][0]) == {"label", "ok", "fix", "origin", "required", "detail"}
+
+    bare_machine_rows()
+    with pytest.raises(SystemExit) as excinfo:
+        cmd_doctor(args(verb="build", json=True))
+    assert excinfo.value.code == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["ok"] is False
+    failed = [row for row in report["requirements"] if not row["ok"] and row["required"]]
+    assert failed and all(row["fix"] for row in failed)
+
+
+@pytest.fixture
+def bare_machine_rows(monkeypatch):
+    """The bare machine, applied on demand after the full one."""
+    def apply():
+        monkeypatch.setattr(preflight.shutil, "which", lambda name, *a, **k: None)
+        monkeypatch.setattr(preflight, "port_open", lambda *a, **k: False)
+        monkeypatch.setattr(preflight, "claude_logged_in", lambda: False)
+        monkeypatch.setattr(preflight, "codex_authenticated", lambda: False)
+    return apply

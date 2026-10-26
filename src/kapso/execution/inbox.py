@@ -476,11 +476,34 @@ def register_campaign(registry_path: str | Path, workspace_dir: str | Path, goal
         fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def launch_receipt_path(campaign: Path) -> Path:
+    """The detached launch's receipt, beside the log: the child's pid, the
+    log's path, the argv and the time, written before the child starts, so
+    `kapso watch` can tell a campaign that is starting from one that died
+    before writing its status (wp6-observability.md, change 7)."""
+    return campaign.with_name(campaign.name + ".launch.json")
+
+
+def read_launch_receipt(campaign: Path) -> Optional[Dict[str, Any]]:
+    """The receipt of the last detached launch of `campaign`, or None
+    when it was never launched detached."""
+    path = launch_receipt_path(Path(campaign))
+    if not path.is_file():
+        return None
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(receipt, dict) or not isinstance(receipt.get("pid"), int) or "log" not in receipt:
+        raise ValueError(f"{path}: a launch receipt carries a pid and a log")
+    return receipt
+
+
 def list_registered_campaigns(registry_path: str | Path) -> List[Dict[str, Any]]:
-    """Registered campaigns whose directory still exists, newest first,
-    each path once under its latest launch (a campaign deleted and
-    launched again at the same path has two lines). Missing registry →
-    none; a malformed line raises."""
+    """Registered campaigns that still exist, newest first, each path once
+    under its latest launch (a campaign deleted and launched again at the
+    same path has two lines). A campaign exists when its directory does,
+    or when a launch receipt lies beside the path: a detached launch that
+    died at a launch check made no directory, and the receipt is what
+    `kapso watch` tells it by. Missing registry → none; a malformed line
+    raises."""
     path = Path(registry_path).expanduser()
     if not path.is_file():
         return []
@@ -489,7 +512,8 @@ def list_registered_campaigns(registry_path: str | Path) -> List[Dict[str, Any]]
         entry = json.loads(line)
         if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
             raise ValueError(f"{path}:{number}: registry line must carry a path")
-        if Path(entry["path"]).is_dir():
+        campaign = Path(entry["path"])
+        if campaign.is_dir() or launch_receipt_path(campaign).is_file():
             campaigns.pop(entry["path"], None)
             campaigns[entry["path"]] = entry
     return list(reversed(campaigns.values()))

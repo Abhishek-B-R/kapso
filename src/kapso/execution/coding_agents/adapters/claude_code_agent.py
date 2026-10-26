@@ -32,6 +32,11 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# The model's safeguard refusal, as the CLI reports it in the result: the
+# API's error line, with the safeguards named.
+API_ERROR_HEAD = "API Error"
+REFUSAL_MARKER = "safeguards flagged"
+
 # Shutdown mechanics for the streaming deadline: after SIGTERM, how long the
 # CLI gets to flush its final stream-json result event (which carries the real
 # cost) before SIGKILL. Process-teardown grace, not an operator knob.
@@ -54,6 +59,8 @@ _COLORS = {
 }
 
 from kapso.execution.inbox import new_requests_for_session
+from kapso.execution.coding_agents.session_record import record_run, start_run
+from kapso.execution.coding_agents.transcripts import CLAUDE_HOST
 from kapso.execution.coding_agents.base import (
     CodingAgentInterface, 
     CodingAgentConfig, 
@@ -251,6 +258,9 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         self._stream_artifact_path: Optional[str] = config.agent_specific.get(
             "stream_artifact_path"
         )
+        # The session's record, when the session keeps one: every
+        # invocation appends its run entry there (session_record.py).
+        self._session_record_path: Optional[str] = config.agent_specific.get("session_record_path")
 
         # The campaign inbox (docs/research/evolve-hub-design.md v4 §4.2):
         # kapso mints the session id up front (--session-id) so neither the
@@ -483,26 +493,12 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
             timeout_seconds if timeout_seconds is not None else self._timeout
         )
 
-        try:
-            # One runner for every session: the stream-json events carry
-            # the cost, the tool calls (per-gate telemetry), the session
-            # id and the inbox stop; `streaming` only decides whether the
-            # transcript is also teed to the console. The prompt travels
-            # via stdin, never argv (see _build_command).
-            return self._run_streaming(prompt, model, effective_timeout)
-
-        except subprocess.TimeoutExpired:
-            return CodingResult(
-                success=False,
-                output="",
-                error=f"Claude Code CLI timed out after {effective_timeout} seconds"
-            )
-        except Exception as e:
-            return CodingResult(
-                success=False,
-                output="",
-                error=str(e)
-            )
+        # One runner for every session: the stream-json events carry the
+        # cost, the tool calls (per-gate telemetry), the session id and
+        # the inbox stop; `streaming` only decides whether the transcript
+        # is also teed to the console. The prompt travels via stdin, never
+        # argv (see _build_command).
+        return self._run_streaming(prompt, model, effective_timeout, convert=True)
     
     def resume(
         self,
@@ -526,6 +522,45 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         )
 
     def _run_streaming(
+        self,
+        prompt: str,
+        model: str,
+        timeout_seconds: Optional[float],
+        resume_session_id: Optional[str] = None,
+        convert: bool = False,
+    ) -> CodingResult:
+        """One host invocation, recorded in the session's record whatever
+        way it ends (wp6-observability.md): the turn runs, and its run
+        entry is appended in a `finally`. With `convert`, a turn that
+        raises is a failed result (`generate_code`'s own conversion,
+        inside the recorded region, so the entry carries the error);
+        without it the exception propagates, recorded in flight (the
+        inbox continuation, and a wiring error that must not pass as a
+        failed turn). The recording's own failure (a stream that is not
+        evidence) propagates past either."""
+        recorder = start_run(CLAUDE_HOST, model, self._session_record_path, self._stream_artifact_path)
+        result: Optional[CodingResult] = None
+        try:
+            try:
+                result = self._run_streaming_turn(
+                    prompt, model, timeout_seconds, resume_session_id=resume_session_id
+                )
+            except subprocess.TimeoutExpired:
+                if not convert:
+                    raise
+                result = CodingResult(
+                    success=False, output="",
+                    error=f"Claude Code CLI timed out after {timeout_seconds} seconds",
+                )
+            except Exception as e:
+                if not convert:
+                    raise
+                result = CodingResult(success=False, output="", error=str(e))
+        finally:
+            record_run(recorder, result, sys.exc_info()[1])
+        return result
+
+    def _run_streaming_turn(
         self,
         prompt: str,
         model: str,
@@ -1021,11 +1056,18 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
             files_changed = self._get_changed_files()
             self._cumulative_cost += total_cost
             
+            output = result_text or "\n".join(assistant_texts)
+            # The model's safeguards refused the turn: the CLI answers with
+            # the API's refusal line as the result, and the turn did no
+            # work (the WP3 proof's mining lead, 2026-10-25).
+            refused = output.startswith(API_ERROR_HEAD) and REFUSAL_MARKER in output
             return CodingResult(
-                success=True,
-                output=result_text or "\n".join(assistant_texts),
+                success=not refused,
+                output=output,
                 files_changed=files_changed,
+                error=output if refused else None,
                 cost=total_cost,
+                refused=refused,
                 metadata={
                     "model": model,
                     "planning_mode": self._planning_mode,

@@ -19,7 +19,7 @@ ENDINGS = {
 }
 
 
-def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch):
+def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch, tmp_path):
     judged = {}
 
     def fake_run_implementation(**kwargs):
@@ -42,10 +42,11 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch):
 
     monkeypatch.setattr(strategy_module, "run_implementation", fake_run_implementation)
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.iteration_count = 1
     strategy.harness = None
     strategy.__dict__.update(
         node_expansion_value=2, expansion_lane_env=None, node_history=[],
-        workspace=None, workspace_dir="", llm=None,
+        workspace=None, workspace_dir=str(tmp_path), llm=None,
         registered_evaluation_manifest=None, registered_evaluation_command=None,
         registered_evaluator_id=None, implementation_gates=[],
         gate_failure_policy="skip", bank_serving=None, kg_index_path=None, hosted=None,

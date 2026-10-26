@@ -85,7 +85,7 @@ def test_add_mine_creates_the_bank_once(settings, monkeypatch, capsys):
 def test_add_leeroopedia_is_the_keys_presence(settings, monkeypatch, capsys):
     with pytest.raises(SystemExit) as caught:
         _run(monkeypatch, "add", "leeroopedia")
-    assert caught.value.code == 1 and "put LEEROOPEDIA_API_KEY=kpsk_... in .env" in capsys.readouterr().out
+    assert caught.value.code == 1 and "put LEEROOPEDIA_API_KEY=kpsk_... in .env" in capsys.readouterr().err
     monkeypatch.setenv("LEEROOPEDIA_API_KEY", "")
     with pytest.raises(SystemExit):
         _run(monkeypatch, "add", "leeroopedia")   # an empty key is no key
@@ -96,7 +96,7 @@ def test_add_leeroopedia_is_the_keys_presence(settings, monkeypatch, capsys):
     assert "LEEROOPEDIA_API_KEY present and the gate answers as Leeroopedia" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         _run(monkeypatch, "add", "org-x")
-    assert "an index is ingested with --repo <url> --name <n>" in capsys.readouterr().out
+    assert "an index is ingested with --repo <url> --name <n>" in capsys.readouterr().err
 
 
 def test_add_ingests_a_repository_or_a_question_through_the_facade(settings, monkeypatch, capsys):
@@ -120,10 +120,10 @@ def test_add_ingests_a_repository_or_a_question_through_the_facade(settings, mon
     for argv in (["add"], ["add", "mine", "--repo", "u"], ["add", "--repo", "u", "--research", "q"]):
         with pytest.raises(SystemExit):
             _run(monkeypatch, *argv)
-        assert "exactly one of" in capsys.readouterr().out
+        assert "exactly one of" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         _run(monkeypatch, "add", "--repo", "https://github.com/org/x")
-    assert "an index needs a name: --name <n>" in capsys.readouterr().out
+    assert "an index needs a name: --name <n>" in capsys.readouterr().err
 
 
 def test_list_has_an_empty_state_and_the_rows(settings, monkeypatch, capsys, tmp_path):

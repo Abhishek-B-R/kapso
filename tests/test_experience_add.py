@@ -187,11 +187,14 @@ def _build_with(tmp_path, monkeypatch, search):
             self.operation_status = SimpleNamespace(path=str(tmp_path / "ws" / ".kapso" / "status.json"))
 
         def solve(self, **kwargs):
-            return SimpleNamespace(
+            result = SimpleNamespace(
                 final_feedback=None, iterations_run=0, cumulative_iterations=0, total_cost=0.0,
                 stopped_reason="max_iterations", stop_detail=None, best_experiment=None,
                 platform_budget=None, requests=[],
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            kwargs["finish"](result)
+            return result
 
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", FakeOrchestrator)
     monkeypatch.setattr("kapso.kapso.search_for", lambda record, config, config_path: search)

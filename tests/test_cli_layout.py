@@ -12,7 +12,7 @@ import kapso.cli as cli
 from kapso.cli import main
 
 VERBS_IN_ORDER = [
-    "build", "harness", "experience", "learn", "deploy", "watch", "inbox", "doctor",
+    "build", "harness", "experience", "learn", "deploy", "watch", "trace", "inbox", "doctor",
 ]
 
 
@@ -45,4 +45,4 @@ def test_no_command_prints_help_and_exits_one(monkeypatch, capsys):
     with pytest.raises(SystemExit) as stop:
         main()
     assert stop.value.code == 1
-    assert "Please specify a command" in capsys.readouterr().out
+    assert "Please specify a command" in capsys.readouterr().err

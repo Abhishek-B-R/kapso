@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import git
 
 from kapso.execution.coding_agents.adapters.codex_agent import agent_role_overrides, mcp_config_overrides
+from kapso.execution.coding_agents.session_record import write_whole
 from kapso.harness.check import read_front_matter
 from kapso.harness.hash import harness_hash
 from kapso.harness.hooks import expand_plugin_root, merge_hooks
@@ -35,6 +36,13 @@ from kapso.harness.manifest import MODULES
 HARNESS_ROOT_VARIABLE = "KAPSO_HARNESS_ROOT"
 TASK_STATEMENT_FILE = "kapso_task.md"
 PREPARED_DIR = "prepared"
+# Per session, under its record directory: the record the staging writes
+# and the adapters complete (one run entry per host invocation), and the
+# host's event stream.
+SESSION_RECORD_FILE = "session.json"
+STREAM_FILE = "stream.jsonl"
+# Where a campaign's session records live, under the campaign directory.
+SESSIONS_DIR = Path(".kapso") / "sessions"
 CLAUDE_HOST = "claude_code"
 CODEX_HOST = "codex"
 HOST_OF_AGENT = {
@@ -77,7 +85,7 @@ class StagedHarness:
     allowed_tools: List[str] = field(default_factory=list)         # `mcp__<server>` per mounted server
     env: Dict[str, str] = field(default_factory=dict)              # KAPSO_HARNESS_ROOT
     record: Dict[str, Any] = field(default_factory=dict)
-    record_path: Optional[Path] = None                             # <campaign>/.kapso/sessions/<id>/harness.json
+    record_path: Optional[Path] = None                             # <campaign>/.kapso/sessions/<id>/session.json
 
     def merged_agent_specific(self, own: Dict[str, Any]) -> Dict[str, Any]:
         """The session's own keys over the staged ones; `env_overrides` and
@@ -93,7 +101,7 @@ class StagedHarness:
         stream = own.get("stream_artifact_path")
         if self.record_path is not None and stream and stream != self.record.get("stream"):
             self.record["stream"] = str(stream)
-            _write_whole(self.record_path, json.dumps(self.record, indent=2) + "\n")
+            write_whole(self.record_path, json.dumps(self.record, indent=2) + "\n")
         return merged
 
     def codex_exec_args(self) -> List[str]:
@@ -107,9 +115,47 @@ class StagedHarness:
         return args
 
 
-def no_harness(module: str, host: str, session_dir: Path, session_id: str) -> StagedHarness:
-    """What a session gets without a harness: nothing."""
-    return StagedHarness(module=module, host=host, session_dir=Path(session_dir), session_id=session_id, guidance="")
+def _record_without_harness(
+    module: str, host: str, session_dir: Path, session_id: str, records_dir: Path,
+) -> StagedHarness:
+    """What a session gets without a harness: nothing staged, and the
+    record written all the same (`harness: null`), so every session of a
+    campaign has one for its runs to land in."""
+    record_dir = records_dir / session_id
+    staged = StagedHarness(
+        module=module, host=host, session_dir=session_dir, session_id=session_id, guidance="",
+        agent_specific={
+            "stream_artifact_path": str(record_dir / STREAM_FILE),
+            "session_record_path": str(record_dir / SESSION_RECORD_FILE),
+        },
+    )
+    staged.record = {
+        "module": module,
+        "host": host,
+        "harness": None,
+        "session_dir": str(session_dir),
+        "pages": [],
+        "skills": [],
+        "mcp_servers": [],
+        "agents": [],
+        "hooks": [],
+        "prepared": [],
+        "stream": staged.agent_specific["stream_artifact_path"],
+        "runs": existing_runs(record_dir / SESSION_RECORD_FILE),
+    }
+    staged.record_path = record_dir / SESSION_RECORD_FILE
+    write_whole(staged.record_path, json.dumps(staged.record, indent=2) + "\n")
+    return staged
+
+
+def existing_runs(record_path: Path) -> list:
+    """The run entries a record at this path already holds: a session
+    staged again under the same label (a phase re-run after a crash or a
+    resume) keeps the invocations before it, so the record says how the
+    first one ended."""
+    if not record_path.is_file():
+        return []
+    return list(json.loads(record_path.read_text(encoding="utf-8"))["runs"])
 
 
 def stage_harness(
@@ -125,11 +171,13 @@ def stage_harness(
     """Stage one module of the harness into one session directory. The
     session's record and stream go under `<campaign>/.kapso/sessions`, or
     under `records_dir` when the campaign directory takes no writes (an
-    archived bundle a learning crew reads)."""
+    archived bundle a learning crew reads). Without a harness nothing is
+    staged and the record is written all the same."""
     session_dir = Path(session_dir)
     campaign_dir = Path(campaign_dir)
+    records = Path(records_dir) if records_dir is not None else campaign_dir / SESSIONS_DIR
     if harness is None:
-        return no_harness(module, host, session_dir, session_id)
+        return _record_without_harness(module, host, session_dir, session_id, records)
     if module not in MODULES:
         raise ValueError(f"unknown module {module!r}; the modules are {', '.join(MODULES)}")
     if host not in _SKILLS_DIR:
@@ -140,10 +188,7 @@ def stage_harness(
             f"the harness changed since launch: {harness.label()} recorded, "
             f"{harness.name} now hashes {current[:12]}; {harness.restore_hint()}"
         )
-    stager = _Stager(
-        harness, module, session_dir, campaign_dir, session_id, host,
-        Path(records_dir) if records_dir is not None else campaign_dir / ".kapso" / "sessions",
-    )
+    stager = _Stager(harness, module, session_dir, campaign_dir, session_id, host, records)
     # Ensemble members stage into one directory from several threads; the
     # files are written one staging at a time.
     with _STAGING_LOCK:
@@ -179,7 +224,8 @@ class _Stager:
             guidance=self.guidance(),
             env={HARNESS_ROOT_VARIABLE: str(harness.path)},
             agent_specific={
-                "stream_artifact_path": str(self.session_record_dir() / "stream.jsonl"),
+                "stream_artifact_path": str(self.session_record_dir() / STREAM_FILE),
+                "session_record_path": str(self.session_record_dir() / SESSION_RECORD_FILE),
             },
         )
 
@@ -285,7 +331,7 @@ class _Stager:
                 file.unlink()   # another module's, staged here before
             return
         merged = merge_hooks(self.harness.path, self.attachments.hooks)
-        _write_whole(file, json.dumps(merged, indent=2) + "\n")
+        write_whole(file, json.dumps(merged, indent=2) + "\n")
         if self.host == CLAUDE_HOST:
             self.staged.agent_specific["settings_path"] = str(file)
         else:
@@ -305,7 +351,7 @@ class _Stager:
             prompts[name] = (str(data["description"]), self.staged.guidance + "\n\n" + body.strip() + "\n")
         if self.host == CLAUDE_HOST:
             file = self.session_dir / _AGENTS_PATH[self.host]
-            _write_whole(file, json.dumps(
+            write_whole(file, json.dumps(
                 {name: {"description": description, "prompt": prompt} for name, (description, prompt) in prompts.items()},
                 indent=2,
             ) + "\n")
@@ -315,7 +361,7 @@ class _Stager:
             roles = {}
             for name, (description, prompt) in prompts.items():
                 file = directory / f"{name}.toml"
-                _write_whole(file, f"developer_instructions = {json.dumps(prompt)}\n")
+                write_whole(file, f"developer_instructions = {json.dumps(prompt)}\n")
                 roles[name] = {"description": description, "config_file": str(file)}
             self.staged.agent_specific["agents"] = roles
 
@@ -332,9 +378,12 @@ class _Stager:
             "hooks": list(self.attachments.hooks),
             "prepared": list(self.prepared),
             "stream": self.staged.agent_specific["stream_artifact_path"],
+            # The host invocations the adapter appends, one entry each; a
+            # session staged again keeps the entries already there.
+            "runs": existing_runs(self.session_record_dir() / SESSION_RECORD_FILE),
         }
-        self.staged.record_path = self.session_record_dir() / "harness.json"
-        _write_whole(self.staged.record_path, json.dumps(self.staged.record, indent=2) + "\n")
+        self.staged.record_path = self.session_record_dir() / SESSION_RECORD_FILE
+        write_whole(self.staged.record_path, json.dumps(self.staged.record, indent=2) + "\n")
 
     # ------------------------------------------------------------ guidance
 
@@ -392,11 +441,3 @@ def _is_reference(value: Any) -> bool:
     return isinstance(value, str) and value.startswith("${") and value.endswith("}") and len(value) > 3
 
 
-def _write_whole(file: Path, text: str) -> None:
-    """Written to a sibling and renamed into place, so a concurrent reader
-    never sees a half file and a second writer of the same content is
-    harmless."""
-    file.parent.mkdir(parents=True, exist_ok=True)
-    temporary = file.with_name(f".{file.name}.{uuid.uuid4().hex}.tmp")
-    temporary.write_text(text, encoding="utf-8")
-    os.replace(temporary, file)

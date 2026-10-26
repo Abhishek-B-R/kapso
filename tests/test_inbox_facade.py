@@ -91,9 +91,13 @@ def _fake_orchestrator(workspace: Path, monkeypatch):
             self.operation_status = SimpleNamespace(path="fake/.kapso/status.json")
 
         def solve(self, experiment_max_iter, time_budget_minutes=None, cost_budget=None,
-                  finalization_reserve_minutes=None, on_status=None):
-            return SolveResult(best_experiment=None, final_feedback=None,
-                               stopped_reason="max_iterations", iterations_run=1, total_cost=0.0)
+                  finalization_reserve_minutes=None, on_status=None, finish=None):
+            result = SolveResult(best_experiment=None, final_feedback=None,
+                                 stopped_reason="max_iterations", iterations_run=1, total_cost=0.0)
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
+            return result
 
     monkeypatch.setattr(kapso_module, "OrchestratorAgent", Orchestrator)
 

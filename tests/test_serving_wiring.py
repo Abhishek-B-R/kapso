@@ -187,11 +187,13 @@ def test_bank_serving_env_threads_into_the_gate_server(tmp_path):
         "KAPSO_PROBE_BUDGET": "1",
     }
     mcp_servers, tools = get_mcp_config(
-        ["bank"], gate_failure_policy="error", bank_serving=mapping,
+        ["bank"], gate_failure_policy="error", bank_serving=mapping, session="generic_exp_0",
     )
     env = mcp_servers["gated-knowledge"]["env"]
     for key, value in mapping.items():
         assert env[key] == value
+    # the session the config serves, so the gate stamps its pull events
+    assert env["KAPSO_SESSION"] == "generic_exp_0"
     assert "bank" in env["MCP_ENABLED_GATES"]
     # without the mapping the gate must not resolve
     mcp_servers, _ = get_mcp_config(

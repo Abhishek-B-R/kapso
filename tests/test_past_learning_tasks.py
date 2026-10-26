@@ -82,10 +82,11 @@ def test_codex_ideation_search_flag_gated_by_web_search():
 
     from kapso.execution.search_strategies.generic import codex_ideation
 
-    src = inspect.getsource(codex_ideation.run_codex_ideation)
-    # --search is now conditional on the web_search parameter, not hardcoded.
-    assert "web_search: bool = True" in src
-    assert 'if web_search:' in src and '"--search"' in src
+    # --search is now conditional on the web_search parameter, not hardcoded:
+    # the runner takes it, the turn it runs builds the command on it.
+    assert "web_search: bool = True" in inspect.getsource(codex_ideation.run_codex_ideation)
+    turn = inspect.getsource(codex_ideation._run_codex_turn)
+    assert 'if web_search:' in turn and '"--search"' in turn
 
 
 def test_claude_adapter_bans_websearch_via_disallowed_tools():

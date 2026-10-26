@@ -87,7 +87,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             fake._config = config
             return fake
 
-        def mine(self, trajectory_id, force=False, harness=None):
+        def mine(self, trajectory_id, force=False, harness=None, status=None):
             calls.mined.append(trajectory_id)
             # Stamp the manifest as the real miner does, so learn()'s
             # mined-once idempotency is exercised for real.
@@ -356,12 +356,15 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
             )
 
         def solve(self, **kwargs):
-            return SimpleNamespace(
+            result = SimpleNamespace(
                 final_feedback=None, iterations_run=0,
                 cumulative_iterations=0, total_cost=0.0,
                 stopped_reason="max_iterations", stop_detail=None,
                 best_experiment=None, platform_budget=None, requests=[],
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            kwargs["finish"](result)
+            return result
 
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", FakeOrchestrator)
     monkeypatch.chdir(tmp_path)

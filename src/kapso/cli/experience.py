@@ -48,12 +48,13 @@ def _add(args) -> None:
     if len(given) != 1:
         print(
             f"Error: `add` takes exactly one of `{MINE}`, `{HOSTED}`, --repo <url> or --research <question> "
-            "(an index needs --name <n>)"
+            "(an index needs --name <n>)",
+            file=sys.stderr,
         )
         sys.exit(1)
     if args.repo or args.research:
         if not args.name:
-            print("Error: an index needs a name: --name <n> (`kapso experience list` shows the names taken)")
+            print("Error: an index needs a name: --name <n> (`kapso experience list` shows the names taken)", file=sys.stderr)
             sys.exit(1)
         # The facade owns the ingestion (the preflight, the pipeline, the
         # record); it reads the config itself.
@@ -71,7 +72,7 @@ def _add(args) -> None:
         return
     if args.ref == HOSTED:
         if not hosted_key_present():
-            print(f"Error: {hosted_key_missing()}")
+            print(f"Error: {hosted_key_missing()}", file=sys.stderr)
             sys.exit(1)
         server = probe_hosted_gate(settings)
         print(
@@ -82,7 +83,8 @@ def _add(args) -> None:
     print(
         f"Error: `add` creates what must exist before it is loaded: `{MINE}` or `{HOSTED}`; a bank by path "
         "or git reference needs no add (load it), and an index is ingested with --repo <url> --name <n> "
-        "or --research <question> --name <n>"
+        "or --research <question> --name <n>",
+        file=sys.stderr,
     )
     sys.exit(1)
 

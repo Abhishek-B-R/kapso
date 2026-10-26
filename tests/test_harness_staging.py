@@ -17,6 +17,8 @@ from kapso.execution.experiment_workspace.experiment_workspace import Experiment
 from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
 from kapso.execution.coding_agents.adapters.codex_agent import CodexCodingAgent
 from kapso.execution.coding_agents.base import CodingAgentConfig
+from kapso.execution.coding_agents.session_record import EXIT_ERROR, append_run, run_entry
+from kapso.execution.coding_agents.transcripts import digest_claude
 from kapso.harness import (
     GUIDANCE_HEADING,
     HARNESS_ROOT_VARIABLE,
@@ -24,8 +26,11 @@ from kapso.harness import (
     load_harness,
     stage_harness,
 )
+import kapso.execution.search_strategies.generic.feedback_generator.feedback_generator as feedback_module
+from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import FeedbackGenerator
 from kapso.learning.trajectory_store import STAGING_DIRECTORIES
 from tests.handles_support import git, git_workspace
+from tests.harness_support import NoopAgent
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
 
@@ -89,6 +94,7 @@ def test_the_implementation_module_on_claude_code(harness, tmp_path):
 
     assert staged.agent_specific == {
         "stream_artifact_path": str(tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "stream.jsonl"),
+        "session_record_path": str(tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "session.json"),
         "settings_path": str(session_dir / ".claude" / "harness-hooks.json"),
         "agents_path": str(session_dir / ".claude" / "harness-agents.json"),
     }
@@ -112,11 +118,13 @@ def test_the_implementation_module_on_claude_code(harness, tmp_path):
     assert "Task statement" not in guidance
     assert f"- Harness root: ${HARNESS_ROOT_VARIABLE} = {harness.path}" in guidance
 
-    record = json.loads((tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "harness.json").read_text())
+    record = json.loads((tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "session.json").read_text())
     assert record["module"] == "implementation" and record["host"] == "claude_code"
     assert record["harness"] == harness.ref_dict()
     assert record["skills"] == ["backtesting", "market-data", "risk-limits", "lookahead-scan"]
     assert record["hooks"][-1] == "require-results" and record["pages"] == ["guardrails.md", "implementation.md"]
+    assert record["runs"] == [] and record["stream"] == staged.agent_specific["stream_artifact_path"]
+    assert staged.agent_specific["session_record_path"] == str(staged.record_path)
     assert staged.record == record
 
 
@@ -179,15 +187,77 @@ def test_a_module_without_an_entry_still_gets_its_pages(harness, tmp_path):
     assert tree(staged.session_dir) == []
     assert (harness.path / "instructions" / "guardrails.md").read_text().strip() in staged.guidance
     assert (harness.path / "instructions" / "learning.md").read_text().strip() in staged.guidance
-    assert staged.agent_specific == {"stream_artifact_path": str(tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "stream.jsonl")}
+    assert staged.agent_specific == {
+        "stream_artifact_path": str(tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "stream.jsonl"),
+        "session_record_path": str(tmp_path / "campaign" / ".kapso" / "sessions" / "generic_exp_0" / "session.json"),
+    }
 
 
-def test_no_harness_stages_nothing(tmp_path):
+def test_no_harness_stages_nothing_and_keeps_the_record(tmp_path):
+    """Without a harness nothing is staged, and the session still has its
+    record (`harness: null`) for the adapter's run entries to land in."""
     staged = stage_harness(None, "implementation", session_dir=tmp_path, campaign_dir=tmp_path, session_id="x", host="codex")
-    assert staged.guidance == "" and staged.agent_specific == {} and staged.mcp_servers == {}
-    assert tree(tmp_path) == []
-    # Without a harness a session keeps exactly the keys it had.
-    assert staged.merged_agent_specific({"timeout": 5}) == {"timeout": 5}
+    assert staged.guidance == "" and staged.mcp_servers == {} and staged.env == {}
+    assert tree(tmp_path) == [".kapso/sessions/x/session.json"]
+    record = json.loads(staged.record_path.read_text())
+    assert record["harness"] is None and record["module"] == "implementation" and record["host"] == "codex"
+    assert record["skills"] == [] and record["hooks"] == [] and record["pages"] == [] and record["runs"] == []
+    assert record["stream"] == str(tmp_path / ".kapso" / "sessions" / "x" / "stream.jsonl")
+    assert staged.agent_specific == {
+        "stream_artifact_path": record["stream"],
+        "session_record_path": str(tmp_path / ".kapso" / "sessions" / "x" / "session.json"),
+    }
+    # Without a harness a session keeps its own keys beside the two paths.
+    assert staged.merged_agent_specific({"timeout": 5}) == {**staged.agent_specific, "timeout": 5}
+    # A learning run's records live under its own directory.
+    elsewhere = stage_harness(
+        None, "learning", session_dir=tmp_path, campaign_dir=tmp_path, session_id="lead", host="claude_code",
+        records_dir=tmp_path / "run" / ".kapso" / "sessions",
+    )
+    assert elsewhere.record_path == tmp_path / "run" / ".kapso" / "sessions" / "lead" / "session.json"
+
+
+def test_the_judge_attaches_its_session_record_without_a_harness(tmp_path, monkeypatch):
+    """The judge made its agent again with the staged keys only when a
+    harness gave guidance, so a campaign with no harness judged its
+    attempts and recorded no run (the WP6 proof run's churn build). The
+    record and the stream are the session's, harness or not."""
+    created = []
+    monkeypatch.setattr(
+        feedback_module.CodingAgentFactory, "create",
+        classmethod(lambda cls, config: created.append(dict(config.agent_specific)) or NoopAgent(config)),
+    )
+    generator = FeedbackGenerator(CodingAgentConfig(
+        agent_type="claude_code", model="m", debug_model="m", agent_specific={"streaming": True, "timeout": 5},
+    ))
+    staged = stage_harness(None, "feedback", session_dir=tmp_path, campaign_dir=tmp_path, session_id="feedback/generic_exp_0", host="claude_code")
+    generator.attach_harness(staged)
+    assert created[-1]["session_record_path"] == str(staged.record_path)
+    assert created[-1]["stream_artifact_path"] == str(tmp_path / ".kapso" / "sessions" / "feedback" / "generic_exp_0" / "stream.jsonl")
+    assert created[-1]["timeout"] == 5 and created[-1]["streaming"] is True
+    # The next attempt's staging merges onto the judge's own settings,
+    # not onto the previous attempt's record.
+    again = stage_harness(None, "feedback", session_dir=tmp_path, campaign_dir=tmp_path, session_id="feedback/generic_exp_1", host="claude_code")
+    generator.attach_harness(again)
+    assert created[-1]["session_record_path"] == str(again.record_path) and len(created) == 3
+
+
+def test_a_session_staged_again_keeps_the_runs_already_recorded(harness, tmp_path):
+    """A phase re-run after a crash, or a resume, stages the same label
+    again: the record keeps the invocation that failed, so the trace shows
+    how the first one ended (wp6-observability.md, change 11)."""
+    failed = run_entry(
+        digest_claude([]), model="claude-opus-5", cli_session_id="s1", exit=EXIT_ERROR, error="Quota exceeded",
+        files_changed=[], started="2026-10-25T10:00:00+00:00", ended="2026-10-25T10:00:30+00:00", duration_seconds=30.0,
+    )
+    for loaded in (None, harness):
+        campaign = tmp_path / ("bare" if loaded is None else "with")
+        git_workspace(campaign)
+        first = stage_harness(loaded, "implementation", session_dir=campaign, campaign_dir=campaign, session_id="generic_exp_0", host="claude_code")
+        append_run(first.record_path, failed)
+        again = stage_harness(loaded, "implementation", session_dir=campaign, campaign_dir=campaign, session_id="generic_exp_0", host="claude_code")
+        record = json.loads(again.record_path.read_text())
+        assert [run["exit"] for run in record["runs"]] == [EXIT_ERROR] and record["runs"][0]["error"] == "Quota exceeded"
 
 
 def test_every_host_stages_into_the_directories_a_harvest_leaves_out(harness, tmp_path):
@@ -316,7 +386,7 @@ def test_staging_another_module_into_the_same_directory_leaves_only_its_attachme
 def test_the_record_names_the_stream_a_session_writes(harness, tmp_path):
     staged = stage(harness, "ideation", "claude_code", tmp_path, session=".kapso/ideation/iter1", session_id="ideation/iter1/claude_code")
     record_path = staged.record_path
-    assert record_path == tmp_path / "campaign" / ".kapso" / "sessions" / "ideation" / "iter1" / "claude_code" / "harness.json"
+    assert record_path == tmp_path / "campaign" / ".kapso" / "sessions" / "ideation" / "iter1" / "claude_code" / "session.json"
     assert json.loads(record_path.read_text())["stream"] == staged.agent_specific["stream_artifact_path"]
     # An ideation session streams beside its artifacts; the record follows it.
     elsewhere = str(tmp_path / "campaign" / ".kapso" / "ideation" / "iter1" / "claude_code_opus.stream.txt")

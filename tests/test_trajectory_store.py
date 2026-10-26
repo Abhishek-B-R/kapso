@@ -104,7 +104,7 @@ def test_gather_leaves_out_caches_and_the_hosts_staging_directories(tmp_path):
                    "runs/run_0001/.claude/skills/backtesting/SKILL.md"):
         (work_dir / staged).parent.mkdir(parents=True, exist_ok=True)
         (work_dir / staged).write_text("staged\n")
-    record = work_dir / ".kapso" / "sessions" / "harness_setup" / "harness.json"
+    record = work_dir / ".kapso" / "sessions" / "harness_setup" / "session.json"
     record.parent.mkdir(parents=True)
     record.write_text("{}")
     save_trajectory(store, TRAJECTORY_ID, work_dir=str(work_dir), campaign_log=str(log))
@@ -112,7 +112,7 @@ def test_gather_leaves_out_caches_and_the_hosts_staging_directories(tmp_path):
     listed = list(inventory["sha256"])
     assert not [p for p in listed if "__pycache__" in p]
     assert not [p for p in listed if p.startswith((".claude/", ".agents/", ".codex/")) or "/.claude/" in p]
-    assert ".kapso/sessions/harness_setup/harness.json" in listed
+    assert ".kapso/sessions/harness_setup/session.json" in listed
     assert inventory["files"] == len(listed)
 
 

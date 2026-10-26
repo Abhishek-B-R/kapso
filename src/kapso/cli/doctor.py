@@ -1,7 +1,10 @@
 """`kapso doctor`: check this machine can run what the active config asks for."""
 
+import json
 import sys
+from dataclasses import asdict
 
+from kapso import __version__
 from kapso.kapso import DEFAULT_CONFIG_PATH
 from kapso.core.config import load_config
 from kapso.core.preflight import (
@@ -40,6 +43,23 @@ def cmd_doctor(args) -> None:
         )
 
     scope = f"kapso doctor {verb}" if verb else "kapso doctor"
+    failures = [i for i in requirements if not i.ok and i.required]
+    if args.json:
+        # The machine-readable form a host plugin reads (wp6-observability.md,
+        # change 9): the same rows, with this install's own facts; `config`
+        # (the effective config) is WP4's key.
+        print(json.dumps({
+            "scope": scope,
+            "version": __version__,
+            "kapso": sys.argv[0],
+            "python": sys.executable,
+            "config_path": str(args.config or DEFAULT_CONFIG_PATH),
+            "ok": not failures,
+            "requirements": [asdict(item) for item in requirements],
+        }, indent=1))
+        if failures:
+            sys.exit(1)
+        return
     print(scope + "\n" + "=" * 68)
     for item in requirements:
         mark = "OK " if item.ok else ("FAIL" if item.required else "-- ")
@@ -52,7 +72,6 @@ def cmd_doctor(args) -> None:
         if item.fix:
             print(f"         fix        {item.fix}")
 
-    failures = [i for i in requirements if not i.ok and i.required]
     advisories = [i for i in requirements if not i.ok and not i.required]
     print("=" * 68)
     if failures:
@@ -97,5 +116,11 @@ def add_parser(subparsers):
     doctor_parser.add_argument(
         "--config", type=str, default=None,
         help="Config to check (default: packaged config.yaml)",
+    )
+    doctor_parser.add_argument(
+        "--json", action="store_true",
+        help="Print the report as JSON: the scope, this install's version, "
+             "executable, interpreter and config, `ok`, and every requirement "
+             "row; the exit code is the same",
     )
     return cmd_doctor

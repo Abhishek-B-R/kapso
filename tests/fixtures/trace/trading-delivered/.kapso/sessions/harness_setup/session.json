@@ -1,0 +1,63 @@
+{
+  "module": "setup",
+  "host": "claude_code",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "141a562fbace83553a2635f4ff7da69f4a8466438ed31324e7a21471db860d48",
+    "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+  },
+  "session_dir": "/campaign",
+  "pages": [
+    "guardrails.md",
+    "setup.md"
+  ],
+  "skills": [
+    "market-data"
+  ],
+  "mcp_servers": [
+    "market-data"
+  ],
+  "agents": [],
+  "hooks": [
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared"
+  ],
+  "prepared": [],
+  "stream": "/campaign/.kapso/sessions/harness_setup/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-25T11:12:35+00:00",
+      "ended": "2026-10-25T11:18:33+00:00",
+      "duration_seconds": 358.936,
+      "model": "claude-opus-5",
+      "cli_session_id": "722346c7-2119-468f-b40b-8689bb5f151c",
+      "exit": "success",
+      "error": null,
+      "cost_usd": 1.838475,
+      "cost_cumulative": 1.8384749999999996,
+      "turns": 31,
+      "usage": null,
+      "tools": {
+        "Bash": 28,
+        "Skill": 1
+      },
+      "gates": {},
+      "hooks": [
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": null,
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        }
+      ],
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": "Setup is done. Nothing was blocked, so I made no `request_from_user` call.\n\n## Prepared resources\n\n**`market-data`** \u2014 `prepared/market-data/`: `ALPHA.csv`, `BETA.csv`, `GAMMA.csv` and `MANIFEST.json`, built with the market-data skill's `snapshot` tool from `kapso_datasets/bars`. Three instruments, one daily bar per weekday, 780 closed bars each, 2021-01-04 \u2192 2023-12-29, content hash `a6fbcfad\u2026463c`.\n\nVerified: each file's sha256 matches the task data's upstream manifest (byte-identical); timestamps ascending and unique, no NaN, no OHLC violations, one shared Mon\u2013Fri calendar with no holidays, `open` always equal to the prior `close` (so nothing to adjust); and `get_bars(\u2026, 2024-01-01, 2024-12-31)` returns zero rows \u2014 no out-of-sample bar is in the workspace. No backtest was run and nothing was trained.\n\n## One thing I had to fix first\n\nThe `market-data` MCP server failed to connect for this session: the machine had `mcp` 2.3.0, where `FastMCP` was renamed, while the harness's `servers/market_data.py` imports the 1.x `FastMCP`. I fixed it in the environment rather than in the harness \u2014 editing the harness would change its version hash and a campaign resume would refuse it by name \u2014 by installing `mcp<2` (1.30.0), which the harness's own `requirements.txt` (`mcp>=1.2`) asks for and which nothing else on this machine contradicts. Both harness servers now start and complete an MCP handshake, and all four market-data tools answer. Because my own session's connection had already failed at startup, I built the snapshot by driving the server's `snapshot` tool over stdio \u2014 the same code path, not a reimplementation.\n\n## Domain statement\n\n`.kapso/harness_setup/statement.md` records: the snapshot and its integrity checks (including the skill's three pitfalls \u2014 adjustments, survivorship, sessions \u2014 each settled for this data); instruments and bar frequency; the exact cost model (`pnl_t = pos_t\u00b7ret_t \u2212 0.0005\u00b7|\u0394pos|`, fill implied at the signal bar's close, no spread or impact term); the evaluation command, the metric and the risk line; the signal contract as the evaluator actually calls it \u2014 once per instrument, on dev **and** OOS bars concatenated in one frame, with the one-bar lag applied by the evaluator (do not shift twice) and `|value| > 1` rejected rather than clipped; the dev/OOS windows; the `[-1, 1]` limit as the only position limit the task names; the environment and versions; and the budget.\n\nTwo things I flagged rather than smoothed over:\n\n- **The OOS boundary is not enforced.** `private_dir.txt` names a path that any session can read; the brief's rule is the only seal. The statement says to honour it as if it were enforced, and names the in-code form of the same leak \u2014 any whole-sample statistic inside `signal` reads 2024, because the evaluator passes 2021\u20132024 in a single frame. I also verified the harness's look-ahead scan runs and exits 1 on a finding.\n- **Uniform leverage is Sharpe-neutral** under this cost model (return and cost terms scale identically), so only relative sizing through time and lower turnover move the metric; scaling down shrinks `max_drawdown` at no Sharpe cost. Derived from the evaluator, not from the OOS bars.\n\nNothing the task statement names was missing. The brief names no slippage term beyond the 5 bp, no risk-free rate, no benchmark and no leverage cap beyond `[-1, 1]`; the statement records those as the specification rather than gaps. I did not read the private directory or `generate.py`, so the OOS length and anything else about 2024 remain unknown to this session.\n\n`kapso_evaluation/` and `kapso_datasets/` are unmodified (hashes in the transcript), `strategy.py` is untouched, and I left the tree uncommitted since you didn't ask for a commit."
+    }
+  ]
+}

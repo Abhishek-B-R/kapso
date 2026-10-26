@@ -21,15 +21,18 @@ from dotenv import find_dotenv, load_dotenv
 # README tells users to create next to their project was never read.
 load_dotenv(find_dotenv(usecwd=True))
 
-from kapso.cli import build, deploy, doctor, experience, harness, inbox, learn, watch
+from kapso.cli import build, deploy, doctor, experience, harness, inbox, learn, trace, watch
 from kapso.cli.common import list_agents
+from kapso.cli.errors import install_error_hook
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 # The verbs, in the order `kapso --help` lists them.
-VERB_MODULES = (build, harness, experience, learn, deploy, watch, inbox, doctor)
+VERB_MODULES = (build, harness, experience, learn, deploy, watch, trace, inbox, doctor)
 
 
 def main():
+    # The engine's own errors print their message alone (cli/errors.py).
+    install_error_hook()
     CodingAgentFactory.register_quiet_exit()
     # Main parser
     parser = argparse.ArgumentParser(
@@ -43,6 +46,7 @@ Commands:
   learn      Trajectory learning (store, mining, updating, grading)
   deploy     Deploy solutions as running software
   watch      Watch a running build / learn / experience operation
+  trace      Read a campaign's record: the attempts, the lessons, what was voided, what was delivered
   inbox      What a build is waiting on you for, and how to answer it
   doctor     Check this machine is ready to run Kapso
 
@@ -87,5 +91,5 @@ Examples:
         handlers[args.command](args)
     else:
         parser.print_help()
-        print("\nError: Please specify a command (build, harness, experience, learn, deploy, watch, inbox, doctor)")
+        print("\nError: Please specify a command (build, harness, experience, learn, deploy, watch, trace, inbox, doctor)", file=sys.stderr)
         sys.exit(1)

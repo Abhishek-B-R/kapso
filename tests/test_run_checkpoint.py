@@ -696,9 +696,10 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
             cost_budget=None,
             finalization_reserve_minutes=None,
             on_status=None,
+            finish=None,
         ) -> SolveResult:
             assert experiment_max_iter == 1
-            return SolveResult(
+            result = SolveResult(
                 best_experiment=None,
                 final_feedback=None,
                 stopped_reason="max_iterations",
@@ -706,6 +707,10 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
                 total_cost=2.0,
                 cumulative_iterations=4,
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
+            return result
 
     monkeypatch.setattr(
         kapso_module,
@@ -794,10 +799,11 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
             cost_budget=None,
             finalization_reserve_minutes=None,
             on_status=None,
+            finish=None,
         ) -> SolveResult:
             captured["experiment_max_iter"] = experiment_max_iter
             captured["time_budget_minutes"] = time_budget_minutes
-            return SolveResult(
+            result = SolveResult(
                 best_experiment=None,
                 final_feedback=None,
                 stopped_reason="max_iterations",
@@ -805,6 +811,10 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
                 total_cost=0.0,
                 cumulative_iterations=2,
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
+            return result
 
     monkeypatch.setattr(kapso_module, "OrchestratorAgent", RecordFakeOrchestrator)
     kapso = Kapso.__new__(Kapso)

@@ -42,7 +42,6 @@ from kapso.harness.staging import (
     TASK_STATEMENT_FILE,
     StagedHarness,
     host_for,
-    no_harness,
     stage_harness,
 )
 from kapso.harness.store import FetchedHarness, HarnessStore
@@ -79,7 +78,6 @@ __all__ = [
     "inspect_manifest",
     "load_directory",
     "load_harness",
-    "no_harness",
     "parse_reference",
     "read_manifest",
     "reload_harness",

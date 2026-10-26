@@ -97,7 +97,7 @@ def test_no_brief_and_no_resume_exits_one(monkeypatch, capsys):
     with pytest.raises(SystemExit) as stop:
         _run(monkeypatch, "--output", "out")
     assert stop.value.code == 1
-    assert "--goal, --goal-file or --brief is required" in capsys.readouterr().out
+    assert "--goal, --goal-file or --brief is required" in capsys.readouterr().err
 
 
 def test_a_missing_brief_exits_one(monkeypatch, capsys, tmp_path):
@@ -105,7 +105,7 @@ def test_a_missing_brief_exits_one(monkeypatch, capsys, tmp_path):
     with pytest.raises(SystemExit) as stop:
         _run(monkeypatch, "--brief", str(tmp_path / "none.md"), "--output", "out")
     assert stop.value.code == 1
-    assert "brief not found" in capsys.readouterr().out
+    assert "brief not found" in capsys.readouterr().err
 
 
 def test_abbreviated_flags_are_refused(monkeypatch, capsys):
@@ -128,7 +128,7 @@ def test_a_log_inside_the_output_directory_is_refused(monkeypatch, capsys, tmp_p
     with pytest.raises(SystemExit) as stop:
         _run(monkeypatch, "--goal", "g", "--output", "campaign", "--detach", "--log", "campaign/run.log")
     assert stop.value.code == 1
-    assert "--log must be outside --output" in capsys.readouterr().out
+    assert "--log must be outside --output" in capsys.readouterr().err
     assert not (tmp_path / "campaign").exists()
 
 

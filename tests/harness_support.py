@@ -1,8 +1,11 @@
 """Support for the harness tests that drive the real orchestrator: a fake
 strategy that scores one candidate per run on a real branch and stages a
-harness exactly as the real one does, a fake inference backend, and the
-patches that keep the engine's sessions out of a test."""
+harness exactly as the real one does, a fake inference backend, the
+patches that keep the engine's sessions out of a test, and the real
+orchestrator over the real `GenericSearch` for the tests of what
+construction writes (wp6-observability.md, change 13)."""
 
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -146,23 +149,57 @@ class NoopAgent:
         pass
 
 
-def patch_engine(monkeypatch, *, inbox: Optional[Dict[str, Any]] = None) -> List[ScoringFakeStrategy]:
+class FakeProblemHandler:
+    """What the real strategy asks of a problem handler at construction
+    and in the summary: the scoring direction and the context."""
+
+    maximize_scoring = True
+
+    def get_problem_context(self) -> str:
+        return "Improve the candidate"
+
+    def deliverable_ready_reserve_seconds(self):
+        return None
+
+
+# The orchestrator's own strategy creation, kept before any test stubs it.
+REAL_CREATE_STRATEGY = OrchestratorAgent._create_search_strategy
+
+
+def patch_engine(
+    monkeypatch, *, inbox: Optional[Dict[str, Any]] = None, real_strategy: bool = False,
+) -> List[Any]:
     """The real orchestrator with its sessions stubbed, the facade's inbox
     registry off, no preflight; returns the strategies it creates. A
     strategy-level inbox block (path, stop_grace_seconds) makes the
     strategy report the inbox on, without the facade's registry. The
     orchestrator's own session (harness setup) runs as a NoopAgent; a test
-    about it patches the factory again after this."""
+    about it patches the factory again after this. With `real_strategy`
+    the orchestrator creates the real `GenericSearch` through the real
+    factory (the mode config names no embedding model, so the history
+    store is recency-only; the repo memory bootstrap has no inference to
+    run on and the strategy keeps the deterministic map), so construction
+    walks the orchestrator-to-factory seam and writes the real status
+    file."""
     monkeypatch.setattr(orchestrator_module.CodingAgentFactory, "create", staticmethod(lambda config: NoopAgent(config)))
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
-    monkeypatch.setattr(orchestrator_module, "load_mode_config", lambda *a, **k: dict(FAKE_MODE_CONFIG))
-    monkeypatch.setattr(kapso_module, "load_mode_config", lambda *a, **k: dict(FAKE_MODE_CONFIG))
+    # Every launch registers the campaign (wp6-observability.md): the
+    # registry is a file of the test's own, never the machine's.
+    mode_config = {
+        **FAKE_MODE_CONFIG,
+        "inbox": {"enabled": False, "registry": str(Path(tempfile.mkdtemp(prefix="kapso-registry-")) / "campaigns.jsonl")},
+    }
+    monkeypatch.setattr(orchestrator_module, "load_mode_config", lambda *a, **k: dict(mode_config))
+    monkeypatch.setattr(kapso_module, "load_mode_config", lambda *a, **k: dict(mode_config))
     monkeypatch.setattr(kapso_module, "run_preflight", lambda *a, **k: None)
     monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self, coding_agent=None: object())
-    strategies: List[ScoringFakeStrategy] = []
+    strategies: List[Any] = []
 
     def create_strategy(self, coding_agent, workspace_dir, start_from_checkpoint):
-        strategy = ScoringFakeStrategy(workspace_dir, self.harness)
+        if real_strategy:
+            strategy = REAL_CREATE_STRATEGY(self, coding_agent, workspace_dir, start_from_checkpoint)
+        else:
+            strategy = ScoringFakeStrategy(workspace_dir, self.harness)
         if inbox is not None:
             strategy.inbox_settings = dict(inbox)
         strategies.append(strategy)
@@ -170,3 +207,32 @@ def patch_engine(monkeypatch, *, inbox: Optional[Dict[str, Any]] = None) -> List
 
     monkeypatch.setattr(OrchestratorAgent, "_create_search_strategy", create_strategy)
     return strategies
+
+
+def real_orchestrator(
+    monkeypatch, workspace: Path, *, goal: str = "Improve support", harness: Any = None,
+    experience: Optional[List[Dict[str, Any]]] = None, resume: bool = False,
+) -> OrchestratorAgent:
+    """The real `OrchestratorAgent` over the real `GenericSearch` on a
+    seeded workspace (`git_workspace`), its sessions stubbed as
+    `patch_engine` does: construction alone, so a test reads what it
+    wrote (the status file with the harness and the sources) or what it
+    published when its own setup raised. Nothing runs unless the test
+    calls `solve()`."""
+    patch_engine(monkeypatch, real_strategy=True)
+    return OrchestratorAgent(
+        FakeProblemHandler(), workspace_dir=str(workspace), goal=goal, harness=harness,
+        experience=experience, resume=resume,
+    )
+
+
+def stub_solve(monkeypatch, result: Any) -> None:
+    """`solve()` replaced for a facade test over the real construction: it
+    hands `result` to the delivery and returns it, running no session."""
+
+    def solve(self, *args, finish=None, **kwargs):
+        if finish is not None:
+            finish(result)
+        return result
+
+    monkeypatch.setattr(OrchestratorAgent, "solve", solve)

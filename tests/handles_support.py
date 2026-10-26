@@ -39,6 +39,7 @@ def make_solution(campaign: Any, objective: str = "score things", **overrides: A
         rejected_candidates=0,
         callback_metrics={},
         callback_primary_metric=None,
+        session_failures=[],
     )
     fields.update(overrides)
     return Solution(**fields)
@@ -159,18 +160,23 @@ def fake_orchestrator(
             )
 
         def solve(self, experiment_max_iter, time_budget_minutes=None, cost_budget=None,
-                  finalization_reserve_minutes=None, on_status=None):
+                  finalization_reserve_minutes=None, on_status=None, finish=None):
             captured["solve"] = {
                 "experiment_max_iter": experiment_max_iter,
                 "time_budget_minutes": time_budget_minutes,
                 "cost_budget": cost_budget,
                 "finalization_reserve_minutes": finalization_reserve_minutes,
             }
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
             return result
 
     inbox = (
         {"enabled": True, "stop_grace_seconds": 120, "registry": str(inbox_registry)}
-        if inbox_registry is not None else {"enabled": False}
+        # every launch registers the campaign, inbox on or off (wp6-observability.md)
+        if inbox_registry is not None
+        else {"enabled": False, "registry": str(Path(workspace).with_name("registry.jsonl"))}
     )
     monkeypatch.setattr(kapso_module, "load_mode_config", lambda config_path, mode=None: {"inbox": inbox})
     monkeypatch.setattr(kapso_module, "OrchestratorAgent", Orchestrator)

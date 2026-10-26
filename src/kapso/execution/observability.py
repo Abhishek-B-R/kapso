@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
+from kapso.execution.inbox import list_registered_campaigns, read_launch_receipt
 from kapso.execution.iteration_evaluator import comparison_summary
 
 # Structural constant, not a knob: how many consecutive heartbeats may be
@@ -100,6 +101,99 @@ def platform_cost_summary(platform_budget: Mapping[str, Any]) -> str:
     return text
 
 
+def pid_alive(pid: Optional[int]) -> Optional[bool]:
+    """Whether a process exists: None where the kernel exposes no /proc
+    to ask, or with no pid to ask about."""
+    proc = Path("/proc")
+    if pid is None or not proc.is_dir():
+        return None
+    return (proc / str(pid)).exists()
+
+
+def source_line(source: Mapping[str, Any]) -> str:
+    """One source as the status file records it (reference, kind, head,
+    provenance, scope), the way the launch banner names it."""
+    reference, kind, provenance = source["reference"], source["kind"], source["provenance"]
+    head = (source.get("head") or "")[:12]
+    if kind == "bank":
+        every = ", every scope" if source.get("scope") == "all" else ""
+        return f"{reference} at {head}, {provenance}{every}"
+    if kind == "index":
+        return f"{reference} (index {head}), {provenance}"
+    return f"{reference} (hosted), {provenance}"
+
+
+def campaign_listing(registry_path, status_dir, *, everything: bool = False) -> list:
+    """What `kapso watch` lists with no path: the campaigns the registry
+    knows and the learn and experience operations under the status
+    directory, one entry each, the registry's newest first; those alive
+    (the view's own verdict, `starting` included and a machine without
+    /proc judged by the heartbeat) or waiting on the person, unless
+    `everything`. A registered campaign with no status yet is `starting`
+    on its launch receipt while the pid lives, `stopped` once it is gone."""
+    entries = []
+    for registered in list_registered_campaigns(registry_path):
+        campaign = Path(registered["path"])
+        located = OperationStatusView.locate(campaign)
+        if located is not None:
+            entries.append(_listing_entry(OperationStatusView(located), str(campaign)))
+            continue
+        receipt = read_launch_receipt(campaign)
+        if receipt is None:
+            continue
+        alive = pid_alive(receipt["pid"])
+        entries.append({
+            "path": str(campaign), "operation": "build",
+            "state": "starting" if alive is not False else "stopped",
+            "phase": None, "heartbeat_age_seconds": None, "best": None,
+            "stopped_reason": None, "alive": alive,
+        })
+    root = Path(status_dir).expanduser()
+    if root.is_dir():
+        for file in sorted(root.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True):
+            entries.append(_listing_entry(OperationStatusView(file), str(file)))
+    if everything:
+        return entries
+    return [
+        entry for entry in entries
+        if entry["alive"] is not False
+        or (entry["state"] == "done" and entry["stopped_reason"] == "waiting_for_user")
+    ]
+
+
+def _listing_entry(view: "OperationStatusView", path: str) -> Dict[str, Any]:
+    return {
+        "path": path,
+        "operation": view.operation,
+        "state": view.state,
+        "phase": view.phase,
+        "heartbeat_age_seconds": round(view.heartbeat_age_seconds, 1),
+        "best": view.best,
+        "stopped_reason": view.data.get("stopped_reason"),
+        "alive": view.alive,
+    }
+
+
+def render_listing(entries: list) -> str:
+    """One line per entry: the state (WAITING for a campaign waiting on the
+    person), the operation, the phase, the heartbeat's age, the best score
+    and the path."""
+    lines = []
+    for entry in entries:
+        waiting = entry["state"] == "done" and entry["stopped_reason"] == "waiting_for_user"
+        # A writer gone or silent past its beats is dead, whatever the
+        # file's own word; the single-campaign screen says the same.
+        dead = entry["alive"] is False and entry["state"] in ("running", "starting")
+        state = "WAITING" if waiting else "DEAD" if dead else entry["state"].upper()
+        age = f"{entry['heartbeat_age_seconds']:.0f}s ago" if entry["heartbeat_age_seconds"] is not None else "-"
+        best = entry["best"].get("score") if isinstance(entry["best"], dict) else None
+        lines.append(
+            f"{state:<9} {entry['operation']:<10} {entry['phase'] or '-':<15} {age:>10}  "
+            f"best {best if best is not None else '-':<8} {entry['path']}"
+        )
+    return "\n".join(lines)
+
+
 def _progress_bar(fraction: float) -> str:
     filled = int(round(20 * min(1.0, fraction)))
     return "▓" * filled + "░" * (20 - filled)
@@ -111,6 +205,28 @@ def _utcnow() -> str:
 
 def _parse_at(stamp: str) -> datetime:
     return datetime.fromisoformat(stamp)
+
+
+def mark_failed(path, error: BaseException) -> bool:
+    """Publish a failure on a status file whose writer is gone: the
+    strategy constructor or the orchestrator's setup raised after the
+    status was born, and the object that owned the file went with the
+    exception. The file is rewritten as the writer would have written it
+    (`failed`, the error, `finished_at`); nothing is written when there
+    is no file or it is terminal already. Returns whether it wrote."""
+    file = Path(path)
+    if not file.is_file():
+        return False
+    data = json.loads(file.read_text(encoding="utf-8"))
+    if data["state"] in _TERMINAL_STATES:
+        return False
+    data["state"] = "failed"
+    data["finished_at"] = _utcnow()
+    data["error"] = f"{type(error).__name__}: {error}"
+    temporary = file.with_name(f".{file.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(temporary, file)
+    return True
 
 
 class OperationStatus(ABC):
@@ -451,11 +567,7 @@ class OperationStatusView:
         cannot record its own writer's death, so a fresh heartbeat proves
         nothing once the process is gone. None where the kernel exposes no
         /proc to ask; the heartbeat is then the only signal."""
-        pid = self.data.get("pid")
-        proc = Path("/proc")
-        if pid is None or not proc.is_dir():
-            return None
-        return (proc / str(pid)).exists()
+        return pid_alive(self.data.get("pid"))
 
     @property
     def dead(self) -> bool:
@@ -482,7 +594,7 @@ class OperationStatusView:
 
     # ---------------------------------------------------------- renderer
 
-    def explain(self, *, tree: bool = False) -> str:
+    def explain(self) -> str:
         """The watch screen as a string — the CLI shows this verbatim."""
         d = self.data
         age = self.heartbeat_age_seconds
@@ -492,6 +604,13 @@ class OperationStatusView:
         elif self.stalled:
             head += "   ⚠ STALLED?"
         lines = [head + f"      pid {d.get('pid')}"]
+        # The campaign's identity from the first second: the harness and
+        # the sources it is served (wp6-observability.md, change 7).
+        if d.get("harness"):
+            harness = d["harness"]
+            lines.append(f"harness: {harness['name']} {harness['version']} ({harness['hash'][:12]})")
+        for source in d.get("experience") or []:
+            lines.append(f"served: {source_line(source)}")
         if self.phase:
             elapsed = self.phase_elapsed_min
             lines.append(
@@ -504,8 +623,6 @@ class OperationStatusView:
         if self.recent:
             lines.append("recent:")
             lines.extend(f"  {line}" for line in self.recent)
-        if tree:
-            lines.extend(self.campaign_tree())
         title = f" {self.operation} {self.path} "
         width = max(
             [len(line) for line in lines] + [len(title)]
@@ -514,97 +631,6 @@ class OperationStatusView:
         bordered.extend(f"│ {line}".ljust(width + 1) + "│" for line in lines)
         bordered.append("└" + "─" * width + "┘")
         return "\n".join(bordered)
-
-    def campaign_tree(self) -> list:
-        if self.operation != "build":
-            return ["", "campaign tree is only available for a build"]
-        checkpoint_path = self.path.parent / "run_state.json"
-        if not checkpoint_path.exists():
-            return ["", "no checkpoint yet"]
-        checkpoint = json.loads(checkpoint_path.read_text())
-        strategy_state = checkpoint.get("strategy_state")
-        if not isinstance(strategy_state, dict):
-            raise ValueError("build checkpoint is missing strategy state")
-        node_history = strategy_state.get("node_history")
-        if not isinstance(node_history, list):
-            raise ValueError("build checkpoint is missing node history")
-        nodes = {}
-        for node in node_history:
-            if not isinstance(node, dict):
-                raise ValueError("build checkpoint contains an invalid node")
-            node_id = node.get("node_id")
-            if isinstance(node_id, bool) or not isinstance(node_id, int) or node_id < 0:
-                raise ValueError("build checkpoint node IDs must be non-negative integers")
-            if node_id in nodes:
-                raise ValueError("build checkpoint contains duplicate node IDs")
-            parent_node_id = node.get("parent_node_id")
-            if parent_node_id is not None and (
-                isinstance(parent_node_id, bool)
-                or not isinstance(parent_node_id, int)
-                or parent_node_id < 0
-            ):
-                raise ValueError("build checkpoint contains an invalid parent node ID")
-            nodes[node_id] = node
-        children = {node_id: [] for node_id in nodes}
-        roots = []
-        for node_id, node in nodes.items():
-            parent_node_id = node.get("parent_node_id")
-            if parent_node_id is None:
-                roots.append(node_id)
-            elif parent_node_id not in nodes:
-                raise ValueError(f"build checkpoint node {node_id} has a missing parent")
-            else:
-                children[parent_node_id].append(node_id)
-        for child_ids in children.values():
-            child_ids.sort()
-        roots.sort()
-        tree_lines = ["", "campaign tree:"]
-        visited = set()
-
-        def render(node_id: int, prefix: str, is_last: bool) -> None:
-            if node_id in visited:
-                raise ValueError("build checkpoint contains a cycle")
-            visited.add(node_id)
-            node = nodes[node_id]
-            branch_name = node.get("branch_name") or f"node-{node_id}"
-            score = node.get("score")
-            score_text = "unscored" if score is None else f"{score:.6g}"
-            outcome = "error" if node.get("had_error") else "ok"
-            if node.get("suspended"):
-                outcome = "waiting"
-            if node.get("cost_refusal"):
-                outcome = "refused"
-            # Measured cost supersedes the estimate; a refused node
-            # carries its estimate, so the row shows what it would cost.
-            cost = node.get("measured_cost") or node.get("estimated_cost")
-            knowledge = knowledge_summary(node.get("phase_telemetry") or {})
-            connector = "└─" if is_last else "├─"
-            comparison = comparison_summary(
-                node.get("external_evaluation_metadata") or {}
-            )
-            tree_lines.append(
-                f"{prefix}{connector} {branch_name} "
-                f"(score={score_text}, {outcome})"
-                + (f" cost: {float(cost['amount'])}" if cost else "")
-                + (f" knowledge: {knowledge}" if knowledge else "")
-                + (f" external: {comparison}" if comparison else "")
-            )
-            child_prefix = prefix + ("  " if is_last else "│ ")
-            for index, child_id in enumerate(children[node_id]):
-                render(child_id, child_prefix, index == len(children[node_id]) - 1)
-
-        for index, root_id in enumerate(roots):
-            render(root_id, "  ", index == len(roots) - 1)
-        if len(visited) != len(nodes):
-            raise ValueError("build checkpoint contains an unreachable node")
-        credits = credits_summary({
-            f"{node_id}:{phase}": values
-            for node_id, node in nodes.items()
-            for phase, values in (node.get("phase_telemetry") or {}).items()
-        })
-        if credits:
-            tree_lines.append(f"  credits: {credits}")
-        return tree_lines
 
     def _operation_block(self) -> list:
         d = self.data

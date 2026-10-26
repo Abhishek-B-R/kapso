@@ -46,7 +46,10 @@ kapso build started in a session of its own (pid 41213)
 
 The run outlives the shell that started it, a coding agent's tool call
 included; no `nohup` or `setsid` is needed. Without `--detach` the build
-runs in the foreground and prints the summary block when it returns.
+runs in the foreground and prints the summary block when it returns. A
+detached launch also leaves a receipt beside the log,
+`campaign.launch.json`, so a watch started before the status file exists
+can tell a campaign still starting from one that died first.
 
 The same from Python, which blocks until the build returns:
 
@@ -65,17 +68,47 @@ solution = Kapso().build(
 ```bash
 kapso watch campaign --follow     # re-render on each heartbeat until the build ends
 kapso watch campaign              # once
-kapso watch campaign --tree       # the search: every node, its score, what it consulted
+kapso watch                       # every campaign alive or waiting on you, newest first
 kapso watch campaign --json       # the status file as it is
+kapso trace campaign              # the attempts and the record, after the fact
+```
+
+```text
+┌─ build /home/me/trading/campaign/.kapso/status.json ──────────────────┐
+│ RUNNING ♥ 12s ago      pid 41213                                       │
+│ harness: trading 0.1.0 (83b6c0b60d6a)                                  │
+│ served: mine at a9ddad3d302d, measured by you                          │
+│ phase: implementation — 6m elapsed                                     │
+│ budget: ████████░░░░░░░░░░░░ 17/40 min                                 │
+│ iteration 1                                                            │
+│ recent:                                                                │
+│   18:25 iteration 1 started (budget 8%)                                │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 The status file appears within seconds of the launch, in phase `setup`
 while the workspace is seeded and repo memory is bootstrapped (minutes),
 then `ideation`, `implementation`, `evaluation`, `feedback`, one round per
-experiment. `kapso watch` shows the phase, the iteration, the best and the
+experiment. The header names the harness and the sources from the first
+second; `kapso watch` shows the phase, the iteration, the best and the
 latest score, the budget bar, and the last lines of output. `DEAD` means
 the process is gone; `STALLED` means three heartbeats were missed. Both are
 resumed the same way, see [Resume and budgets](/docs/build/resume-and-budgets).
+A campaign that failed shows its `error` line.
+
+Before the status file exists, a detached launch's receipt tells the two
+cases apart: `starting (pid 41213, launched 9s ago; log: …)` while the
+child lives, and `stopped before writing a status; the log says why:
+/home/me/trading/campaign.log` once it is gone (exit 1; `--follow` stops
+waiting). With no argument, `kapso watch` lists the campaigns the launch
+registry knows that are alive or waiting on you, and the learns and
+ingests running, one line each; `--all` lists every campaign with its
+state.
+
+When the build has returned, `kapso trace campaign` lays the record out:
+every attempt with its sessions and runs, the lessons served, what was
+voided and on what evidence, the sessions that failed, the delivered
+candidate. See [Read the record](/docs/build/trace).
 
 ## The summary block
 
@@ -85,14 +118,14 @@ A build ends in one of two blocks:
 ============================================================
 COMPLETED
 ============================================================
-Solution for:  Raise the churn model's out-of-sample ROC AUC above 0.85
-Campaign:      /home/me/churn/campaign
-Candidate:     generic_exp_3 @ 4f1c0e2a…
-Score:         0.8614
-Goal achieved: True
-Stopped:       goal_achieved
-Experiments:   3 this run, 3 in all
-Cost:          $1.934
+Solution for:    Raise the churn model's out-of-sample ROC AUC above 0.85
+Campaign:        /home/me/churn/campaign
+Candidate:       generic_exp_3 @ 4f1c0e2a…
+Score:           0.8614
+Goal achieved:   True
+Stopped:         goal_achieved
+Experiments:     3 this run, 3 in all
+Cost:            $1.934
 ```
 
 `Stopped` is `goal_achieved`, `max_iterations`, or `budget_exhausted`
@@ -103,13 +136,13 @@ candidate produced a valid measurement. Or:
 ============================================================
 WAITING ON YOU
 ============================================================
-Solution for:  Raise the churn model's out-of-sample ROC AUC above 0.85
-Campaign:      /home/me/churn/campaign
-Candidate:     none succeeded
-Goal achieved: False
-Stopped:       waiting_for_user
-Experiments:   1 this run, 1 in all
-Cost:          $0.412
+Solution for:    Raise the churn model's out-of-sample ROC AUC above 0.85
+Campaign:        /home/me/churn/campaign
+Candidate:       none succeeded
+Goal achieved:   False
+Stopped:         waiting_for_user
+Experiments:     1 this run, 1 in all
+Cost:            $0.412
 Waiting on you:
   #1  env:OPENAI_API_KEY
 Reply with:  kapso inbox reply "…"   (inside /home/me/churn/campaign)
@@ -131,12 +164,15 @@ campaign/
     ├── status.json           what kapso watch reads
     ├── run_state.json        the checkpoint a resume continues from
     ├── launch.json           every flag of the launch
+    ├── sessions/<session>/   each session's record (session.json: what it was staged with, its runs) and stream
+    ├── serving/              what the build was served, and the pull log of every bank read
+    ├── verification/<branch>/  the diff, the evaluation output and the verdict of each verified attempt
     ├── experiment_history.json, evaluation_registry.json, inbox.jsonl
     └── …
 ```
 
 One git branch per experiment, `generic_exp_N`; `main` is the seed. See
-[Review the result](/docs/build/review).
+[Review the result](/docs/build/review) and [Read the record](/docs/build/trace).
 
 ## Related
 
@@ -147,14 +183,14 @@ One git branch per experiment, `generic_exp_N`; `main` is the seed. See
   <Card title="Review the result" icon="magnifying-glass" href="/docs/build/review">
     The Solution and the record
   </Card>
+  <Card title="Read the record" icon="list-tree" href="/docs/build/trace">
+    Every attempt, session and run, after the fact
+  </Card>
   <Card title="Resume and budgets" icon="rotate" href="/docs/build/resume-and-budgets">
     Continue a build, give it more
   </Card>
-  <Card title="CLI reference" icon="terminal" href="/docs/reference/cli#kapso-build">
-    Every flag of kapso build and kapso watch
-  </Card>
 </CardGroup>
 
-Related pages: [The inbox](/docs/build/inbox) · [Review the result](/docs/build/review) · [Resume and budgets](/docs/build/resume-and-budgets) · [CLI reference](/docs/reference/cli#kapso-build)
+Related pages: [The inbox](/docs/build/inbox) · [Review the result](/docs/build/review) · [Read the record](/docs/build/trace) · [Resume and budgets](/docs/build/resume-and-budgets) · [CLI reference](/docs/reference/cli#kapso-build)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

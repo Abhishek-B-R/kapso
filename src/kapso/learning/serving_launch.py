@@ -27,6 +27,13 @@ from kapso.harness.manifest import RESERVED_HARNESS_NAME as NO_HARNESS
 from kapso.learning.bank import Bank
 from kapso.learning.retriever import BANK_TOOLS_TEXT
 
+# A campaign serves from `<campaign>/.kapso/serving`: the record of what
+# was served (each source at its pinned head, with the count) and the
+# pull log the bank gate appends to, one event per call.
+SERVING_DIR = Path(".kapso") / "serving"
+SERVING_RECORD_FILE = "serving-record.yaml"
+PULL_LOG_FILE = "serving-pull.jsonl"
+
 HARNESS_COORDINATE = "harness"
 INDEX_RECORD = "index.json"
 INTRO_FILE = "intro.md"
@@ -73,7 +80,7 @@ def plan_serving(
     if entries:
         bank_serving = {
             "KAPSO_BANKS": json.dumps([{k: e[k] for k in ("reference", "head", "dir", "provenance", "scope")} for e in entries]),
-            "KAPSO_SERVING_PULL_LOG": str(serve_dir / "serving-pull.jsonl"),
+            "KAPSO_SERVING_PULL_LOG": str(serve_dir / PULL_LOG_FILE),
             "KAPSO_TASK_HARNESS": task_coords[HARNESS_COORDINATE],
             "KAPSO_PROBE_BUDGET": str(probe_budget),
         }
@@ -99,7 +106,7 @@ def plan_campaign_serving(
     sources: List[ExperienceSource], task_coords: Dict[str, str], work_dir, probe_budget: int,
 ) -> Optional[Dict[str, Any]]:
     """A campaign's plan: it serves from `<work_dir>/.kapso/serving`."""
-    return plan_serving(sources, task_coords, Path(work_dir).expanduser() / ".kapso" / "serving", probe_budget)
+    return plan_serving(sources, task_coords, Path(work_dir).expanduser() / SERVING_DIR, probe_budget)
 
 
 def stage_serving(plan: Dict[str, Any], sources: List[ExperienceSource]) -> Dict[str, Any]:
@@ -125,7 +132,7 @@ def stage_serving(plan: Dict[str, Any], sources: List[ExperienceSource]) -> Dict
     lines = source_lines(sources, counts, plan["task"])
     intro = compile_sources_intro(sources, lines)
     Path(plan["intro_path"]).write_text(intro + "\n")
-    record_path = serve_dir / "serving-record.yaml"
+    record_path = serve_dir / SERVING_RECORD_FILE
     record = {
         "task": dict(plan["task"]),
         "sources": [

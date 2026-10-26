@@ -18,6 +18,7 @@ import pytest
 
 from kapso.core.config import load_harness_defaults
 import kapso.core.preflight as preflight
+import kapso.kapso as kapso_module
 from kapso.kapso import Kapso
 from kapso.core.config import load_config
 from kapso.core.preflight import (
@@ -661,14 +662,21 @@ def test_build_refuses_inference_agent_in_config(
 
 
 def test_python_build_override_fails_before_workspace(
-    packaged, full_machine, tmp_path,
+    packaged, full_machine, tmp_path, monkeypatch,
 ):
     kapso = object.__new__(Kapso)
     kapso._config = packaged
+    kapso.config_path = None
     kapso._harness = None
     kapso._harness_settings = load_harness_defaults()
     kapso._experience = []
     kapso._bank_home = None
+    # The launch is registered before its checks (wp6-observability.md,
+    # change 8): the registry is a file of the test's own.
+    monkeypatch.setattr(
+        kapso_module, "load_mode_config",
+        lambda *args, **kwargs: {"inbox": {"registry": str(tmp_path / "registry.jsonl")}},
+    )
     output = tmp_path / "campaign"
     with pytest.raises(PreflightError, match="inference-only"):
         kapso.build(

@@ -119,13 +119,12 @@ class FeedbackGenerator:
         return self.coding_agent_config.agent_type
 
     def attach_harness(self, staged) -> None:
-        """The harness's feedback module for this judgment: the staged keys
-        (delegates, hooks, skills, servers, and this attempt's own stream)
-        join the judge's own settings, and the agent is made again, so each
-        judgment streams to its own session record; nothing happens
-        without a harness."""
-        if not staged.guidance:
-            return
+        """This judgment's staged session: the harness's feedback module
+        (delegates, hooks, skills, servers) when there is one, and in every
+        case this attempt's own session record and stream, join the judge's
+        own settings, and the agent is made again, so each judgment's runs
+        land in its own record (the proof run's churn build, with no
+        harness, had judged two attempts and recorded no run)."""
         self.coding_agent_config.agent_specific = staged.merged_agent_specific(self._own_agent_specific)
         self.agent = CodingAgentFactory.create(self.coding_agent_config)
 

@@ -41,6 +41,8 @@ directory: run one or the other.
   seed, the metric, exactly as the protocol said.
 - `solution.explain()` and `solution.feedback`: the score, and the judge's
   reading of the evaluation behind it.
+- `kapso trace campaign`: every attempt with its sessions and runs, its
+  score and the judge's words, what was rejected and why, what it cost.
 
 ## Change it
 

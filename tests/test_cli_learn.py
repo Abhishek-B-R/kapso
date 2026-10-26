@@ -72,4 +72,4 @@ def test_a_dev_tool_still_refuses_a_bad_combination(monkeypatch, capsys):
     with pytest.raises(SystemExit) as stop:
         _run(monkeypatch, "dev", "mine")
     assert stop.value.code == 1
-    assert "exactly one of --trajectory or --all" in capsys.readouterr().out
+    assert "exactly one of --trajectory or --all" in capsys.readouterr().err
