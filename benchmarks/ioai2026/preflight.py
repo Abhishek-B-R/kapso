@@ -109,7 +109,7 @@ def run_preflight(task_brief: str, root: str, mode: str = "KAGGLE") -> str:
     shutil.copy2(RULES_PATH, rules_path)
 
     with open(CONFIG_PATH) as f:
-        preflight_cfg = yaml.safe_load(f)["modes"][mode]["preflight"]
+        preflight_cfg = yaml.safe_load(f)["benchmark"]["preflight"]
 
     cli = preflight_cfg["cli"]
     if cli not in ("codex", "claude_code"):

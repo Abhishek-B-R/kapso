@@ -1,0 +1,21 @@
+# The e2e track's gate row: a budget small enough that the reserve gate
+# and the deadline clamps must fire (the implementation ceiling alone
+# exceeds the whole budget), and the campaign must still end with a
+# checked-out artifact. An override file over the packaged config.
+hosts:
+  claude_code:
+    model: claude-opus-4-6
+    auth_mode: oauth
+
+search_strategy:
+  params:
+    ideation:
+      timeout: 300
+    implementation:
+      timeout: 600
+    judge:
+      timeout: 120
+
+budget:
+  minutes: 8
+  reserve_minutes: 2

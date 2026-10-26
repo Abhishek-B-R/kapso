@@ -101,7 +101,6 @@ class CodingAgentFactory:
         Get default configuration for an agent type.
         
         Returns dict with:
-        - default_model
         - default_debug_model
         - agent_specific defaults
         - supports_native_git
@@ -155,22 +154,27 @@ class CodingAgentFactory:
         workspace: str = "",
     ) -> CodingAgentConfig:
         """
-        Build a CodingAgentConfig with defaults from agents.yaml.
-        
-        Merges provided values with defaults from the registry.
-        
+        Build a CodingAgentConfig with the adapter's structural defaults
+        from agents.yaml under the given settings. The model is the
+        caller's: the config's hosts table names one per CLI (Rule 1),
+        the registry holds none.
+
         Args:
             agent_type: Agent type (defaults to default_agent from yaml)
-            model: Model override (defaults to agent's default_model)
-            debug_model: Debug model override (defaults to agent's default_debug_model)
+            model: The model the agent is asked for (required)
+            debug_model: Debug model (defaults to the model)
             agent_specific: Agent-specific options to merge with defaults
             workspace: Working directory
-            
+
         Returns:
             Complete CodingAgentConfig
         """
         # Use default agent if not specified
         agent_type = agent_type or cls._default_agent
+        if not model:
+            raise ValueError(
+                f"a model is required for {agent_type}: the config's hosts table names one per CLI"
+            )
         
         # Get defaults from registry
         defaults = cls._agent_configs.get(agent_type.lower(), {})
@@ -183,8 +187,8 @@ class CodingAgentFactory:
         
         return CodingAgentConfig(
             agent_type=agent_type,
-            model=model or defaults.get("default_model", "gpt-4.1-mini"),
-            debug_model=debug_model or defaults.get("default_debug_model", "gpt-4.1-mini"),
+            model=model,
+            debug_model=debug_model or model,
             workspace=workspace,
             use_git=True,
             agent_specific=merged_agent_specific,
@@ -262,11 +266,9 @@ class CodingAgentFactory:
             install = info.get("install_command", "N/A")
             env_vars = info.get("env_vars", [])
             doc_url = info.get("documentation_url", "N/A")
-            default_model = info.get("default_model", "N/A")
             
             print(f"\n  {name}:")
             print(f"    Description:   {desc}")
-            print(f"    Default Model: {default_model}")
             print(f"    Install:       {install}")
             print(f"    Env vars:      {', '.join(env_vars) or 'None'}")
             print(f"    Docs:          {doc_url}")

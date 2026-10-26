@@ -352,12 +352,27 @@ def knowledge_section(bank_intro: "Optional[str]") -> str:
     bank's marginal value over everything the incumbent already gets."""
     base = ("\n## Feature engineering (high-value direction — suggestion)\n"
             + FEATURE_ENGINEERING_NOTE
+            + "\n\n## Design axes of the solution space\n"
+            + "\n".join(f"{i}. {axis}" for i, axis in enumerate(DESIGN_AXES, 1))
             + "\n\n## Modelling practices (measured — suggestion)\n"
             + MODELLING_PRACTICE_NOTE)
     if bank_intro:
         return base + "\n\n" + bank_intro
     return base
 
+
+# The axes of the solution space for relational-table tasks, feature
+# engineering first (user-directed 2026-07-27): the lens planner statuses
+# each per iteration (ACTIVE / SATURATED with evidence / DEFERRED) and the
+# judge reports the frontier along them. Domain vocabulary, so it lives in
+# the handler's context, not the engine's config.
+DESIGN_AXES = (
+    "input features / representation — joins, temporally-censored transforms, encodings, cohort priors over the relational database (feature engineering)",
+    "training distribution — episode/window construction, staleness augmentation, sample weighting",
+    "model mechanism — estimator family, objectives, ensembling",
+    "decoding / post-processing — calibration, roster/structure constraints, blending",
+    "validation protocol — origin design, gates, drift estimation",
+)
 
 FEATURE_ENGINEERING_NOTE = (
     "Feature engineering has been the highest-value direction on these "

@@ -8,7 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, Optional, Sequence
 
-from kapso.core.config import load_experience_defaults, load_harness_defaults
+from kapso.core.config import deep_merge, load_config
+from kapso.experience.sources import experience_settings
 import kapso.kapso as kapso_module
 from kapso.execution.orchestrator import SolveResult
 from kapso.handles import Brief, Solution
@@ -76,16 +77,20 @@ def candidate_branch(path: Path, name: str, filename: str, content: str) -> str:
 
 def facade() -> Kapso:
     """A Kapso without `__init__`: the attributes `build()` reads. A new
-    attribute set in `__init__` must be mirrored here (the stub gotcha)."""
+    attribute set in `__init__` must be mirrored here (the stub gotcha).
+    The config is read through the facade's module, as `__init__` reads
+    it, so a test's patch of `kapso_module.load_config` (the fake
+    orchestrator's inbox registry, the engine patch's) is what the facade
+    runs with: patch first, build the facade after."""
     kapso = Kapso.__new__(Kapso)
-    kapso.config_path = kapso_module.DEFAULT_CONFIG_PATH
+    kapso.config_path = None
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    kapso._config = {}
+    kapso._config = kapso_module.load_config()
     kapso._bank_home = None
     kapso._harness = None
-    kapso._harness_settings = load_harness_defaults()
+    kapso._harness_settings = dict(kapso._config["harness"])
     kapso._experience = []
-    kapso._experience_settings = load_experience_defaults()
+    kapso._experience_settings = experience_settings(kapso._config)
     return kapso
 
 
@@ -178,6 +183,6 @@ def fake_orchestrator(
         if inbox_registry is not None
         else {"enabled": False, "registry": str(Path(workspace).with_name("registry.jsonl"))}
     )
-    monkeypatch.setattr(kapso_module, "load_mode_config", lambda config_path, mode=None: {"inbox": inbox})
+    monkeypatch.setattr(kapso_module, "load_config", lambda config_path=None: deep_merge(load_config(), {"inbox": inbox}))
     monkeypatch.setattr(kapso_module, "OrchestratorAgent", Orchestrator)
     return captured

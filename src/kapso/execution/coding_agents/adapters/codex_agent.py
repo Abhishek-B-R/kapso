@@ -204,7 +204,7 @@ class CodexCodingAgent(CodingAgentInterface):
         super().__init__(config)
         spec = config.agent_specific or {}
         self._effort: Optional[str] = spec.get("effort")
-        # None is what a lane with no implementation_timeout and no time budget
+        # None is what a lane with no implementation timeout and no time budget
         # passes (the strategy clamps to "unbounded"); the adapter needs a
         # deadline, so that is the default one (live L2, 2026-09-04).
         configured_timeout = spec.get("timeout")

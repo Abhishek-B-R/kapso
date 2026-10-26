@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 import git
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
+from tests.harness_support import fake_config
 import kapso.execution.run_checkpoint as checkpoint_module
 from kapso.execution.inbox import write_launch_record
 from kapso.execution.orchestrator import OrchestratorAgent, SolveResult
@@ -221,21 +222,13 @@ def _patch_orchestrator(
 
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}}
-        },
-    )
-    monkeypatch.setattr(
         OrchestratorAgent,
         "_create_feedback_generator",
-        lambda self, coding_agent=None: object(),
+        lambda self: object(),
     )
 
     def create_strategy(
         self: OrchestratorAgent,
-        coding_agent: Optional[str],
         workspace_dir: Optional[str],
         start_from_checkpoint: bool,
     ) -> FakeStrategy:
@@ -636,7 +629,7 @@ def test_v2_checkpoint_is_rejected_without_migration(tmp_path: Path) -> None:
     # campaign reads "start a fresh campaign", never "missing cost_config".
     with pytest.raises(
         RunCheckpointIncompatibleError,
-        match=r"expected 5\. .*not migrated",
+        match=r"expected 6\. .*not migrated",
     ):
         store.load()
 
@@ -722,10 +715,10 @@ def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     kapso.config_path = None
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
     # Mirror __init__-set attributes the build path reads (stub gotcha).
-    kapso._config = {}
+    kapso._config = fake_config(inbox={"registry": str(Path(workspace).with_name("registry.jsonl"))})
     kapso._bank_home = None
     kapso._harness = None
-    kapso._harness_settings = load_harness_defaults()
+    kapso._harness_settings = load_config()["harness"]
     kapso._experience = []
     result = kapso.build(
         "Improve support",
@@ -759,7 +752,7 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     eval_dir.mkdir()
     (eval_dir / "evaluate.py").write_text("print('accuracy: 0.9')\n")
     write_launch_record(workspace, {
-        "config_path": None, "mode": "MINIMAL",
+        "config_path": None,
         "coding_agent": None, "output_path": str(workspace),
         "max_iterations": 3, "time_budget_minutes": 60.0, "cost_budget": None,
         "finalization_reserve_minutes": None, "eval_dir": str(eval_dir),
@@ -822,20 +815,19 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     # own packaged path must compare equal (a resume from another install).
     kapso.config_path = kapso_module.DEFAULT_CONFIG_PATH
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    kapso._config = {}
+    kapso._config = fake_config(inbox={"registry": str(tmp_path / "registry.jsonl")})
     kapso._bank_home = None
     kapso._harness = None
-    kapso._harness_settings = load_harness_defaults()
+    kapso._harness_settings = load_config()["harness"]
     kapso._experience = []
 
     kapso.build(output=str(workspace), resume=True)
     assert captured["goal"] == Brief(objective="Raise accuracy above 0.85").render()
-    assert captured["mode"] == "MINIMAL"
     assert captured["eval_dir"] == str(eval_dir)
     assert captured["experiment_max_iter"] == 3
     assert captured["time_budget_minutes"] == 60.0
 
     with pytest.raises(
-        RunCheckpointIncompatibleError, match="mode was 'MINIMAL', now 'GENERIC'"
+        RunCheckpointIncompatibleError, match="coding_agent was None, now 'codex'"
     ):
-        kapso.build(output=str(workspace), resume=True, mode="GENERIC")
+        kapso.build(output=str(workspace), resume=True, coding_agent="codex")

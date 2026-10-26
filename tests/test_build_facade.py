@@ -13,7 +13,7 @@ from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, co
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import FeedbackResult
 from kapso.handles import Brief, Budget, Solution
-from kapso.kapso import DEFAULT_MAX_ITERATIONS
+from kapso.core.config import load_config
 from tests.handles_support import (
     candidate_branch,
     facade,
@@ -93,7 +93,7 @@ def test_budget_precedence_is_the_call_then_the_brief_then_the_default(tmp_path,
     git_workspace(other)
     captured = fake_orchestrator(monkeypatch, other, solve_result())
     facade().build("g", output=str(other))
-    assert captured["solve"]["experiment_max_iter"] == DEFAULT_MAX_ITERATIONS
+    assert captured["solve"]["experiment_max_iter"] == load_config()["budget"]["experiments"]
     assert captured["solve"]["time_budget_minutes"] is None
 
 
@@ -197,7 +197,7 @@ def _checkpoint(goal: str) -> RunCheckpoint:
 def _launch_record(workspace, **values):
     record = {
         "brief": Brief(objective="recorded").to_dict(),
-        "config_path": None, "mode": None, "coding_agent": None,
+        "config_path": None, "coding_agent": None,
         "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": 60.0,
         "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
         "data_dir": None, "additional_context": "", "context": None,

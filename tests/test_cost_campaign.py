@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from kapso.core.config import load_config
 from kapso.execution.budget import BudgetLedger
 from kapso.execution.cost_estimator import CostEstimate, normalize_cost_config
 from kapso.execution.fidelity import FidelitySpec
@@ -106,7 +107,7 @@ def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
     orchestrator.goal = "Improve the candidate"
     orchestrator.strategy_type = "generic"
     orchestrator.config_fingerprint = config_fingerprint({"cost": policy})
-    orchestrator._config_budget = {}
+    orchestrator._config_budget = load_config()["budget"]
     orchestrator.budget_ledger = BudgetLedger()
     orchestrator.fidelity_spec = FidelitySpec.resolve({"mode": "off"})
     orchestrator.evaluation_maintainer = None

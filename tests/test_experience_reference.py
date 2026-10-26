@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from kapso.core.config import load_experience_defaults
+from kapso.core.config import load_config
+from kapso.experience.sources import experience_settings
 from kapso.experience import (
     ExperienceError,
     ExperienceReferenceError,
@@ -274,7 +275,7 @@ def test_an_index_is_loaded_at_its_id(tmp_path):
 
 
 def test_the_defaults_come_from_the_config():
-    settings = load_experience_defaults()
+    settings = experience_settings(load_config())
     assert settings["banks"].endswith("experience/banks") and settings["indexes"].endswith("experience/indexes")
     assert settings["bank_home"].endswith("bank.git") and settings["hosted"]["url"].startswith("https://mcp.leeroopedia.com/")
     assert settings["session_root"].endswith("serving")

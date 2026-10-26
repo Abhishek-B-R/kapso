@@ -21,9 +21,12 @@ from typing import Any, Callable, Dict, List, Mapping, Optional
 
 
 _BUDGET_BLOCK_KEYS = {
-    "time_budget_minutes",
-    "cost_budget_usd",
-    "finalization_reserve_minutes",
+    # The experiment cap is the facade's (a solve() argument), the three
+    # budgets below the handle's words (docs/plans/redesign/wp4-config.md).
+    "experiments",
+    "minutes",
+    "usd",
+    "reserve_minutes",
     "min_iteration_seconds",
     # Admission floor once the handler reports a confirmed deliverable
     # (insurance already paid): late, short iterations become admissible.
@@ -122,13 +125,11 @@ class BudgetSpec:
             )
 
         if time_budget_minutes is None:
-            time_budget_minutes = block.get("time_budget_minutes")
+            time_budget_minutes = block.get("minutes")
         if cost_budget is None:
-            cost_budget = block.get("cost_budget_usd")
+            cost_budget = block.get("usd")
         if finalization_reserve_minutes is None:
-            finalization_reserve_minutes = block.get(
-                "finalization_reserve_minutes"
-            )
+            finalization_reserve_minutes = block.get("reserve_minutes")
 
         kwargs: Dict[str, Any] = {}
         if "min_iteration_seconds" in block:

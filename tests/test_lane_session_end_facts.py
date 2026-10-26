@@ -10,6 +10,7 @@ a clean finish into a kill.
 from types import SimpleNamespace
 
 import kapso.execution.search_strategies.generic.strategy as strategy_module
+from kapso.core.roles import SessionRole
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
 
@@ -50,10 +51,8 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch, tmp_path):
         registered_evaluation_manifest=None, registered_evaluation_command=None,
         registered_evaluator_id=None, implementation_gates=[],
         gate_failure_policy="skip", bank_serving=None, kg_index_path=None, hosted=None,
-        implementation_cli="claude_code", implementation_model="m",
-        implementation_fallback_model=None, implementation_web=False,
-        _claude_auth_settings={}, env_strip=[], env_defaults={},
-        session_effort=None, implementation_timeout=600,
+        implementation_role=SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=600, web=False),
+        implementation_fallback_model=None, env_strip=[], env_defaults={},
         previous_errors=[], recent_error_count=3, feedback_generator=Judge(),
         goal="the goal", design_axes=(),
         problem_handler=SimpleNamespace(maximize_scoring=True),

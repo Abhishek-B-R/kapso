@@ -32,6 +32,7 @@ from kapso.execution.search_strategies.factory import SearchStrategyFactory
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.environment.handlers.generic import GenericProblemHandler
 from kapso.core.llm import LLMBackend
+from kapso.core.config import load_config
 
 
 class TestSetupKapsoDirectories:
@@ -66,7 +67,10 @@ class TestSetupKapsoDirectories:
         handler = GenericProblemHandler(
             problem_description="Test problem",
         )
-        coding_agent_config = CodingAgentFactory.build_config()
+        config = load_config()
+        coding_agent_config = CodingAgentFactory.build_config(
+            "claude_code", model=config["hosts"]["claude_code"]["model"],
+        )
         llm = LLMBackend()
         
         return SearchStrategyFactory.create(
@@ -74,6 +78,8 @@ class TestSetupKapsoDirectories:
             problem_handler=handler,
             llm=llm,
             coding_agent_config=coding_agent_config,
+            params=config["search_strategy"]["params"],
+            hosts=config["hosts"],
             workspace_dir=workspace_dir,
             eval_dir=eval_dir,
             data_dir=data_dir,

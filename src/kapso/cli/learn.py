@@ -52,7 +52,7 @@ def cmd_learn(args) -> None:
         lesson = kapso.learn(args.campaign)
         print(lesson.explain())
         return
-    _dev(args, load_config(args.config or DEFAULT_CONFIG_PATH))
+    _dev(args, load_config(args.config))
 
 
 def _dev(args, config) -> None:

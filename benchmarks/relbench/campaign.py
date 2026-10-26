@@ -213,7 +213,7 @@ def run_one(task_id: str, args) -> dict:
     log_path = REPO_ROOT / "tmp" / f"campaign_{ds}--{task}.log"
     cmd = [
         sys.executable, "-m", "benchmarks.relbench.runner",
-        "-s", ds, "-t", task, "-i", str(args.iterations), "-m", args.mode,
+        "-s", ds, "-t", task, "-i", str(args.iterations),
         "--workspace", workspace,
         "--time-budget-hours", str(args.hours_per_task),
     ] + extra_args
@@ -260,7 +260,6 @@ def main() -> None:
                         help="comma-separated task ids; default = ROI queue")
     parser.add_argument("--limit", type=int, default=None, help="max tasks this invocation")
     parser.add_argument("--iterations", type=int, default=100)
-    parser.add_argument("--mode", type=str, default="RELBENCH_GENERIC")
     parser.add_argument("--allow-regime-sensitive", action="store_true")
     parser.add_argument("--lane", type=str, default=None,
                         help="label for this campaign lane (e.g. lane-a); recorded in campaign_meta")

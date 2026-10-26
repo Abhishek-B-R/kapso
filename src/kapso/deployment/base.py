@@ -17,12 +17,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from kapso.core.config import load_deployment_defaults
+from kapso.core.config import load_config
 from kapso.handles import Solution
 
 # The packaged `deployment:` block — the one source for the dataclass
 # defaults below; the facade layers a user config's block over it.
-DEPLOYMENT_DEFAULTS = load_deployment_defaults()
+DEPLOYMENT_DEFAULTS = load_config()["deployment"]
 
 
 def _discover_strategies() -> Dict[str, str]:

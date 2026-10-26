@@ -26,6 +26,7 @@ from kapso.experience.sources import (
     ExperienceSource,
     bank_head,
     count_cards,
+    experience_settings,
     has_origin,
     hosted_key_missing,
     hosted_key_present,

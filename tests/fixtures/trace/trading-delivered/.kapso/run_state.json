@@ -39,7 +39,7 @@
   },
   "last_stop": null,
   "maximize_scoring": true,
-  "schema_version": 5,
+  "schema_version": 6,
   "status": "completed",
   "strategy_state": {
     "evaluation_integrity": {

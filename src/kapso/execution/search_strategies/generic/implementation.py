@@ -20,6 +20,10 @@ from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.harness.staging import StagedHarness
 from kapso.execution.inbox import Request, load_requests
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.core.roles import SessionRole
+from kapso.execution.coding_agents.base import CodingAgentConfig
+from kapso.execution.coding_agents.factory import CodingAgentFactory
+from kapso.execution.search_strategies.generic.ideation import WEB_TOOLS
 from kapso.execution.search_strategies.generic.difficulties_generator import (
     generate_technical_difficulties,
 )
@@ -92,17 +96,12 @@ def run_implementation(
     bank_serving: Optional[Dict[str, str]] = None,
     kg_index_path: Optional[str] = None,
     hosted: Optional[Dict[str, Any]] = None,
-    implementation_cli: str,
-    implementation_model: str,
+    implementation_role: SessionRole,
     implementation_fallback_model: Optional[str],
-    implementation_web: bool,
-    claude_auth_settings: Dict[str, Any],
     env_strip: List[str],
     env_defaults: Dict[str, str],
     lane_env: Optional[Dict[str, str]],
-    session_effort: Optional[str],
-    clamped_timeout: Callable[[float], float],
-    implementation_timeout: float,
+    clamped_timeout: Callable[[Optional[float]], Optional[float]],
     session_stream_path: Callable[[str], str],
     build_prompt: Callable[..., str],
     previous_errors_text: str,
@@ -141,11 +140,12 @@ def run_implementation(
         session asked the person and was stopped, the session's error when
         it died without finishing its report and None when it finished)
     """
-    from kapso.execution.coding_agents.base import CodingAgentConfig
-    from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
     from kapso.gated_mcp import gate_usage, get_mcp_config
     from kapso.execution.memories.repo_memory.observation import extract_repo_memory_sections_consulted
     
+    implementation_cli = implementation_role.cli
+    implementation_model = implementation_role.model
+
     # Create experiment session (handles git branching). A continuation
     # takes the branch as the stopped session left it.
     if continuation is not None:
@@ -203,71 +203,51 @@ def run_implementation(
     
     # 3. Build full tool set for implementation (includes Write, Edit)
     # Bash is kept for running evaluation scripts, not for repo_memory access.
-    # implementation_web gates the session's live-web access on BOTH CLIs:
-    # here the claude whitelist's WebSearch/WebFetch, below the codex
-    # --search flag — one knob, no web side-door on either path.
+    # The native web tools follow the role's switch on both hosts (the
+    # engine's boundary); a harness whose protocol forbids the web lists a
+    # hook on the module as well.
     implementation_allowed_tools = [
         "Read", "Write", "Edit", "Bash",
-        *(["WebSearch", "WebFetch"] if implementation_web else []),
+        *(WEB_TOOLS if implementation_role.web else []),
         *[t for t in mcp_tools if t.startswith("mcp__")],
         *staged.allowed_tools,
     ]
     
     logger.info(f"[GenericSearch] Implementation tools: {implementation_allowed_tools}")
     
-    # 4. Configure Claude Code for implementation
-    if implementation_cli == "codex":
-        config = CodingAgentConfig(
-            agent_type="codex",
-            model=implementation_model,
-            debug_model=implementation_model,
-            agent_specific=staged.merged_agent_specific({
-                **({"env_overrides": lane_env} if lane_env else {}),
-                "env_strip": env_strip,
-                "env_defaults": env_defaults,
-                "mcp_servers": mcp_servers,
-                # Same implementation_web knob as the claude whitelist:
-                # gates the codex CLI's native --search tool.
-                "web_search": implementation_web,
-                "timeout": clamped_timeout(implementation_timeout),
-                # Lane 0 tees the live transcript to the console, same
-                # policy as the claude path.
-                "streaming": lane_index == 0,
-                "effort": session_effort,
-                # Transcript stream persisted for the difficulties
-                # fallback's forensics, same as the claude path.
-                "stream_artifact_path": session_stream_path(branch_name),
-                **inbox_agent_settings,
-            }),
-        )
-    else:
-        config = CodingAgentConfig(
-            agent_type="claude_code",
-            model=implementation_model,
-            debug_model=implementation_model,
-            agent_specific=staged.merged_agent_specific({
-                **claude_auth_settings,
-                **({"env_overrides": lane_env} if lane_env else {}),
-                "env_strip": env_strip,
-                "env_defaults": env_defaults,
-                "mcp_servers": mcp_servers,
-                "allowed_tools": implementation_allowed_tools,
-                "timeout": clamped_timeout(implementation_timeout),
-                # Under node expansion only lane 0 streams to the console;
-                # other lanes stay buffered (their raw streams still land in
-                # per-branch stream_artifact_path files).
-                "streaming": lane_index == 0,
-                "effort": session_effort,
-                # Per-session process record: raw stream-json events land
-                # here as they arrive, so a killed session still leaves its
-                # forensics behind (feeds the difficulties fallback).
-                "stream_artifact_path": session_stream_path(branch_name),
-                # Declared-completion contract: lets the adapter reap a CLI
-                # that delivered its full final report but lingers alive.
-                "completion_markers": IMPLEMENTATION_COMPLETION_MARKERS,
-                **inbox_agent_settings,
-            }),
-        )
+    # 4. The session on the implementation role's host: the host's own
+    # settings, the engine's environment, the gates, the tools (the
+    # whitelist on Claude Code, `--search` on Codex), the deadline and
+    # the transcript.
+    config = CodingAgentConfig(
+        agent_type=implementation_cli,
+        model=implementation_model,
+        debug_model=implementation_model,
+        agent_specific=staged.merged_agent_specific({
+            **implementation_role.settings,
+            **({"env_overrides": lane_env} if lane_env else {}),
+            "env_strip": env_strip,
+            "env_defaults": env_defaults,
+            "mcp_servers": mcp_servers,
+            "allowed_tools": implementation_allowed_tools,
+            "disallowed_tools": [] if implementation_role.web else WEB_TOOLS,
+            "web_search": implementation_role.web,
+            "timeout": clamped_timeout(implementation_role.timeout),
+            # Under node expansion only lane 0 streams to the console;
+            # other lanes stay buffered (their raw streams still land in
+            # per-branch stream_artifact_path files).
+            "streaming": lane_index == 0,
+            "effort": implementation_role.effort,
+            # Per-session process record: raw stream-json events land
+            # here as they arrive, so a killed session still leaves its
+            # forensics behind (feeds the difficulties fallback).
+            "stream_artifact_path": session_stream_path(branch_name),
+            # Declared-completion contract: lets the adapter reap a CLI
+            # that delivered its full final report but lingers alive.
+            "completion_markers": IMPLEMENTATION_COMPLETION_MARKERS,
+            **inbox_agent_settings,
+        }),
+    )
 
     # 5. Build implementation prompt
     repo_memory_detail_access_instructions = (
@@ -308,13 +288,8 @@ def run_implementation(
         )
     
     # 6. Run the implementation session
-    print(f"[GenericSearch] Running {implementation_cli} implementation...")
-    if implementation_cli == "codex":
-        from kapso.execution.coding_agents.factory import CodingAgentFactory
-
-        agent = CodingAgentFactory.create(config)
-    else:
-        agent = ClaudeCodeCodingAgent(config)
+    print(f"[GenericSearch] Running {implementation_role.label} implementation...")
+    agent = CodingAgentFactory.create(config)
     agent.initialize(session.session_folder)
 
     phase_started = time.monotonic()
@@ -404,16 +379,10 @@ def run_implementation(
                     implementation_fallback_model
                 )
                 fallback_config.agent_specific["timeout"] = (
-                    clamped_timeout(implementation_timeout)
+                    clamped_timeout(implementation_role.timeout)
                 )
                 agent.cleanup()
-                if implementation_cli == "codex":
-                    from kapso.execution.coding_agents.factory import (
-                        CodingAgentFactory,
-                    )
-                    agent = CodingAgentFactory.create(fallback_config)
-                else:
-                    agent = ClaudeCodeCodingAgent(fallback_config)
+                agent = CodingAgentFactory.create(fallback_config)
                 agent.initialize(session.session_folder)
                 note_session_started()
                 fallback_result = agent.generate_code(
@@ -670,18 +639,15 @@ def render_inbox_ideation(requests: Dict[int, Request]) -> str:
 def ensure_technical_difficulties(
     node,
     *,
-    implementation_model: str,
-    claude_auth_settings: Dict[str, Any],
+    implementation_role: SessionRole,
     env_strip: List[str],
-    session_effort: Optional[str],
-    clamped_timeout: Callable[[float], float],
-    ideation_timeout: float,
+    clamped_timeout: Callable[[Optional[float]], Optional[float]],
     workspace_dir: str,
     session_stream_path: Callable[[str], str],
 ) -> None:
     """Run the fallback reconstruction when the implementor's
     technical_difficulties tag is missing (crashed or deadline-killed
-    session, or simply omitted)."""
+    session, or simply omitted), on the implementation role's host."""
     if (node.technical_difficulties or "").strip():
         return
     print(
@@ -689,11 +655,9 @@ def ensure_technical_difficulties(
         "running fallback reconstruction"
     )
     node.technical_difficulties = generate_technical_difficulties(
-        model=implementation_model,
-        claude_auth_settings=claude_auth_settings,
+        role=implementation_role,
         env_strip=env_strip,
-        effort=session_effort,
-        timeout_seconds=clamped_timeout(ideation_timeout),
+        timeout_seconds=clamped_timeout(None),
         workspace_dir=node.workspace_dir or workspace_dir,
         solution=node.solution,
         stream_artifact_path=session_stream_path(node.branch_name),

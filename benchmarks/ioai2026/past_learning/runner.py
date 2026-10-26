@@ -25,37 +25,39 @@ load_dotenv()
 
 import yaml
 
+from kapso.core.config import read_yaml
 from kapso.execution.orchestrator import OrchestratorAgent
 from benchmarks.ioai2026.past_learning.handler import LocalTaskHandler
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
 
 
-def shape_session_timeouts(mode_cfg: dict, total_run_seconds: float) -> dict:
-    knobs = mode_cfg["session_budget"]
-    params = mode_cfg["search_strategy"]["params"]
+def shape_session_timeouts(config: dict, total_run_seconds: float) -> dict:
+    knobs = config["benchmark"]["session_budget"]
+    params = config["search_strategy"]["params"]
     return {
         "ideation_timeout": int(min(
-            params["ideation_timeout"],
+            params["ideation"]["timeout"],
             max(knobs["ideation_min_seconds"],
                 total_run_seconds * knobs["ideation_fraction"]),
         )),
         "implementation_timeout": int(min(
-            params["implementation_timeout"],
+            params["implementation"]["timeout"],
             max(knobs["implementation_min_seconds"],
                 total_run_seconds * knobs["implementation_fraction"]),
         )),
     }
 
 
-def build_runtime_config(mode: str, task_dir: str, session_timeouts: dict,
+def build_runtime_config(task_dir: str, session_timeouts: dict,
                          shared_cache_dir: "str | None" = None,
                          node_expansion: "int | None" = None) -> str:
-    with open(CONFIG_PATH) as f:
-        config = yaml.safe_load(f)
-    mode_cfg = config["modes"][mode]
-    params = mode_cfg["search_strategy"]["params"]
-    params.update(session_timeouts)
+    """The per-run override file: this runner's own file with the shaped
+    session deadlines (and the lanes) over it."""
+    config = read_yaml(CONFIG_PATH)
+    params = config["search_strategy"]["params"]
+    params["ideation"]["timeout"] = session_timeouts["ideation_timeout"]
+    params["implementation"]["timeout"] = session_timeouts["implementation_timeout"]
     if shared_cache_dir:
         params["shared_cache_dir"] = os.path.abspath(shared_cache_dir)
     if node_expansion and node_expansion > 1:
@@ -106,7 +108,6 @@ def main():
     parser.add_argument("--hours", type=float, default=2.0)
     parser.add_argument("--guard-minutes", type=int, default=None)
     parser.add_argument("--iterations", type=int, default=20)
-    parser.add_argument("--mode", default="LOCAL")
     parser.add_argument("--coding-agent", default="claude_code")
     parser.add_argument("--cost-budget", type=float, default=None)
     parser.add_argument("--resume", action="store_true")
@@ -128,8 +129,8 @@ def main():
     with open(meta_path) as f:
         task_meta = json.load(f)
 
-    with open(CONFIG_PATH) as f:
-        mode_cfg = yaml.safe_load(f)["modes"][args.mode]
+    config = read_yaml(CONFIG_PATH)
+    mode_cfg = config["benchmark"]
 
     if args.final_eval_only:
         report = run_final_eval(root, task_meta,
@@ -153,14 +154,14 @@ def main():
         max(knobs["finalization_reserve_min_minutes"],
             budget_minutes * knobs["finalization_reserve_fraction"]),
     )
-    session_timeouts = shape_session_timeouts(mode_cfg, total_run_seconds)
+    session_timeouts = shape_session_timeouts(config, total_run_seconds)
 
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")):
         print("WARNING: neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set")
     if not os.environ.get("OPENAI_API_KEY"):
         print("WARNING: OPENAI_API_KEY is not set — utility-LLM roles will fail")
 
-    config_path = build_runtime_config(args.mode, task_dir, session_timeouts,
+    config_path = build_runtime_config(task_dir, session_timeouts,
                                        shared_cache_dir=args.shared_cache_dir,
                                        node_expansion=args.node_expansion)
 
@@ -182,7 +183,6 @@ def main():
     orchestrator = OrchestratorAgent(
         handler,
         config_path=config_path,
-        mode=args.mode,
         coding_agent=args.coding_agent,
         workspace_dir=os.path.join(task_dir, "kapso_campaign"),
         goal=statement,

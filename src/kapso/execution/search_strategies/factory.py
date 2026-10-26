@@ -23,7 +23,8 @@ class SearchStrategyFactory:
     Factory for creating search strategies.
     
     Strategies are auto-discovered from the search_strategies/ directory
-    when first accessed. Default configurations are loaded from strategies.yaml.
+    when first accessed; their parameters are the config's
+    `search_strategy.params` (docs/reference/configuration.mdx).
     
     Usage:
         # Create strategy
@@ -35,12 +36,9 @@ class SearchStrategyFactory:
     
     # Class-level state
     _registry: Dict[str, Type[SearchStrategy]] = {}
-    _configs: Dict[str, Any] = {}
     _default_type: str = "generic"
     _initialized: bool = False
     
-    # Configuration
-    CONFIG_PATH = Path(__file__).parent / "strategies.yaml"
     
     # =========================================================================
     # Initialization
@@ -51,23 +49,8 @@ class SearchStrategyFactory:
         """Lazy initialization of registry and configs."""
         if cls._initialized:
             return
-        cls._load_config()
         cls._auto_discover()
         cls._initialized = True
-    
-    @classmethod
-    def _load_config(cls) -> None:
-        """Load configuration from YAML file."""
-        if not cls.CONFIG_PATH.exists():
-            return
-        
-        try:
-            with open(cls.CONFIG_PATH, 'r') as f:
-                content = yaml.safe_load(f) or {}
-            cls._default_type = content.get("default_strategy", "generic")
-            cls._configs = content.get("strategies", {})
-        except yaml.YAMLError:
-            pass
     
     @classmethod
     def _auto_discover(cls) -> None:
@@ -105,7 +88,7 @@ class SearchStrategyFactory:
         llm: Any,
         coding_agent_config: CodingAgentConfig,
         params: Optional[Dict[str, Any]] = None,
-        preset: Optional[str] = None,
+        hosts: Optional[Dict[str, Dict[str, Any]]] = None,
         workspace_dir: Optional[str] = None,
         start_from_checkpoint: bool = False,
         initial_repo: Optional[str] = None,
@@ -126,8 +109,8 @@ class SearchStrategyFactory:
             problem_handler: Problem handler instance
             llm: LLM backend
             coding_agent_config: Config for coding agent
-            params: Strategy-specific parameters (overrides preset)
-            preset: Preset name to use (e.g., "MINIMAL", "PRODUCTION")
+            params: Strategy-specific parameters (the config's search_strategy.params)
+            hosts: The config's hosts table the strategy's roles resolve over
             workspace_dir: Path to workspace directory (optional)
             start_from_checkpoint: Whether to import from checkpoint
             initial_repo: Path to initial repository to seed workspace
@@ -154,14 +137,12 @@ class SearchStrategyFactory:
                 f"Available: {available or 'none registered'}"
             )
         
-        # Resolve params from preset
-        resolved_params = cls._resolve_params(strategy_type_lower, params, preset)
-        
         config = SearchStrategyConfig(
             problem_handler=problem_handler,
             llm=llm,
             coding_agent_config=coding_agent_config,
-            params=resolved_params,
+            params=params or {},
+            hosts=dict(hosts or {}),
             initial_repo=initial_repo,
             eval_dir=eval_dir,
             evaluation_manifest=evaluation_manifest,
@@ -178,63 +159,6 @@ class SearchStrategyFactory:
             workspace_dir=workspace_dir,
             import_from_checkpoint=start_from_checkpoint,
         )
-    
-    @classmethod
-    def _resolve_params(
-        cls,
-        strategy_type: str,
-        params: Optional[Dict[str, Any]],
-        preset: Optional[str],
-    ) -> Dict[str, Any]:
-        """Resolve final params from preset and overrides."""
-        if preset and not params:
-            return cls.get_preset_params(strategy_type, preset)
-        elif preset and params:
-            preset_params = cls.get_preset_params(strategy_type, preset)
-            preset_params.update(params)
-            return preset_params
-        return params or {}
-    
-    # =========================================================================
-    # Configuration Access
-    # =========================================================================
-    
-    @classmethod
-    def get_preset_params(cls, strategy_type: str, preset: str) -> Dict[str, Any]:
-        """Get parameters for a strategy preset."""
-        cls._ensure_initialized()
-        
-        strategy_config = cls._configs.get(strategy_type.lower(), {})
-        presets = strategy_config.get("presets", {})
-        
-        if preset not in presets:
-            available = ", ".join(sorted(presets.keys()))
-            raise ValueError(
-                f"Unknown preset '{preset}' for strategy '{strategy_type}'. "
-                f"Available: {available or 'none'}"
-            )
-        
-        return presets[preset].get("params", {}).copy()
-    
-    @classmethod
-    def get_default_preset(cls, strategy_type: str) -> str:
-        """Get the default preset name for a strategy."""
-        cls._ensure_initialized()
-        strategy_config = cls._configs.get(strategy_type.lower(), {})
-        return strategy_config.get("default_preset", "MINIMAL")
-    
-    @classmethod
-    def list_presets(cls, strategy_type: str) -> List[str]:
-        """List available presets for a strategy."""
-        cls._ensure_initialized()
-        strategy_config = cls._configs.get(strategy_type.lower(), {})
-        return sorted(strategy_config.get("presets", {}).keys())
-    
-    @classmethod
-    def get_strategy_info(cls, strategy_type: str) -> Dict[str, Any]:
-        """Get full configuration info for a strategy."""
-        cls._ensure_initialized()
-        return cls._configs.get(strategy_type.lower(), {}).copy()
     
     @classmethod
     def get_default_type(cls) -> str:

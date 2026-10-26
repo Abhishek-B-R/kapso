@@ -49,7 +49,7 @@
   },
   "last_stop": "time_budget",
   "maximize_scoring": true,
-  "schema_version": 5,
+  "schema_version": 6,
   "status": "running",
   "strategy_state": {
     "evaluation_integrity": {

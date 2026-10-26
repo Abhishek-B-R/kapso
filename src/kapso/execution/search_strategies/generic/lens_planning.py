@@ -17,10 +17,13 @@ from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.harness.staging import StagedHarness
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic import codex_ideation
+from kapso.execution.search_strategies.generic.ideation import WEB_TOOLS
+from kapso.core.roles import SessionRole
+from kapso.execution.coding_agents.base import CodingAgentConfig
+from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 logger = logging.getLogger(__name__)
 
-_LENS_PLANNER_KEYS = frozenset({"cli", "model", "effort", "timeout"})
 LENS_PLAN_FILENAME = "lens_plan.json"
 LENS_PLAN_HISTORY_FILENAME = "lens_plan_history.jsonl"
 
@@ -53,50 +56,31 @@ def normalize_design_axes(value: Any) -> Tuple[str, ...]:
     return tuple(axes)
 
 
-def normalize_ideation_lens_planner(value: Any) -> Optional[Dict[str, Any]]:
-    """Validate the optional task-aware lens planner config block."""
-    if value is None:
-        return None
-    if not isinstance(value, dict):
-        raise ValueError("ideation_lens_planner must be a mapping")
-    unknown = sorted(set(value) - _LENS_PLANNER_KEYS)
-    if unknown:
-        raise ValueError(
-            f"ideation_lens_planner has unknown keys: {', '.join(unknown)}"
-        )
-    if value.get("cli") != "claude_code":
-        raise ValueError(
-            "ideation_lens_planner.cli must be claude_code (the planner "
-            "needs the CLI's native WebSearch/WebFetch tools)"
-        )
-    model = value.get("model")
-    if not isinstance(model, str) or not model.strip():
-        raise ValueError("ideation_lens_planner.model must be a non-empty string")
-    timeout = value.get("timeout")
-    if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0):
-        raise ValueError("ideation_lens_planner.timeout must be a positive number")
-    return dict(value)
-
-
-def validate_lens_planner_against_ensemble(
-    planner: Optional[Dict[str, Any]],
-    ensemble: Optional[List[Dict[str, str]]],
+def validate_lens_planner(
+    planner: Optional[SessionRole],
+    ensemble: Optional[List[SessionRole]],
 ) -> None:
-    """The planner owns every lens: static member lenses are forbidden with it."""
+    """The planner researches with Claude Code's native web tools and owns
+    every lens: a Codex host is refused, and static member lenses are
+    forbidden with it."""
     if planner is None:
         return
+    if planner.cli == "codex":
+        raise ValueError(
+            "search_strategy.params.ideation.lens_planner.cli: the planner researches "
+            "with Claude Code's native WebSearch/WebFetch tools; name a Claude Code host"
+        )
     if not ensemble:
         raise ValueError(
-            "ideation_lens_planner requires ideation_ensemble (there are no "
-            "members to design lenses for)"
+            "search_strategy.params.ideation.lens_planner needs an ensemble (there are "
+            "no members to design lenses for)"
         )
-    lensed = [i for i, member in enumerate(ensemble) if "lens" in member]
+    lensed = [i for i, member in enumerate(ensemble) if member.lens is not None]
     if lensed:
         raise ValueError(
-            "ideation_ensemble members "
+            "search_strategy.params.ideation.ensemble members "
             f"{', '.join(str(i) for i in lensed)} carry static lens keys — "
-            "remove them (the lens planner designs every lens) or disable "
-            "ideation_lens_planner"
+            "remove them (the lens planner designs every lens) or drop the lens_planner"
         )
 
 
@@ -170,13 +154,13 @@ def design_axes_brief(design_axes: Tuple[str, ...]) -> str:
     )
 
 
-def member_roster_brief(ideation_ensemble: List[Dict[str, str]]) -> str:
+def member_roster_brief(ideation_ensemble: List[SessionRole]) -> str:
     """One line per ensemble member for the planner prompts."""
     return "\n".join(
-        f"- member {i + 1}: cli={m['cli']}, model={m['model']}"
+        f"- member {i + 1}: cli={m.cli}, model={m.model}"
         + (
             " (has native web search during ideation)"
-            if m["cli"] == "codex"
+            if m.cli == "codex"
             else ""
         )
         for i, m in enumerate(ideation_ensemble)
@@ -187,20 +171,16 @@ def run_lens_planner_session(
     prompt: str,
     ideation_dir: str,
     *,
-    planner: Dict[str, Any],
+    planner: SessionRole,
     bank_serving: Optional[Dict[str, str]] = None,
-    claude_auth_settings: Dict[str, Any],
     env_strip: List[str],
     env_defaults: Dict[str, str],
-    web_disallowed_tools: List[str],
-    ideation_web_search: bool,
-    session_effort: Optional[str],
+    clamped_timeout: Callable[[Optional[float]], Optional[float]],
     artifacts_dir: str,
     staged: Optional[StagedHarness] = None,
 ):
-    """One planner/replanner claude session; returns (result, cost_usd)."""
-    from kapso.execution.coding_agents.base import CodingAgentConfig
-    from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
+    """One planner/replanner session on the planner's host; returns
+    (result, cost_usd)."""
     from kapso.gated_mcp import get_mcp_config
 
     # The planner is the campaign's direction-setter, so it gets the bank
@@ -215,37 +195,37 @@ def run_lens_planner_session(
         session=staged.session_id if staged is not None else None,
     )
     print(
-        f"[GenericSearch] Lens planner starting: {planner['model']} "
-        f"({'web-enabled' if ideation_web_search else 'web-OFF'}"
-        f"{', bank-served' if mcp_servers else ''})"
+        f"[GenericSearch] Lens planner starting: {planner.label}"
+        f"{' (bank-served)' if mcp_servers else ''}"
     )
     own = {
-            **claude_auth_settings,
+            **planner.settings,
             "env_strip": env_strip,
             "env_defaults": env_defaults,
             "mcp_servers": mcp_servers,
             "allowed_tools": [
-                "Read", "WebSearch", "WebFetch",
+                "Read",
+                *(WEB_TOOLS if planner.web else []),
                 *[t for t in mcp_tools if t.startswith("mcp__")],
                 *(staged.allowed_tools if staged is not None else []),
             ],
-            "disallowed_tools": web_disallowed_tools,
-            "timeout": planner.get("timeout", 600),
+            "disallowed_tools": [] if planner.web else WEB_TOOLS,
+            "timeout": clamped_timeout(planner.timeout),
             "streaming": True,
             "planning_mode": False,
-            "effort": planner.get("effort", session_effort),
+            "effort": planner.effort,
             "stream_artifact_path": codex_ideation.ideation_stream_path(
                 artifacts_dir, "lens_planner",
-                planner["model"],
+                planner.model,
             ),
     }
     config = CodingAgentConfig(
-        agent_type="claude_code",
-        model=planner["model"],
-        debug_model=planner["model"],
+        agent_type=planner.cli,
+        model=planner.model,
+        debug_model=planner.model,
         agent_specific=staged.merged_agent_specific(own) if staged is not None else own,
     )
-    agent = ClaudeCodeCodingAgent(config)
+    agent = CodingAgentFactory.create(config)
     agent.initialize(ideation_dir)
     result = agent.generate_code(prompt)
     cost = agent.get_cumulative_cost()
@@ -269,8 +249,8 @@ def resolve_member_lenses(
     problem: str,
     ideation_dir: str,
     *,
-    ideation_lens_planner: Optional[Dict[str, Any]],
-    ideation_ensemble: List[Dict[str, str]],
+    ideation_lens_planner: Optional[SessionRole],
+    ideation_ensemble: List[SessionRole],
     workspace_dir: str,
     iteration_count: int,
     shared_artifacts_brief: str,
@@ -343,7 +323,7 @@ def resolve_member_lenses(
         plan = {
             "lenses": parsed["lenses"],
             "sources": parsed["sources"],
-            "planner_model": planner["model"],
+            "planner_model": planner.model,
             "iteration": iteration_count,
             "decision": "initial",
             "rationale": "",
@@ -407,7 +387,7 @@ def resolve_member_lenses(
         plan = {
             "lenses": revision["lenses"],
             "sources": revision["sources"],
-            "planner_model": planner["model"],
+            "planner_model": planner.model,
             "iteration": iteration_count,
             "decision": "revise",
             "rationale": revision["rationale"],

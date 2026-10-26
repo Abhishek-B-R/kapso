@@ -36,10 +36,9 @@
   },
   "kg_index": null,
   "max_iterations": 2,
-  "mode": null,
   "output_path": "/campaign",
   "resumable_from_inbox": true,
-  "schema_version": 1,
+  "schema_version": 2,
   "serving_scope": null,
   "time_budget_minutes": 75.0
 }

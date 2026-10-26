@@ -7,6 +7,9 @@ import time
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from strategy_support import generic_params, packaged_hosts
+from kapso.core.roles import SessionRole
+
 import pytest
 
 from kapso.execution.search_strategies.base import SearchNode
@@ -89,7 +92,7 @@ def candidate_strategy(tmp_path, count=1):
     strategy.evaluation_provenance = "agent_generated"
     strategy.fidelity_decision = None
     strategy.record_eval_duration = None
-    strategy.implementation_timeout = None
+    strategy.implementation_role = SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=None)
     strategy.budget_snapshot = None
     strategy.parent_policy = "best"
     strategy.env_strip = []
@@ -245,7 +248,7 @@ def test_failed_frame_run_is_judged_but_cannot_be_revalidated_by_feedback(tmp_pa
         else "import sys, time\nsys.stdout.flush()\ntime.sleep(60)\n"
     ))
     if failure == "deadline":
-        strategy.implementation_timeout = 0.5
+        strategy.implementation_role = SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=0.5)
     strategy.before_candidate_evaluation = admit_estimate
     strategy._finalize_nodes(nodes, time.monotonic(), append=True)
     assert strategy.feedback_generator.outputs == [nodes[0].evaluation_output]
@@ -311,7 +314,7 @@ def test_inconsistent_measured_unit_fails_before_feedback(tmp_path):
 
 def test_enabled_initialization_requires_estimator_before_workspace_setup(tmp_path):
     with pytest.raises(ValueError, match="cost.estimator is required"):
-        GenericSearch(SimpleNamespace(params={"cost": {"enabled": True}}), str(tmp_path))
+        GenericSearch(SimpleNamespace(params=generic_params(cost={"enabled": True}), hosts=packaged_hosts()), str(tmp_path))
 
 
 def test_suspended_build_cannot_publish_an_unestimated_score(tmp_path):

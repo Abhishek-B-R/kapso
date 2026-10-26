@@ -20,6 +20,7 @@ import pytest
 # not a declared extra. Without it these skip rather than erroring at import.
 pytest.importorskip("relbench")
 
+from kapso.core.config import load_config, read_yaml
 from benchmarks.relbench.task_specs import (
     AUTOCOMPLETE_REGRESSION,
     ENTITY_BINARY,
@@ -255,36 +256,38 @@ RELBENCH_CACHE = Path(
 
 
 class TestGenericModeConfig:
-    def test_mode_parses_with_maintainer_block(self):
-        import yaml
-
-        cfg = yaml.safe_load(
-            (Path(__file__).parents[1] / "benchmarks/relbench/config.yaml").read_text()
-        )
-        mode = cfg["modes"]["RELBENCH_GENERIC"]
-        assert mode["search_strategy"]["type"] == "generic"
-        assert mode["search_strategy"]["params"]["parent_policy"] == "best"
-        # Codex deployment (2026-07-26): implementation, maintainer, and
-        # feedback all run on the codex CLI at the xhigh OpenAI ceiling.
-        assert mode["search_strategy"]["params"]["implementation_cli"] == "codex"
-        assert mode["evaluation_maintainer"]["type"] == "codex"
-        assert mode["feedback_generator"]["type"] == "codex"
-        assert mode["search_strategy"]["params"]["ideation_selector"]["cli"] == "codex"
-        # No mode-level model routes: the CLI-only conversion made
-        # ModelRouter embedding-only (stale-code audit 2026-08-26) —
-        # a utility/reasoning block here would ValueError at
-        # orchestrator construction.
-        assert "models" not in mode
+    def test_the_override_resolves_over_the_packaged_config(self):
+        """The benchmark's file is an override (docs/plans/redesign/
+        wp4-config.md): what it leaves unset rides along from the
+        packaged defaults, what it sets is the campaign's."""
+        path = Path(__file__).parents[1] / "benchmarks/relbench/config.yaml"
+        override = read_yaml(path)
+        cfg = load_config(str(path))
+        params = cfg["search_strategy"]["params"]
+        assert params["parent_policy"] == "best"   # the packaged default
+        # Codex deployment (2026-07-26): implementation, verification, the
+        # maintainer and the judge all run on the codex CLI — the default
+        # host, so none of them names a cli of its own; the selector too.
+        assert params["host"] == "codex"
+        assert cfg["evaluation_maintainer"]["enabled"] is True
+        assert "cli" not in override["evaluation_maintainer"]
+        assert "cli" not in override["search_strategy"]["params"]["judge"]
+        assert params["ideation"]["selector"]["cli"] == "codex"
+        # The temporal-leakage protocol: no live web in implementation.
+        assert params["implementation"]["web"] is False
+        # No model routes: the CLI-only conversion made ModelRouter
+        # embedding-only (stale-code audit 2026-08-26).
+        assert "models" not in override
         # K=4 expansion (user-directed 2026-07-29): four GPU-pinned lanes,
         # 10h budget, 5h session caps; threads sized for the on-demand
         # a2-highgpu-4g fallback (48 vCPU -> 11/lane).
-        assert mode["search_strategy"]["params"]["node_expansion_value"] == 4
-        lanes = mode["search_strategy"]["params"]["expansion_lane_env"]
+        assert params["node_expansion_value"] == 4
+        lanes = params["expansion_lane_env"]
         assert len(lanes) == 4
         assert all(lane["OMP_NUM_THREADS"] == "11" for lane in lanes)
         assert [lane["CUDA_VISIBLE_DEVICES"] for lane in lanes] == ["0", "1", "2", "3"]
-        assert mode["search_strategy"]["params"]["implementation_timeout"] == 18000
-        assert mode["budget"]["time_budget_minutes"] == 600
+        assert params["implementation"]["timeout"] == 18000
+        assert cfg["budget"]["minutes"] == 600
 
 
 @pytest.mark.skipif(
@@ -809,24 +812,17 @@ class TestDataAccessRules:
 class TestDesignAxes:
     def test_design_axes_configured_and_fe_standing_direction(self):
         """Anti-freeze integration (user-directed 2026-07-27): the relbench
-        mode declares task-specific design axes with feature engineering as
-        the first axis, and the problem context carries the standing
+        handler's context declares task-specific design axes with feature
+        engineering as the first axis (domain vocabulary, so it lives in
+        the handler, not the engine's config), and carries the standing
         feature-engineering note (matrix never finished; unchanged only on
         measured saturation evidence)."""
-        import yaml
+        from benchmarks.relbench.context import DESIGN_AXES, FEATURE_ENGINEERING_NOTE, knowledge_section
 
-        cfg = yaml.safe_load(
-            (Path(__file__).parents[1] / "benchmarks/relbench/config.yaml").read_text()
-        )
-        axes = cfg["modes"]["RELBENCH_GENERIC"]["search_strategy"]["params"][
-            "design_axes"
-        ]
-        assert isinstance(axes, list) and len(axes) == 5
-        assert "feature engineering" in axes[0]
-        assert any("training distribution" in axis for axis in axes)
-
-        from benchmarks.relbench.context import FEATURE_ENGINEERING_NOTE
-
+        assert len(DESIGN_AXES) == 5
+        assert "feature engineering" in DESIGN_AXES[0]
+        assert any("training distribution" in axis for axis in DESIGN_AXES)
+        assert "## Design axes of the solution space" in knowledge_section(None)
         assert "highest-value direction" in FEATURE_ENGINEERING_NOTE
         assert "never finished" in FEATURE_ENGINEERING_NOTE
         assert "freezing the feature matrix" in FEATURE_ENGINEERING_NOTE

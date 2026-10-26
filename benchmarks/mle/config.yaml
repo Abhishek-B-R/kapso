@@ -1,115 +1,36 @@
-# MLE-Bench Configuration
-# Configuration for Kaggle ML competition solving.
+# MLE-Bench: an override file over the packaged config. The engine's
+# settings are at the top level; the runner's own are under `benchmark:`.
 #
-# Migrated to the generic strategy (stale-code audit 2026-08-26, user
-# direction): agentic code-reading ideation + implementation sessions;
-# the session runs training/validation itself and reports the score, and
-# the runner's handler.final_evaluate() grades the checked-out best
-# solution officially via mlebench.
-#
-# Coding agents are configured in: src/kapso/execution/coding_agents/agents.yaml
+# Usage:
+#   python -m benchmarks.mle.runner --competition <id> [--no-kg] [--coding-agent <cli>]
 
-# Default mode to use
-default_mode: MLE_GENERIC
+# Benchmark harness: nobody is at the keyboard, so a session never asks a
+# person and never pauses.
+inbox:
+  enabled: false
 
-# Available configuration modes
-modes:
-  # ===========================================
-  # Production Mode
-  # ===========================================
-  MLE_GENERIC:
-    # Benchmark harness: nobody is at the keyboard, so a session never
-    # asks a person and never pauses (defaults.inbox in the platform config).
-    inbox:
-      enabled: false
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        # Implementation sessions on the codex CLI (subscription login).
-        implementation_model: "gpt-5.6-sol"
-        implementation_cli: "codex"
-        # MLE-Bench allows internet use (HF models/datasets are part of the
-        # handler's context); the benchmark's own plagiarism rule — no
-        # copying published winning solutions — rides in the problem prompt.
-        implementation_web: true
-        auth_mode: "oauth"
-        effort: "xhigh"
-        gate_failure_policy: "skip"
-        parent_policy: "best"
-        ideation_gates: ["research", "experiment_history", "repo_memory"]
-        implementation_gates: ["research", "repo_memory"]
-        # Long trainings must be holdable in the foreground (the CLI
-        # auto-backgrounds foreground commands at 120s otherwise).
-        session_env_defaults:
-          BASH_DEFAULT_TIMEOUT_MS: "1800000"
-          BASH_MAX_TIMEOUT_MS: "14400000"
-        implementation_timeout: 14400
+search_strategy:
+  params:
+    # Implementation, verification and the judge on the codex CLI;
+    # ideation on Claude Code with the packaged model.
+    host: codex
+    ideation:
+      cli: claude_code
+      gates: [research, experiment_history, repo_memory]
+    implementation:
+      gates: [research, repo_memory]
+      timeout: 14400
+    judge:
+      timeout: 900
+    gate_failure_policy: skip
+    session_env_defaults:
+      BASH_DEFAULT_TIMEOUT_MS: "1800000"
+      BASH_MAX_TIMEOUT_MS: "14400000"
 
-    coding_agent:
-      type: "codex"
-      model: "gpt-5.6-sol"
-      debug_model: "gpt-5.6-sol"
-      agent_specific:
-        effort: "xhigh"
-        timeout: 14400
-
-    feedback_generator:
-      type: "codex"
-      model: "gpt-5.6-sol"
-      debug_model: "gpt-5.6-sol"
-      agent_specific:
-        effort: "xhigh"
-        timeout: 900
-
-    knowledge_search:
-      type: "kg_llm_navigation"
-      enabled: false
-
-    # Handler enrichment: fetch candidate HF models/datasets into the
-    # problem context (one CLI web-search session).
-    fetch_huggingface_models: true
-
-  # ===========================================
-  # Quick smoke testing
-  # ===========================================
-  MINIMAL:
-    # Benchmark harness: nobody is at the keyboard, so a session never
-    # asks a person and never pauses (defaults.inbox in the platform config).
-    inbox:
-      enabled: false
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        implementation_model: "claude-opus-5"
-        auth_mode: "oauth"
-        effort: "medium"
-        gate_failure_policy: "skip"
-        parent_policy: "best"
-        ideation_gates: ["experiment_history", "repo_memory"]
-        implementation_gates: ["repo_memory"]
-        ideation_timeout: 600
-        implementation_timeout: 1800
-
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-      debug_model: "claude-opus-5"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-
-    feedback_generator:
-      type: "claude_code"
-      model: "claude-opus-5"
-      debug_model: "claude-opus-5"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-
-    knowledge_search:
-      type: "kg_llm_navigation"
-      enabled: false
-
-    fetch_huggingface_models: false
+# The runner's own settings (benchmarks/mle/runner.py reads these; the
+# engine never does).
+benchmark:
+  # Let the handler fetch candidate HuggingFace models for the competition.
+  fetch_huggingface_models: true
+  # Whether the runner serves the knowledge graph (--no-kg forces off).
+  use_knowledge_graph: true

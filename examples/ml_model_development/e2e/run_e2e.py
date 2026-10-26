@@ -5,18 +5,19 @@
 # track"). One file, two roles:
 #
 #   parent (default): stages a fresh campaign (initial_repo copy + synthetic
-#     data), spawns the child under a hard wall of 2x the mode's time budget,
+#     data), spawns the child under a hard wall of 2x the config's budget,
 #     then verifies the milestone invariants against the run artifacts.
 #   --child: actually calls Kapso.build() and writes result.json.
 #
-# Every knob lives in config.e2e.yaml; this runner only selects a mode.
+# Every knob lives in one of the three config files beside this runner
+# (override files over the packaged config); this runner only selects one.
 #
 # Usage (from the repo root, in an environment with kapso installed and
 # coding-agent credentials configured):
 #
-#   python examples/ml_model_development/e2e/run_e2e.py --mode E2E_BUDGET
-#   python examples/ml_model_development/e2e/run_e2e.py --mode GATE_BUDGET
-#   python examples/ml_model_development/e2e/run_e2e.py --mode E2E_BUDGET \
+#   python examples/ml_model_development/e2e/run_e2e.py --config config.e2e.yaml
+#   python examples/ml_model_development/e2e/run_e2e.py --config config.gate.yaml
+#   python examples/ml_model_development/e2e/run_e2e.py --config config.e2e.yaml \
 #       --interrupt-after-seconds 300          # M2: simulated crash
 #   python examples/ml_model_development/e2e/run_e2e.py --mode E2E_BUDGET \
 #       --resume                               # M2: clock continues
@@ -40,7 +41,10 @@ import yaml
 E2E_DIR = Path(__file__).resolve().parent
 EXAMPLE_DIR = E2E_DIR.parent
 REPO_ROOT = E2E_DIR.parents[2]
-CONFIG_PATH = E2E_DIR / "config.e2e.yaml"
+# The three tracks: the standing full run (fidelity on), the same with
+# fidelity off (the byte-equivalence row), and the tiny budget where the
+# reserve gate and the clamps must fire.
+CONFIGS = ("config.e2e.yaml", "config.e2e-fidelity-off.yaml", "config.gate.yaml")
 
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -106,15 +110,20 @@ DATA_ROWS = 2000
 DATA_TEST_ROWS = 500
 
 
-def load_mode_block(mode: str) -> dict:
-    config = yaml.safe_load(CONFIG_PATH.read_text())
-    modes = config["modes"]
-    if mode not in modes:
-        raise SystemExit(
-            f"Mode {mode!r} not defined in {CONFIG_PATH}; "
-            f"available: {sorted(modes)}"
-        )
-    return modes[mode]
+def config_path(args: argparse.Namespace) -> Path:
+    return E2E_DIR / args.config
+
+
+def track_name(args: argparse.Namespace) -> str:
+    """The run directory's name: `config.e2e.yaml` -> `e2e`."""
+    return Path(args.config).stem.removeprefix("config.")
+
+
+def load_track(args: argparse.Namespace) -> dict:
+    """The effective config of the chosen track."""
+    from kapso.core.config import load_config
+
+    return load_config(str(config_path(args)))
 
 
 def stage_campaign(run_dir: Path, *, seed_eval_defect: bool) -> None:
@@ -147,13 +156,12 @@ def stage_campaign(run_dir: Path, *, seed_eval_defect: bool) -> None:
 def run_child(args: argparse.Namespace, run_dir: Path) -> None:
     from kapso import Budget, Kapso
 
-    kapso = Kapso(config=str(CONFIG_PATH))
+    kapso = Kapso(config=str(config_path(args)))
     solution = kapso.build(
         goal_text(args.seed_eval_defect),
         repo=str(run_dir / "initial_repo"),
         output=str(run_dir / "workspace"),
         budget=Budget(experiments=args.max_iterations, minutes=args.top_up_minutes),
-        mode=args.mode,
         resume=args.resume,
         evaluation=(
             str(run_dir / "provided_eval")
@@ -217,7 +225,7 @@ def run_walled_child(
     """Returns (outcome, returncode): 'exited', 'interrupted', 'walled'."""
     command = [
         sys.executable, "-u", str(Path(__file__).resolve()), "--child",
-        "--mode", args.mode,
+        "--config", args.config,
         "--runs-dir", str(args.runs_dir),
         "--max-iterations", str(args.max_iterations),
     ]
@@ -538,10 +546,8 @@ def check_gate_wall(
     configured timeout bounds it), plus kill grace. Anything beyond that
     means a clamp failed to bind.
     """
-    budget_seconds = mode_block["budget"]["time_budget_minutes"] * 60.0
-    feedback_timeout = mode_block["feedback_generator"]["agent_specific"][
-        "timeout"
-    ]
+    budget_seconds = mode_block["budget"]["minutes"] * 60.0
+    feedback_timeout = mode_block["search_strategy"]["params"]["judge"]["timeout"]
     residue = 60.0 + feedback_timeout + 60.0
     nodes = checkpoint.get("strategy_state", {}).get("node_history", [])
     elapsed = checkpoint.get("elapsed_seconds", 0.0)
@@ -564,11 +570,11 @@ def verify(
     outcome: str,
     child_returncode=None,
 ) -> int:
-    mode_block = load_mode_block(args.mode)
+    mode_block = load_track(args)
     budget_block = mode_block["budget"]
-    has_maintainer = "evaluation_maintainer" in mode_block
-    fidelity_block = budget_block.get("fidelity") or {}
-    fidelity_on = fidelity_block.get("mode", "off") != "off"
+    has_maintainer = mode_block["evaluation_maintainer"]["enabled"]
+    fidelity_block = budget_block["fidelity"]
+    fidelity_on = fidelity_block["mode"] != "off"
 
     if outcome == "walled":
         print("[e2e] VERDICT: FAIL (hard wall breached — hung campaign)")
@@ -663,7 +669,7 @@ def verify(
                 lambda ev: check_all_full_fidelity(nodes, ev),
             )
         )
-    if args.mode == "GATE_BUDGET" and outcome == "exited":
+    if track_name(args) == "gate" and outcome == "exited":
         checks.append(
             (
                 "gate_wall_and_clamps",
@@ -672,7 +678,7 @@ def verify(
         )
 
     failures = 0
-    print(f"\n[e2e] verification — mode={args.mode} outcome={outcome}")
+    print(f"\n[e2e] verification — track={track_name(args)} outcome={outcome}")
     for name, runner in checks:
         evidence: list = []
         ok = runner(evidence)
@@ -694,9 +700,10 @@ def verify(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Budgeted E2E runner")
     parser.add_argument(
-        "--mode",
-        default="E2E_BUDGET",
-        choices=["E2E_BUDGET", "E2E_BUDGET_FIDELITY_OFF", "GATE_BUDGET"],
+        "--config",
+        default=CONFIGS[0],
+        choices=list(CONFIGS),
+        help="The track's config file beside this runner (an override file over the packaged config)",
     )
     parser.add_argument("--runs-dir", type=Path, default=E2E_DIR / "runs")
     parser.add_argument("--max-iterations", type=int, default=6)
@@ -710,7 +717,7 @@ def main() -> None:
     args = parser.parse_args()
 
     run_dir = args.runs_dir / (
-        args.mode.lower() + ("_cr" if args.seed_eval_defect else "")
+        track_name(args) + ("_cr" if args.seed_eval_defect else "")
     )
 
     if args.child:
@@ -738,12 +745,10 @@ def main() -> None:
             print("[e2e] staged only; not running")
             return
 
-    budget_minutes = load_mode_block(args.mode)["budget"][
-        "time_budget_minutes"
-    ]
+    budget_minutes = load_track(args)["budget"]["minutes"]
     wall_seconds = 2.0 * budget_minutes * 60.0
     print(
-        f"[e2e] mode={args.mode} budget={budget_minutes}min "
+        f"[e2e] track={track_name(args)} budget={budget_minutes}min "
         f"hard_wall={wall_seconds / 60:.0f}min"
     )
     outcome, child_returncode = run_walled_child(args, wall_seconds, run_dir)

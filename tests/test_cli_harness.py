@@ -31,7 +31,7 @@ def _run(monkeypatch, *argv):
 def settings(monkeypatch, tmp_path):
     values = {"store": str(tmp_path / "store"), "page_warning_lines": 40, "setup_minutes": 20,
               "verification_minutes": 10, "verification_attempts": 2, "server_tool_timeout_seconds": 600}
-    monkeypatch.setattr(harness_cli, "load_harness_defaults", lambda config=None: dict(values))
+    monkeypatch.setattr(harness_cli, "load_config", lambda config=None: {"harness": dict(values)})
     monkeypatch.chdir(tmp_path)
     return values
 

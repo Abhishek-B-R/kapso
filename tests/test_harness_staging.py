@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
 from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
 from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
 from kapso.execution.coding_agents.adapters.codex_agent import CodexCodingAgent
@@ -39,7 +39,7 @@ TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "t
 def harness(tmp_path):
     copy = tmp_path / "h" / "trading"
     shutil.copytree(TRADING, copy)
-    settings = dict(load_harness_defaults(), store=str(tmp_path / "store"))
+    settings = dict(load_config()["harness"], store=str(tmp_path / "store"))
     return load_harness(str(copy), settings=settings, say=lambda line: None)
 
 
@@ -133,7 +133,7 @@ def test_the_same_module_on_codex(harness, tmp_path):
     data = json.loads(mcp.read_text())
     data["mcpServers"]["market-data"]["env"] = {"MARKET_TOKEN": "${MARKET_TOKEN}", "REGION": "eu"}
     mcp.write_text(json.dumps(data, indent=2))
-    settings = dict(load_harness_defaults(), store=str(tmp_path / "store"))
+    settings = dict(load_config()["harness"], store=str(tmp_path / "store"))
     harness = load_harness(str(harness.path), settings=settings, say=lambda line: None)
 
     staged = stage(harness, "implementation", "codex", tmp_path)

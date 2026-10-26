@@ -13,15 +13,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_config
+from kapso.core.config import PACKAGED_CONFIG_PATH, load_config
 from kapso.knowledge_base.learners import knowledge_learner_pipeline as pipeline_module
 from kapso.knowledge_base.learners.ingestors import repo_ingestor as ingestor_module
 from kapso.knowledge_base.learners.ingestors.research_ingestor import idea_ingestor
 from kapso.knowledge_base.learners.merger import knowledge_merger as merger_module
 from kapso.knowledge_base.search.base import WikiPage
 
-PACKAGED = load_config(str(PLATFORM_CONFIG_PATH))
-LEARNER = PACKAGED["modes"][PACKAGED["default_mode"]]["learner"]
+PACKAGED = load_config(str(PACKAGED_CONFIG_PATH))
+LEARNER = PACKAGED["learner"]
 # The whole built-in set of a learning session: file tools, nothing that
 # runs code, reaches the network or delegates (pinned with --tools).
 TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]

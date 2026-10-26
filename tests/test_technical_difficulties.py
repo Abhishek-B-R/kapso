@@ -8,6 +8,7 @@ the node into the experiment store and its tool renderings.
 
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 from kapso.execution.search_strategies.generic import difficulties_generator
+from kapso.core.roles import SessionRole
 from kapso.gated_mcp.gates.experiment_history_gate import (
     ExperimentHistoryGate,
 )
@@ -64,16 +65,17 @@ def test_fallback_prompt_renders_and_tag_is_parsed(tmp_path, monkeypatch):
             pass
 
     monkeypatch.setattr(
-        difficulties_generator, "ClaudeCodeCodingAgent", FakeAgent
+        difficulties_generator.CodingAgentFactory, "create", classmethod(lambda cls, config: FakeAgent(config))
     )
     stream = tmp_path / "stream.jsonl"
     stream.write_text('{"type":"assistant"}\n')
 
     text = difficulties_generator.generate_technical_difficulties(
-        model="test-model",
-        claude_auth_settings={"auth_mode": "oauth"},
+        role=SessionRole(
+            name="implementation", cli="claude_code", model="test-model",
+            effort="xhigh", timeout=None, settings={"auth_mode": "oauth"},
+        ),
         env_strip=["OPENAI_API_KEY"],
-        effort="xhigh",
         timeout_seconds=600,
         workspace_dir=str(tmp_path),
         solution="the plan",
@@ -90,6 +92,10 @@ def test_fallback_prompt_renders_and_tag_is_parsed(tmp_path, monkeypatch):
         "Read",
         "Bash",
     ]
+    # The session runs on the role's host with the host entry's settings.
+    assert captured["config"].agent_type == "claude_code" and captured["config"].model == "test-model"
+    assert captured["config"].agent_specific["auth_mode"] == "oauth"
+    assert captured["config"].agent_specific["effort"] == "xhigh"
 
 
 def test_fallback_returns_empty_on_session_failure(monkeypatch, tmp_path):
@@ -109,13 +115,11 @@ def test_fallback_returns_empty_on_session_failure(monkeypatch, tmp_path):
             pass
 
     monkeypatch.setattr(
-        difficulties_generator, "ClaudeCodeCodingAgent", DeadAgent
+        difficulties_generator.CodingAgentFactory, "create", classmethod(lambda cls, config: DeadAgent(config))
     )
     text = difficulties_generator.generate_technical_difficulties(
-        model="m",
-        claude_auth_settings={"auth_mode": "oauth"},
+        role=SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=None),
         env_strip=[],
-        effort=None,
         timeout_seconds=60,
         workspace_dir=str(tmp_path),
         solution="s",

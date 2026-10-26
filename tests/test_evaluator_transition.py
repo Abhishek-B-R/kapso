@@ -19,6 +19,7 @@ import kapso.execution.search_strategies.generic.registered_evaluation as regist
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from tests.harness_support import fake_config
 
 from tests.test_evaluation_maintainer_wiring import (
     ScriptedMaintainerAgent,
@@ -213,14 +214,8 @@ def test_bridge_skips_missing_artifacts_and_appends_on_success(
 # Orchestrator-level: the durable state machine
 # =========================================================================
 
-def maintainer_mode_config(config_path, mode):
-    return {
-        "search_strategy": {"type": "generic", "params": {}},
-        "evaluation_maintainer": {
-            "type": "claude_code",
-            "max_change_requests": 2,
-        },
-    }
+def maintainer_config(config_path=None):
+    return fake_config(evaluation_maintainer={"enabled": True, "max_change_requests": 2})
 
 
 def test_accepted_change_request_runs_the_full_transition(
@@ -233,7 +228,7 @@ def test_accepted_change_request_runs_the_full_transition(
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
 
     # One scripted agent serves both the setup and the CR call: the setup
@@ -260,7 +255,7 @@ def test_accepted_change_request_runs_the_full_transition(
         ),
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     orchestrator = _orchestrator(workspace)
     strategy = orchestrator.search_strategy
@@ -313,7 +308,7 @@ def test_pending_transition_replays_idempotently_on_resume(
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     _orchestrator(workspace).solve(experiment_max_iter=1)
 
@@ -365,7 +360,7 @@ def test_failed_bridges_anchor_an_empty_frontier(tmp_path, monkeypatch):
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     _orchestrator(workspace).solve(experiment_max_iter=1)
 
@@ -430,7 +425,7 @@ def test_accepted_request_bridges_the_requester_first(tmp_path, monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     orchestrator = _orchestrator(workspace)
     strategy = orchestrator.search_strategy
@@ -459,7 +454,7 @@ def test_pending_priority_replays_first_on_resume(tmp_path, monkeypatch):
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     first = _orchestrator(workspace)
     # Node 0 scoreless, node 1 scored: without priority, replay would
@@ -534,7 +529,7 @@ def test_unsound_measurement_bridges_but_tampering_never_does(
         ),
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     orchestrator = _orchestrator(workspace)
     strategy = orchestrator.search_strategy
@@ -575,7 +570,7 @@ def test_change_requests_freeze_late_in_a_time_budget(tmp_path, monkeypatch):
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     orchestrator = _orchestrator(workspace)
     assert orchestrator._transition_freeze_fraction == 0.85

@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_config
+from kapso.core.config import PACKAGED_CONFIG_PATH, load_config
 from kapso.core.preflight import experience_requirements
 from kapso.knowledge_base.learners.ingestors import repo_ingestor as ingestor_module
 from kapso.knowledge_base.learners.merger import knowledge_merger as merger_module
@@ -38,7 +38,7 @@ from kapso.knowledge_base.learners.ingestors.repo_ingestor.wiki_validator import
 )
 from kapso.knowledge_base.search.kg_graph_search import _extract_overview
 
-PACKAGED = load_config(str(PLATFORM_CONFIG_PATH))
+PACKAGED = load_config(str(PACKAGED_CONFIG_PATH))
 
 CANDIDATES = """# Orphan Candidates: Repo
 
@@ -260,7 +260,7 @@ class PublishingAgent:
 
 
 def test_publishing_is_off_by_default_and_a_placeholder_url_is_a_warning(tmp_path):
-    assert PACKAGED["modes"][PACKAGED["default_mode"]]["learner"]["ingestor"]["publish_workflows"] is False
+    assert PACKAGED["learner"]["ingestor"]["publish_workflows"] is False
     assert ingestor_module.RepoIngestor(params={"wiki_dir": tmp_path})._publish_workflows is False
     report = validate_wiki_directory(workflow_wiki(tmp_path))
     assert report.errors == []
@@ -365,7 +365,7 @@ def test_the_merger_runs_its_session_on_the_configured_agent(captured_agent, tmp
 def test_preflight_checks_the_bridge_of_a_vertex_learner_instead_of_a_login():
     config = copy.deepcopy(PACKAGED)
     for role in ("ingestor", "merger"):
-        config["modes"][config["default_mode"]]["learner"][role].update(VERTEX_SESSION)
+        config["learner"][role].update(VERTEX_SESSION)
     rows = {item.label: item for item in experience_requirements(config)}
     assert {"litellm", "Google credentials", "agent_specific.vertex_project"} <= set(rows)
     assert rows["agent_specific.vertex_project"].ok is True

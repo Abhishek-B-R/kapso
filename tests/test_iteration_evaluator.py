@@ -9,7 +9,8 @@ from typing import Any, Dict, Iterator, List, Optional
 import git
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
+from tests.harness_support import fake_config
 from kapso.execution.iteration_evaluator import (
     IterationEvaluationError,
     IterationEvaluationResult,
@@ -161,21 +162,13 @@ def _patch_orchestrator(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}}
-        },
-    )
-    monkeypatch.setattr(
         OrchestratorAgent,
         "_create_feedback_generator",
-        lambda self, coding_agent=None: object(),
+        lambda self: object(),
     )
 
     def create_strategy(
         self: OrchestratorAgent,
-        coding_agent: Optional[str],
         workspace_dir: Optional[str],
         start_from_checkpoint: bool,
     ) -> TwoCandidateStrategy:
@@ -545,10 +538,10 @@ def test_public_build_forwards_evaluator_and_reports_selected_metrics(
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
     # Mirror __init__-set attributes the build path reads (stub gotcha:
     # new Kapso instance attributes must be added here too).
-    kapso._config = {}
+    kapso._config = fake_config(inbox={"registry": str(Path(workspace).with_name("registry.jsonl"))})
     kapso._bank_home = None
     kapso._harness = None
-    kapso._harness_settings = load_harness_defaults()
+    kapso._harness_settings = load_config()["harness"]
     kapso._experience = []
     solution = kapso.build(
         "Improve support",

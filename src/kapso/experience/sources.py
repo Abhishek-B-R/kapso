@@ -253,3 +253,18 @@ def count_cards(home: Path, head: str) -> int:
         1 for name in listing.stdout.split()
         if name.startswith(_CARD_DIRS) and name.endswith(".md") and not name.endswith("/index.md")
     )
+
+
+def experience_settings(config: Dict[str, Any]) -> Dict[str, Any]:
+    """The experience homes (the config's `experience` block) with what the
+    sources need from the other blocks: `bank_home` (`learning.bank.local_path`,
+    where `mine` lives), `session_root` (`learning.serving.session_root`,
+    where a host session stages), `probe_budget`
+    (`learning.retriever.probe_budget`, the probe offers riding card reads
+    per campaign) and `hosted` (`gates.leeroopedia`)."""
+    settings = dict(config["experience"])
+    settings["bank_home"] = config["learning"]["bank"]["local_path"]
+    settings["session_root"] = config["learning"]["serving"]["session_root"]
+    settings["probe_budget"] = config["learning"]["retriever"]["probe_budget"]
+    settings["hosted"] = dict(config["gates"]["leeroopedia"])
+    return settings

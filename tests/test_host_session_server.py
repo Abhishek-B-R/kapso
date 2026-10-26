@@ -30,6 +30,9 @@ from kapso.gated_mcp.host_session import (
     repository_root,
 )
 from kapso.gated_mcp.presets import resolve_gates
+from kapso.core.config import load_config
+from kapso.experience.sources import experience_settings
+from tests.harness_support import fake_config
 from tests.test_bank_retriever import card_text
 from tests.test_experience_reference import settings_for
 from tests.test_update_frame import seed_bank_home
@@ -57,11 +60,11 @@ def _index(tmp_path, name):
     return _source(tmp_path, name)
 
 
-def _prepare(tmp_path, root, *, requested=DEFAULT_GATES, sources=(), mode_config=None, harness_name=None):
+def _prepare(tmp_path, root, *, requested=DEFAULT_GATES, sources=(), embedding=None, harness_name=None):
     return prepare_host_gates(
         root=root,
         requested=list(requested),
-        mode_config=mode_config or {"models": {"embedding": None}},
+        config=fake_config(models={"embedding": embedding}),
         sources=list(sources),
         session_dir=tmp_path / "sessions" / "s1",
         probe_budget=1,
@@ -125,7 +128,7 @@ def test_experiment_history_rides_inside_a_campaign_directory(tmp_path, codex_on
 
     gates = _prepare(
         tmp_path, deep, requested=["experiment_history"],
-        mode_config={"models": {"embedding": "text-embedding-3-small"}},
+        embedding="text-embedding-3-small",
     )
     assert gates.enabled == ["experiment_history"]
     assert gates.env == {
@@ -250,7 +253,7 @@ def test_main_takes_the_harness_for_its_name(tmp_path, monkeypatch, capsys):
     assert captured["harness_name"] == "trading" and captured["sources"] == []
     assert "kapso-mcp: serving research for" in capsys.readouterr().err
     # the session directory is removed when the server exits
-    assert captured["session_dir"].parent == Path(host_module.load_experience_defaults(None)["session_root"]).expanduser()
+    assert captured["session_dir"].parent == Path(experience_settings(load_config())["session_root"]).expanduser()
 
 
 async def _no_server():

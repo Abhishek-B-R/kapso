@@ -5,7 +5,8 @@ import sys
 from pathlib import Path
 from typing import List
 
-from kapso.kapso import Kapso, DEFAULT_MAX_ITERATIONS
+from kapso.core.config import load_config
+from kapso.kapso import Kapso
 from kapso.handles import Brief, Budget
 from kapso.execution.inbox import read_launch_record
 from kapso.experience import recorded_reference
@@ -106,7 +107,6 @@ def cmd_build(args) -> None:
             reserve_minutes=args.budget_reserve_minutes,
         ),
         resume=args.resume,
-        mode=args.mode,
         coding_agent=args.coding_agent,
     )
     _print_build_summary(solution)
@@ -199,7 +199,7 @@ Examples:
     )
     build_parser.add_argument(
         "--budget-experiments", type=int, default=None,
-        help=f"Max experiments this run (default: {DEFAULT_MAX_ITERATIONS}; a resume keeps the launch's)",
+        help=f"Max experiments this run (default: {load_config()['budget']['experiments']}; a resume keeps the launch's)",
     )
     build_parser.add_argument(
         "--budget-usd", type=float, default=None,
@@ -233,12 +233,13 @@ Examples:
         help="Where a detached run's output goes (default: <output>.log beside the campaign)",
     )
 
-    build_parser.add_argument("-m", "--mode", type=str, help="Config mode (GENERIC, MINIMAL)")
     build_parser.add_argument(
-        "-a", "--coding-agent", type=str, choices=AVAILABLE_AGENTS, help="Coding agent",
+        "-a", "--coding-agent", type=str, choices=AVAILABLE_AGENTS,
+        help="The host every session runs on, with the model the config's hosts table "
+             "gives it (default: search_strategy.params.host)",
     )
     build_parser.add_argument(
         "--config", type=str, default=None,
-        help="Config path (default: packaged config.yaml)",
+        help="Your override file, layered over the packaged config (default: the packaged defaults)",
     )
     return cmd_build

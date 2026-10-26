@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
 import kapso.core.preflight as preflight
 import kapso.kapso as kapso_module
 from kapso.kapso import Kapso
@@ -75,11 +75,7 @@ def test_all_codex_build_never_asks_for_claude(packaged, full_machine):
     """The bug this design replaced: the old doctor demanded `claude` from
     everyone, including a config that can only ever spawn codex."""
     config = copy.deepcopy(packaged)
-    mode = config["modes"]["GENERIC"]
-    mode["search_strategy"]["params"]["idea_generation_model"] = "gpt-5.6-sol"
-    mode["search_strategy"]["params"]["implementation_model"] = "gpt-5.6-sol"
-    mode["coding_agent"] = {"type": "codex", "model": "gpt-5.6-sol"}
-    mode["feedback_generator"] = {"type": "codex", "model": "gpt-5.6-sol"}
+    config["search_strategy"]["params"]["host"] = "codex"
 
     found = labels(requirements_for("build", config))
     assert "codex CLI" in found
@@ -116,7 +112,7 @@ def test_kg_store_rows_name_the_configured_endpoints(packaged, full_machine):
     so the rows must check those endpoints, not localhost:8080/7687."""
     import copy
     config = copy.deepcopy(packaged)
-    config["modes"]["GENERIC"]["knowledge_search"]["params"] = {
+    config["knowledge_search"]["params"] = {
         "weaviate_url": "http://localhost:18080",
         "neo4j_uri": "bolt://localhost:17687",
     }
@@ -176,8 +172,8 @@ def test_gate_policy_decides_whether_a_missing_gate_blocks(
         if label.startswith("MCP gate")
     ]
     packaged = copy.deepcopy(packaged)
-    params = packaged["modes"]["GENERIC"]["search_strategy"]["params"]
-    params["ideation_gates"] = list(params["ideation_gates"]) + ["leeroopedia"]
+    params = packaged["search_strategy"]["params"]
+    params["ideation"]["gates"] = list(params["ideation"]["gates"]) + ["leeroopedia"]
 
     warn = by_label(requirements_for("build", packaged))
     assert warn["MCP gate 'leeroopedia'"].required is False
@@ -188,8 +184,7 @@ def test_gate_policy_decides_whether_a_missing_gate_blocks(
     )
 
     strict = copy.deepcopy(packaged)
-    strict["modes"]["GENERIC"]["search_strategy"]["params"][
-        "gate_failure_policy"] = "error"
+    strict["search_strategy"]["params"]["gate_failure_policy"] = "error"
     blocking = by_label(requirements_for("build", strict))
     assert blocking["MCP gate 'leeroopedia'"].required is True
     # `error` is the one policy where downgrading is a real option, so it
@@ -254,21 +249,19 @@ def test_origins_are_summarized_not_a_wall_of_near_identical_keys():
 # Session extraction
 # =============================================================================
 
-def test_session_specs_resolve_the_cli_four_ways():
-    """An explicit `cli`, an `implementation_cli` sibling, a `type` naming a
-    registered agent, and the model-name prefix. A rename that dodges this
-    silently probes the wrong CLI."""
+def test_session_specs_resolve_the_cli_three_ways():
+    """An explicit `cli`, a `type` naming a registered agent, and the
+    model-name prefix; the build's own sessions are roles over the hosts
+    table and do not walk this. A rename that dodges this silently probes
+    the wrong CLI."""
     specs = session_specs({
         "explicit": {"cli": "claude_code", "model": "some-house-model"},
-        "impl": {"implementation_cli": "codex",
-                 "implementation_model": "claude-named-but-codex-run"},
         "typed": {"type": "codex", "model": "claude-shaped-name"},
         "prefixed": {"model": "claude-opus-5"},
         "fallback": {"model": "gpt-5.6-sol"},
     }, "root")
     resolved = {spec.model: spec.cli for spec in specs}
     assert resolved["some-house-model"] == "claude_code"
-    assert resolved["claude-named-but-codex-run"] == "codex"
     assert resolved["claude-shaped-name"] == "codex"
     assert resolved["claude-opus-5"] == "claude_code"
     assert resolved["gpt-5.6-sol"] == "codex"
@@ -629,8 +622,7 @@ def test_preflight_rejects_plaintext_inference_endpoint():
 
 
 def test_preflight_uses_embedding_endpoint_from_config(packaged, full_machine):
-    mode = packaged["default_mode"]
-    packaged["modes"][mode]["knowledge_search"]["params"] = {
+    packaged["knowledge_search"]["params"] = {
         "embedding_base_url": "https://embeddings.test/v1",
     }
     rows = requirements_for("build", packaged, index="my-index")
@@ -639,16 +631,17 @@ def test_preflight_uses_embedding_endpoint_from_config(packaged, full_machine):
                for row in rows)
 
 
-@pytest.mark.parametrize("field", ["coding_agent", "feedback_generator"])
+@pytest.mark.parametrize("role", ["implementation", "judge"])
 @pytest.mark.parametrize("with_model", [False, True])
 def test_build_refuses_inference_agent_in_config(
-    packaged, full_machine, field, with_model,
+    packaged, full_machine, role, with_model,
 ):
-    mode = packaged["default_mode"]
-    settings = {"type": "openai_compatible"}
+    """A role on an inference-only adapter (a host entry names it, the
+    role picks it) is refused by the role's key: the session must write."""
+    packaged["hosts"]["openai_compatible"] = {"model": "provider/model"}
+    packaged["search_strategy"]["params"][role]["cli"] = "openai_compatible"
     if with_model:
-        settings["model"] = "provider/model"
-    packaged["modes"][mode][field] = settings
+        packaged["search_strategy"]["params"][role]["model"] = "provider/own-model"
     with pytest.raises(PreflightError) as error:
         preflight.run_preflight("build", packaged)
     failure = next(
@@ -656,29 +649,30 @@ def test_build_refuses_inference_agent_in_config(
         if "inference-only" in row.label
     )
     assert failure.required and not failure.ok
-    assert f"modes.{mode}.{field}.type" in failure.origin
+    assert f"search_strategy.params.{role}" in failure.origin
     assert "coding-capable" in failure.fix
     assert "inference.roles" in failure.fix
 
 
-def test_python_build_override_fails_before_workspace(
+def test_a_host_the_table_does_not_name_fails_before_workspace(
     packaged, full_machine, tmp_path, monkeypatch,
 ):
+    """`--coding-agent` picks a host of the config's table; a name the
+    table does not carry is refused by name, with the way in, before the
+    workspace exists (a named host on an inference-only adapter is
+    test_build_refuses_inference_agent_in_config's refusal)."""
     kapso = object.__new__(Kapso)
+    # The launch is registered before its checks (wp6-observability.md,
+    # change 8): the registry is a file of the test's own.
+    packaged["inbox"]["registry"] = str(tmp_path / "registry.jsonl")
     kapso._config = packaged
     kapso.config_path = None
     kapso._harness = None
-    kapso._harness_settings = load_harness_defaults()
+    kapso._harness_settings = packaged["harness"]
     kapso._experience = []
     kapso._bank_home = None
-    # The launch is registered before its checks (wp6-observability.md,
-    # change 8): the registry is a file of the test's own.
-    monkeypatch.setattr(
-        kapso_module, "load_mode_config",
-        lambda *args, **kwargs: {"inbox": {"registry": str(tmp_path / "registry.jsonl")}},
-    )
     output = tmp_path / "campaign"
-    with pytest.raises(PreflightError, match="inference-only"):
+    with pytest.raises(ValueError, match=r"search_strategy\.params\.host .*openai_compatible is not in hosts"):
         kapso.build(
             "test", coding_agent="openai_compatible",
             output=str(output),
@@ -694,12 +688,16 @@ def test_python_build_override_fails_before_workspace(
 def test_other_non_inference_sessions_are_rejected(
     packaged, full_machine, verb, branch,
 ):
-    mode = packaged["default_mode"]
-    node = packaged["learning"] if verb == "learn" else packaged["modes"][mode]
-    for key in branch.split("."):
-        node = node.setdefault(key, {})
-    node["cli"] = "openai_compatible"
-    node["model"] = "provider/model"
+    if verb == "build":
+        # The build's sessions are roles over the hosts table.
+        packaged["hosts"]["openai_compatible"] = {"model": "provider/model"}
+        packaged["search_strategy"]["params"]["host"] = "openai_compatible"
+    else:
+        node = packaged["learning"] if verb == "learn" else packaged
+        for key in branch.split("."):
+            node = node.setdefault(key, {})
+        node["cli"] = "openai_compatible"
+        node["model"] = "provider/model"
     with pytest.raises(PreflightError, match="inference-only"):
         preflight.run_preflight(verb, packaged)
 
@@ -743,7 +741,7 @@ def test_build_asks_for_the_openai_key_only_when_something_will_embed(packaged, 
     assert not [label for label in stock if label.startswith("OPENAI_API_KEY")]
 
     embedding_on = copy.deepcopy(packaged)
-    embedding_on["modes"]["GENERIC"]["models"] = {"embedding": "text-embedding-3-small"}
+    embedding_on["models"] = {"embedding": "text-embedding-3-small"}
     rows = by_label(requirements_for("build", embedding_on))
     row = rows["OPENAI_API_KEY (embeddings: https://api.openai.com/v1)"]
     assert row.ok is False and row.required is True

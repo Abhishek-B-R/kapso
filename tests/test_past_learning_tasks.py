@@ -64,17 +64,18 @@ def test_parse_metric_reads_the_evaluator_line():
 
 def test_config_is_web_off_but_same_models_as_kaggle():
     with open(CONFIG_PATH) as f:
-        mode = yaml.safe_load(f)["modes"]["LOCAL"]
-    params = mode["search_strategy"]["params"]
+        config = yaml.safe_load(f)
+    params = config["search_strategy"]["params"]
     # Same models as the Kaggle runs (codex+fable ideation + Fable lens
-    # planner), only web_search muted → leakage-safe on past contests.
-    assert params["web_search"] is False
-    ens = params["ideation_ensemble"]
+    # planner), only the web switched off in both roles → leakage-safe on
+    # past contests.
+    assert params["ideation"]["web"] is False and params["implementation"]["web"] is False
+    ens = params["ideation"]["ensemble"]
     assert [m["cli"] for m in ens] == ["codex", "claude_code"]
-    assert params["ideation_lens_planner"]["cli"] == "claude_code"
-    assert params["ideation_selector"]["cli"] == "claude_code"
-    assert mode["budget"] == {"min_iteration_seconds": 900}
-    assert mode["session_budget"]["ideation_fraction"] == 0.2
+    assert params["ideation"]["lens_planner"]["cli"] == "claude_code"
+    assert params["ideation"]["selector"]["cli"] == "claude_code"
+    assert config["budget"] == {"min_iteration_seconds": 900}
+    assert config["benchmark"]["session_budget"]["ideation_fraction"] == 0.2
 
 
 def test_codex_ideation_search_flag_gated_by_web_search():
@@ -107,33 +108,6 @@ def test_claude_adapter_bans_websearch_via_disallowed_tools():
     agent = ClaudeCodeCodingAgent(cfg)
     assert agent._disallowed_tools == ["WebSearch", "WebFetch"]
     assert "WebSearch" in (agent.PRINT_MODE_DEAD_TOOLS + agent._disallowed_tools)
-
-
-def test_strategy_web_off_sets_disallowed_websearch():
-    import inspect
-
-    from kapso.execution.search_strategies.generic import (
-        ideation,
-        lens_planning,
-        strategy,
-    )
-
-    src = inspect.getsource(strategy)
-    # web-off computes the WebSearch/WebFetch disallow set...
-    assert 'self._web_disallowed_tools = (' in src
-    assert '["WebSearch", "WebFetch"]' in src
-    # ...threads it into every ideation delegation (single/ensemble/lens)...
-    assert src.count('web_disallowed_tools=self._web_disallowed_tools') >= 3
-    # ...and the session configs wire it in (member/single/lens).
-    wired = (
-        inspect.getsource(ideation).count(
-            '"disallowed_tools": web_disallowed_tools'
-        )
-        + inspect.getsource(lens_planning).count(
-            '"disallowed_tools": web_disallowed_tools'
-        )
-    )
-    assert wired >= 3
 
 
 def test_bobai_acquire_manifests_sequester_answers():

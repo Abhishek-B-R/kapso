@@ -69,7 +69,7 @@ def test_the_checkpoint_carries_the_sources_and_requires_the_field(tmp_path):
         status="running", completed_iterations=1, cumulative_cost=0.0, current_feedback=None,
         strategy_state={"node_history": []}, experience=[vars(MINE)],
     )
-    assert checkpoint.schema_version == 5
+    assert checkpoint.schema_version == 6
     store = RunCheckpointStore(str(tmp_path))
     store.save(checkpoint)
     assert store.load().experience == [vars(MINE)]
@@ -135,7 +135,7 @@ def _campaign(tmp_path, monkeypatch, experience):
         experience=experience,
     ))
     write_launch_record(workspace, {
-        "config_path": None, "mode": None, "coding_agent": None,
+        "config_path": None, "coding_agent": None,
         "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": None,
         "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
         "data_dir": None, "additional_context": "", "context": None, "harness": None,
@@ -259,7 +259,7 @@ def test_a_reply_rebuilds_the_object_with_the_launchs_bank(tmp_path, monkeypatch
     home = seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
     workspace = _paused_campaign(tmp_path)
     write_launch_record(workspace, {
-        "config_path": None, "mode": None, "coding_agent": None,
+        "config_path": None, "coding_agent": None,
         "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": None,
         "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
         "data_dir": None, "additional_context": "", "context": None, "harness": None,

@@ -20,7 +20,7 @@ from typing import (
     Tuple,
 )
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_config
+from kapso.core.config import load_config
 from kapso.core.prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -28,9 +28,7 @@ logger = logging.getLogger(__name__)
 # The hosted servers the registry points sessions at. Their addresses are
 # config, not code (Rule 1): the packaged config's `gates:` block is the
 # one source.
-_HOSTED_GATES: Dict[str, Dict[str, str]] = load_config(
-    str(PLATFORM_CONFIG_PATH)
-)["gates"]
+_HOSTED_GATES: Dict[str, Dict[str, str]] = load_config()["gates"]
 # The one hosted gate, the experience source `leeroopedia`.
 HOSTED_GATE = "leeroopedia"
 

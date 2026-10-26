@@ -20,8 +20,8 @@ from kapso.cli.doctor import cmd_doctor
 from kapso.kapso import DEFAULT_CONFIG_PATH
 
 
-def args(verb=None, models=False, config=None, json=False):
-    return SimpleNamespace(verb=verb, models=models, config=config, json=json)
+def args(verb=None, models=False, config=None, json=False, show_config=False):
+    return SimpleNamespace(verb=verb, models=models, config=config, json=json, show_config=show_config)
 
 
 @pytest.fixture
@@ -106,17 +106,14 @@ def test_config_flag_drives_the_requirements_including_the_bank_row(
     under --config, so `kapso doctor --config mine.yaml` reported someone
     else's bank. Everything the doctor says must come from the config it
     was handed."""
-    config = yaml.safe_load(Path(DEFAULT_CONFIG_PATH).read_text())
-    config["learning"]["bank"]["local_path"] = str(tmp_path / "mine.git")
     (tmp_path / "mine.git").mkdir()
-    # An all-codex config: the claude rows must disappear with it.
-    mode = config["modes"]["GENERIC"]
-    mode["search_strategy"]["params"]["idea_generation_model"] = "gpt-5.6-sol"
-    mode["search_strategy"]["params"]["implementation_model"] = "gpt-5.6-sol"
-    mode["coding_agent"] = {"type": "codex", "model": "gpt-5.6-sol"}
-    mode["feedback_generator"] = {"type": "codex", "model": "gpt-5.6-sol"}
+    # An override file: the bank's home, and an all-codex build (the
+    # default host), so the claude rows must disappear with it.
     path = tmp_path / "mine.yaml"
-    path.write_text(yaml.safe_dump(config))
+    path.write_text(yaml.safe_dump({
+        "learning": {"bank": {"local_path": str(tmp_path / "mine.git")}},
+        "search_strategy": {"params": {"host": "codex"}},
+    }))
 
     cmd_doctor(args(verb="build", config=str(path)))
     out = capsys.readouterr().out

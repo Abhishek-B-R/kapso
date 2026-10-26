@@ -18,6 +18,7 @@ from kapso.execution.budget import (
     CostEntry,
 )
 from kapso.execution.run_checkpoint import RunCheckpointStore
+from tests.harness_support import fake_config
 
 from tests.test_run_checkpoint import (
     _init_git_workspace,
@@ -41,9 +42,9 @@ def test_spec_rejects_invalid_values():
 
 def test_spec_resolution_precedence_and_unknown_keys():
     block = {
-        "time_budget_minutes": 120,
-        "cost_budget_usd": 10.0,
-        "finalization_reserve_minutes": 5,
+        "minutes": 120,
+        "usd": 10.0,
+        "reserve_minutes": 5,
         "min_agent_timeout_seconds": 30,
     }
 
@@ -158,19 +159,15 @@ def test_budget_block_is_excluded_from_config_fingerprint(
     without_budget = _orchestrator(workspace_a)
 
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "budget": {"time_budget_minutes": 120},
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(budget={"minutes": 120}),
     )
     with_budget = _orchestrator(workspace_b)
 
     assert (
         with_budget.config_fingerprint == without_budget.config_fingerprint
     )
-    assert with_budget._config_budget == {"time_budget_minutes": 120}
+    assert with_budget._config_budget["minutes"] == 120
 
 
 def test_budget_exhausted_campaign_resumes_with_a_bigger_budget(

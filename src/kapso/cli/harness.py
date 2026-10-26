@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
 from kapso.harness import (
     BUNDLED_ROOT,
     HarnessStore,
@@ -20,7 +20,7 @@ TEMPLATES = Path(__file__).resolve().parent.parent / "harness" / "templates"
 
 
 def cmd_harness(args) -> None:
-    settings = load_harness_defaults(args.config)
+    settings = load_config(args.config)["harness"]
     store = HarnessStore(Path(settings["store"]))
     command = args.harness_command
     if command == "new":

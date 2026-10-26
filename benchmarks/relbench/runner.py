@@ -16,7 +16,6 @@ Options:
     --dataset, -s        Dataset name (e.g. rel-f1)
     --task, -t           Task name (e.g. driver-position)
     --iterations, -i     Maximum search iterations (default: 20)
-    --mode, -m           Config mode: RELBENCH_GENERIC (default), FAST_DEBUG, MINIMAL
     --coding-agent, -d   Coding agent: aider, gemini, claude_code, openhands
     --no-kg              Disable knowledge graph
     --workspace          Reuse/name a workspace dir (enables resuming archives)
@@ -35,7 +34,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-from kapso.core.config import load_experience_defaults
+from kapso.core.config import load_config, read_yaml
+from kapso.experience import experience_settings
 from kapso.experience.reference import parse_experience_reference
 from kapso.experience.sources import resolve_source
 from kapso.kapso import DEFAULT_CONFIG_PATH
@@ -63,21 +63,22 @@ def list_tasks() -> None:
 
 
 def _write_runtime_config(
-    mode: str, shared_cache_dir: str, work_dir, time_budget_hours=None,
+    shared_cache_dir: str, work_dir, time_budget_hours=None,
     bank_serving=None,
 ) -> str:
-    """Write a per-run config injecting the task-scoped shared_cache_dir (and,
-    when given, the wall-clock budget override and the bank-serving env
-    mapping) into the mode's config, and return its path. The orchestrator
-    reloads config from disk, so a runtime value must live in a file."""
-    with open(CONFIG_PATH) as f:
-        config = yaml.safe_load(f)
-    params = config["modes"][mode]["search_strategy"]["params"]
+    """Write the per-run override file: this benchmark's own file with the
+    task-scoped shared_cache_dir (and, when given, the wall-clock budget
+    and the bank-serving env mapping) over it, and return its path. The
+    orchestrator loads config from disk, so a runtime value must live in
+    a file; the file is an override over the packaged defaults, as the
+    benchmark's own is."""
+    config = read_yaml(CONFIG_PATH)
+    params = config["search_strategy"]["params"]
     params["shared_cache_dir"] = os.path.abspath(shared_cache_dir)
     if bank_serving is not None:
         params["bank_serving"] = bank_serving
     if time_budget_hours is not None:
-        config["modes"][mode]["budget"]["time_budget_minutes"] = time_budget_hours * 60
+        config["budget"]["minutes"] = time_budget_hours * 60
     runtime_dir = os.path.join(str(work_dir), ".kapso_runtime")
     os.makedirs(runtime_dir, exist_ok=True)
     runtime_path = os.path.join(runtime_dir, "config.yaml")
@@ -93,7 +94,7 @@ def solve_task(args) -> dict:
 
     print(f"\n{'=' * 70}\nSolving: {args.dataset} / {args.task}\n{'=' * 70}")
     print(f"  Max iterations: {args.iterations}")
-    print(f"  Config mode: {args.mode or 'from config'}")
+    print(f"  Config: {CONFIG_PATH}")
     print(f"  Coding agent: {args.coding_agent or 'from config'}")
     print(f"  Knowledge graph: {'disabled' if args.no_kg else 'enabled'}\n")
 
@@ -112,7 +113,6 @@ def solve_task(args) -> dict:
     # maintainer-registered evaluation entrypoint; in-loop scoring is
     # val-only by construction (the sanitized cache holds no test labels).
     generic = True
-    mode = args.mode or "RELBENCH_GENERIC"
 
     # Serving (docs/plans/redesign/wp3-experience.md): what --experience
     # loads is what the sessions are served — each bank pinned, the intro
@@ -122,7 +122,7 @@ def solve_task(args) -> dict:
     # tools; the learner runs after campaigns, never inside them.
     serving = None
     if generic and args.experience:
-        settings = load_experience_defaults(str(DEFAULT_CONFIG_PATH))
+        settings = experience_settings(load_config(CONFIG_PATH))
         sources = [
             resolve_source(
                 parse_experience_reference(raw.strip(), indexes_root=Path(settings["indexes"])),
@@ -162,7 +162,7 @@ def solve_task(args) -> dict:
     config_path = CONFIG_PATH
     if generic:
         config_path = _write_runtime_config(
-            mode, str(handler.shared_cache_dir), handler.work_dir,
+            str(handler.shared_cache_dir), handler.work_dir,
             time_budget_hours=args.time_budget_hours,
             bank_serving=serving["bank_serving"] if serving else None,
         )
@@ -172,7 +172,6 @@ def solve_task(args) -> dict:
     orchestrator = OrchestratorAgent(
         handler,
         config_path=config_path,
-        mode=mode,
         coding_agent=args.coding_agent,
         workspace_dir=args.workspace,
         resume=args.resume,
@@ -208,7 +207,6 @@ def main() -> None:
     parser.add_argument("-s", "--dataset", type=str, help="Dataset name (e.g. rel-f1)")
     parser.add_argument("-t", "--task", type=str, help="Task name (e.g. driver-position)")
     parser.add_argument("-i", "--iterations", type=int, default=20)
-    parser.add_argument("-m", "--mode", type=str, default=None)
     parser.add_argument("-d", "--coding-agent", type=str, choices=AVAILABLE_AGENTS, default=None)
     parser.add_argument("--no-kg", action="store_true")
     parser.add_argument("--workspace", type=str, default=None)

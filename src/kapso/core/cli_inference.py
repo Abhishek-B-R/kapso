@@ -12,10 +12,8 @@
 # inner LLMBackend (embeddings are explicitly out of scope of the
 # conversion). Callers select a role with one `role=` kwarg; the role's
 # spec (cli, model, effort, sandbox, web_search, timeout) comes from the
-# `inference:` block resolved by resolve_inference_config(): the packaged
-# config is the base layer (Rule 1 — one canonical home for the defaults),
-# and an `inference:` block in the user's own --config/config_path file
-# deep-merges over it, so overriding one key never forfeits the rest.
+# effective config's `inference:` block (kapso.core.config.load_config:
+# the packaged defaults with the override file over them).
 
 import tempfile
 from pathlib import Path
@@ -27,33 +25,6 @@ from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 # The packaged platform config carries the default inference block (Rule 1).
-_PACKAGED_CONFIG_PATH = str(Path(__file__).parent.parent / "config.yaml")
-
-
-def resolve_inference_config(
-    config_path: Optional[str] = None,
-) -> Dict[str, Any]:
-    """The `inference:` block a run should use.
-
-    The packaged platform config is the base layer; when `config_path` names
-    a user config file with its own `inference:` block, that block
-    deep-merges on top (nested dicts key-by-key, scalars replace). A user
-    file without an `inference:` block — or no `config_path` at all — gets
-    the packaged block unchanged: that is the documented default, not an
-    error.
-    """
-    inference = load_config(_PACKAGED_CONFIG_PATH)["inference"]
-    if config_path is None or str(config_path) == _PACKAGED_CONFIG_PATH:
-        return inference
-    user_block = load_config(str(config_path)).get("inference")
-    if user_block is None:
-        return inference
-    if not isinstance(user_block, dict):
-        raise ValueError(
-            f"`inference:` in {config_path} must be a mapping, "
-            f"got {type(user_block).__name__}"
-        )
-    return deep_merge(inference, user_block)
 
 
 class CliInference:
@@ -77,7 +48,7 @@ class CliInference:
     ):
         # An explicit `inference` dict wins; otherwise resolve from the
         # config file (user overrides deep-merged over the packaged block).
-        self._inference = inference or resolve_inference_config(config_path)
+        self._inference = inference or load_config(config_path)["inference"]
         if "default" not in self._inference:
             raise ValueError("inference config has no 'default' role spec")
         self._backend = LLMBackend(models=models, retry_policy=retry_policy)

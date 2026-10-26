@@ -9,6 +9,9 @@ the serving directory, so a seeded workspace stays empty at construction."""
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from kapso.execution.coding_agents.base import CodingAgentConfig
+from strategy_support import generic_params, packaged_hosts
+
 import pytest
 
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
@@ -98,6 +101,8 @@ def _patched_super_init(workspace_dir):
         self.params = config.params or {}
         self.workspace_dir = workspace_dir
         self.feedback_generator = None
+        self.budget_snapshot = None
+        self.budget_snapshot_monotonic = None
 
     SearchStrategy.__init__ = fake_init
     yield
@@ -109,9 +114,9 @@ def test_the_strategy_reads_the_staged_intro_lazily_and_fails_loud_when_it_is_mi
     # workspace must be empty then), so the strategy carries its path and
     # reads it when a prompt is built; the judge never gets the bank gate.
     intro_path = tmp_path / ".kapso" / "serving" / "intro.md"
-    params = {"bank_serving": {"KAPSO_BANKS": "[]"}, "experience_intro_path": str(intro_path)}
+    params = generic_params(bank_serving={"KAPSO_BANKS": "[]"}, experience_intro_path=str(intro_path))
     with _patched_super_init(str(tmp_path)):
-        strategy = GenericSearch(SimpleNamespace(params=params), str(tmp_path))
+        strategy = GenericSearch(SimpleNamespace(params=params, hosts=packaged_hosts()), str(tmp_path))
     strategy.shared_artifacts_brief = ""
     strategy._render_budget_status = lambda: "b"
     strategy._render_inbox_ideation = lambda: ""
@@ -123,7 +128,8 @@ def test_the_strategy_reads_the_staged_intro_lazily_and_fails_loud_when_it_is_mi
     assert "bank" in strategy.ideation_gates and "bank" in strategy.implementation_gates
     # The judge is a session with no gate list at all: its agent config
     # mounts no server, so no bank can reach it.
-    assert "mcp_servers" not in FeedbackGenerator().coding_agent_config.agent_specific
+    judge = CodingAgentConfig(agent_type="claude_code", model="claude-opus-5", debug_model="claude-opus-5", agent_specific={})
+    assert "mcp_servers" not in FeedbackGenerator(judge).coding_agent_config.agent_specific
     with _patched_super_init(str(tmp_path)):
-        plain = GenericSearch(SimpleNamespace(params={}), str(tmp_path))
+        plain = GenericSearch(SimpleNamespace(params=generic_params(), hosts=packaged_hosts()), str(tmp_path))
     assert plain.experience_intro() == ""

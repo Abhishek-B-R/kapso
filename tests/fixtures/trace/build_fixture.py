@@ -17,7 +17,8 @@ being a killed invocation; the times from the node's start and its
 phases' durations), the pull log's `session` key (the event's time
 against the same windows) and the current schemas (the solution record's
 `session_failures`, the checkpoint's `experience`, a node's fields the
-dataclass has gained). The checkpoint's `agent_output` is blanked (the
+dataclass has gained, the launch record without its `mode`). The
+checkpoint's `agent_output` is blanked (the
 trace does not read it; the diff it does, for the delivered files).
 Paths under the campaign's own directory are rebased to `/campaign`.
 
@@ -37,6 +38,7 @@ import yaml
 
 from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_SUCCESS, EXIT_TIMEOUT, append_run, relative_files, run_entry
 from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, digest_claude, truncated
+from kapso.execution.inbox import LAUNCH_SCHEMA_VERSION
 from kapso.execution.run_checkpoint import RunCheckpoint
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.trace import FEEDBACK, IDEATION, IMPLEMENTATION, VERIFICATION, failed_runs, read_trace
@@ -60,7 +62,7 @@ SETUP_MODULE = "setup"
 IMPLEMENTATION_FAILED = "Implementation failed: "
 DEADLINE_ERROR = "Claude Code CLI exceeded its deadline and was terminated"
 ENDED_WITHOUT_RESULT = "the invocation ended without a result event and the session was resumed (the archive predates the run entries)"
-KEPT_RECORDS = ("status.json", "launch.json", "experiment_history.json")
+KEPT_RECORDS = ("status.json", "experiment_history.json")
 VERIFICATION_KEPT = ("verdict.json", "evaluation_output.txt")
 
 
@@ -83,6 +85,11 @@ def _build_from(campaign: Path, fixture: Path) -> None:
     rebase = lambda text: text.replace(root, REBASED_ROOT)
     for name in KEPT_RECORDS:
         (out / name).write_text(rebase((kapso / name).read_text(encoding="utf-8")), encoding="utf-8")
+    # The launch record at the current schema: the archives predate the
+    # config without modes (wp4-config.md), whose record has no `mode`.
+    launch_record = {key: value for key, value in launch.items() if key != "mode"}
+    launch_record["schema_version"] = LAUNCH_SCHEMA_VERSION
+    (out / "launch.json").write_text(rebase(json.dumps(launch_record, indent=2, sort_keys=True) + "\n"), encoding="utf-8")
     status = json.loads((kapso / "status.json").read_text(encoding="utf-8"))
     checkpoint = json.loads((kapso / "run_state.json").read_text(encoding="utf-8"))
     nodes = checkpoint["strategy_state"]["node_history"]

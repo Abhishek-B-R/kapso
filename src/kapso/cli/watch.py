@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kapso.kapso import DEFAULT_CONFIG_PATH, Kapso
-from kapso.core.config import load_config, load_mode_config
+from kapso.core.config import load_config
 from kapso.execution.inbox import read_launch_receipt
 from kapso.execution.observability import OperationStatusView, campaign_listing, pid_alive, render_listing
 
@@ -34,10 +34,10 @@ def cmd_watch(args) -> None:
         if args.follow:
             print("kapso watch --follow needs a campaign to follow: kapso watch <campaign> --follow", file=sys.stderr)
             sys.exit(1)
-        config_path = args.config or DEFAULT_CONFIG_PATH
+        config = load_config(args.config)
         entries = campaign_listing(
-            load_mode_config(config_path)["inbox"]["registry"],
-            load_config(config_path)["learning"]["status_dir"],
+            config["inbox"]["registry"],
+            config["learning"]["status_dir"],
             everything=args.all,
         )
         if args.json:

@@ -48,7 +48,8 @@ from kapso.harness.load import HarnessError
 from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE
 from kapso.harness.task_statement import prepared_names, setup_statement_path, write_task_statement
 from kapso.core.cli_inference import CliInference
-from kapso.core.config import load_mode_config
+from kapso.core.config import load_config
+from kapso.core.roles import BUILD_CONFIG_BLOCKS, SPEC_KEYS, check_maintainer, resolve_role, resolve_spec
 from kapso.execution.search_strategies.base import ExperimentResult, SearchNode
 from kapso.execution.memories.experiment_memory import ExperimentHistoryStore
 from kapso.execution.cost_estimator import (
@@ -105,22 +106,6 @@ CHANGE_REQUEST_PATTERN = re.compile(
     re.DOTALL,
 )
 
-# The fast fraction is deliberately absent: it is single-sourced in the
-# fidelity block (budget.fidelity.eval.fast_fraction).
-_MAINTAINER_BLOCK_KEYS = {
-    "type",
-    "model",
-    "debug_model",
-    "agent_specific",
-    "subsample_seed",
-    "calibration_fraction",
-    "calibration_timeout_seconds",
-    "fast_variant_threshold_minutes",
-    "overhead_factor",
-    "max_change_requests",
-    "transition_freeze_fraction",
-    "protected_data_paths",
-}
 
 
 # The harness setup session (kapso.harness): its inbox identity, the node
@@ -176,9 +161,10 @@ class OrchestratorAgent:
     
     Args:
         problem_handler: Handler for the problem being solved
-        config_path: Path to benchmark-specific config.yaml file
-        mode: Configuration mode to use (if None, uses default_mode from config)
-        coding_agent: Coding agent to use (overrides config if specified)
+        config_path: The override file over the packaged config (None: the
+            packaged defaults alone)
+        coding_agent: The host every session runs on unless its role names
+            one (`search_strategy.params.host`)
         goal: The goal text of the build (the rendered brief)
         iteration_evaluator: Optional observational callback for each finalized
             candidate Git ref
@@ -189,7 +175,6 @@ class OrchestratorAgent:
         self, 
         problem_handler: ProblemHandler,
         config_path: Optional[str] = None,
-        mode: Optional[str] = None,
         coding_agent: Optional[str] = None,
         knowledge_search: Optional[KnowledgeSearch] = None,
         workspace_dir: Optional[str] = None,
@@ -224,7 +209,6 @@ class OrchestratorAgent:
         # the checkpoint records it for the MCP history process.
         self.maximize_scoring = getattr(problem_handler, "maximize_scoring", True)
         self.config_path = config_path
-        self.mode = mode
         self.goal = goal or ""
         # Per-campaign strategy-param overrides merged over the mode
         # config's params (the facade's serving hook uses this to thread
@@ -234,9 +218,9 @@ class OrchestratorAgent:
         self._strategy_params_overrides = dict(strategy_params_overrides or {})
         # Load once before constructing shared services so model roles and retry
         # behavior apply consistently across strategy, memory, and commit calls.
-        self.mode_config = load_mode_config(config_path, mode)
-        model_routes = self.mode_config.get("models")
-        retry_config = self.mode_config.get("retry")
+        self.config = load_config(config_path)
+        model_routes = self.config["models"]
+        retry_config = self.config["retry"]
         # CLI-only inference (cli-only-inference-design.md): the object
         # every consumer receives as `llm` runs completions as coding-agent
         # sessions; embeddings and the cost meter delegate to the inner
@@ -260,7 +244,7 @@ class OrchestratorAgent:
         (
             self.strategy_type,
             self.strategy_params,
-        ) = self._resolve_search_strategy_config()
+        ) = self._resolve_search_strategy_config(coding_agent)
         self.cost_config = normalize_cost_config(self.strategy_params.get("cost"))
         self.strategy_params["cost"] = self.cost_config
         if self.cost_config["enabled"] and self.strategy_type != "generic":
@@ -269,7 +253,7 @@ class OrchestratorAgent:
         # The campaign inbox (docs/research/evolve-hub-design.md v4) rides
         # the mode config into the strategy params — fingerprinted like
         # every other setting, so a resume never flips it silently.
-        inbox_block = self.mode_config.get("inbox")
+        inbox_block = self.config["inbox"]
         if inbox_block is not None:
             self.strategy_params = {
                 **self.strategy_params, "inbox": dict(inbox_block),
@@ -278,17 +262,11 @@ class OrchestratorAgent:
         # max_iterations (a solve() argument that was never fingerprinted).
         # Excluding the budget block keeps "resume with a bigger budget"
         # possible under strict resume validation.
-        self._config_budget = dict(self.mode_config.get("budget") or {})
+        self._config_budget = dict(self.config["budget"])
         fingerprint_config = {
             "strategy_type": self.strategy_type,
             "strategy_params": self.strategy_params,
-            "mode": self.mode,
-            "mode_config": {
-                key: value
-                for key, value in self.mode_config.items()
-                if key != "budget"
-            },
-            "coding_agent_override": coding_agent,
+            "config": {key: self.config[key] for key in BUILD_CONFIG_BLOCKS},
         }
         self._provided_evaluation_manifest: Optional[Dict[str, str]] = None
         if eval_dir:
@@ -364,7 +342,7 @@ class OrchestratorAgent:
         self.experiment_store: Optional[ExperimentHistoryStore] = None
         
         # Create feedback generator FIRST (needed by search strategy)
-        self.feedback_generator = self._create_feedback_generator(coding_agent)
+        self.feedback_generator = self._create_feedback_generator()
         
         # Track feedback for next iteration
         self.current_feedback: Optional[str] = (
@@ -376,7 +354,6 @@ class OrchestratorAgent:
         
         # Create search strategy (uses feedback_generator)
         self.search_strategy = self._create_search_strategy(
-            coding_agent=coding_agent,
             workspace_dir=workspace_dir,
             start_from_checkpoint=self.resume,
         )
@@ -413,9 +390,7 @@ class OrchestratorAgent:
 
         # Resolved before the maintainer: the fast fraction is single-sourced
         # in the fidelity block and the maintainer calibrates at that value.
-        self.fidelity_spec = FidelitySpec.resolve(
-            self._config_budget.get("fidelity")
-        )
+        self.fidelity_spec = FidelitySpec.resolve(self._config_budget["fidelity"])
         if self.cost_config["enabled"] and self.fidelity_spec.mode != "off":
             raise ValueError("cost.enabled requires budget.fidelity.mode: off")
         (
@@ -447,7 +422,7 @@ class OrchestratorAgent:
         # shipped default) the store is recency-only — a documented
         # capability absence, not an embedding call that fails at the
         # first node's bookkeeping.
-        embedding_model = (self.mode_config.get("models") or {}).get("embedding")
+        embedding_model = self.config["models"]["embedding"]
         self.experiment_store = ExperimentHistoryStore(
             json_path=experiment_history_path,
             goal=self.goal,
@@ -470,105 +445,41 @@ class OrchestratorAgent:
         )
         self._owns_knowledge_search = False
     
-    def _create_feedback_generator(
-        self,
-        coding_agent: Optional[str] = None,
-    ) -> FeedbackGenerator:
-        """
-        Create feedback generator.
-        
-        Uses the same coding agent type as the developer agent by default.
-        """
-        # Get coding agent config from mode config
-        mode_config = self.mode_config
-        # Check for dedicated feedback_generator config first, fall back to coding_agent
-        feedback_config = mode_config.get('feedback_generator', {}) if mode_config else {}
-        coding_config = mode_config.get('coding_agent', {}) if mode_config else {}
-        
-        # Use feedback_generator config if available, otherwise fall back to coding_agent config
-        if feedback_config:
-            agent_type = feedback_config.get('type', 'claude_code')
-            agent_model = feedback_config.get('model')
-            agent_debug_model = feedback_config.get('debug_model')
-            agent_specific = feedback_config.get('agent_specific', {})
-        else:
-            # Fall back to coding_agent config
-            agent_type = coding_agent or coding_config.get('type', 'claude_code')
-            agent_model = coding_config.get('model')
-            agent_debug_model = coding_config.get('debug_model')
-            agent_specific = coding_config.get('agent_specific', {})
-        
-        # Build config for feedback generator
-        feedback_agent_config = CodingAgentFactory.build_config(
-            agent_type=agent_type,
-            model=agent_model,
-            debug_model=agent_debug_model,
-            agent_specific=agent_specific,
-        )
-        
+    def _create_feedback_generator(self) -> FeedbackGenerator:
+        """The judge: the `judge` role over the hosts table (kapso.core.roles)."""
+        role = resolve_role(self.config["hosts"], self.strategy_params, "judge")
         return FeedbackGenerator(
-            coding_agent_config=feedback_agent_config,
+            coding_agent_config=CodingAgentConfig(
+                agent_type=role.cli,
+                model=role.model,
+                debug_model=role.model,
+                agent_specific={
+                    **role.settings, "streaming": True, "effort": role.effort, "timeout": role.timeout,
+                },
+            ),
         )
 
     def _create_search_strategy(
         self,
-        coding_agent: Optional[str],
         workspace_dir: Optional[str],
         start_from_checkpoint: bool,
     ) -> SearchStrategy:
-        """
-        Create search strategy from config.
-        
-        Args:
-            coding_agent: Override coding agent type
-            
-        Returns:
-            Configured SearchStrategy instance
-        """
-        mode_config = self.mode_config
-        strategy_type = self.strategy_type
-        strategy_params = self.strategy_params
-
-        if not mode_config:
-            coding_agent_type = coding_agent or "claude_code"
-            coding_agent_model = None
-            coding_agent_debug_model = None
-            coding_agent_specific = None
-        else:
-            # Extract coding agent config
-            coding_config = mode_config.get('coding_agent', {})
-            if coding_agent:
-                coding_agent_type = coding_agent
-                coding_agent_model = None
-                coding_agent_debug_model = None
-                coding_agent_specific = None
-            elif coding_config:
-                coding_agent_type = coding_config.get('type', 'aider')
-                coding_agent_model = coding_config.get('model')
-                coding_agent_debug_model = coding_config.get('debug_model')
-                # Support agent_specific from YAML config (e.g., auth_mode for Claude Code)
-                coding_agent_specific = coding_config.get('agent_specific')
-            else:
-                coding_agent_type = 'aider'
-                coding_agent_model = None
-                coding_agent_debug_model = None
-                coding_agent_specific = None
-        
-        # Build coding agent config
-        coding_agent_config = CodingAgentFactory.build_config(
-            agent_type=coding_agent_type,
-            model=coding_agent_model,
-            debug_model=coding_agent_debug_model,
-            agent_specific=coding_agent_specific,
+        """The search strategy from the resolved config; the workspace's
+        sessions carry the implementation role's host."""
+        role = resolve_role(self.config["hosts"], self.strategy_params, "implementation")
+        coding_agent_config = CodingAgentConfig(
+            agent_type=role.cli,
+            model=role.model,
+            debug_model=role.model,
+            agent_specific=dict(role.settings),
         )
-        
-        # Create strategy via factory
         return SearchStrategyFactory.create(
-            strategy_type=strategy_type,
+            strategy_type=self.strategy_type,
             problem_handler=self.problem_handler,
             llm=self.llm,
             coding_agent_config=coding_agent_config,
-            params=strategy_params,
+            hosts=self.config["hosts"],
+            params=self.strategy_params,
             workspace_dir=workspace_dir,
             start_from_checkpoint=start_from_checkpoint,
             initial_repo=self.initial_repo,
@@ -585,30 +496,18 @@ class OrchestratorAgent:
     def _status_heartbeat_seconds(self) -> Optional[float]:
         """The status file's cadence: the same budget key that paces the
         checkpoint heartbeat (Rule 1 — one knob for both beats)."""
-        interval = self._config_budget.get("checkpoint_heartbeat_seconds")
+        interval = self._config_budget["checkpoint_heartbeat_seconds"]
         return float(interval) if interval else None
 
-    def _resolve_search_strategy_config(self) -> Tuple[str, Dict[str, Any]]:
-        """Resolve strategy identity before a resume mutates the workspace."""
-        mode_config = self.mode_config
-        if not mode_config:
-            return "generic", dict(self._strategy_params_overrides)
-
-        search_config = mode_config.get("search_strategy", {})
-        if search_config:
-            return (
-                search_config.get("type", "generic"),
-                {
-                    **(search_config.get("params", {}) or {}),
-                    **self._strategy_params_overrides,
-                },
-            )
-
-        # A mode without a search_strategy block gets the same plain
-        # generic default as running with no mode config at all. (The old
-        # branch here resolved eleven mode-level tree-search knobs that no
-        # config ever defined — stale-code audit 2026-08-26, R1.)
-        return "generic", dict(self._strategy_params_overrides)
+    def _resolve_search_strategy_config(self, coding_agent: Optional[str]) -> Tuple[str, Dict[str, Any]]:
+        """The strategy's type and parameters: the config's block, the
+        engine's own parameters over it, and `--coding-agent` as the host
+        every role without a `cli` of its own runs on."""
+        search_config = self.config["search_strategy"]
+        params = {**search_config["params"], **self._strategy_params_overrides}
+        if coding_agent:
+            params["host"] = coding_agent
+        return search_config["type"], params
 
     def _live_phase_costs(self) -> Dict[str, float]:
         """Attributed agent spend from nodes created in this process slice."""
@@ -626,20 +525,20 @@ class OrchestratorAgent:
 
     def _create_evaluation_maintainer(self):
         """Build the maintainer when the mode config declares one."""
-        block = self.mode_config.get("evaluation_maintainer")
-        if not block:
+        block = self.config["evaluation_maintainer"]
+        check_maintainer(block)
+        if not block["enabled"]:
             return None, 0, 1.0
-        unknown = sorted(set(block) - _MAINTAINER_BLOCK_KEYS)
-        if unknown:
-            raise ValueError(
-                "Unknown evaluation_maintainer config keys: "
-                + ", ".join(unknown)
-            )
-        agent_config = CodingAgentFactory.build_config(
-            agent_type=block.get("type", "claude_code"),
-            model=block.get("model"),
-            debug_model=block.get("debug_model"),
-            agent_specific=block.get("agent_specific", {}),
+        role = resolve_spec(
+            self.config["hosts"], self.strategy_params["host"],
+            {key: block[key] for key in SPEC_KEYS if key in block},
+            name="evaluation_maintainer", origin="evaluation_maintainer",
+        )
+        agent_config = CodingAgentConfig(
+            agent_type=role.cli,
+            model=role.model,
+            debug_model=role.model,
+            agent_specific={**role.settings, "effort": role.effort, "timeout": role.timeout},
         )
         maintainer = EvaluationMaintainer(
             coding_agent_config=agent_config,
@@ -647,24 +546,20 @@ class OrchestratorAgent:
             # Single-sourced in the fidelity block: the fraction the policy
             # requests is the fraction the maintainer calibrates and registers.
             fast_fraction=self.fidelity_spec.eval_fast_fraction,
-            subsample_seed=block.get("subsample_seed", 1337),
-            calibration_fraction=block.get("calibration_fraction", 0.03),
-            calibration_timeout_seconds=block.get(
-                "calibration_timeout_seconds", 900
-            ),
-            fast_variant_threshold_seconds=(
-                block.get("fast_variant_threshold_minutes", 20) * 60
-            ),
-            overhead_factor=block.get("overhead_factor", 1.25),
-            protected_data_paths=block.get("protected_data_paths", []),
+            subsample_seed=block["subsample_seed"],
+            calibration_fraction=block["calibration_fraction"],
+            calibration_timeout_seconds=block["calibration_timeout_seconds"],
+            fast_variant_threshold_seconds=block["fast_variant_threshold_minutes"] * 60,
+            overhead_factor=block["overhead_factor"],
+            protected_data_paths=list(block["protected_data_paths"]),
         )
-        freeze_fraction = block.get("transition_freeze_fraction", 0.85)
+        freeze_fraction = block["transition_freeze_fraction"]
         if not 0.0 < freeze_fraction <= 1.0:
             raise ValueError(
                 "transition_freeze_fraction must be in (0, 1], got "
                 f"{freeze_fraction!r}"
             )
-        return maintainer, block.get("max_change_requests", 3), freeze_fraction
+        return maintainer, int(block["max_change_requests"]), freeze_fraction
 
     def _record_maintainer_spend(self) -> None:
         telemetry = self.evaluation_maintainer.last_transaction_telemetry
@@ -734,7 +629,7 @@ class OrchestratorAgent:
         strategy = self.search_strategy
         campaign = Path(strategy.workspace_dir)
         strategy._status_phase("harness_setup")
-        host = strategy.implementation_cli
+        host = strategy.implementation_role.cli
         staged = strategy.stage_harness_for("setup", str(campaign), HARNESS_SETUP_SESSION, host)
         pinned = {name: _directory_manifest(campaign / name) for name in PINNED_DIRECTORIES}
 
@@ -769,20 +664,20 @@ class OrchestratorAgent:
             *staged.allowed_tools,
         ]
         own = {
-            **(strategy._claude_auth_settings if host != "codex" else {}),
+            **strategy.implementation_role.settings,
             "env_strip": strategy.env_strip,
             "env_defaults": strategy.env_defaults,
             "mcp_servers": mcp_servers,
             "allowed_tools": allowed,
             "timeout": strategy._clamped_timeout(float(harness.settings["setup_minutes"]) * 60.0),
             "streaming": True,
-            "effort": strategy.session_effort,
+            "effort": strategy.implementation_role.effort,
             **inbox_agent_settings,
         }
         config = CodingAgentConfig(
             agent_type=host,
-            model=strategy.implementation_model,
-            debug_model=strategy.implementation_model,
+            model=strategy.implementation_role.model,
+            debug_model=strategy.implementation_role.model,
             agent_specific=staged.merged_agent_specific(own),
         )
         answered = (

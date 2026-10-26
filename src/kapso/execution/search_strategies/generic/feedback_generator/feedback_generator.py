@@ -68,10 +68,6 @@ class FeedbackGenerator:
     # Default prompt path
     PROMPT_PATH = "execution/search_strategies/generic/feedback_generator/prompts/feedback_generator.md"
 
-    # Single source for the module's default call timeout; live runs get
-    # theirs from the mode config's feedback_generator block.
-    DEFAULT_TIMEOUT_SECONDS = 120.0
-
     RETRY_PROMPT = (
         "Your previous response did not contain the required tags. Respond "
         "now with ONLY the five tags — <stop>, <evaluation_valid>, <score>, "
@@ -79,29 +75,14 @@ class FeedbackGenerator:
         "just analyzed. No other text."
     )
     
-    def __init__(
-        self,
-        coding_agent_config: Optional[CodingAgentConfig] = None,
-    ):
+    def __init__(self, coding_agent_config: CodingAgentConfig):
         """
         Initialize feedback generator.
-        
-        Args:
-            coding_agent_config: Config for the coding agent. If None,
-                defaults to claude_code with adapter-resolved auth
-                (subscription-first; bedrock removed 2026-08-26).
-        """
-        if coding_agent_config is None:
-            coding_agent_config = CodingAgentConfig(
-                agent_type="claude_code",
-                model="claude-opus-5",
-                debug_model="claude-opus-5",
-                agent_specific={
-                    "streaming": True,
-                    "timeout": self.DEFAULT_TIMEOUT_SECONDS,
-                }
-            )
 
+        Args:
+            coding_agent_config: The judge's session: the `judge` role over
+                the config's hosts table, built by the orchestrator.
+        """
         # Absent timeout means no judge deadline: pin the explicit None so
         # the adapter runs unbounded instead of applying its own default.
         coding_agent_config.agent_specific.setdefault("timeout", None)

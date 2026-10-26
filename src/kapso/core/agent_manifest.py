@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from kapso.core.config import load_config
+from kapso.core.config import read_yaml
 
 AGENTS_YAML_PATH = (
     Path(__file__).resolve().parent.parent
@@ -14,7 +14,7 @@ AGENTS_YAML_PATH = (
 
 def load_agent_manifest():
     """Load the required registry; missing or malformed manifests raise."""
-    manifest = load_config(str(AGENTS_YAML_PATH))
+    manifest = read_yaml(AGENTS_YAML_PATH)
     if not isinstance(manifest, dict) or not isinstance(
         manifest.get("agents"), dict
     ):

@@ -59,13 +59,10 @@ from kapso.execution.evaluation_integrity import launch_evaluation_manifest
 from kapso.environment.handlers.generic import GenericProblemHandler
 from kapso.knowledge_base.search import KnowledgeSearchFactory
 from kapso.knowledge_base.search.workflow_search import WorkflowRepoSearch
-from kapso.core.config import (
-    load_config,
-    load_deployment_defaults,
-    load_experience_defaults,
-    load_harness_defaults,
-    load_mode_config,
-)
+from kapso.core.agent_manifest import load_agent_manifest
+from kapso.core.config import PACKAGED_CONFIG_PATH, is_packaged, load_config
+from kapso.core.roles import validate_config
+from kapso.experience.sources import experience_settings
 from kapso.experience import (
     HOSTED,
     MINE,
@@ -144,7 +141,7 @@ from kapso.deployment import (
 # =============================================================================
 
 # Path to default configuration
-DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
+DEFAULT_CONFIG_PATH = str(PACKAGED_CONFIG_PATH)
 
 
 def _source_is_reachable(source: str) -> bool:
@@ -180,11 +177,6 @@ def _git_rev(workspace: Path, ref: str) -> str:
         ["git", "-C", str(workspace), "rev-parse", ref],
         check=True, capture_output=True, text=True,
     ).stdout.strip()
-
-
-# Experiments per campaign when the caller names no cap. One source for the
-# facade default and the CLI's help text.
-DEFAULT_MAX_ITERATIONS = 10
 
 
 def _memory_overrides(serving_plan: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -327,11 +319,14 @@ class Kapso:
                   `mine` is served from. Overrides the config default
                   (learning.bank.local_path).
         """
-        self.config_path = config or DEFAULT_CONFIG_PATH
-        self._config = load_config(self.config_path)
+        # The override file (None: the packaged defaults alone) and the
+        # effective config, the one every verb reads its blocks from.
+        self.config_path = config
+        self._config = load_config(config)
+        validate_config(self._config, load_agent_manifest()["agents"])
         # The harness block (store, thresholds, the two session timeouts)
         # and the loaded harness: none until load_harness() is called.
-        self._harness_settings = load_harness_defaults(self.config_path)
+        self._harness_settings = dict(self._config["harness"])
         self._harness: Optional[Harness] = None
         # By construction time every dependency import has settled, so
         # this atexit registration lands last (LIFO-first at exit) and
@@ -350,7 +345,7 @@ class Kapso:
         )
         # The experience homes; `mine` lives where the bank home is, which
         # `bank=` may have moved.
-        self._experience_settings = load_experience_defaults(self.config_path)
+        self._experience_settings = experience_settings(self._config)
         if self._bank_home is not None:
             self._experience_settings["bank_home"] = str(self._bank_home)
         self._experience: List[ExperienceSource] = []
@@ -537,7 +532,7 @@ class Kapso:
         reference = parse_experience_reference(ref, indexes_root=Path(self._experience_settings["indexes"]))
         if reference.kind == "index":
             record = store.index_record(reference.name)
-            search = search_for(record, self._config, self.config_path)
+            search = search_for(record, self._config)
             search.clear()
             search.close()
             print(f"removed {store.remove_index(reference.name)} (index {record.id}; its collection and corpus cleared)")
@@ -632,11 +627,9 @@ class Kapso:
         return read_trace(path)
 
     def _status_heartbeat_seconds(self) -> Optional[float]:
-        """The status daemons' beat, from the resolved mode config's
-        budget block (the same key that paces a build's durable clock)."""
-        interval = (
-            load_mode_config(self.config_path).get("budget") or {}
-        ).get("checkpoint_heartbeat_seconds")
+        """The status daemons' beat, from the config's budget block (the
+        same key that paces a build's durable clock)."""
+        interval = self._config["budget"]["checkpoint_heartbeat_seconds"]
         return float(interval) if interval else None
 
     def _status_file(self, operation: str) -> Path:
@@ -645,9 +638,7 @@ class Kapso:
             # Sourced from the canonical config, never re-hardcoded
             # (Rule 1): caller configs that omit the key inherit the
             # packaged default from its single home.
-            status_dir = load_config(DEFAULT_CONFIG_PATH)["learning"][
-                "status_dir"
-            ]
+            status_dir = self._config["learning"]["status_dir"]
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         return Path(status_dir).expanduser() / f"{operation}-{stamp}.json"
 
@@ -1050,6 +1041,12 @@ class Kapso:
             },
         )
 
+    def _launch_config_path(self) -> Optional[str]:
+        """The config as the launch record keeps it: None for the packaged
+        defaults, however they were named, so a resume from another
+        install compares equal; else the override file's absolute path."""
+        return None if is_packaged(self.config_path) else _absolute(self.config_path)
+
     def build(
         self,
         brief: Union[str, Brief, None] = None,
@@ -1063,10 +1060,8 @@ class Kapso:
         on_status: Optional[Any] = None,
         iteration_evaluator: Optional[IterationEvaluator] = None,
         iteration_evaluator_failure_policy: str = "record",
-        # Engine knobs that later packages retire: the harness package
-        # takes over context and additional_context, the config package
-        # mode.
-        mode: Optional[str] = None,
+        # Engine knobs the harness package retires: context and
+        # additional_context.
         coding_agent: Optional[str] = None,
         context: Optional[List[Any]] = None,
         additional_context: str = "",
@@ -1096,9 +1091,8 @@ class Kapso:
                 is still unset; the config's defaults fill the rest.
             resume: Continue the campaign in `output`: its workspace and a
                 compatible checkpoint must exist. Settings the checkpoint
-                fingerprints (mode, coding agent, evaluation, config,
-                knowledge index) must match the launch's; a disagreement
-                is refused by name.
+                fingerprints (coding agent, evaluation, config, experience)
+                must match the launch's; a disagreement is refused by name.
             on_status: Called with the status dict after every status
                 write and heartbeat.
             iteration_evaluator: Callback that evaluates each finalized
@@ -1177,7 +1171,6 @@ class Kapso:
                 if record.get("dotenv_path"):
                     load_dotenv(record["dotenv_path"])
                 arguments = resume_arguments(record, {
-                    "mode": mode,
                     "coding_agent": coding_agent,
                     "eval_dir": eval_dir,
                     "data_dir": data_dir,
@@ -1225,7 +1218,6 @@ class Kapso:
                         f"fingerprints: {changed}. Pass the launch's values, or "
                         "start a new campaign in a new output path."
                     )
-                mode = arguments["mode"]
                 coding_agent = arguments["coding_agent"]
                 eval_dir = arguments["eval_dir"]
                 data_dir = arguments["data_dir"]
@@ -1239,14 +1231,14 @@ class Kapso:
         # field, and the checkpoint fingerprints these exact bytes.
         goal_text = brief.render()
         if max_iterations is None:
-            max_iterations = DEFAULT_MAX_ITERATIONS
+            max_iterations = int(self._config["budget"]["experiments"])
         # A launch with an output directory is registered before the launch
         # checks: a campaign that dies at one (a refused evaluation suite,
         # a failed preflight) is still one `kapso watch --all` lists,
         # stopped, with its receipt's log (wp6-observability.md, change 8).
         # A resume was registered by its launch; a build with no output
         # directory is registered once the orchestrator has made one.
-        inbox_block = load_mode_config(self.config_path, mode).get("inbox") or {}
+        inbox_block = self._config["inbox"]
         registered = output_path is not None and not resume
         if registered:
             register_campaign(inbox_block["registry"], output_path, brief.objective)
@@ -1260,7 +1252,6 @@ class Kapso:
         # stores this agent's knowledge/experience actually connect to.
         run_preflight(
             "build", self._config,
-            mode=mode,
             coding_agent=coding_agent,
             index=next((source.reference for source in self._experience if source.kind == "index"), None),
         )
@@ -1393,7 +1384,7 @@ class Kapso:
                         f"then, {index_record.id} now); load it again to serve the new index"
                     )
                 self._close_knowledge_search()
-                self.knowledge_search = search_for(index_record, self._config, self.config_path)
+                self.knowledge_search = search_for(index_record, self._config)
                 if not self.knowledge_search.validate_backend_data():
                     raise ExperienceError(
                         f"the index `{index_record.name}` has no pages in its stores (collection "
@@ -1419,7 +1410,6 @@ class Kapso:
             orchestrator = OrchestratorAgent(
                 handler,
                 config_path=self.config_path,
-                mode=mode,
                 coding_agent=coding_agent,
                 knowledge_search=self.knowledge_search if self.knowledge_search.is_enabled() else None,
                 # The orchestration layer owns the experiment workspace (a git
@@ -1482,8 +1472,7 @@ class Kapso:
                     "brief": brief.to_dict(),
                     "harness": harness.ref_dict() if harness is not None else None,
                     "experience": [vars(source.ref()) for source in self._experience],
-                    "config_path": _absolute(self._launch_config_path()),
-                    "mode": mode,
+                    "config_path": self._launch_config_path(),
                     "coding_agent": coding_agent,
                     "output_path": str(Path(workspace_dir).resolve()),
                     "max_iterations": max_iterations,
@@ -1671,15 +1660,6 @@ class Kapso:
             resume=True,
         )
 
-    def _launch_config_path(self) -> Optional[str]:
-        """The config a launch record names: None for the packaged default.
-        The default's path belongs to one install, so recording it would make
-        a resume from another install (or after an upgrade) look like a
-        changed config."""
-        if self.config_path == DEFAULT_CONFIG_PATH:
-            return None
-        return self.config_path
-
     @staticmethod
     def _validate_resume_workspace(output_path: Optional[str]) -> None:
         """Reject resume requests before they can initialize or mutate a repo."""
@@ -1764,12 +1744,9 @@ class Kapso:
         # the record's; its deployment module rides into the selector and
         # adapter sessions.
         harness = self._harness_for(solution, verb="deploy")
-        # The packaged deployment block, with the user config's own block
-        # layered over it key by key (the same shape as the inference block).
-        deployment = {
-            **load_deployment_defaults(),
-            **(self._config.get("deployment") or {}),
-        }
+        # The config's deployment block: the packaged defaults with the
+        # override file over them.
+        deployment = self._config["deployment"]
         coding_agent = coding_agent or deployment["coding_agent"]
         model = model or deployment["model"]
         run_preflight(

@@ -35,7 +35,7 @@
   "harness_setup": null,
   "last_stop": null,
   "maximize_scoring": true,
-  "schema_version": 5,
+  "schema_version": 6,
   "status": "running",
   "strategy_state": {
     "evaluation_integrity": {

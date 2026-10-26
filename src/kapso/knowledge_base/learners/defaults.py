@@ -8,10 +8,9 @@ default change can never leave the code and the config out of step.
 
 from typing import Any, Dict
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_config
+from kapso.core.config import load_config
 
 
 def learner_defaults(role: str) -> Dict[str, Any]:
-    """The packaged `learner.<role>` block of the default mode ("ingestor" or "merger")."""
-    config = load_config(str(PLATFORM_CONFIG_PATH))
-    return dict(config["modes"][config["default_mode"]]["learner"][role])
+    """The packaged `learner.<role>` block ("ingestor" or "merger")."""
+    return dict(load_config()["learner"][role])

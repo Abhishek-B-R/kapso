@@ -29,17 +29,14 @@ def _git_workspace(path: Path) -> None:
 
 
 def facade_config(tmp_path) -> str:
-    """A minimal real config file exercising the actual load path."""
+    """A minimal override file exercising the actual load path: the
+    packaged defaults with the test's own places over them."""
     config = {
-        "default_mode": "GENERIC",
-        "defaults": {"models": {"embedding": "e"},
-                     "retry": {"request_timeout_seconds": 600}},
-        "modes": {"GENERIC": {
-            "knowledge_search": {
-                "type": "kg_graph_search", "enabled": True, "params": {}},
-            # build() registers every launch; keep it out of ~/.kapso
-            "inbox": {"registry": str(tmp_path / "campaigns.jsonl")},
-        }},
+        "models": {"embedding": "e"},
+        "retry": {"request_timeout_seconds": 600},
+        "knowledge_search": {"type": "kg_graph_search", "params": {}},
+        # build() registers every launch; keep it out of ~/.kapso
+        "inbox": {"registry": str(tmp_path / "campaigns.jsonl")},
         "learning": {
             "trajectory_store": {"local": str(tmp_path / "store"),
                                  "remote": None},

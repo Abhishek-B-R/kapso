@@ -16,23 +16,34 @@ from types import SimpleNamespace
 import pytest
 
 from kapso.execution.search_strategies.base import SearchNode
+from kapso.core.roles import resolve_members, resolve_optional
 from kapso.execution.search_strategies.generic.lens_planning import (
     DESIGN_AXES_DEFAULT,
     LENS_PLAN_FILENAME,
     LENS_PLAN_HISTORY_FILENAME,
     normalize_design_axes,
-    normalize_ideation_lens_planner,
     parse_lens_plan,
     parse_lens_revision,
-    validate_lens_planner_against_ensemble,
+    validate_lens_planner,
 )
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from strategy_support import generic_params, packaged_hosts
 
+HOSTS = packaged_hosts()
+PARAMS = generic_params()
 PLANNER = {"cli": "claude_code", "model": "claude-fable-5", "effort": "max"}
 MEMBERS = [
     {"cli": "codex", "model": "gpt-5.6-sol"},
     {"cli": "claude_code", "model": "claude-fable-5"},
 ]
+
+
+def planner_role(spec=PLANNER):
+    return resolve_optional(HOSTS, PARAMS, spec, name="lens_planner")
+
+
+def member_roles(members=MEMBERS):
+    return resolve_members(HOSTS, PARAMS, members)
 
 REVISE_OUTPUT = (
     "<revision_rationale>ratings line exhausted at 2.63; pretrained family "
@@ -44,27 +55,27 @@ REVISE_OUTPUT = (
 
 
 def test_planner_block_validation():
-    assert normalize_ideation_lens_planner(None) is None
-    assert normalize_ideation_lens_planner(PLANNER)["model"] == "claude-fable-5"
-    with pytest.raises(ValueError, match="claude_code"):
-        normalize_ideation_lens_planner({"cli": "codex", "model": "m"})
-    with pytest.raises(ValueError, match="unknown keys"):
-        normalize_ideation_lens_planner({**PLANNER, "web": True})
-    with pytest.raises(ValueError, match="model"):
-        normalize_ideation_lens_planner({"cli": "claude_code", "model": " "})
-    with pytest.raises(ValueError, match="timeout"):
-        normalize_ideation_lens_planner({**PLANNER, "timeout": 0})
+    assert planner_role(None) is None
+    assert planner_role().model == "claude-fable-5" and planner_role().name == "lens_planner"
+    with pytest.raises(ValueError, match="Claude Code host"):
+        validate_lens_planner(planner_role({"cli": "codex", "model": "m"}), member_roles())
+    with pytest.raises(ValueError, match="unknown key web"):
+        planner_role({**PLANNER, "web": True})
+    with pytest.raises(ValueError, match="model must be a non-empty string"):
+        planner_role({"cli": "claude_code", "model": " "})
+    with pytest.raises(ValueError, match="timeout must be a positive number"):
+        planner_role({**PLANNER, "timeout": 0})
 
 
 def test_static_lenses_forbidden_with_planner():
-    validate_lens_planner_against_ensemble(None, MEMBERS)
-    validate_lens_planner_against_ensemble(PLANNER, MEMBERS)
+    validate_lens_planner(None, member_roles())
+    validate_lens_planner(planner_role(), member_roles())
     with pytest.raises(ValueError, match="static lens keys"):
-        validate_lens_planner_against_ensemble(
-            PLANNER, [{**MEMBERS[0], "lens": "math first"}, MEMBERS[1]]
+        validate_lens_planner(
+            planner_role(), member_roles([{**MEMBERS[0], "lens": "math first"}, MEMBERS[1]])
         )
-    with pytest.raises(ValueError, match="requires ideation_ensemble"):
-        validate_lens_planner_against_ensemble(PLANNER, None)
+    with pytest.raises(ValueError, match="needs an ensemble"):
+        validate_lens_planner(planner_role(), None)
 
 
 def test_parse_lens_plan():
@@ -141,21 +152,18 @@ def make_stub(tmp_path, planner=PLANNER, iteration=1, node_history=()):
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
     strategy.workspace_dir = str(tmp_path)
-    strategy.ideation_ensemble = [dict(m) for m in MEMBERS]
-    strategy.ideation_lens_planner = dict(planner) if planner else None
+    strategy.ideation_ensemble = member_roles()
+    strategy.ideation_lens_planner = planner_role(planner) if planner else None
     strategy.iteration_count = iteration
     strategy.harness = None
     strategy.shared_artifacts_brief = "No shared-cache artifacts registered yet."
     # Mirror __init__-set attributes the planner-session path reads (stub
     # gotcha: new GenericSearch instance attributes must be added here too).
     strategy.design_axes = DESIGN_AXES_DEFAULT
-    strategy.ideation_web_search = True
-    strategy._web_disallowed_tools = []
-    strategy._claude_auth_settings = {"auth_mode": "oauth"}
     strategy.env_strip = []
     strategy.env_defaults = {}
-    strategy.aws_region = "us-east-1"
-    strategy.session_effort = "xhigh"
+    strategy.budget_snapshot = None
+    strategy.budget_snapshot_monotonic = None
     strategy.node_history = list(node_history)
     strategy.problem_handler = SimpleNamespace(maximize_scoring=False)
     strategy.bank_serving = None
@@ -167,11 +175,11 @@ def make_stub(tmp_path, planner=PLANNER, iteration=1, node_history=()):
 
 @pytest.fixture
 def fake_planner(monkeypatch):
-    import kapso.execution.coding_agents.adapters.claude_code_agent as claude_module
+    import kapso.execution.coding_agents.factory as factory_module
 
     FakePlannerAgent.outputs = []
     FakePlannerAgent.calls = []
-    monkeypatch.setattr(claude_module, "ClaudeCodeCodingAgent", FakePlannerAgent)
+    monkeypatch.setattr(factory_module.CodingAgentFactory, "create", classmethod(lambda cls, config: FakePlannerAgent(config)))
     return FakePlannerAgent
 
 

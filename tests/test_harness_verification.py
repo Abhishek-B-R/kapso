@@ -18,7 +18,8 @@ import git
 import pytest
 
 import kapso.execution.search_strategies.generic.strategy as strategy_module
-from kapso.core.config import load_harness_defaults
+from kapso.core.config import load_config
+from kapso.core.roles import SessionRole
 from kapso.execution.coding_agents.base import CodingAgentConfig, CodingResult
 from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
 from kapso.execution.search_strategies.base import SearchNode
@@ -102,7 +103,7 @@ def void_verdict(verdict_path: Path, prompt: str) -> None:
 def harness(tmp_path):
     copy = tmp_path / "h" / "trading"
     shutil.copytree(TRADING, copy)
-    return load_harness(str(copy), settings=dict(load_harness_defaults(), store=str(tmp_path / "store")), say=lambda line: None)
+    return load_harness(str(copy), settings=dict(load_config()["harness"], store=str(tmp_path / "store")), say=lambda line: None)
 
 
 @pytest.fixture
@@ -124,8 +125,7 @@ def strategy(tmp_path, harness, monkeypatch):
 
     s = GenericSearch.__new__(GenericSearch)
     s.harness = harness
-    s.implementation_cli = "claude_code"
-    s.implementation_model = "implementer"
+    s.implementation_role = SessionRole(name="implementation", cli="claude_code", model="implementer", effort=None, timeout=None)
     s.workspace_dir = str(campaign)
     s.workspace = Workspace(campaign)
     s.feedback_generator = FakeJudge()
@@ -137,10 +137,8 @@ def strategy(tmp_path, harness, monkeypatch):
     s.registered_evaluator_id = ""
     s.node_history = []
     s.iteration_count = 0
-    s._claude_auth_settings = {}
     s.env_strip = []
     s.env_defaults = {}
-    s.session_effort = None
     s._clamped_timeout = lambda seconds: seconds
     s.problem_handler = SimpleNamespace(maximize_scoring=True, finalize_run_selection=lambda manifest, valid: None)
     return s
@@ -279,7 +277,7 @@ def test_a_harness_without_verification_content_runs_no_session(strategy, harnes
     text = manifest.read_text()
     start, end = text.index("  verification:\n"), text.index("  feedback:\n")
     manifest.write_text(text[:start] + text[end:])
-    settings = dict(load_harness_defaults(), store=str(Path(strategy.workspace_dir).parent / "store"))
+    settings = dict(load_config()["harness"], store=str(Path(strategy.workspace_dir).parent / "store"))
     strategy.harness = load_harness(str(harness.path), settings=settings, say=lambda line: None)
     node = node_for(strategy)
     strategy._verify_attempt(node)

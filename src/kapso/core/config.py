@@ -1,29 +1,44 @@
-# Configuration Loading Utilities
-#
-# Helper functions for loading and parsing YAML configuration files.
+"""The config: two layers, resolved by one function.
+
+The packaged `config.yaml` beside this package is the defaults, the whole
+schema at its top level. A person's own file carries only what they
+change and is deep-merged over it (`kapso build --config
+kapso-config.yaml`, `Kapso(config=...)`): nested mappings merge key by
+key, scalars and lists replace. A top-level key the packaged file does not
+name is refused by name, so a stale `modes:` or a misspelled block never
+does nothing silently. One key is reserved and never read by the engine:
+`benchmark`, a benchmark runner's own settings. Nothing is read from the
+environment. Design: docs/plans/redesign/wp4-config.md.
+"""
+
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import yaml
-from pathlib import Path
-from typing import Any, Dict, Optional
 
-# The platform-generic base layer every mode resolves over: the `defaults:`
-# mapping in the package's own config file. Resolved relative to the package
-# (src/kapso/config.yaml), never from the environment.
-PLATFORM_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+PACKAGED_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+# The benchmark runners' own settings live under this key in their
+# override files; the engine never reads it.
+RUNNER_KEY = "benchmark"
+# The mappings whose keys are a person's to choose (a host's name, an
+# inference role, a gate, a store's parameters, an environment variable):
+# an override may add keys under these, and the walk checks nothing
+# below them. Everywhere else the packaged mapping is the schema.
+OPEN_NAMESPACES = frozenset({
+    "hosts", "inference.roles", "gates", "knowledge_search.params",
+    "search_strategy.params.session_env_defaults", RUNNER_KEY,
+})
 
 
-def load_config(config_path: str) -> Dict[str, Any]:
-    """
-    Load configuration from a YAML file.
-
-    Args:
-        config_path: Path to the YAML configuration file
-
-    Returns:
-        Parsed configuration dictionary
-    """
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f) or {}
+def read_yaml(path: Any) -> Dict[str, Any]:
+    """One YAML mapping from disk: a missing file raises, an empty file is
+    an empty mapping, anything but a mapping is refused."""
+    data = yaml.safe_load(Path(path).read_text())
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: a config file is a mapping, got {type(data).__name__}")
+    return data
 
 
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -40,99 +55,65 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
     return merged
 
 
-def load_platform_defaults() -> Dict[str, Any]:
-    """The platform config's `defaults:` mapping — the base config layer."""
-    platform_config = load_config(str(PLATFORM_CONFIG_PATH))
-    if 'defaults' not in platform_config:
+def is_packaged(config_path: Optional[str]) -> bool:
+    """True when ``config_path`` is the packaged defaults: None, or the
+    packaged file's own path (an install naming it explicitly)."""
+    return config_path is None or Path(config_path).expanduser().resolve() == PACKAGED_CONFIG_PATH
+
+
+def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
+    """The effective config: the packaged defaults with the override file
+    at ``config_path`` merged over them. None, or the packaged path
+    itself, is the defaults alone."""
+    packaged = read_yaml(PACKAGED_CONFIG_PATH)
+    if is_packaged(config_path):
+        return packaged
+    override = read_yaml(config_path)
+    _check_keys(override, packaged, "", str(config_path))
+    return deep_merge(packaged, override)
+
+
+def _check_keys(override: Dict[str, Any], packaged: Dict[str, Any], path: str, source: str) -> None:
+    """An override mapping may name only the keys the packaged mapping
+    names at the same path, at every depth, the open namespaces apart;
+    the runner's own key is allowed at the top."""
+    if path in OPEN_NAMESPACES:
+        return
+    allowed = set(packaged) | ({RUNNER_KEY} if not path else set())
+    unknown = sorted(set(override) - allowed)
+    if unknown:
+        where = path or "the top level"
+        keys = ", ".join(sorted(packaged))
+        if not path:
+            keys += f" (and `{RUNNER_KEY}`, a benchmark runner's own)"
         raise ValueError(
-            f"Platform config {PLATFORM_CONFIG_PATH} has no 'defaults' section"
+            f"{source}: {where}: unknown key{'s' if len(unknown) > 1 else ''} "
+            f"{', '.join(unknown)}; the keys are {keys}"
         )
-    return platform_config['defaults']
+    for key, value in override.items():
+        if isinstance(packaged.get(key), dict):
+            child = f"{path}.{key}" if path else key
+            if not isinstance(value, dict):
+                raise ValueError(f"{source}: {child}: must be a mapping, got {type(value).__name__}")
+            _check_keys(value, packaged[key], child, source)
 
 
-def load_deployment_defaults() -> Dict[str, Any]:
-    """The platform config's `deployment:` mapping — the coding agent and
-    model behind deploy()'s selector and adapter sessions. A user config's
-    own `deployment:` block layers over it key by key."""
-    platform_config = load_config(str(PLATFORM_CONFIG_PATH))
-    if 'deployment' not in platform_config:
-        raise ValueError(
-            f"Platform config {PLATFORM_CONFIG_PATH} has no 'deployment' section"
-        )
-    return platform_config['deployment']
+def override_paths(config_path: Optional[str] = None) -> List[str]:
+    """The dotted paths the override file sets over the packaged defaults,
+    the runner's own key left out; empty for the defaults alone."""
+    if is_packaged(config_path):
+        return []
+    packaged = read_yaml(PACKAGED_CONFIG_PATH)
+    paths: List[str] = []
 
+    def walk(node: Dict[str, Any], base: Dict[str, Any], prefix: str) -> None:
+        for key, value in node.items():
+            path = f"{prefix}{key}"
+            if isinstance(value, dict) and isinstance(base.get(key), dict):
+                walk(value, base[key], path + ".")
+            else:
+                paths.append(path)
 
-def load_experience_defaults(config_path: Optional[str] = None) -> Dict[str, Any]:
-    """The platform config's `experience:` mapping (the two homes), with a
-    user config's own keys over it, plus what the sources need from the
-    other blocks: `bank_home` (`learning.bank.local_path`, where `mine`
-    lives), `hosted` (`gates.leeroopedia`), `session_root`
-    (`learning.serving.session_root`, where a host session stages),
-    `probe_budget` (`learning.retriever.probe_budget`, the probe offers
-    riding card reads per campaign)."""
-    platform_config = load_config(str(PLATFORM_CONFIG_PATH))
-    if 'experience' not in platform_config:
-        raise ValueError(
-            f"Platform config {PLATFORM_CONFIG_PATH} has no 'experience' section"
-        )
-    merged = dict(platform_config)
-    if config_path is not None and Path(config_path).resolve() != PLATFORM_CONFIG_PATH:
-        own = load_config(config_path)
-        merged['experience'] = {**platform_config['experience'], **(own.get('experience') or {})}
-        for block in ('learning', 'gates'):
-            if block in own:
-                merged[block] = {**platform_config.get(block, {}), **own[block]}
-    settings = dict(merged['experience'])
-    settings['bank_home'] = merged['learning']['bank']['local_path']
-    settings['session_root'] = merged['learning']['serving']['session_root']
-    settings['probe_budget'] = merged['learning']['retriever']['probe_budget']
-    settings['hosted'] = dict(merged['gates']['leeroopedia'])
-    return settings
-
-
-def load_harness_defaults(config_path: Optional[str] = None) -> Dict[str, Any]:
-    """The platform config's `harness:` mapping (the store, the page
-    warning threshold, the two session timeouts), with a user config's
-    own `harness:` keys over it. `load_mode_config` merges only `defaults:`
-    and `modes.*`, so this block has its own loader, like `deployment:`."""
-    platform_config = load_config(str(PLATFORM_CONFIG_PATH))
-    if 'harness' not in platform_config:
-        raise ValueError(
-            f"Platform config {PLATFORM_CONFIG_PATH} has no 'harness' section"
-        )
-    settings = dict(platform_config['harness'])
-    if config_path is not None and Path(config_path).resolve() != PLATFORM_CONFIG_PATH:
-        settings.update(load_config(config_path).get('harness') or {})
-    return settings
-
-
-def load_mode_config(
-    config_path: Optional[str],
-    mode: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Resolve a mode's effective configuration: the file's modes[mode]
-    deep-merged over the platform `defaults:` layer, so benchmark configs
-    carry overrides only and inherit everything else.
-
-    Args:
-        config_path: Path to config.yaml (None returns {} — the documented
-            no-config default)
-        mode: Configuration mode to resolve (if None, uses default_mode
-            from the config file)
-
-    Returns:
-        The resolved configuration dictionary. An unknown mode raises.
-    """
-    if config_path is None:
-        return {}
-
-    config_data = load_config(config_path)
-    mode = mode or config_data.get('default_mode', 'MINIMAL')
-    modes = config_data.get('modes', {})
-    if mode not in modes:
-        raise ValueError(
-            f"Unknown mode {mode!r} in {config_path}; "
-            f"available: {sorted(modes)}"
-        )
-    return deep_merge(load_platform_defaults(), modes[mode] or {})
+    override = read_yaml(config_path)
+    walk({k: v for k, v in override.items() if k != RUNNER_KEY}, packaged, "")
+    return paths

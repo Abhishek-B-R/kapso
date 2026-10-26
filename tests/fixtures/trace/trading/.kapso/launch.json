@@ -45,9 +45,8 @@
     "version": "0.1.0"
   },
   "max_iterations": 2,
-  "mode": null,
   "output_path": "/campaign",
   "resumable_from_inbox": true,
-  "schema_version": 1,
+  "schema_version": 2,
   "time_budget_minutes": 40.0
 }

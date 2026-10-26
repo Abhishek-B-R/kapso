@@ -88,7 +88,7 @@ class RunCheckpoint:
     # when nothing is loaded.
     experience: List[Dict[str, Any]] = field(default_factory=list)
 
-    SCHEMA_VERSION = 5
+    SCHEMA_VERSION = 6
     VALID_STATUSES = {"running", "completed"}
     # waiting_for_user: the campaign paused for a reply in the inbox
     # (docs/research/evolve-hub-design.md v4); a resume continues the

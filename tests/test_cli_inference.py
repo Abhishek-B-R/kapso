@@ -15,7 +15,12 @@ from types import SimpleNamespace
 import pytest
 
 import kapso.core.llm as llm_module
-from kapso.core.cli_inference import CliInference, resolve_inference_config
+from kapso.core.cli_inference import CliInference
+from kapso.core.config import load_config
+
+
+def resolve_inference_config(config_path=None):
+    return load_config(config_path)["inference"]
 from kapso.execution.coding_agents.base import CodingResult
 
 INFERENCE = {
@@ -232,7 +237,7 @@ def test_user_config_inference_block_deep_merges_over_packaged(tmp_path):
 
 def test_user_config_without_inference_block_gets_packaged_defaults(tmp_path):
     user_config = tmp_path / "config.yaml"
-    user_config.write_text("modes:\n  GENERIC: {}\n")
+    user_config.write_text("budget:\n  experiments: 3\n")
     assert (
         resolve_inference_config(str(user_config))
         == resolve_inference_config()

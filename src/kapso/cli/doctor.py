@@ -4,9 +4,13 @@ import json
 import sys
 from dataclasses import asdict
 
+import yaml
+
 from kapso import __version__
 from kapso.kapso import DEFAULT_CONFIG_PATH
-from kapso.core.config import load_config
+from kapso.core.agent_manifest import load_agent_manifest
+from kapso.core.config import load_config, override_paths
+from kapso.core.roles import validate_config
 from kapso.core.preflight import (
     VERBS,
     configured_bank_home,
@@ -26,7 +30,18 @@ def cmd_doctor(args) -> None:
 
     Same resolver the verbs themselves run at call time, so the doctor can
     never disagree with what a run will do (core/preflight.py)."""
-    config = load_config(args.config or DEFAULT_CONFIG_PATH)
+    config = load_config(args.config)
+    validate_config(config, load_agent_manifest()["agents"])
+    overrides = override_paths(args.config)
+    if args.show_config:
+        # What a run uses: the packaged defaults with the override file
+        # over them, as YAML, nothing else on stdout.
+        print(yaml.safe_dump(config, sort_keys=False), end="")
+        return
+    layers = (
+        f"packaged defaults + {args.config} (overrides: {', '.join(overrides) or 'none'})"
+        if args.config else "packaged defaults"
+    )
     verb = args.verb
     # The only context a doctor can supply is what the config declares —
     # a live call's own arguments (skip_merge, strategy) are not knowable
@@ -54,6 +69,8 @@ def cmd_doctor(args) -> None:
             "kapso": sys.argv[0],
             "python": sys.executable,
             "config_path": str(args.config or DEFAULT_CONFIG_PATH),
+            "config": config,
+            "overrides": overrides,
             "ok": not failures,
             "requirements": [asdict(item) for item in requirements],
         }, indent=1))
@@ -61,6 +78,7 @@ def cmd_doctor(args) -> None:
             sys.exit(1)
         return
     print(scope + "\n" + "=" * 68)
+    print(f"  config: {layers}")
     for item in requirements:
         mark = "OK " if item.ok else ("FAIL" if item.required else "-- ")
         print(f"  [{mark}] {item.label}")
@@ -115,7 +133,11 @@ def add_parser(subparsers):
     )
     doctor_parser.add_argument(
         "--config", type=str, default=None,
-        help="Config to check (default: packaged config.yaml)",
+        help="Your override file, layered over the packaged config (default: the packaged defaults)",
+    )
+    doctor_parser.add_argument(
+        "--show-config", action="store_true",
+        help="Print the effective config (the packaged defaults with your file over them) as YAML and exit",
     )
     doctor_parser.add_argument(
         "--json", action="store_true",

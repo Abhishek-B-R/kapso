@@ -11,19 +11,19 @@ from types import SimpleNamespace
 
 import pytest
 
-import kapso.execution.coding_agents.adapters.claude_code_agent as claude_module
-import kapso.execution.coding_agents.adapters.oss_claude_code_agent as oss_module
+import kapso.execution.coding_agents.factory as factory_module
 import kapso.execution.search_strategies.generic.codex_ideation as codex_module
 import kapso.gated_mcp as gated_mcp_module
+from kapso.core.roles import resolve_members, resolve_optional, resolve_role
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.generic.ideation import (
-    ENSEMBLE_CANDIDATES_PER_MEMBER,
     ENSEMBLE_SPLIT_SELECTOR_MIN_SECONDS,
-    normalize_ensemble_member,
     normalize_ensemble_time_split,
-    normalize_ideation_ensemble,
 )
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from strategy_support import generic_params, packaged_hosts
+
+HOSTS = {**packaged_hosts(), "oss_claude_code": {"model": "m", "base_url": "http://x", "auth_token_env": "K"}}
 
 CODEX_MEMBER = {"cli": "codex", "model": "gpt-5.6-sol", "effort": "xhigh", "lens": "data"}
 CLAUDE_MEMBER = {"cli": "claude_code", "model": "claude-fable-5", "effort": "xhigh", "lens": "recipe"}
@@ -47,50 +47,34 @@ def _plan(name):
         [],
         "not-a-list",
         [{"cli": "gemini", "model": "x"}],
-        [{"cli": "codex"}],
         [{"cli": "codex", "model": " "}],
         [{"cli": "codex", "model": "m", "unknown_key": 1}],
     ],
 )
 def test_invalid_ensemble_configs_raise(bad):
     with pytest.raises(ValueError):
-        normalize_ideation_ensemble(bad)
+        resolve_members(HOSTS, generic_params(), bad)
+
+
+def _config(**ideation):
+    return SimpleNamespace(
+        params=generic_params(ideation={"candidates_per_member": 3, **ideation}), hosts=HOSTS,
+    )
 
 
 def test_ensemble_requires_selector_and_selector_cli_is_validated():
     with _patched_super_init():
-        with pytest.raises(ValueError, match="ideation_selector"):
-            GenericSearch(
-                SimpleNamespace(
-                    params={"ideation_ensemble": [dict(CODEX_MEMBER)]}
-                )
-            )
-        # codex and claude_code are both legal selector CLIs; anything else
-        # fails member validation before the selector-specific check.
-        with pytest.raises(ValueError, match="cli must be one of"):
-            GenericSearch(
-                SimpleNamespace(
-                    params={
-                        "ideation_ensemble": [dict(CLAUDE_MEMBER)],
-                        "ideation_selector": {"cli": "gemini", "model": "m"},
-                    }
-                )
-            )
-        # A valid MEMBER cli that cannot read the worktree is still no
-        # selector: oss_claude_code endpoints fail the selector-specific
-        # check, not member validation.
-        with pytest.raises(ValueError, match="claude_code or codex"):
-            GenericSearch(
-                SimpleNamespace(
-                    params={
-                        "ideation_ensemble": [dict(CLAUDE_MEMBER)],
-                        "ideation_selector": {
-                            "cli": "oss_claude_code", "model": "m",
-                            "base_url": "http://x", "auth_token_env": "K",
-                        },
-                    }
-                )
-            )
+        with pytest.raises(ValueError, match="needs a selector"):
+            GenericSearch(_config(ensemble=[dict(CODEX_MEMBER)]))
+        # A selector names a host the table has; codex and claude_code are
+        # the legal selector CLIs.
+        with pytest.raises(ValueError, match="is not in hosts"):
+            GenericSearch(_config(ensemble=[dict(CLAUDE_MEMBER)], selector={"cli": "gemini", "model": "m"}))
+        # A valid MEMBER host that cannot read the worktree is still no
+        # selector: the OSS host fails the selector-specific check, not
+        # member validation.
+        with pytest.raises(ValueError, match="selector.cli must be one of claude_code, codex"):
+            GenericSearch(_config(ensemble=[dict(CLAUDE_MEMBER)], selector={"cli": "oss_claude_code"}))
 
 
 @contextmanager
@@ -114,7 +98,7 @@ def _patched_super_init():
 def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
                            claude_output, selector_output, codex_output,
                            codex_timed_out=False, claude_success=True,
-                           selector_success=True):
+                           selector_success=True, web=True, candidates_per_member=3):
     events = {"claude_prompts": [], "codex_calls": [], "configs": []}
     selected_dir = str(tmp_path / "selected-parent")
 
@@ -170,8 +154,7 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
                 "stream_path": None, "last_path": None}
         return codex_output, codex_timed_out, 1.0, meta
 
-    monkeypatch.setattr(claude_module, "ClaudeCodeCodingAgent", FakeAgent)
-    monkeypatch.setattr(oss_module, "OssClaudeCodeCodingAgent", FakeAgent)
+    monkeypatch.setattr(factory_module.CodingAgentFactory, "create", classmethod(lambda cls, config: FakeAgent(config)))
     monkeypatch.setattr(codex_module, "run_codex_ideation", fake_codex)
     monkeypatch.setattr(
         gated_mcp_module, "get_mcp_config", lambda **kw: ({}, [])
@@ -196,31 +179,28 @@ def make_ensemble_strategy(tmp_path, monkeypatch, *, ensemble, selector,
     strategy.kg_index_path = None
     strategy.experience_intro_path = None
     strategy.hosted = None
-    strategy.idea_generation_model = "unused-single-path-model"
-    strategy._claude_auth_settings = {"auth_mode": "oauth"}
-    strategy.aws_region = "us-east-1"
-    strategy.ideation_timeout = 600
+    params = generic_params(ideation={"timeout": 600, "web": web})
+    strategy.hosts = HOSTS
+    strategy.ideation_role = resolve_role(HOSTS, params, "ideation")
     strategy.budget_snapshot = None
+    strategy.budget_snapshot_monotonic = None
     strategy.iteration_count = 0
     strategy.harness = None
-    strategy.session_effort = None
     strategy.env_strip = []
     strategy.env_defaults = {}
-    strategy.ideation_ensemble = ensemble
-    strategy.ideation_selector = selector
+    strategy.ideation_ensemble = resolve_members(HOSTS, params, ensemble)
+    strategy.ideation_selector = resolve_optional(HOSTS, params, selector, name="selector")
     # Mirror __init__-set attributes the ensemble path reads (stub gotcha:
     # every new GenericSearch instance attribute must be added here too).
     strategy.llm = None
     strategy.node_history = []
     strategy.problem_handler = SimpleNamespace(maximize_scoring=False)
-    strategy.ideation_web_search = True
-    strategy._web_disallowed_tools = []
     strategy.ideation_lens_planner = None
     strategy.node_expansion_value = 1
     strategy.expansion_lane_env = None
     strategy.shared_cache_dir = None
     strategy.shared_artifacts_brief = "No shared-cache artifacts registered yet."
-    strategy.ideation_candidates_per_member = ENSEMBLE_CANDIDATES_PER_MEMBER
+    strategy.ideation_candidates_per_member = candidates_per_member
     strategy.ensemble_time_split = None
     return strategy, events
 
@@ -455,30 +435,31 @@ def test_ensemble_time_split_normalization():
 def test_malformed_ensemble_time_split_raises_at_init():
     with _patched_super_init():
         with pytest.raises(ValueError, match="ensemble_time_split"):
-            GenericSearch(
-                SimpleNamespace(
-                    params={
-                        "ideation_ensemble": [dict(CLAUDE_MEMBER)],
-                        "ideation_selector": dict(SELECTOR),
-                        "ensemble_time_split": {"member_fraction": 0.7},
-                    }
-                )
-            )
+            GenericSearch(_config(
+                ensemble=[dict(CLAUDE_MEMBER)], selector=dict(SELECTOR),
+                ensemble_time_split={"member_fraction": 0.7},
+            ))
 
 
-def test_no_ensemble_config_keeps_single_session_path(tmp_path, monkeypatch):
+def test_no_ensemble_runs_the_ideation_role_alone(tmp_path, monkeypatch):
+    """No ensemble: one member, the ideation role, one candidate, no
+    addendum and no selector — the same machinery, on the role's host."""
     strategy, events = make_ensemble_strategy(
         tmp_path, monkeypatch,
         ensemble=None,
         selector=None,
-        claude_output="<solution>single path</solution>",
+        claude_output=f"<solution>{_plan('single path')}</solution>",
         codex_output="never called",
         selector_output="never called",
+        candidates_per_member=1,
     )
     (solution,), _, _ = strategy._generate_solution("problem", "main")
-    assert solution == "single path"
+    assert solution == _plan("single path")
     assert events["codex_calls"] == []
     assert len(events["claude_prompts"]) == 1
+    (is_selector, prompt), = events["claude_prompts"]
+    assert not is_selector and "ONE member of an ideation ensemble" not in prompt
+    assert events["configs"][0].model == HOSTS["claude_code"]["model"]
 
 
 # ---------------------------------------------------------------------------
@@ -718,21 +699,20 @@ def test_member_sessions_get_native_web_tools_when_web_is_on(tmp_path, monkeypat
         tmp_path, monkeypatch,
         ensemble=[dict(CLAUDE_MEMBER)], selector=dict(SELECTOR),
         claude_output=f"<solution>{_plan('web off')}</solution>",
-        codex_output="", selector_output="",
+        codex_output="", selector_output="", web=False,
     )
-    strategy2.ideation_web_search = False
-    strategy2._web_disallowed_tools = ["WebSearch", "WebFetch"]
     strategy2._generate_solution("problem", "main")
     member_tools2 = events2["configs"][0].agent_specific["allowed_tools"]
     assert "WebSearch" not in member_tools2 and "WebFetch" not in member_tools2
+    # Off is binding under skip-permissions through the disallowed list.
+    assert events2["configs"][0].agent_specific["disallowed_tools"] == ["WebSearch", "WebFetch"]
 
 
 def test_oss_members_get_webfetch_but_never_websearch(tmp_path, monkeypatch):
     # WebSearch is server-executed; an OSS endpoint 400s any request whose
     # tools array carries it (verified live on Fireworks kimi-k3-fast).
     # OSS members keep client-side WebFetch only.
-    oss = {"cli": "oss_claude_code", "model": "m", "effort": "max",
-           "base_url": "http://x", "auth_token_env": "K"}
+    oss = {"cli": "oss_claude_code", "effort": "max"}
     strategy, events = make_ensemble_strategy(
         tmp_path, monkeypatch,
         ensemble=[oss], selector=dict(SELECTOR),

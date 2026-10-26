@@ -1,12 +1,13 @@
-"""Ensemble and single-session ideation for the generic strategy.
+"""Ideation for the generic strategy: the members propose, the selector picks.
 
-Owns the ideation feature: member config normalization and degeneracy
-hygiene, the single Claude session path, the parallel CLI-member fan-out
-with per-member transcripts, the selector-critic session (including the
-malformed-emission retry and pool top-up hardening), the selector's
-ranked-solution parser, the campaign-state brief, ideation prompt build,
-and output extraction / salvage / fallback. Stateless functions only —
-GenericSearch assembles arguments from its state and delegates here.
+Owns the ideation feature: the member fan-out (the ideation role alone,
+one session and one candidate, or the configured ensemble in parallel,
+each with its own transcript), degeneracy hygiene, the selector-critic
+session (including the malformed-emission retry and pool top-up
+hardening), the selector's ranked-solution parser, the campaign-state
+brief, the ideation prompt build, and output extraction / salvage /
+fallback. Stateless functions only — GenericSearch assembles arguments
+from its state and delegates here.
 """
 
 import logging
@@ -21,6 +22,9 @@ from kapso.harness.staging import StagedHarness
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic import codex_ideation
+from kapso.core.roles import SessionRole
+from kapso.execution.coding_agents.base import CodingAgentConfig
+from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +42,7 @@ ENSEMBLE_SPLIT_SELECTOR_MIN_SECONDS = 240
 # ideation_candidates_per_member (see GenericSearch.__init__). A wider pool
 # gives the selector more to choose from and keeps K-way expansion alive
 # when one member under-delivers.
-ENSEMBLE_CANDIDATES_PER_MEMBER = 3
+
 
 # Extraction artifacts (prompt echoes, stream duplicates) are shorter than
 # any real plan; drop them before the selector sees the pool.
@@ -60,6 +64,10 @@ def is_degenerate_ensemble_candidate(text: str) -> bool:
     return len(content) < MIN_ENSEMBLE_CANDIDATE_CONTENT_CHARS
 
 DEFAULT_MEMBER_LENS = "no specific lens — judge freely"
+# Claude Code's native web tools: on the allow-list when a role's `web`
+# is on, disallowed when it is off (the allow-list alone does not
+# restrict under --dangerously-skip-permissions).
+WEB_TOOLS = ["WebSearch", "WebFetch"]
 
 
 # A selected solution is a full implementation spec (2,000-4,400 chars across
@@ -105,57 +113,6 @@ def parse_selected_solutions(output: str, expansion_count: int) -> List[str]:
         if len(body) >= MIN_SELECTED_SOLUTION_CHARS:
             solutions.append(body)
     return solutions
-
-ENSEMBLE_MEMBER_CLIS = frozenset({"claude_code", "codex", "oss_claude_code"})
-_ENSEMBLE_MEMBER_KEYS = frozenset({"cli", "model", "effort", "lens"})
-# oss_claude_code members additionally carry their endpoint wiring; the
-# secret itself stays out of config (auth_token_env is the VAR NAME).
-_OSS_MEMBER_KEYS = frozenset({"base_url", "auth_token_env"})
-
-
-def normalize_ensemble_member(value: Any, role: str) -> Dict[str, str]:
-    """Validate one ideation-ensemble member (or selector) config entry."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{role} must be a mapping, got {type(value).__name__}")
-    unknown = sorted(set(value) - _ENSEMBLE_MEMBER_KEYS - _OSS_MEMBER_KEYS)
-    if unknown:
-        raise ValueError(f"{role} has unknown keys: {', '.join(unknown)}")
-    cli = value.get("cli")
-    if cli not in ENSEMBLE_MEMBER_CLIS:
-        allowed = ", ".join(sorted(ENSEMBLE_MEMBER_CLIS))
-        raise ValueError(f"{role}.cli must be one of: {allowed}")
-    model = value.get("model")
-    if not isinstance(model, str) or not model.strip():
-        raise ValueError(f"{role}.model must be a non-empty string")
-    oss_keys_present = sorted(_OSS_MEMBER_KEYS & set(value))
-    if cli == "oss_claude_code":
-        for key in sorted(_OSS_MEMBER_KEYS):
-            if not isinstance(value.get(key), str) or not value[key].strip():
-                raise ValueError(
-                    f"{role}.{key} must be a non-empty string for "
-                    "cli=oss_claude_code"
-                )
-    elif oss_keys_present:
-        raise ValueError(
-            f"{role} keys {', '.join(oss_keys_present)} are only valid for "
-            "cli=oss_claude_code"
-        )
-    return dict(value)
-
-
-def normalize_ideation_ensemble(value: Any) -> Optional[List[Dict[str, str]]]:
-    """Validate the ideation_ensemble param (None keeps single-session mode)."""
-    if value is None:
-        return None
-    if not isinstance(value, list) or not value:
-        raise ValueError(
-            "ideation_ensemble must be a non-empty list of member mappings "
-            "(omit it entirely for single-session ideation)"
-        )
-    return [
-        normalize_ensemble_member(member, role=f"ideation_ensemble[{i}]")
-        for i, member in enumerate(value)
-    ]
 
 
 _ENSEMBLE_TIME_SPLIT_KEYS = frozenset(
@@ -230,42 +187,19 @@ def generate_solution(
     bank_serving: Optional[Dict[str, str]] = None,
     kg_index_path: Optional[str] = None,
     hosted: Optional[Dict[str, Any]] = None,
-    ideation_web_search: bool,
-    ideation_ensemble: Optional[List[Dict[str, str]]],
-    idea_generation_model: str,
-    claude_auth_settings: Dict[str, Any],
-    env_strip: List[str],
-    env_defaults: Dict[str, str],
-    web_disallowed_tools: List[str],
-    clamped_timeout: Callable[[float], float],
-    ideation_timeout: float,
-    session_effort: Optional[str],
-    build_prompt: Callable[..., str],
+    web: bool,
     run_ensemble: Callable[..., Tuple[List[str], List[str], Dict[str, float]]],
-    stage_harness_for: Callable[..., StagedHarness],
     session: str,
 ) -> Tuple[List[str], List[str], Dict[str, float]]:
+    """Ideation over the selected parent tree: the gates mounted against
+    it, the read-only tools and the native web tools (a harness whose
+    protocol forbids the web lists a hook), then the members propose and
+    the selector picks (``run_ensemble``). Returns (solutions,
+    sections_consulted, phase_telemetry): solutions is rank-ordered,
+    length <= node_expansion_value.
     """
-    Generate solution using Claude Code with MCP gates.
-    
-    Uses Claude Code as ideation agent with:
-    - Read-only access to repo (Read, MCP tools for repo_memory)
-    - RepoMemory via CLI
-    - Idea/Code/Research/ExperimentHistory gates via MCP
-    
-    Args:
-        problem: Problem description
-        parent_branch: Git branch to base ideation on
+    from kapso.gated_mcp import get_mcp_config
 
-    Returns:
-        Tuple of (solutions, sections_consulted, phase_telemetry) —
-        solutions is rank-ordered, length <= node_expansion_value
-        (single-session ideation always yields exactly one).
-    """
-    from kapso.execution.coding_agents.base import CodingAgentConfig
-    from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
-    from kapso.gated_mcp import gate_usage, get_mcp_config
-    
     # 1. Load RepoMemory (read-only)
     repo_memory_doc = RepoMemoryManager.load_from_git_branch(
         workspace.repo, parent_branch
@@ -273,7 +207,7 @@ def generate_solution(
     repo_memory_brief = RepoMemoryManager.render_summary_and_toc(
         repo_memory_doc, max_chars=2500
     )
-    
+
     # Materialize the selected ref without changing the root workspace's
     # checkout. Every read-only ideation surface points at this same tree.
     with workspace.materialize_ref(parent_branch) as ideation_dir:
@@ -298,107 +232,24 @@ def generate_solution(
             session=session,
         )
 
-        # 3. Build restricted tool set (read-only for ideation). Claude
-        # CLIs research with their NATIVE web tools — so WebSearch/
-        # WebFetch join the whitelist whenever ideation web access is on
-        # (the research_* gate proxies coexist; gates decide availability).
+        # 3. Read-only tools, and the native web tools when the ideation
+        # role's switch is on (the research_* gate proxies coexist; gates
+        # decide availability).
         ideation_allowed_tools = [
             "Read",
-            *(["WebSearch", "WebFetch"] if ideation_web_search else []),
+            *(["WebSearch", "WebFetch"] if web else []),
             *[t for t in mcp_tools if t.startswith("mcp__")],
         ]
-
         logger.info(
             f"[GenericSearch] Ideation tools: {ideation_allowed_tools}"
         )
-
-        if ideation_ensemble:
-            return run_ensemble(
-                problem=problem,
-                repo_memory_brief=repo_memory_brief,
-                ideation_dir=ideation_dir,
-                mcp_servers=mcp_servers,
-                ideation_allowed_tools=ideation_allowed_tools,
-            )
-
-        # 4. Configure Claude Code for ideation (read-only mode), with the
-        # harness's ideation module staged into the worktree.
-        staged = stage_harness_for("ideation", ideation_dir, "claude_code", "claude_code")
-        ideation_allowed_tools = [*ideation_allowed_tools, *staged.allowed_tools]
-        config = CodingAgentConfig(
-            agent_type="claude_code",
-            model=idea_generation_model,
-            debug_model=idea_generation_model,
-            agent_specific=staged.merged_agent_specific({
-                **claude_auth_settings,
-                "env_strip": env_strip,
-                "env_defaults": env_defaults,
-                "mcp_servers": mcp_servers,
-                "allowed_tools": ideation_allowed_tools,
-                "disallowed_tools": web_disallowed_tools,
-                "timeout": clamped_timeout(ideation_timeout),
-                "streaming": True,
-                "planning_mode": False,
-                "effort": session_effort,
-            }),
-        )
-
-        # 5. Build the ideation prompt — with the guidance of exactly the
-        # gates this session can call, and the harness's pages.
-        prompt = build_prompt(
+        return run_ensemble(
             problem=problem,
             repo_memory_brief=repo_memory_brief,
-            allowed_tools=ideation_allowed_tools,
-            domain_guidance=staged.guidance,
+            ideation_dir=ideation_dir,
+            mcp_servers=mcp_servers,
+            ideation_allowed_tools=ideation_allowed_tools,
         )
-
-        # 6. Run Claude Code from the selected parent worktree.
-        print("[GenericSearch] Running Claude Code ideation...")
-        agent = ClaudeCodeCodingAgent(config)
-        agent.initialize(ideation_dir)
-
-        phase_started = time.monotonic()
-        try:
-            result = agent.generate_code(prompt)
-            # Per-gate knowledge calls ride the phase telemetry: the
-            # ideation worktree is deleted afterwards, so this tally is
-            # the only durable record of what the session consulted.
-            telemetry = {
-                "cost_usd": agent.get_cumulative_cost(),
-                "duration_seconds": time.monotonic() - phase_started,
-                **gate_usage(result.metadata["tool_calls"]),
-            }
-
-            if not result.success:
-                logger.warning(
-                    f"[GenericSearch] Ideation failed: {result.error}"
-                )
-                salvaged = salvage_ideation_output(result)
-                if salvaged is not None:
-                    print(
-                        "[GenericSearch] Salvaged partial output "
-                        f"({len(salvaged)} chars) from the "
-                        "deadline-terminated ideation session"
-                    )
-                    return (
-                        [salvaged],
-                        extract_sections_consulted(result.output),
-                        telemetry,
-                    )
-                return [fallback_solution(problem)], [], telemetry
-
-            solution = extract_solution_from_output(result.output)
-            sections_consulted = extract_sections_consulted(
-                result.output
-            )
-
-            print(
-                "[GenericSearch] Ideation complete, sections consulted: "
-                f"{sections_consulted}"
-            )
-            return [solution], sections_consulted, telemetry
-        finally:
-            agent.cleanup()
 
 
 def generate_solution_ensemble(
@@ -408,36 +259,40 @@ def generate_solution_ensemble(
     ideation_dir: str,
     mcp_servers: Dict[str, Any],
     ideation_allowed_tools: List[str],
-    ideation_ensemble: List[Dict[str, str]],
+    members: List[SessionRole],
     ideation_candidates_per_member: int,
     ensemble_time_split: Optional[Dict[str, float]],
-    ideation_web_search: bool,
-    claude_auth_settings: Dict[str, Any],
     env_strip: List[str],
     env_defaults: Dict[str, str],
-    web_disallowed_tools: List[str],
-    session_effort: Optional[str],
-    clamped_timeout: Callable[[float], float],
-    ideation_timeout: float,
+    clamped_timeout: Callable[[Optional[float]], Optional[float]],
+    ideation_timeout: Optional[float],
     artifacts_dir: str,
     build_prompt: Callable[..., str],
     resolve_lenses: Callable[[str, str], tuple],
     select_candidates: Callable[..., Dict[str, Any]],
     stage_harness_for: Callable[..., StagedHarness],
 ) -> Tuple[str, List[str], Dict[str, float]]:
-    """Fan out ideation across CLI members, then select one solution.
+    """Fan out ideation across the members, then select one solution.
 
-    Members run in parallel (they are API-bound, never GPU-bound) inside
-    the same read-only worktree; a selector-critic session chooses among
-    the pooled <solution> candidates. Fail-soft ladder: selector failure
-    -> first claude_code candidate -> any candidate -> template fallback.
+    The members are the configured ensemble, or the ideation role alone:
+    one session, one candidate, no selector. Members run in parallel
+    (they are API-bound, never GPU-bound) inside the same read-only
+    worktree; a selector-critic session chooses among the pooled
+    <solution> candidates when there is more than one. Fail-soft ladder:
+    selector failure -> first claude_code candidate -> any candidate ->
+    template fallback.
     """
     from kapso.gated_mcp import gate_usage
 
     phase_started = time.monotonic()
 
-    addendum_template = load_prompt(
-        "execution/search_strategies/generic/prompts/ideation_ensemble_addendum.md"
+    # A lone member asked for one candidate gets the ideation prompt as
+    # it is; a pool gets the ensemble addendum (the lens, the count, the
+    # return spectrum).
+    pooled = len(members) > 1 or ideation_candidates_per_member > 1
+    addendum_template = (
+        load_prompt("execution/search_strategies/generic/prompts/ideation_ensemble_addendum.md")
+        if pooled else None
     )
 
     member_lenses, lens_planner_cost = resolve_lenses(
@@ -454,21 +309,21 @@ def generate_solution_ensemble(
     clamp = clamped_timeout(ideation_timeout)
     member_deadline = (
         clamp
-        if ensemble_time_split is None
+        if ensemble_time_split is None or clamp is None
         else max(60.0, clamp * ensemble_time_split["member_fraction"])
     )
 
-    def run_member(member: Dict[str, str], lens: str) -> Dict[str, Any]:
+    def run_member(member: SessionRole, lens: str) -> Dict[str, Any]:
         # The prompt is per member: a codex member runs read-only with no
         # MCP, so its prompt describes no gate tools; a claude member gets
         # the guidance of the gates it mounts. WebSearch is an Anthropic
         # SERVER-side tool an OSS endpoint cannot serve (Fireworks 400s
         # the request envelope — verified live on kimi-k3-fast,
         # 2026-08-03), so an oss member keeps client-side WebFetch only.
-        is_oss = member["cli"] == "oss_claude_code"
-        safe_model = re.sub(r"[^A-Za-z0-9._-]", "_", member["model"])
-        staged = stage_harness_for("ideation", ideation_dir, f"{member['cli']}_{safe_model}", member["cli"])
-        if member["cli"] == "codex":
+        is_oss = member.cli == "oss_claude_code"
+        safe_model = re.sub(r"[^A-Za-z0-9._-]", "_", member.model)
+        staged = stage_harness_for("ideation", ideation_dir, f"{member.cli}_{safe_model}", member.cli)
+        if member.cli == "codex":
             member_allowed_tools: List[str] = []
         elif is_oss:
             member_allowed_tools = [t for t in ideation_allowed_tools if t != "WebSearch"] + staged.allowed_tools
@@ -479,35 +334,37 @@ def generate_solution_ensemble(
             repo_memory_brief=repo_memory_brief,
             allowed_tools=member_allowed_tools,
             domain_guidance=staged.guidance,
-        ) + "\n\n" + render_prompt(
-            addendum_template,
-            {
-                "lens": lens,
-                "candidate_count": str(ideation_candidates_per_member),
-            },
         )
-        label = f"{member['cli']}:{member['model']}"
-        print(f"[GenericSearch] Ensemble ideation member starting: {label}")
+        if addendum_template is not None:
+            prompt += "\n\n" + render_prompt(
+                addendum_template,
+                {
+                    "lens": lens,
+                    "candidate_count": str(ideation_candidates_per_member),
+                },
+            )
+        label = member.label
+        print(f"[GenericSearch] Ideation member starting: {label}")
         # Every member persists its transcript here, not just codex: the
         # claude-driven members used to stream to the console only, so
         # their reasoning survived just in whatever wrapper happened to
         # capture stdout.
-        if member["cli"] == "codex":
+        if member.cli == "codex":
             # The member streams beside the ideation artifacts, as every
             # member does; its record says so, and its runs land there.
             staged.merged_agent_specific({
-                "stream_artifact_path": codex_ideation.ideation_stream_path(artifacts_dir, "codex", member["model"]),
+                "stream_artifact_path": codex_ideation.ideation_stream_path(artifacts_dir, "codex", member.model),
             })
 
-            def run_codex_once(attempt_deadline: float) -> tuple:
+            def run_codex_once(attempt_deadline: Optional[float]) -> tuple:
                 return codex_ideation.run_codex_ideation(
                     prompt=prompt,
-                    model=member["model"],
+                    model=member.model,
                     cwd=ideation_dir,
                     timeout_seconds=attempt_deadline,
-                    effort=member.get("effort"),
+                    effort=member.effort,
                     artifacts_dir=artifacts_dir,
-                    web_search=ideation_web_search,
+                    web_search=member.web,
                     extra_args=staged.codex_exec_args(),
                     extra_env=staged.env,
                     record_path=staged.agent_specific.get("session_record_path"),
@@ -532,12 +389,12 @@ def generate_solution_ensemble(
                 # Transient turn failure (run #8 iters 1-2: empty final
                 # message on the first calls after auth shipping). One
                 # retry inside the remaining member window self-heals it.
-                remaining = max(60.0, member_deadline - duration)
+                remaining = None if member_deadline is None else max(60.0, member_deadline - duration)
                 logger.warning(
                     f"[GenericSearch] member {label} returned no "
                     f"candidates (last_message_empty="
                     f"{meta['last_message_empty']}); retrying once "
-                    f"({remaining:.0f}s left). Stream tail: "
+                    f"({'no deadline' if remaining is None else f'{remaining:.0f}s left'}). Stream tail: "
                     f"{meta['stream_tail'][-200:]!r}"
                 )
                 output, timed_out, _dur2, meta = run_codex_once(remaining)
@@ -566,45 +423,34 @@ def generate_solution_ensemble(
                 ),
             }
 
-        from kapso.execution.coding_agents.base import CodingAgentConfig
-        from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
-        from kapso.execution.coding_agents.adapters.oss_claude_code_agent import OssClaudeCodeCodingAgent
-
-        agent_specific = {
-            "env_strip": env_strip,
-            "env_defaults": env_defaults,
-            "mcp_servers": mcp_servers,
-            "allowed_tools": member_allowed_tools,
-            "disallowed_tools": web_disallowed_tools,
-            "timeout": member_deadline,
-            "streaming": True,
-            "planning_mode": False,
-            "effort": member.get("effort", session_effort),
-            "stream_artifact_path": codex_ideation.ideation_stream_path(
-                artifacts_dir, member["cli"], member["model"]
-            ),
-        }
-        if is_oss:
-            # Endpoint wiring replaces first-party auth entirely.
-            agent_specific["base_url"] = member["base_url"]
-            agent_specific["auth_token_env"] = member["auth_token_env"]
-        else:
-            agent_specific.update(claude_auth_settings)
         config = CodingAgentConfig(
-            agent_type=member["cli"],
-            model=member["model"],
-            debug_model=member["model"],
-            agent_specific=staged.merged_agent_specific(agent_specific),
+            agent_type=member.cli,
+            model=member.model,
+            debug_model=member.model,
+            agent_specific=staged.merged_agent_specific({
+                **member.settings,
+                "env_strip": env_strip,
+                "env_defaults": env_defaults,
+                "mcp_servers": mcp_servers,
+                "allowed_tools": member_allowed_tools,
+                "disallowed_tools": [] if member.web else WEB_TOOLS,
+                "timeout": member_deadline,
+                "streaming": True,
+                "planning_mode": False,
+                "effort": member.effort,
+                "stream_artifact_path": codex_ideation.ideation_stream_path(
+                    artifacts_dir, member.cli, member.model
+                ),
+            }),
         )
-        agent_class = OssClaudeCodeCodingAgent if is_oss else ClaudeCodeCodingAgent
-        agent = agent_class(config)
+        agent = CodingAgentFactory.create(config)
         agent.initialize(ideation_dir)
         result = agent.generate_code(prompt)
         cost = agent.get_cumulative_cost()
         agent.cleanup()
         if not result.success:
             logger.warning(
-                f"[GenericSearch] Ensemble member {label} failed: {result.error}"
+                f"[GenericSearch] Ideation member {label} failed: {result.error}"
             )
             salvaged = salvage_ideation_output(result)
             candidates = [salvaged] if salvaged is not None else []
@@ -617,18 +463,17 @@ def generate_solution_ensemble(
             ] or [extract_solution_from_output(result.output)]
         return {
             "label": label,
-            "cli": "claude_code",
+            "cli": member.cli,
             "candidates": candidates,
             "sections": extract_sections_consulted(result.output),
             "gate_calls": gate_usage(result.metadata["tool_calls"]),
             "cost_usd": cost,
         }
 
-    members = ideation_ensemble
     resolved_lenses = (
         member_lenses
         if member_lenses is not None
-        else [m.get("lens", DEFAULT_MEMBER_LENS) for m in members]
+        else [m.lens or DEFAULT_MEMBER_LENS for m in members]
     )
     with ThreadPoolExecutor(max_workers=len(members)) as executor:
         member_results = list(
@@ -655,7 +500,7 @@ def generate_solution_ensemble(
             if is_degenerate_ensemble_candidate(candidate):
                 dropped += 1
                 continue
-            if any(candidate == pooled["text"] for pooled in pool):
+            if any(candidate == pooled_candidate["text"] for pooled_candidate in pool):
                 dropped += 1
                 continue
             kept += 1
@@ -684,18 +529,19 @@ def generate_solution_ensemble(
         **gate_calls,
     }
     print(
-        f"[GenericSearch] Ensemble ideation pooled {len(pool)} candidates "
-        f"from {len(members)} members"
+        f"[GenericSearch] Ideation pooled {len(pool)} candidates "
+        f"from {len(members)} member{'s' if len(members) != 1 else ''}"
     )
     if not pool:
         return [fallback_solution(problem)], sections, telemetry
     if len(pool) == 1:
-        print("[GenericSearch] Single candidate — selector skipped")
+        if pooled:
+            print("[GenericSearch] Single candidate — selector skipped")
         return [pool[0]["text"]], sections, telemetry
 
     selector_deadline = (
         clamped_timeout(ideation_timeout)
-        if ensemble_time_split is None
+        if ensemble_time_split is None or clamp is None
         else max(
             ensemble_time_split["selector_min_seconds"],
             clamp * ensemble_time_split["selector_fraction"],
@@ -764,13 +610,11 @@ def select_from_candidates(
     pool: List[Dict[str, str]],
     ideation_dir: str,
     selector_deadline: float,
-    ideation_selector: Dict[str, str],
+    ideation_selector: SessionRole,
     node_expansion_value: int,
     campaign_state: str,
-    claude_auth_settings: Dict[str, Any],
     env_strip: List[str],
     env_defaults: Dict[str, str],
-    session_effort: Optional[str],
     artifacts_dir: str,
     stage_harness_for: Callable[..., StagedHarness],
 ) -> Dict[str, Any]:
@@ -779,15 +623,12 @@ def select_from_candidates(
     Returns {"solutions": List[str] (rank order, len<=node_expansion_value),
     "cost_usd": float}. With expansion 1 this is today's single pick.
     """
-    from kapso.execution.coding_agents.base import CodingAgentConfig
-    from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
-
     expansion = node_expansion_value
     candidates_block = "\n\n".join(
         f"### Candidate {i} (from {c['source']})\n{c['text']}"
         for i, c in enumerate(pool, 1)
     )
-    staged = stage_harness_for("ideation", ideation_dir, "selector", ideation_selector["cli"])
+    staged = stage_harness_for("ideation", ideation_dir, "selector", ideation_selector.cli)
     prompt = render_prompt(
         load_prompt(
             "execution/search_strategies/generic/prompts/ideation_selector.md"
@@ -818,7 +659,7 @@ def select_from_candidates(
         A closure so the malformed-emission retry re-runs the identical
         session with an added corrective instruction.
         """
-        if selector["cli"] == "codex":
+        if selector.cli == "codex":
             from kapso.execution.search_strategies.generic.codex_ideation import (
                 run_codex_ideation,
             )
@@ -831,16 +672,16 @@ def select_from_candidates(
             # a materialized ref released after the phase, which silently
             # discarded every selector transcript.
             staged.merged_agent_specific({
-                "stream_artifact_path": codex_ideation.ideation_stream_path(artifacts_dir, "codex", selector["model"]),
+                "stream_artifact_path": codex_ideation.ideation_stream_path(artifacts_dir, "codex", selector.model),
             })
             output, timed_out, _duration, _meta = run_codex_ideation(
                 prompt=session_prompt,
-                model=selector["model"],
+                model=selector.model,
                 cwd=ideation_dir,
                 timeout_seconds=selector_deadline,
-                effort=selector.get("effort"),
+                effort=selector.effort,
                 artifacts_dir=artifacts_dir,
-                web_search=True,
+                web_search=selector.web,
                 extra_args=staged.codex_exec_args(),
                 extra_env=staged.env,
                 record_path=staged.agent_specific.get("session_record_path"),
@@ -851,25 +692,26 @@ def select_from_candidates(
                 error="selector session timed out" if timed_out else None,
             ), 0.0
         config = CodingAgentConfig(
-            agent_type="claude_code",
-            model=selector["model"],
-            debug_model=selector["model"],
+            agent_type=selector.cli,
+            model=selector.model,
+            debug_model=selector.model,
             agent_specific=staged.merged_agent_specific({
-                **claude_auth_settings,
+                **selector.settings,
                 "env_strip": env_strip,
                 "env_defaults": env_defaults,
-                "allowed_tools": ["Read", "WebSearch", "WebFetch", *staged.allowed_tools],
+                "allowed_tools": ["Read", *(WEB_TOOLS if selector.web else []), *staged.allowed_tools],
+                "disallowed_tools": [] if selector.web else WEB_TOOLS,
                 "timeout": selector_deadline,
                 "streaming": True,
                 "planning_mode": False,
-                "effort": selector.get("effort", session_effort),
+                "effort": selector.effort,
                 "stream_artifact_path": codex_ideation.ideation_stream_path(
                     artifacts_dir, "selector",
-                    selector["model"],
+                    selector.model,
                 ),
             }),
         )
-        agent = ClaudeCodeCodingAgent(config)
+        agent = CodingAgentFactory.create(config)
         agent.initialize(ideation_dir)
         session_result = agent.generate_code(session_prompt)
         session_cost = agent.get_cumulative_cost()
@@ -931,8 +773,6 @@ def select_from_candidates(
             if candidate["text"] not in solutions:
                 solutions.append(candidate["text"])
     return {"solutions": solutions, "cost_usd": cost}
-
-
 def build_ideation_prompt(
     problem: str,
     repo_memory_brief: str,

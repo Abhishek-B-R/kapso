@@ -104,7 +104,7 @@ def test_remove_deletes_a_fetched_bank_or_an_index_and_refuses_the_rest(tmp_path
     ))
     cleared = []
     search = SimpleNamespace(clear=lambda: cleared.append("clear"), close=lambda: cleared.append("close"))
-    monkeypatch.setattr("kapso.kapso.search_for", lambda record, config, config_path: search)
+    monkeypatch.setattr("kapso.kapso.search_for", lambda record, config: search)
     kapso.load_experience("org-x")
     kapso.remove_experience("org-x")
     assert cleared == ["clear", "close"] and not store.index_dir("org-x").exists() and kapso.experience == []

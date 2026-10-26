@@ -14,7 +14,7 @@ from kapso.core.llm import (
     RetryPolicy,
     is_transient_llm_error,
 )
-from kapso.core.config import load_config, load_mode_config
+from kapso.core.config import load_config
 
 __all__ = [
     # LLM
@@ -26,5 +26,4 @@ __all__ = [
     "is_transient_llm_error",
     # Config
     "load_config",
-    "load_mode_config",
 ]
