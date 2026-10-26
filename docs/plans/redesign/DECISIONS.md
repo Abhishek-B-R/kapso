@@ -17,16 +17,21 @@ prompt, nothing for Codex to lack. The plugin ships no hooks file.
 
 **What a host session loads is a line in the project's config.**
 `experience.sessions` (a list of references, empty as packaged) names what
-`kapso-mcp` loads when `--experience` is absent; the launcher passes the
-project's `kapso-config.yaml`, so the one convention the owner settled
-(decision 9: the project's config is passed by every command) carries it.
-The alternatives: a plugin setting (the owner said the plugin carries
-none), serving by existence (WP3 rejected it: a build is served exactly
-what it loads, and a session should be too), or the person adding a
-second MCP server by hand with `--experience mine` (what the docs say
-today; it stays for a session without the plugin). A reference that does
-not exist stops the server with the add line, as a build is refused: a
-silent empty bank would be the worse surprise.
+`kapso-mcp` loads when `--experience` is absent; `kapso-mcp` finds the
+project's `kapso-config.yaml` by the one rule every command follows (the
+git top level, else the working directory), so the one convention the
+owner settled (decision 9: the project's config is passed by every
+command) carries it. The alternatives: a plugin setting (the owner said
+the plugin carries none), serving by existence (WP3 rejected it: a build
+is served exactly what it loads, and a session should be too), or the
+person adding a second MCP server by hand with `--experience mine` (what
+the docs say today; it stays for a session without the plugin). A listed
+reference whose source does not exist leaves the bank gate off with the
+add line in the notes and the instructions, the other gates served: the
+host starts the server without a person typing the flag, and a session
+that only wanted the research tools must keep them (Codex's review); an
+explicit `--experience` that does not exist stops the server with the
+add line, as a build is refused.
 
 **Six skills and eleven commands, the commands pointing at the skills.**
 A command is the explicit entry with arguments (`/kapso:build <wish>`),
@@ -70,18 +75,84 @@ per-host writers, and says what the host cannot reproduce: the routing
 and the pages. It is a convenience for an ordinary session, not a second
 way to run a build; a build stages per module as before.
 
-**The launcher pins the package's version and falls through.** `kapso-mcp`
-on PATH, else `uvx --from leeroo-kapso==<version>`, else `pipx run --spec`,
-else one line naming `/kapso:setup`. The pin keeps a session's tools at
-the version the skill's facts were written for; the version test pins the
-pin. Until the release the pinned version is not on PyPI and the last
-line is what a bare machine sees, which the setup command answers.
+**The launcher is Claude Code's path to the tools; Codex's is the
+install.** The probe (`scripts/redesign/runs/wp7-hostfacts/FACTS.md`):
+Claude Code expands `${CLAUDE_PLUGIN_ROOT}` in the plugin's MCP file and
+runs the launcher; Codex takes the command verbatim (no variable, no
+relative path), and a plugin-registered stdio server, though started and
+answering, is not offered to a `codex exec` session, while `codex mcp
+add` is. So the plugin ships one MCP file per host under
+`hosts/<host>/mcp.json` and none at the root: Claude Code's names the
+launcher (`kapso-mcp` on PATH, else `uvx --from leeroo-kapso==<pin>
+kapso-mcp`, else `pipx run --spec leeroo-kapso==<pin> kapso-mcp`, else
+one stderr line naming `/kapso:setup`; an executable found and failing
+is never followed by another, its exit code is the launcher's); Codex's
+and Cursor's name `kapso-mcp` on PATH, and the setup skill runs `codex
+mcp add kapso -- kapso-mcp`, the form verified to reach a session. The
+owner's decision 3 (the tools work from the first session wherever uv or
+pipx exists) holds on Claude Code and narrows on Codex to "after the
+install", by a host fact, not by choice. The pin is the package's
+version, pinned by the version test; until the release it is not on PyPI
+and a bare machine sees the setup line.
 
 **The proof's Codex half runs on the development box.** The fresh
 machine's Codex key is over its quota (WP4's finding); the Codex steps
 run in a scratch project on the dev box with its ChatGPT login, the
 Claude Code steps on the fresh machine. The owner's key moves the Codex
 half to the machine; said in the plan.
+
+**A plugin skill is `/kapso:kapso`, not `/kapso`.** Claude Code names a
+plugin's skills under the plugin's namespace (verified: the probe's
+`skills/kapso-probe/SKILL.md` answered as `/kapso-probe:kapso-probe`);
+the owner's decision 10 kept the bare `/kapso`. The host decides; the
+commands keep the owner's `/kapso:<verb>` form.
+
+**The campaign gate is host-only by three means.** `GateDefinition.host_only`
+keeps `get_mcp_config` from emitting it for a campaign session; the Codex
+adapter passes `-c mcp_servers.kapso.enabled=false` to every campaign
+session (verified to hide a user-config server's tools), since Codex
+campaign sessions carry the person's own config (WP4's finding) and the
+setup skill's `codex mcp add kapso` would otherwise ride into them; and
+the gate's tools refuse by the working directory when the server runs
+inside a campaign's session workspace. A nested campaign launched from
+inside a campaign is the thing these prevent.
+
+**A campaign can be stopped, and every long operation launches
+detached.** `kapso build --output <path> --stop` ends the status file's
+process group (SIGTERM, then SIGKILL after `build.stop_grace_seconds`),
+marks the status failed with `stopped by the person` and removes the
+receipt; `--resume` continues from the checkpoint, which the orchestrator
+writes per iteration (it handles no signal, and needs none). `kapso learn`
+and `kapso experience add --repo|--research` take `--detach` through the
+one detach helper. Codex's review found the plugin could launch but not
+end a campaign, and left learn and ingest in the foreground for hours;
+both are engine seams this package adds rather than procedures each
+skill reinvents.
+
+**`kapso harness export` writes files, not sessions, and no hooks.** The
+skills copied, the delegates as the host's agent files, the servers as
+`.mcp.json` or `codex mcp add` lines, the union over modules by
+`Manifest.listed()`; hooks stay out (a verification Stop gate or a
+prepared-directory deny would block an ordinary session), and the output
+says so with the routing and the pages it cannot reproduce. The earlier
+wording ("the staging's own writers") would have written a campaign
+session's shape, which an ordinary session does not read.
+
+**The evaluator the skill builds is protected, not versioned.** The
+packaged config ships the maintainer off, so `--evaluation` protects the
+directory file by file and registers nothing (`solution.evaluator` is
+None); the `kapso-evaluation` contract names `result.json`'s fields, runs
+the baseline in a copy so no `result.json` is left in the directory
+passed with `--evaluation` (refused at launch), and keeps hold-out labels
+out of both copied directories. "Versioned" is said only when the config
+turns the maintainer on.
+
+**The sidecar mirrors nothing.** `kapso-evaluation` is `user-invocable:
+false` on Claude Code (hidden from the menu, the model's to call) and
+`allow_implicit_invocation: true` on Codex, which has no menu hiding;
+each host's file carries its own control, and the test checks each for
+its own field. The earlier "mirror" would have disabled Codex's implicit
+invocation, the opposite of the skills document.
 
 ## 2026-10-26, WP5 (after the pull-request review of #160)
 
