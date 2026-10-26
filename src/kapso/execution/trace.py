@@ -202,6 +202,21 @@ def _budget_source(launch) -> Optional[str]:
     return f"the launch's over the brief's {float(named):.1f} min"
 
 
+STOPPING = "stopping: "
+
+
+def _stop_note(status) -> Optional[str]:
+    """The sentence the campaign stopped on (an admission refusal, a
+    finishing cut), from the status file's recent lines; None without one."""
+    if status is None:
+        return None
+    for line in reversed(status.get("recent") or []):
+        _stamp, _, text = line.partition(" ")
+        if text.startswith(STOPPING):
+            return text[len(STOPPING):]
+    return None
+
+
 def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sources) -> Dict[str, Any]:
     brief = _first(
         record.brief.to_dict() if record is not None else None,
@@ -246,6 +261,7 @@ def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sourc
             record.stop_detail if record is not None else None,
             status.get("stop_detail") if status is not None else None,
         ),
+        "stop_note": _stop_note(status),
         "experiments": _first(
             record.experiments_total if record is not None else None,
             checkpoint.completed_iterations if checkpoint is not None else None,
@@ -570,6 +586,8 @@ def _header_lines(data: Dict[str, Any]) -> List[str]:
     stopped = header["stopped_reason"] or "not stopped"
     if header["stop_detail"]:
         stopped += f" ({header['stop_detail']})"
+    if header["stop_note"]:
+        stopped += f": {header['stop_note']}"
     experiments = f"{header['experiments']} experiment{'s' if header['experiments'] != 1 else ''}"
     if header["rejected"]:
         experiments += f", {header['rejected']} rejected"

@@ -145,7 +145,8 @@ header           objective, harness, experience (one label per source), evaluato
                  cost {usd, coverage (the hosts the figure covers: all, or claude_code when a Codex
                        session ran), unpriced_runs (Claude Code runs whose spend no figure covers:
                        killed before their result, and not resumed in a run that reported one)},
-                 stopped_reason, stop_detail, experiments, rejected,
+                 stopped_reason, stop_detail, stop_note (the sentence a budget stop ended on: the
+                 admission refusal or the finishing cut), experiments, rejected,
                  delivered {branch, commit}, status {state, phase, error},
                  requests (what the person must answer when the campaign paused)
 attempts[]       node, parent, branch, commit (the branch head when the attempt was evaluated;

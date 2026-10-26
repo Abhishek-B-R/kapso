@@ -353,7 +353,10 @@ def test_an_unjudged_attempt_with_its_commit_and_the_engines_failed_session():
     text = view.explain()
     assert "judge         unjudged: the judge's session ended at the budget's deadline" in text
     assert "budget          11.5 of 12.0 min, 1.5 min reserved for finishing (the launch's over the brief's 45.0 min)" in text
-    assert "stopped         budget_exhausted (finishing_cut); 1 experiment" in text
+    assert (
+        "stopped         budget_exhausted (finishing_cut): a finishing session was cut: "
+        "node 0 unjudged: the judge's session ended at the budget's deadline; 1 experiment"
+    ) in text
 
 
 def test_every_session_on_the_host_the_launch_named():

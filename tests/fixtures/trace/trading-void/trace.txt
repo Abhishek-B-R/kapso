@@ -5,7 +5,7 @@ served          nothing
 evaluator       none registered: the agent's own evaluation
 budget          22.1 of 40.0 min, 17.2 min reserved for finishing (the launch's over the brief's 75.0 min)
 cost            $3.543 (Claude Code sessions only; Codex reports no cost)
-stopped         budget_exhausted (attempt_would_not_fit); 1 experiment, 1 rejected
+stopped         budget_exhausted (attempt_would_not_fit): the remaining 0.7 min would not cover an attempt (the last took 20.3 min); 1 experiment, 1 rejected
 delivered       none succeeded
 
 ATTEMPTS
