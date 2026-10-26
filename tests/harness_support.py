@@ -59,6 +59,8 @@ class ScoringFakeStrategy:
     def __init__(self, workspace_dir: str, harness: Any):
         self.workspace_dir = workspace_dir
         self.workspace = FakeWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.harness = harness
         config = load_config()
         self.implementation_role = resolve_role(config["hosts"], config["search_strategy"]["params"], "implementation")

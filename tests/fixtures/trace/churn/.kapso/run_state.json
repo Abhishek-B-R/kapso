@@ -67,6 +67,7 @@
         "evaluation_provenance": "provided",
         "evaluation_integrity_error": "",
         "verification": null,
+        "unjudged": "",
         "cards_load_bearing": [],
         "estimated_cost": null,
         "measured_cost": null,

@@ -20,6 +20,7 @@ import pytest
 import kapso.execution.search_strategies.generic.strategy as strategy_module
 from kapso.core.config import load_config
 from kapso.core.roles import SessionRole
+from kapso.execution.budget import BudgetSnapshot
 from kapso.execution.coding_agents.base import CodingAgentConfig, CodingResult
 from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
 from kapso.execution.search_strategies.base import SearchNode
@@ -132,6 +133,7 @@ def strategy(tmp_path, harness, monkeypatch):
     s.goal = "Raise the Sharpe above 1"
     s.budget_snapshot = None
     s.budget_snapshot_monotonic = None
+    s.finishing_cut = None
     s.registered_evaluation_command = ""
     s.registered_evaluator_id = ""
     s.node_history = []
@@ -244,13 +246,21 @@ def test_a_session_that_dies_is_said_so_and_a_budget_clamp_ends_the_retries(stra
     assert node.verification["summary"] == "the verification session failed: Deadline of 102.2s reached — terminating Claude Code"
 
     FakeVerifier.calls = []
-    strategy._clamped_timeout = lambda seconds: 60.0   # the budget's end
+    # The budget's end: 200s remain, the judge's floor and the delivery's
+    # slice follow, so the session gets 110s of its 600 and no retry.
+    strategy.budget_snapshot = BudgetSnapshot(
+        iteration_index=0, max_iterations=3, elapsed_seconds=800, cost_usd=0.0, time_budget_seconds=1000,
+        finalization_reserve_seconds=0.0, min_agent_timeout_seconds=60, delivery_seconds=30,
+    )
     clamped = node_for(strategy, "generic_exp_0", node_id=1)
     strategy._verify_attempt(clamped)
     assert len(FakeVerifier.calls) == 1
+    assert FakeVerifier.calls[0]["config"].agent_specific["timeout"] == 110
     assert clamped.verification["summary"].startswith("the verification session failed: Deadline")
+    assert strategy.finishing_cut.startswith("the verification of node 1 was cut")
     FakeVerifier.error = None
-    strategy._clamped_timeout = lambda seconds: seconds
+    strategy.budget_snapshot = None
+    strategy.finishing_cut = None
 
     FakeVerifier.calls = []
     silent = node_for(strategy, "generic_exp_0", node_id=2)

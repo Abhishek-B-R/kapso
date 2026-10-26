@@ -45,6 +45,7 @@ def test_transition_state_round_trips_and_validates():
     source.previous_errors = []
     source.parent_policy = "best"
     source.scores_evaluator_id = "ev-2"
+    source.last_round_seconds = None
     source.evaluator_transition = {
         "old_evaluator_id": "ev-1",
         "new_evaluator_id": "ev-2",
@@ -84,6 +85,7 @@ def test_multi_lane_checkpoint_restores_with_fewer_iterations_than_nodes():
     source.previous_errors = []
     source.parent_policy = "best"
     source.scores_evaluator_id = "ev-1"
+    source.last_round_seconds = None
     source.evaluator_transition = None
     state = source.dump_state()
 

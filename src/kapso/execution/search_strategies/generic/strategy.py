@@ -81,7 +81,7 @@ from kapso.execution.inbox import (
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, stage_harness
-from kapso.harness.verdict import VERDICT_FILE, is_deliverable, is_void, read_verdict, verification_dir
+from kapso.harness.verdict import VERDICT_FILE, is_deliverable, is_void, read_verdict, unverified, verification_dir
 from kapso.execution.search_strategies.generic.lens_planning import (
     axes_brief,
     current_plan_axes,
@@ -461,8 +461,11 @@ class GenericSearch(SearchStrategy):
         else:
             problem = str(getattr(context, "problem", context))
 
+        self.finishing_cut = None
         waiting = self._answered_suspended_node()
         if waiting is not None:
+            # A continuation is not a new round: the last round's duration
+            # stands for the next admission.
             return self._continue_node(waiting, problem)
 
         self.iteration_count += 1
@@ -497,7 +500,7 @@ class GenericSearch(SearchStrategy):
         for solution in solutions:
             print(f"[GenericSearch] Generated solution ({len(solution)} chars)")
 
-        return self._expand_round(
+        representative = self._expand_round(
             problem=problem,
             solutions=solutions,
             parent=parent,
@@ -507,6 +510,10 @@ class GenericSearch(SearchStrategy):
             iteration_started_at=iteration_started_at,
             iteration_started_monotonic=iteration_started_monotonic,
         )
+        # The round's wall time, from its ideation's start to its last
+        # lane's judgment: what the next admission must cover.
+        self.last_round_seconds = time.monotonic() - iteration_started_monotonic
+        return representative
 
     def _run_expansion_lane(
         self,
@@ -866,6 +873,17 @@ class GenericSearch(SearchStrategy):
         started = time.monotonic()
         cost = 0.0
         failure = None
+        _deadline, not_launched = self._finishing_deadline(
+            "verification", float(harness.settings["verification_minutes"]) * 60.0,
+        )
+        if not_launched is not None:
+            # A finishing session with less room than the floor is not
+            # launched; the attempt says why, and the round reports the cut.
+            node.verification = unverified(f"the verification session was not launched: {not_launched}")
+            node.phase_telemetry["verification"] = {"cost_usd": 0.0, "duration_seconds": 0.0}
+            self._note_finishing_cut(f"the verification of node {node.node_id} was not launched: {not_launched}")
+            print(f"[GenericSearch] Verification of node {node.node_id}: {node.verification['summary']}")
+            return
         with self.workspace.materialize_ref(node.branch_name) as worktree:
             staged = self.stage_harness_for("verification", worktree, f"verification/{node.branch_name}", host)
             prompt = render_prompt(load_prompt(VERIFICATION_PROMPT), {
@@ -886,9 +904,16 @@ class GenericSearch(SearchStrategy):
                 **({"add_dirs": [str(directory)]} if host == "codex" else {}),
             }
             for _attempt in range(int(harness.settings["verification_attempts"])):
-                # Clamped at each attempt: a retry gets what is left, not
-                # what the first attempt was given.
-                own["timeout"] = self._clamped_timeout(float(harness.settings["verification_minutes"]) * 60.0)
+                # The room at each attempt: a retry gets what is left, not
+                # what the first attempt was given, and none under the floor.
+                deadline, not_launched = self._finishing_deadline(
+                    "verification", float(harness.settings["verification_minutes"]) * 60.0,
+                )
+                if not_launched is not None:
+                    failure = failure or f"no room for another attempt: {not_launched}"
+                    self._note_finishing_cut(f"the verification of node {node.node_id} was cut: {failure}")
+                    break
+                own["timeout"] = deadline
                 config = CodingAgentFactory.session_config(self.implementation_role, own, staged)
                 agent = CodingAgentFactory.create(config)
                 agent.initialize(worktree)
@@ -902,6 +927,7 @@ class GenericSearch(SearchStrategy):
                     # The budget, not the session, set the deadline: a retry
                     # would get less still.
                     failure = failure or "the session ended without a verdict under the budget's deadline"
+                    self._note_finishing_cut(f"the verification of node {node.node_id} was cut: {failure}")
                     break
         node.verification = read_verdict(verdict_path)
         if node.verification["verdict"] == "unverified" and failure:
@@ -945,9 +971,17 @@ class GenericSearch(SearchStrategy):
         validate_cost_value(node.estimated_cost, self.cost_config["unit"])
         self._status_phase("evaluation")
         started = time.monotonic()
+        deadline, not_launched = self._finishing_deadline("evaluation", self.implementation_role.timeout)
+        if not_launched is not None:
+            node.evaluation_output = f"Evaluation not run: {not_launched}"
+            node.evaluation_valid = False
+            node.phase_telemetry["evaluation"] = {"duration_seconds": 0.0}
+            self._note_finishing_cut(f"the evaluation run of node {node.node_id} was not launched: {not_launched}")
+            print(f"[GenericSearch] node {node.node_id} {node.evaluation_output}")
+            return node
         run = execute_candidate_evaluation(
             node,
-            deadline_seconds=self._clamped_timeout(self.implementation_role.timeout),
+            deadline_seconds=deadline,
             registered_evaluation_command=self.registered_evaluation_command,
             workspace=self.workspace, workspace_dir=self.workspace_dir,
             env_strip=self.env_strip,
@@ -1174,6 +1208,17 @@ class GenericSearch(SearchStrategy):
         phase telemetry, recovered manifest line, suspended-session record
         or None, the session's error when it died or None)."""
         lane_env = lane_env_overlay(self.expansion_lane_env, lane_index)
+        room = self._room()
+        if room is not None and room < self.budget_snapshot.min_agent_timeout_seconds:
+            # A search session with less room than the floor is not
+            # launched: the lane records why, and the next admission reads
+            # the round that overran.
+            reason = (
+                f"the budget left {max(room, 0.0):.0f}s for the implementation, "
+                f"under the {self.budget_snapshot.min_agent_timeout_seconds:.0f}s floor"
+            )
+            print(f"[GenericSearch] Implementation of {branch_name} not launched: {reason}")
+            return f"Implementation not launched: {reason}", {}, None, None, reason
         return run_implementation(
             solution=solution,
             problem=problem,
@@ -1409,11 +1454,16 @@ class GenericSearch(SearchStrategy):
         never score/outcome-based)."""
         if (node.technical_difficulties or "").strip():
             return
+        deadline, not_launched = self._finishing_deadline("reconstruction", None)
+        if not_launched is not None:
+            node.technical_difficulties = f"(the reconstruction was not launched: {not_launched})"
+            self._note_finishing_cut(f"the reconstruction for node {node.node_id} was not launched: {not_launched}")
+            return
         ensure_technical_difficulties(
             node,
             implementation_role=self.implementation_role,
             env_strip=self.env_strip,
-            clamped_timeout=self._clamped_timeout,
+            deadline_seconds=deadline,
             workspace_dir=self.workspace_dir,
             session_stream_path=self._session_stream_path,
         )
@@ -1471,30 +1521,68 @@ class GenericSearch(SearchStrategy):
         os.makedirs(stream_dir, exist_ok=True)
         return os.path.join(stream_dir, "stream.jsonl")
 
-    def _clamped_timeout(
-        self, configured_seconds: Optional[float]
-    ) -> Optional[float]:
-        """Bound an agent deadline by the searchable budget, when known.
+    # The finishing sessions of an attempt, in order: what must still fit
+    # after each is the obligations the later ones carry (the budget's end,
+    # docs/plans/redesign/wp4-config.md).
+    FINISHING_STAGES = ("reconstruction", "evaluation", "verification", "judge")
 
-        ``configured_seconds`` None means the phase has no configured
-        deadline: the result is the budget remainder when a budget exists,
-        and None (unbounded) otherwise.
-
-        The snapshot is frozen at iteration start; the monotonic anchor
-        discounts whatever this iteration's earlier phases already burned,
-        so implementation clamps against what actually remains after
-        ideation, not the iteration-start remainder.
-        """
+    def _room(self, *, finishing: bool = False, obligations_seconds: float = 0.0) -> Optional[float]:
+        """The time a session launched now may take; None without a time
+        budget. The snapshot is frozen at iteration start; the monotonic
+        anchor discounts what this iteration's earlier phases burned."""
         if self.budget_snapshot is None:
-            return configured_seconds
+            return None
         drift = (
             time.monotonic() - self.budget_snapshot_monotonic
             if self.budget_snapshot_monotonic is not None
             else 0.0
         )
-        return self.budget_snapshot.clamp_timeout(
-            configured_seconds, elapsed_since_snapshot=drift
+        return self.budget_snapshot.room(
+            obligations_seconds, finishing=finishing, elapsed_since_snapshot=drift,
         )
+
+    def _clamped_timeout(self, configured_seconds: Optional[float]) -> Optional[float]:
+        """A search session's deadline (setup, ideation, implementation):
+        its configured timeout bounded by the searchable remainder, never
+        raised; the configured timeout alone without a time budget."""
+        if self.budget_snapshot is None:
+            return configured_seconds
+        return self.budget_snapshot.deadline(configured_seconds, self._room())
+
+    def _obligations_after(self, stage: str) -> float:
+        """What must still fit after a finishing ``stage``: each later
+        session at the floor — the evaluation run in cost mode, the
+        verification when the harness verifies, the judge — and the
+        delivery's protected slice."""
+        snapshot = self.budget_snapshot
+        later = self.FINISHING_STAGES[self.FINISHING_STAGES.index(stage) + 1:]
+        runs = {
+            "evaluation": self._cost_enabled(),
+            "verification": self.harness is not None and self.harness.has_content("verification"),
+            "judge": True,
+        }
+        sessions = sum(1 for name in later if runs[name])
+        return sessions * snapshot.min_agent_timeout_seconds + snapshot.delivery_seconds
+
+    def _finishing_deadline(
+        self, stage: str, configured_seconds: Optional[float],
+    ) -> Tuple[Optional[float], Optional[str]]:
+        """A finishing session's deadline, or the reason it is not
+        launched: its room is the whole remainder less the obligations
+        after it, and a room under the floor launches nothing."""
+        if self.budget_snapshot is None:
+            return configured_seconds, None
+        room = self._room(finishing=True, obligations_seconds=self._obligations_after(stage))
+        floor = self.budget_snapshot.min_agent_timeout_seconds
+        if room is not None and room < floor:
+            return None, f"the budget left {max(room, 0.0):.0f}s for the {stage}, under the {floor:.0f}s floor"
+        return self.budget_snapshot.deadline(configured_seconds, room), None
+
+    def _note_finishing_cut(self, reason: str) -> None:
+        """The first finishing session of the round not launched or cut:
+        the orchestrator stops the campaign on it, by name."""
+        if self.finishing_cut is None:
+            self.finishing_cut = reason
 
     def _render_budget_status(self) -> str:
         """Deterministic budget block for prompts. Advisory only — never a
@@ -1562,6 +1650,7 @@ class GenericSearch(SearchStrategy):
             and not node.cost_refusal
             and not getattr(node, "suspended", False)
             and not is_void(node.verification)
+            and not node.unjudged
             and node.code_diff.strip()
             and node.branch_name
         ]
@@ -1597,6 +1686,7 @@ class GenericSearch(SearchStrategy):
             node
             for node in nodes
             if not node.had_error and node.evaluation_valid and node.score is not None
+            and not node.unjudged
         ]
         if not valid:
             return None
@@ -1621,8 +1711,12 @@ class GenericSearch(SearchStrategy):
         score leader stands.
         """
         # An attempt the harness could not verify stays a parent but is
-        # never delivered (kapso.harness.verdict).
-        candidates = [node for node in self.node_history if is_deliverable(node.verification)]
+        # never delivered (kapso.harness.verdict); one the judge never read
+        # is neither.
+        candidates = [
+            node for node in self.node_history
+            if is_deliverable(node.verification) and not node.unjudged
+        ]
         if self.registered_evaluator_id and not self._cost_enabled():
             committed = select_committed_candidate(
                 candidates,
@@ -1687,14 +1781,25 @@ class GenericSearch(SearchStrategy):
 
     def _generate_feedback(self, node: SearchNode) -> SearchNode:
         """Judge one node with the FeedbackGenerator (updates the node
-        in-place with feedback, score, and should_stop)."""
+        in-place with feedback, score, and should_stop); an attempt the
+        budget leaves no judge for is `unjudged`, with the reason."""
+        configured = (
+            self.feedback_generator.configured_timeout_seconds
+            if self.feedback_generator is not None else None
+        )
+        deadline, not_launched = self._finishing_deadline("judge", configured)
+        if not_launched is not None:
+            node.unjudged = f"the budget left no time for the judge ({not_launched})"
+            self._note_finishing_cut(f"node {node.node_id} unjudged: {not_launched}")
+            print(f"[GenericSearch] node {node.node_id} unjudged: {node.unjudged}")
+            return node
         return generate_feedback(
             node,
             feedback_generator=self.feedback_generator,
             goal=self.goal,
             axes=axes_brief(current_plan_axes(self.workspace_dir)),
             session_end_facts=self._judge_end_facts(node),
-            clamped_timeout=self._clamped_timeout,
+            deadline_seconds=deadline,
             manifest_of_record=self._manifest_of_record,
             finalize_run_selection=(
                 lambda manifest, valid:
@@ -1728,6 +1833,7 @@ class GenericSearch(SearchStrategy):
             ),
             "scores_evaluator_id": self.scores_evaluator_id,
             "evaluator_transition": self.evaluator_transition,
+            "round_seconds": self.last_round_seconds,
         }
 
     def load_state(self, state: Dict[str, Any]) -> None:
@@ -1742,6 +1848,7 @@ class GenericSearch(SearchStrategy):
         self.node_history = [
             SearchNode.from_dict(node_data) for node_data in raw_history
         ]
+        self.last_round_seconds = state["round_seconds"]
         node_ids = [node.node_id for node in self.node_history]
         if node_ids != list(range(len(self.node_history))):
             raise ValueError(

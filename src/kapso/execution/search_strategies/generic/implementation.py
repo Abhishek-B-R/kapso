@@ -631,7 +631,7 @@ def ensure_technical_difficulties(
     *,
     implementation_role: SessionRole,
     env_strip: List[str],
-    clamped_timeout: Callable[[Optional[float]], Optional[float]],
+    deadline_seconds: Optional[float],
     workspace_dir: str,
     session_stream_path: Callable[[str], str],
 ) -> None:
@@ -647,7 +647,7 @@ def ensure_technical_difficulties(
     node.technical_difficulties = generate_technical_difficulties(
         role=implementation_role,
         env_strip=env_strip,
-        timeout_seconds=clamped_timeout(None),
+        timeout_seconds=deadline_seconds,
         workspace_dir=node.workspace_dir or workspace_dir,
         solution=node.solution,
         stream_artifact_path=session_stream_path(node.branch_name),

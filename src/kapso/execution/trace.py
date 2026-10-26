@@ -189,6 +189,18 @@ def _first(*values):
     return None
 
 
+def _budget_source(launch) -> Optional[str]:
+    """Which budget won when the brief and the launch both named minutes:
+    the launch's, said with the brief's figure; None when they agree or
+    only one named one."""
+    if launch is None:
+        return None
+    named = launch["brief"]["budget"]["minutes"]
+    if named is None or launch["minutes"] is None or float(named) == float(launch["minutes"]):
+        return None
+    return f"the launch's over the brief's {float(named):.1f} min"
+
+
 def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sources) -> Dict[str, Any]:
     brief = _first(
         record.brief.to_dict() if record is not None else None,
@@ -215,6 +227,7 @@ def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sourc
         "experience": [source_line(source) for source in sources],
         "evaluator": evaluator,
         "budget": status.get("budget") if status is not None else None,
+        "budget_source": _budget_source(launch),
         "cost": {
             "usd": cost,
             "coverage": COVERAGE_CLAUDE if any(session["host"] == CODEX_HOST for session in sessions) else COVERAGE_ALL,
@@ -310,6 +323,7 @@ def _attempts(nodes, sessions, pulls) -> Tuple[List[Dict[str, Any]], Set[str]]:
                 "output": node["evaluation_output"],
             },
             "verification": node["verification"],
+            "unjudged": node["unjudged"],
             "judge": {"stop": node["should_stop"], "valid": node["evaluation_valid"], "feedback": node["feedback"]},
             "cards": {
                 "read": _cards_read(pulls, [session["label"] for session in own]),
@@ -535,7 +549,12 @@ def _header_lines(data: Dict[str, Any]) -> List[str]:
     ))
     budget = header["budget"]
     if budget and budget.get("total_min"):
-        lines.append(_row("budget", f"{float(budget.get('elapsed_min') or 0.0):.1f} of {float(budget['total_min']):.1f} min"))
+        text = f"{float(budget.get('elapsed_min') or 0.0):.1f} of {float(budget['total_min']):.1f} min"
+        if budget.get("reserve_min") is not None:
+            text += f", {float(budget['reserve_min']):.1f} min reserved for finishing"
+        if header["budget_source"]:
+            text += f" ({header['budget_source']})"
+        lines.append(_row("budget", text))
     cost = header["cost"]
     if cost["usd"] is None:
         lines.append(_row("cost", "not recorded"))
@@ -619,7 +638,9 @@ def _attempt_lines(attempt: Dict[str, Any], full: bool) -> List[str]:
         lines.append(_row("  verification", f"{verification['verdict']}: {_headline(verification['summary'])}"))
     judge = attempt["judge"]
     verdict = ("valid" if judge["valid"] else "not valid") + (", stop" if judge["stop"] else ", continue")
-    if full:
+    if attempt["unjudged"]:
+        lines.append(_row("  judge", f"unjudged: {attempt['unjudged']}"))
+    elif full:
         lines.append(_row("  judge", verdict))
         lines += _indent(judge["feedback"] or "(no feedback recorded)", "    ")
     else:

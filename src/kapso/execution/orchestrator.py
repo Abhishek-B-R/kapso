@@ -82,10 +82,14 @@ from kapso.execution.run_checkpoint import (
     config_fingerprint,
 )
 from kapso.execution.budget import (
+    ATTEMPT_WOULD_NOT_FIT,
+    DELIVERY_SECONDS,
+    FINISHING_CUT,
     BudgetLedger,
     BudgetSnapshot,
     BudgetSpec,
     CostEntry,
+    admission_refusal,
 )
 from kapso.execution.evaluation_maintainer import (
     EvaluationChangeRequest,
@@ -136,8 +140,9 @@ class SolveResult:
     iterations_run: int
     total_cost: float
     cumulative_iterations: int = 0
-    # Which budget dial triggered a budget_exhausted stop:
-    # "time_budget" | "cost_budget" | "finalization_reserve" | None
+    # Which budget dial triggered a budget_exhausted stop: "time_budget",
+    # "cost_budget", "attempt_would_not_fit" (admission), "finishing_cut"
+    # (a finishing session not launched or cut), or None.
     stop_detail: Optional[str] = None
     # The open inbox requests when stopped_reason is "waiting_for_user":
     # what the person must answer before the campaign continues.
@@ -295,6 +300,7 @@ class OrchestratorAgent:
         # budget is resolved. Lives at <workspace>/.kapso/status.json.
         self.operation_status: Optional[BuildStatus] = None
         self._status_budget_total_min: Optional[float] = None
+        self._status_reserve_seconds: Optional[float] = None
         self._resume_checkpoint: Optional[RunCheckpoint] = None
         self.completed_iterations = 0
         self._prior_cost = 0.0
@@ -1065,11 +1071,47 @@ class OrchestratorAgent:
             self.checkpoint_store.save(checkpoint)
 
     def _status_budget_view(self) -> Dict[str, Any]:
-        """The status file's time-only budget payload (observability §1)."""
+        """The status file's time-only budget payload (observability §1):
+        the clock, the budget and the round's reserve for finishing."""
         return {
             "elapsed_min": round(self.get_elapsed_seconds() / 60, 1),
             "total_min": self._status_budget_total_min,
+            "reserve_min": (
+                round(self._status_reserve_seconds / 60, 1)
+                if self._status_reserve_seconds is not None and self._status_budget_total_min is not None
+                else None
+            ),
         }
+
+    def _delivery_seconds(self) -> float:
+        """The delivery's protected slice: the fidelity measurement when a
+        maintainer measures the delivered artifact, the final checkout's
+        seconds otherwise."""
+        if self._fidelity_active:
+            return self.evaluation_maintainer.timing(1.0).upper_seconds
+        return DELIVERY_SECONDS
+
+    def _round_reserve_seconds(self, budget_spec: BudgetSpec) -> float:
+        """The reserve this round keeps out of the search: the set one,
+        bounded by a quarter of the budget; else derived from the
+        obligations — the harness's verification minutes when it
+        verifies, the judge's last observed duration (the floor before
+        one), the delivery's slice."""
+        bounded = budget_spec.bounded_reserve_seconds()
+        if bounded is not None:
+            return bounded
+        verification = (
+            float(self.harness.settings["verification_minutes"]) * 60.0
+            if self.harness is not None and self.harness.has_content("verification")
+            else 0.0
+        )
+        observed = [
+            node.phase_telemetry["feedback"]["duration_seconds"]
+            for node in self.search_strategy.get_experiment_history()
+            if "feedback" in node.phase_telemetry
+        ]
+        judge = observed[-1] if observed else budget_spec.min_agent_timeout_seconds
+        return verification + judge + self._delivery_seconds()
 
     def _platform_budget_view(self) -> Optional[Dict[str, Any]]:
         """The campaign's platform spend against its budget, in the
@@ -1387,6 +1429,7 @@ class OrchestratorAgent:
             # Pinned for components that run outside the iteration loop (the
             # evaluator-transition bridge derives its deadline from it).
             self.budget_spec = budget_spec
+            self._fidelity_active = False
             self.budget_ledger.start_clock()
             # With a harness, the task statement every session reads first is
             # written before any session runs (and again after harness setup).
@@ -1396,7 +1439,10 @@ class OrchestratorAgent:
                 experiments=experiment_max_iter,
                 minutes=budget_spec.time_budget_seconds / 60.0 if budget_spec.time_budget_seconds is not None else None,
                 usd=budget_spec.cost_budget_usd,
-                reserve_minutes=budget_spec.finalization_reserve_seconds / 60.0,
+                reserve_minutes=(
+                    budget_spec.bounded_reserve_seconds() / 60.0
+                    if budget_spec.bounded_reserve_seconds() is not None else None
+                ),
             )
             self._write_task_statement(**self._task_budget)
             # The harness's own setup session, once, before the evaluation is
@@ -1415,8 +1461,9 @@ class OrchestratorAgent:
                     cost_usd=self.get_cumulative_cost(),
                     time_budget_seconds=budget_spec.time_budget_seconds,
                     cost_budget_usd=budget_spec.cost_budget_usd,
-                    finalization_reserve_seconds=budget_spec.finalization_reserve_seconds,
+                    finalization_reserve_seconds=self._round_reserve_seconds(budget_spec),
                     min_agent_timeout_seconds=budget_spec.min_agent_timeout_seconds,
+                    delivery_seconds=self._delivery_seconds(),
                 ))
             self._run_harness_setup()
             # The maintainer's setup transaction runs inside the budgeted clock,
@@ -1555,7 +1602,7 @@ class OrchestratorAgent:
                     )
                     if fidelity_active
                     and budget_spec.time_budget_seconds is not None
-                    else budget_spec.finalization_reserve_seconds
+                    else self._round_reserve_seconds(budget_spec)
                 )
                 # Handler-level insurance: a confirmed deliverable on disk
                 # means the endgame risk is already covered — the reserve
@@ -1577,6 +1624,7 @@ class OrchestratorAgent:
                         )
                         insured_logged = True
                     effective_reserve_seconds = shrunk
+                self._status_reserve_seconds = effective_reserve_seconds
                 # Build the per-iteration budget view from the durable clock,
                 # so a resumed campaign continues its budget instead of
                 # resetting it. Strategies get the snapshot read-only.
@@ -1591,6 +1639,7 @@ class OrchestratorAgent:
                     min_agent_timeout_seconds=(
                         budget_spec.min_agent_timeout_seconds
                     ),
+                    delivery_seconds=self._delivery_seconds(),
                 )
                 self.search_strategy.observe_budget(snapshot)
                 budget_progress = snapshot.progress_percent
@@ -1614,19 +1663,20 @@ class OrchestratorAgent:
                     )
                     break
 
-                # The reserve gate: refuse admission when what remains
-                # outside the escrowed finalization reserve cannot hold one
-                # more iteration. Hard arithmetic only — no estimation. With
-                # fidelity active and no full-size result yet, the trip does
-                # not merely stop: it grants the guaranteed reserve run.
+                # Admission (the budget's end, wp4-config.md): an ordinary
+                # round is admitted when the searchable remainder covers
+                # the larger of the floor and the last completed round; an
+                # insured campaign uses its own floor alone, the handler
+                # vouching for its endgame. With fidelity active and no
+                # full-size result yet, a refusal grants the guaranteed
+                # reserve run instead of stopping.
                 remaining_after_reserve = snapshot.remaining_after_reserve
-                if (
-                    remaining_after_reserve is not None
-                    and remaining_after_reserve
-                    <= budget_spec.effective_min_iteration_seconds(
-                        insured=insured_reserve_seconds is not None
-                    )
-                ):
+                insured = insured_reserve_seconds is not None
+                needed_seconds = budget_spec.effective_min_iteration_seconds(insured=insured)
+                last_round = self.search_strategy.last_round_seconds
+                if not insured and last_round is not None:
+                    needed_seconds = max(needed_seconds, last_round)
+                if remaining_after_reserve is not None and remaining_after_reserve < needed_seconds:
                     champion = (
                         fidelity_policy.full_champion(
                             self.search_strategy.get_experiment_history()
@@ -1668,15 +1718,18 @@ class OrchestratorAgent:
                             min_agent_timeout_seconds=(
                                 budget_spec.min_agent_timeout_seconds
                             ),
+                            delivery_seconds=self._delivery_seconds(),
                         )
                         self.search_strategy.observe_budget(snapshot)
                     else:
-                        print(
-                            "[Orchestrator] Stopping: finalization reserve "
-                            "reached — protecting the endgame window"
+                        prose = admission_refusal(
+                            remaining_after_reserve, needed_seconds,
+                            None if insured else last_round,
                         )
+                        print(f"[Orchestrator] Stopping: {prose}")
+                        self.operation_status.note(f"stopping: {prose}")
                         stopped_reason = "budget_exhausted"
-                        stop_detail = "finalization_reserve"
+                        stop_detail = ATTEMPT_WOULD_NOT_FIT
                         self._save_run_checkpoint(
                             status="running",
                             last_stop=stop_detail,
@@ -1845,6 +1898,17 @@ class OrchestratorAgent:
                         status="running", last_stop=stopped_reason,
                     )
                     break
+                cut = self.search_strategy.finishing_cut
+                if cut is not None:
+                    # A finishing session of this round was not launched
+                    # or was cut: the budget's end, said by name.
+                    prose = f"a finishing session was cut: {cut}"
+                    print(f"[Orchestrator] Stopping: {prose}")
+                    self.operation_status.note(f"stopping: {prose}")
+                    stopped_reason = "budget_exhausted"
+                    stop_detail = FINISHING_CUT
+                    self._save_run_checkpoint(status="running", last_stop=stop_detail)
+                    break
                 time_budget_exhausted = (
                     budget_spec.time_budget_seconds is not None
                     and self.get_elapsed_seconds()
@@ -1924,12 +1988,11 @@ class OrchestratorAgent:
                             f"{'recorded' if measured else 'failed'} for "
                             f"node {node.node_id}"
                         )
-                    print(
-                        "[Orchestrator] Reserve run complete — stopping "
-                        "with the finalization window honored"
-                    )
+                    prose = "the escrowed full-size attempt was the last the budget covers"
+                    print(f"[Orchestrator] Stopping: {prose}")
+                    self.operation_status.note(f"stopping: {prose}")
                     stopped_reason = "budget_exhausted"
-                    stop_detail = "finalization_reserve"
+                    stop_detail = ATTEMPT_WOULD_NOT_FIT
                     self._save_run_checkpoint(
                         status="running",
                         last_stop=stop_detail,

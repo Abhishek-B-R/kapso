@@ -87,6 +87,8 @@ class InboxFakeStrategy:
     def __init__(self, workspace_dir: str):
         self.workspace_dir = workspace_dir
         self.workspace = FakeWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.node_history: List[SearchNode] = []
         self.runs = 0
         self.inbox = inbox_path(workspace_dir)

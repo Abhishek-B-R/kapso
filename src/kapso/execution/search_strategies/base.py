@@ -92,6 +92,10 @@ class SearchNode:
     # own state beside the judge's validity; None when no harness
     # verification ran.
     verification: Optional[Dict[str, Any]] = None
+    # Why the judge did not read this attempt: empty when judged, else
+    # the budget's reason (the budget's end, wp4-config.md). An unjudged
+    # attempt keeps its score, is not a parent and is never delivered.
+    unjudged: str = ""
     # The served cards the judge found load-bearing for this result (the
     # citation contract's attribution, kept on the node so the trajectory
     # carries it); empty when none or when nothing was served.
@@ -516,6 +520,12 @@ class SearchStrategy(ABC):
         # burned since the snapshot was taken.
         self.budget_snapshot: Optional["BudgetSnapshot"] = None
         self.budget_snapshot_monotonic: Optional[float] = None
+        # The budget's end: the last completed round's wall time (what the
+        # next admission must cover; restored with the state) and the
+        # reason a finishing session of this round was not launched or
+        # was cut, None when none was.
+        self.last_round_seconds: Optional[float] = None
+        self.finishing_cut: Optional[str] = None
         # The executive's granted workload profile for this iteration.
         self.fidelity_decision: Optional["FidelityDecision"] = None
         self.evaluation_provenance = (

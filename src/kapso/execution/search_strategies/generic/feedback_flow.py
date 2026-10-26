@@ -47,7 +47,7 @@ def generate_feedback(
     goal: str,
     axes: str,
     session_end_facts: str,
-    clamped_timeout: Callable[[float], float],
+    deadline_seconds: Optional[float],
     manifest_of_record: Callable[[SearchNode], Optional[Dict[str, Any]]],
     finalize_run_selection: Callable[[Dict[str, Any], bool], None],
     execution_valid: bool = True,
@@ -93,9 +93,7 @@ def generate_feedback(
             session_end_facts=session_end_facts,
             domain_guidance=staged.guidance,
             verification=render_verification(verification),
-            timeout_seconds=clamped_timeout(
-                feedback_generator.configured_timeout_seconds
-            ),
+            timeout_seconds=deadline_seconds,
         )
 
         # Update node with feedback results. A harness verdict of void is

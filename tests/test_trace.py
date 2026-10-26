@@ -170,7 +170,10 @@ def running_campaign(tmp_path: Path, *, with_record: bool = False) -> Path:
     (campaign / ".kapso").mkdir(parents=True)
     status = BuildStatus(campaign / ".kapso" / "status.json", heartbeat_seconds=60, harness=HARNESS, experience=[MINE])
     status.phase("implementation", budget={"elapsed_min": 12.0, "total_min": 40.0})
-    write_launch_record(campaign, {"brief": {"objective": "Raise the Sharpe"}, "harness": HARNESS, "experience": [MINE], "output_path": str(campaign)})
+    write_launch_record(campaign, {
+        "brief": {"objective": "Raise the Sharpe", "budget": {"minutes": None}}, "minutes": 40.0,
+        "harness": HARNESS, "experience": [MINE], "output_path": str(campaign),
+    })
     node = SearchNode(
         node_id=0, branch_name="generic_exp_0", parent_branch_name="main", solution="# Idea\nTrend following",
         score=1.2, feedback="Good but not there", evaluation_valid=True, evaluation_provenance="provided",

@@ -101,6 +101,8 @@ class TwoCandidateStrategy:
     def __init__(self, workspace_dir: str):
         self.workspace_dir = workspace_dir
         self.workspace = MaterializingWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.node_history: List[SearchNode] = []
 
     def run(self, context: str, budget_progress: float = 0.0) -> SearchNode:

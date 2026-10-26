@@ -3,7 +3,7 @@ objective       Raise the strategy's out-of-sample Sharpe above 1.0 on the 2024
 harness         trading 0.1.0 (83b6c0b60d6a)
 served          mine at a9ddad3d302d, measured by you
 evaluator       none registered: the agent's own evaluation
-budget          43.5 of 40.0 min
+budget          43.5 of 40.0 min (the launch's over the brief's 75.0 min)
 cost            $13.169 (3 runs ended with no cost figure)
 stopped         budget_exhausted (time_budget); 2 experiments, 1 rejected
 delivered       none succeeded

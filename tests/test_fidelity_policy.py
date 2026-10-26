@@ -479,7 +479,7 @@ def test_reserve_gate_executes_the_escrowed_full_run(tmp_path, monkeypatch):
     assert decisions[0].reserve_run is True
     assert result.iterations_run == 1
     assert result.stopped_reason == "budget_exhausted"
-    assert result.stop_detail == "finalization_reserve"
+    assert result.stop_detail == "attempt_would_not_fit"
     # The reserve run SPENDS the escrow — except the measurement's slice:
     # the campaign reserve is released (the live escrowed iteration was
     # once killed at the 60s floor) and the timing model's full-eval upper

@@ -95,6 +95,8 @@ class FakeStrategy:
     def __init__(self, workspace_dir: str, stop_next: bool = False):
         self.workspace_dir = workspace_dir
         self.workspace = FakeWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.node_history: List[SearchNode] = []
         self.contexts: List[str] = []
         self.stop_next = stop_next
@@ -391,6 +393,7 @@ def test_generic_strategy_state_round_trip() -> None:
     source.previous_errors = ["old error"]
     source.scores_evaluator_id = ""
     source.evaluator_transition = None
+    source.last_round_seconds = None
 
     restored = GenericSearch.__new__(GenericSearch)
     restored.harness = None
