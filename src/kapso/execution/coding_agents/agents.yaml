@@ -81,6 +81,9 @@ agents:
     # and the keys a host entry may set for it (the config's hosts table).
     serves: claude
     settings: [auth_mode, aws_region]
+    # The staging a build session on this adapter gets (the Claude Code
+    # layout): an adapter without one cannot host a build session.
+    host: claude_code
     supports_native_git: false
     env_vars:
       - "ANTHROPIC_API_KEY"
@@ -111,6 +114,7 @@ agents:
     # and the keys a host entry may set for it (the config's hosts table).
     serves: any
     settings: [base_url, auth_token_env]
+    host: claude_code
     supports_native_git: false
     # The credential var NAME is configured per use via agent_specific.auth_token_env
     # (e.g. FIREWORKS_API_KEY); no fixed env var requirement here.
@@ -138,6 +142,7 @@ agents:
     # and the keys a host entry may set for it (the config's hosts table).
     serves: any
     settings: [vertex_project, vertex_location, bridge_startup_timeout]
+    host: claude_code
     supports_native_git: false
     # Authenticates with Google application-default credentials (gcloud auth
     # application-default login); the bridge reads them, Kapso never does.
@@ -229,6 +234,7 @@ agents:
     # and the keys a host entry may set for it (the config's hosts table).
     serves: openai
     settings: []
+    host: codex
     supports_native_git: false
     # Auth comes from ~/.codex/auth.json (ChatGPT login) or CODEX_API_KEY;
     # OPENAI_API_KEY is deliberately stripped from the child environment.

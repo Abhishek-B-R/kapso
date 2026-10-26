@@ -8,13 +8,15 @@ cannot serve."""
 
 import pytest
 
-from kapso.core.config import load_config
+from kapso.core.agent_manifest import load_agent_manifest
+from kapso.core.config import ConfigError, load_config
 from kapso.core.preflight import SessionSpec, build_params, build_session_specs, host_model_requirements, requirements_for
 from kapso.core.roles import (
     CONFIG_PARAMS,
     ENGINE_PARAMS,
     ROLES,
     SessionRole,
+    check_hosts,
     check_params,
     resolve_members,
     resolve_optional,
@@ -114,6 +116,9 @@ def test_the_preflight_names_the_sessions_a_build_runs():
     p["ideation"] = dict(p["ideation"], ensemble=[{"cli": "codex"}], selector={"cli": "claude_code"})
     origins = [spec.origin for spec in build_session_specs(config, p)]
     assert "search_strategy.params.ideation.ensemble[0] = codex:gpt-5.6-sol" in origins
+    # The members' sessions replace the ideation role's own: no row asks
+    # for its host.
+    assert not [origin for origin in origins if origin.startswith("search_strategy.params.ideation =")]
     assert "search_strategy.params.ideation.selector = claude_code:claude-opus-5" in origins
     assert origins[-1] == "evaluation_maintainer = claude_code:claude-opus-5"
 
@@ -136,3 +141,18 @@ def test_a_model_its_host_cannot_serve_fails_the_preflight_by_key():
 def test_resolve_spec_keeps_a_members_own_model_over_the_hosts():
     spec = resolve_spec(HOSTS, "codex", {"model": "gpt-5.5", "effort": "low"}, name="x", origin="o")
     assert (spec.cli, spec.model, spec.effort) == ("codex", "gpt-5.5", "low")
+
+
+def test_a_host_with_no_staging_and_a_spec_of_the_wrong_shape_are_refused():
+    """Only the adapters with a staging can host a build session (the
+    registry's `host`): `hosts.gemini` is refused with the hosts a build
+    runs on. A spec's cli, model and effort are strings: a list or a
+    `false` is refused rather than read as unset."""
+    adapters = load_agent_manifest()["agents"]
+    check_hosts(HOSTS, adapters)
+    with pytest.raises(ConfigError, match="hosts.gemini: the gemini adapter cannot host a build session .* claude_code, codex, oss_claude_code, vertex_claude_code"):
+        check_hosts({**HOSTS, "gemini": {"model": "gemini-2.5-flash"}}, adapters)
+    with pytest.raises(ConfigError, match=r"judge.cli must be a non-empty string, got \['codex'\]"):
+        resolve_role(HOSTS, params(judge={"cli": ["codex"]}), "judge")
+    with pytest.raises(ConfigError, match="implementation.model must be a non-empty string, got False"):
+        resolve_role(HOSTS, params(implementation={"model": False}), "implementation")

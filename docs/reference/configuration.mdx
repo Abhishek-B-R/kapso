@@ -93,9 +93,8 @@ A host is a coding-agent CLI a build may run sessions on. Each entry names the `
 | `codex` | none beyond `model` and `effort` |
 | `oss_claude_code` | `base_url`, `auth_token_env` |
 | `vertex_claude_code` | `vertex_project`, `vertex_location`, `bridge_startup_timeout` |
-| `gemini`, `openhands`, `aider` | none beyond `model` and `effort` |
 
-The entries are an open namespace: add `hosts.gemini: {model: gemini-2.5-flash}` to run a role there. A setting the adapter does not list is refused by name. A host must be able to serve its model: `codex` serves everything but `claude-*` models, `claude_code` serves `claude-*` and nothing else, and the preflight refuses the pair before a session runs (`kapso doctor build` shows the rows). The adapters themselves are on [Coding agents](/docs/evolve/coding-agents).
+These four are the adapters with a staging for a build session (`agents.yaml` names it under `host`); the others (`gemini`, `openhands`, `aider`, `openai_compatible`) have none, so `hosts.gemini: {model: …}` is refused with the hosts a build runs on. Within the four the entries are an open namespace: a host is added by naming it. A setting the adapter does not list is refused by name. A host must be able to serve its model: `codex` serves everything but `claude-*` models, `claude_code` serves `claude-*` and nothing else, and the preflight refuses the pair before a session runs (`kapso doctor build` shows the rows). The adapters themselves are on [Coding agents](/docs/evolve/coding-agents).
 
 A host no role names is never asked for: `hosts` is a table, not a session source.
 
@@ -160,7 +159,7 @@ Three roles name the build's sessions. **Ideation** proposes candidates; **imple
 |-----|--------------|
 | `<role>.timeout` | The session's deadline in seconds. Every session is also clamped by the budget: a search session against the searchable remainder, a finishing session against what its obligations leave (see [the budget](#budget)). `null` is no deadline beyond that clamp |
 | `<role>.gates` | The bundled MCP gates the session mounts: `research` (the web), `experiment_history` (past attempts), `repo_memory`. A loaded bank or index mounts its own gate when it is loaded, never from a list. The judge mounts none |
-| `<role>.web` | The native web tools, Claude Code's `WebSearch` and `WebFetch` and Codex's `--search`: the engine's permission boundary on both hosts. Off, the tools leave the session. The ensemble members, the selector and the lens planner follow ideation's switch. A harness whose protocol forbids the web on a module lists a hook there as well; see [the harness reference](/docs/reference/harness#files) |
+| `<role>.web` | The native web tools, Claude Code's `WebSearch` and `WebFetch` and Codex's web search (`--search`, and the cached search the CLI runs without the flag, disabled by config): the engine's permission boundary on both hosts. Off, the tools leave the session. The ensemble members, the selector and the lens planner follow ideation's switch. A harness whose protocol forbids the web on a module lists a hook there as well; see [the harness reference](/docs/reference/harness#files) |
 | `ideation.candidates_per_member` | Candidates each member is asked for. With one member and one candidate no selector runs |
 | `ideation.ensemble` | Parallel members, `[{cli, model, effort, lens}, …]`, each a spec of its own over the hosts table (`model` and `effort` optional, the host's where unset). Their candidates are pooled by the selector |
 | `ideation.selector` | `{cli, model, effort}`: the session that ranks the pool. Required when the pool holds more than one candidate |

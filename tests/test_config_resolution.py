@@ -112,3 +112,33 @@ def test_the_benchmark_override_files_resolve():
         check_params(params)
         for role in ROLES:
             resolve_role(config["hosts"], params, role)
+
+
+def test_a_tilde_path_is_the_persons_home(tmp_path, monkeypatch):
+    """`--config ~/kapso-config.yaml` quoted by a shell, or `Kapso(config="~/…")`:
+    expanded once, by the resolver, for the read as for the existence check."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _write(tmp_path, {"budget": {"experiments": 3}})
+    assert load_config("~/kapso-config.yaml")["budget"]["experiments"] == 3
+    assert override_paths("~/kapso-config.yaml") == ["budget.experiments"]
+
+
+def test_a_mapping_where_a_value_stood_is_refused_by_name(tmp_path):
+    """A nested typo (`enabled: {typo: false}`) would otherwise read as the
+    value and be true, since a mapping is truthy."""
+    path = _write(tmp_path, {"preflight": {"enabled": {"typo": False}}})
+    with pytest.raises(ConfigError, match=r"kapso-config.yaml: preflight\.enabled: bool expected, got a mapping"):
+        load_config(path)
+
+
+def test_the_adapters_own_settings_are_open_namespaces(tmp_path):
+    """`agent_specific` is the adapter's own map (an endpoint's base_url):
+    its keys are the person's, under the inference default and the
+    learner's two sessions alike."""
+    path = _write(tmp_path, {
+        "inference": {"default": {"agent_specific": {"base_url": "http://x"}}},
+        "learner": {"merger": {"agent_specific": {"base_url": "http://y"}}},
+    })
+    config = load_config(path)
+    assert config["inference"]["default"]["agent_specific"] == {"base_url": "http://x"}
+    assert config["learner"]["merger"]["agent_specific"] == {"base_url": "http://y"}

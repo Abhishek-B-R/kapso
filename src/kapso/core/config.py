@@ -25,14 +25,16 @@ RUNNER_KEY = "benchmark"
 # an override may add keys under these, and the walk checks nothing
 # below them. Everywhere else the packaged mapping is the schema.
 OPEN_NAMESPACES = frozenset({
-    "hosts", "inference.roles", "gates", "knowledge_search.params",
-    "search_strategy.params.session_env_defaults", RUNNER_KEY,
+    "hosts", "inference.roles", "inference.default.agent_specific", "gates", "knowledge_search.params",
+    "search_strategy.params.session_env_defaults", "learner.ingestor.agent_specific",
+    "learner.merger.agent_specific", RUNNER_KEY,
 })
 
 
 class ConfigError(ValueError):
-    """A config file the engine refuses: its message names the file, the
-    key and the keys allowed, and is written to be read alone."""
+    """A config file the engine refuses: its message names the key and
+    what is allowed (the resolver's name the file too; a build has one
+    override file, so the key locates the line), written to be read alone."""
 
 
 def read_yaml(path: Any) -> Dict[str, Any]:
@@ -73,9 +75,10 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     packaged = read_yaml(PACKAGED_CONFIG_PATH)
     if is_packaged(config_path):
         return packaged
-    if not Path(config_path).expanduser().is_file():
+    path = Path(config_path).expanduser()
+    if not path.is_file():
         raise ConfigError(f"{config_path}: no such file")
-    override = read_yaml(config_path)
+    override = read_yaml(path)
     _check_keys(override, packaged, "", str(config_path))
     return deep_merge(packaged, override)
 
@@ -98,11 +101,16 @@ def _check_keys(override: Dict[str, Any], packaged: Dict[str, Any], path: str, s
             f"{', '.join(unknown)}; the keys are {keys}"
         )
     for key, value in override.items():
-        if isinstance(packaged.get(key), dict):
-            child = f"{path}.{key}" if path else key
+        child = f"{path}.{key}" if path else key
+        current = packaged.get(key)
+        if isinstance(current, dict):
             if not isinstance(value, dict):
                 raise ConfigError(f"{source}: {child}: must be a mapping, got {type(value).__name__}")
-            _check_keys(value, packaged[key], child, source)
+            _check_keys(value, current, child, source)
+        elif current is not None and isinstance(value, dict):
+            # A mapping where a value stood (`enabled: {typo: false}`) would
+            # otherwise read as the value.
+            raise ConfigError(f"{source}: {child}: {type(current).__name__} expected, got a mapping")
 
 
 def override_paths(config_path: Optional[str] = None) -> List[str]:
@@ -110,6 +118,7 @@ def override_paths(config_path: Optional[str] = None) -> List[str]:
     the runner's own key left out; empty for the defaults alone."""
     if is_packaged(config_path):
         return []
+    config_path = str(Path(config_path).expanduser())
     packaged = read_yaml(PACKAGED_CONFIG_PATH)
     paths: List[str] = []
 

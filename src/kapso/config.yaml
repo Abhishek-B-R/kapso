@@ -49,6 +49,10 @@ inference:
     sandbox: "read-only"          # inference sessions never write
     timeout_seconds: 900
     web_search: false
+    # The adapter's own settings for every inference session (an
+    # openai_compatible endpoint's base_url and api_key_env, say); a
+    # role's agent_specific merges over it.
+    agent_specific: {}
   roles:
     # Web research — codex --search carries the live-web tool.
     research: {web_search: true, timeout_seconds: 1800}

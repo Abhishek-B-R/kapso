@@ -46,9 +46,10 @@ from kapso.gated_mcp.presets import get_mcp_config, knowledge_tools_block
 from kapso.harness.load import HarnessError
 from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE, engine_session_record
 from kapso.harness.task_statement import prepared_names, setup_statement_path, write_task_statement
+from kapso.core.agent_manifest import load_agent_manifest
 from kapso.core.cli_inference import CliInference
 from kapso.core.config import load_config
-from kapso.core.roles import BUILD_CONFIG_BLOCKS, SPEC_KEYS, check_maintainer, resolve_role, resolve_spec
+from kapso.core.roles import BUILD_CONFIG_BLOCKS, SPEC_KEYS, check_maintainer, resolve_role, resolve_spec, validate_config
 from kapso.execution.search_strategies.base import ExperimentResult, SearchNode
 from kapso.execution.memories.experiment_memory import ExperimentHistoryStore
 from kapso.execution.cost_estimator import (
@@ -223,6 +224,10 @@ class OrchestratorAgent:
         # Load once before constructing shared services so model roles and retry
         # behavior apply consistently across strategy, memory, and commit calls.
         self.config = load_config(config_path)
+        # The checks the walk cannot make (the hosts against the adapters,
+        # the roles, the maintainer), here as in the facade and the doctor:
+        # a benchmark runner constructs the campaign directly.
+        validate_config(self.config, load_agent_manifest()["agents"])
         model_routes = self.config["models"]
         retry_config = self.config["retry"]
         # CLI-only inference (cli-only-inference-design.md): the object

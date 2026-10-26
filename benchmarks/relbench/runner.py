@@ -64,19 +64,16 @@ def list_tasks() -> None:
 
 def _write_runtime_config(
     shared_cache_dir: str, work_dir, time_budget_hours=None,
-    bank_serving=None,
 ) -> str:
     """Write the per-run override file: this benchmark's own file with the
-    task-scoped shared_cache_dir (and, when given, the wall-clock budget
-    and the bank-serving env mapping) over it, and return its path. The
-    orchestrator loads config from disk, so a runtime value must live in
-    a file; the file is an override over the packaged defaults, as the
-    benchmark's own is."""
+    task-scoped shared_cache_dir (and, when given, the wall-clock budget)
+    over it, and return its path. The orchestrator loads config from disk,
+    so a runtime value must live in a file; the file is an override over
+    the packaged defaults, as the benchmark's own is. The bank serving is
+    the engine's own parameter, threaded as the facade threads it."""
     config = read_yaml(CONFIG_PATH)
     params = config["search_strategy"]["params"]
     params["shared_cache_dir"] = os.path.abspath(shared_cache_dir)
-    if bank_serving is not None:
-        params["bank_serving"] = bank_serving
     if time_budget_hours is not None:
         config["budget"]["minutes"] = time_budget_hours * 60
     runtime_dir = os.path.join(str(work_dir), ".kapso_runtime")
@@ -164,7 +161,6 @@ def solve_task(args) -> dict:
         config_path = _write_runtime_config(
             str(handler.shared_cache_dir), handler.work_dir,
             time_budget_hours=args.time_budget_hours,
-            bank_serving=serving["bank_serving"] if serving else None,
         )
     elif args.time_budget_hours is not None:
         raise ValueError("--time-budget-hours requires --strategy generic")
@@ -179,6 +175,7 @@ def solve_task(args) -> dict:
         eval_dir=os.path.join(DATA_DIR, "generic_eval") if generic else None,
         data_dir=os.path.join(DATA_DIR, "starter_kit"),
         goal=f"Beat the published state of the art on RelBench {args.dataset}/{args.task}",
+        strategy_params_overrides={"bank_serving": serving["bank_serving"]} if serving else None,
     )
 
     orchestrator.solve(experiment_max_iter=args.iterations)

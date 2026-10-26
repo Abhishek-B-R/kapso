@@ -132,15 +132,27 @@ def validate_config(config: Dict[str, Any], manifest: Dict[str, Any]) -> None:
     check_maintainer(config["evaluation_maintainer"])
 
 
+def build_hosts(manifest: Dict[str, Any]) -> List[str]:
+    """The adapters a build session can run on: those with a staging
+    (`host` in the registry), which is what every build session needs."""
+    return sorted(name for name, entry in manifest.items() if entry.get("host"))
+
+
 def check_hosts(hosts: Any, manifest: Dict[str, Any]) -> None:
-    """Every host entry names a model, and sets only `effort` and the
-    adapter's own settings (`settings` in the registry); an adapter the
-    registry does not know is refused."""
+    """Every host entry names an adapter a build can run on, a model, and
+    only `effort` and the adapter's own settings (`settings` in the
+    registry); an adapter the registry does not know, or one with no
+    staging (gemini, openhands, aider, openai_compatible), is refused."""
     if not isinstance(hosts, dict) or not hosts:
         raise ConfigError("hosts must be a mapping of at least one CLI to its entry")
     for cli, entry in hosts.items():
         if cli not in manifest:
             raise ConfigError(f"hosts.{cli}: no adapter of that name; the adapters are {', '.join(sorted(manifest))}")
+        if not manifest[cli].get("host"):
+            raise ConfigError(
+                f"hosts.{cli}: the {cli} adapter cannot host a build session (it has no staging); "
+                f"the hosts a build runs on are {', '.join(build_hosts(manifest))}"
+            )
         if not isinstance(entry, dict) or not isinstance(entry.get("model"), str) or not entry["model"].strip():
             raise ConfigError(f"hosts.{cli} needs a model")
         allowed = HOST_KEYS | set(manifest[cli].get("settings") or [])
@@ -157,6 +169,9 @@ def resolve_spec(
     if not isinstance(spec, dict):
         raise ConfigError(f"{origin} must be a mapping, got {type(spec).__name__}")
     _unknown(spec, keys, origin)
+    for key in ("cli", "model", "effort"):
+        if spec.get(key) is not None and (not isinstance(spec[key], str) or not spec[key].strip()):
+            raise ConfigError(f"{origin}.{key} must be a non-empty string, got {spec[key]!r}")
     cli = spec.get("cli") or host
     if cli not in hosts:
         where = f"{origin}.cli" if spec.get("cli") else f"{ORIGIN}.host (what --coding-agent sets)"

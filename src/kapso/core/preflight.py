@@ -642,9 +642,13 @@ def build_session_specs(config: Dict[str, Any], params: Dict[str, Any]) -> List[
             agent_specific=dict(role.settings),
         ))
 
-    for name in ROLES:
-        add(resolve_role(hosts, params, name), f"search_strategy.params.{name}")
     ideation = params["ideation"]
+    for name in ROLES:
+        if name == "ideation" and ideation["ensemble"]:
+            # The members' sessions replace the role's own; its host is
+            # not asked for.
+            continue
+        add(resolve_role(hosts, params, name), f"search_strategy.params.{name}")
     for index, member in enumerate(resolve_members(hosts, params, ideation["ensemble"]) or []):
         add(member, f"search_strategy.params.ideation.ensemble[{index}]")
     for key in ("selector", "lens_planner"):

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 import kapso.execution.orchestrator as orchestrator_module
-from kapso.core.config import load_config, read_yaml
+from kapso.core.config import ConfigError, load_config, read_yaml
 from kapso.execution.orchestrator import OrchestratorAgent
 from tests.harness_support import FakeLLM, FakeProblemHandler, NoopAgent
 
@@ -36,6 +36,9 @@ class FakeBenchmarkHandler(FakeProblemHandler):
 
     def final_evaluate(self, path, **kwargs):
         return {"evaluated": str(path)}
+
+    def apply_bank_intro(self, intro):
+        self.intro = intro
 
 
 @pytest.fixture
@@ -256,3 +259,41 @@ def test_past_learning_runner_shapes_the_reserve_and_the_deadlines_to_the_run(en
     assert strategy.inbox_settings["enabled"] is False
     assert orchestrator._config_budget["min_iteration_seconds"] == 900
     assert json.loads((root / "results.json").read_text())["task"] == "ioai-2025-practice"
+
+
+def test_relbench_runner_threads_the_bank_serving_as_the_engines_own(entered, monkeypatch, tmp_path):
+    """The serving is the engine's parameter, threaded as the facade
+    threads it, never a key of the runtime file (the resolver would refuse
+    it there)."""
+    pytest.importorskip("relbench")
+    import benchmarks.relbench.handler as handler_module
+    from benchmarks.relbench import runner
+
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    monkeypatch.setattr(
+        handler_module, "RelBenchHandler",
+        lambda **kwargs: FakeBenchmarkHandler(work_dir=work_dir, shared_cache_dir=tmp_path / "cache"),
+    )
+    monkeypatch.setattr(runner, "parse_experience_reference", lambda raw, indexes_root: raw)
+    monkeypatch.setattr(runner, "resolve_source", lambda reference, settings: reference)
+    serving = {"intro": "the bank", "lines": ["bank: mine"], "bank_serving": {"KAPSO_BANK_ROOT": "/bank"}}
+    monkeypatch.setattr(runner, "prepare_campaign_serving", lambda sources, coordinates, work_dir, budget: serving)
+    args = argparse.Namespace(
+        dataset="rel-f1", task="driver-position", iterations=1, coding_agent=None, no_kg=False,
+        workspace=str(tmp_path / "workspace"), resume=False, target_val=None, rebuild_cache=False,
+        knowledge_file=None, experience="bank:mine", initial_repo=None, time_budget_hours=None,
+    )
+    runner.solve_task(args)
+    (orchestrator, _), = entered
+    assert orchestrator.search_strategy.params["bank_serving"] == {"KAPSO_BANK_ROOT": "/bank"}
+    assert "bank_serving" not in load_config(orchestrator.config_path)["search_strategy"]["params"]
+
+
+def test_a_runners_file_naming_a_host_with_no_staging_is_refused_at_construction(entered, tmp_path):
+    """A benchmark runner constructs the campaign directly, past the facade
+    and the doctor: the config's checks run at the orchestrator's birth."""
+    config = tmp_path / "config.yaml"
+    config.write_text("hosts:\n  gemini:\n    model: gemini-2.5-flash\n")
+    with pytest.raises(ConfigError, match="hosts.gemini: the gemini adapter cannot host a build session"):
+        OrchestratorAgent(FakeBenchmarkHandler(), config_path=str(config), workspace_dir=str(tmp_path / "w"))
