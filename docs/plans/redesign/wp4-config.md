@@ -760,6 +760,59 @@ callers. Every finding and what the plan now says:
 
 Built on these answers; the owner checks the decisions.
 
+### Pull-request review
+
+Both reviewers read pull request #159's diff against `redesign`, the
+sub-plan with its proof run, the decisions, the six pages and the proof
+evidence under `scripts/redesign/runs/wp4/` (`scripts/redesign/review.sh`,
+brief and outputs in `scripts/redesign/runs/wp4-pr-review/`). Codex would
+have held the merge on four P1s; Claude Code would have fixed one. Every
+finding, with what was done; "fixed" names the commit after the review.
+
+**Codex (gpt-6-astra, xhigh), sixteen findings.**
+
+| Finding | Answer |
+|---|---|
+| P1 an unbudgeted Codex build crashes after starting ideation (`None` added to a float, the child left running) | fixed (`642f2fd4`): no deadline runs the turn to its end; the member's and the selector's deadlines are their shares bounded by their own timeouts |
+| P1 an implementation not launched reaches the branch lookup (`BadName`) | fixed (`642f2fd4`): the lane returns the attempt with the reason, no branch, no diff; `unjudged` says the implementation was not launched; the round skips it after the barrier |
+| P1 the judge's missing-handle error is caught by the flow and the candidate stays deliverable | fixed (`642f2fd4`): the flow's catch marks the attempt unjudged with the error; a judge session that fails to start (a quota, a login) is unjudged with its error at the generator; the raise stays for a completed turn with no handle |
+| P1 `web: false` leaves Codex's cached search on | fixed (`642f2fd4`): the adapter and the raw ideation pass `web_search="disabled"` with the web off (the key's values verified against the CLI); the `web` row says so |
+| P2 ideation deadlines raised to 60-second floors; the selector's minimum on the stale clamp | fixed (`642f2fd4`): the floors are gone, a share is never raised; the selector's share is bounded by the room read when it launches; a member's retry only inside a window with time left |
+| P2 member and selector timeouts accepted and ignored | fixed (`642f2fd4`): each bounds its session's deadline |
+| P2 the judge retry's budget flag from the first invocation only; "no room for a retry" bypasses the cut | fixed (`642f2fd4`): both invocations' rooms are remembered and the cut attributed from the one that was cut; a retry refused for want of room is a finishing cut |
+| P2 a verification cut attributed by a timeout comparison | fixed (`642f2fd4`): the invocation's own outcome (killed at its deadline without completing) attributes the cut |
+| P2 RelBench's `--experience` path writes `bank_serving` into a file the resolver refuses | fixed (`bed4c2c0`): threaded as the engine's own override, as the facade threads it; tested with a fake serving |
+| P2 value shapes: `enabled: {typo: false}` accepted, `cli: [codex]` a TypeError, `model: false` inherits; the roles' refusals lack the file | fixed (`bed4c2c0`): the walk refuses a mapping where a value stood; a spec's `cli`, `model` and `effort` must be non-empty strings when set. The file: a build has one override file, so the key locates the line; `ConfigError`'s docstring says what the message carries |
+| P2 `learner.*.agent_specific` not open; `inference.default` has no `agent_specific` | fixed (`bed4c2c0`): both learner maps and `inference.default.agent_specific` (new, empty) are open namespaces |
+| P2 `hosts.gemini` accepted, then refused by the staging | fixed (`bed4c2c0`, `179df4cf`): the hosts a build runs on are the adapters with a staging, declared in the registry (`host`); `check_hosts` refuses the others with the four; the staging reads the same key. The earlier decision (every adapter stages) is reversed in the decisions |
+| P2 the preflight asks for the ideation role's host under an ensemble | fixed (`bed4c2c0`): the row is skipped when members replace it |
+| P2 the engine's inference sessions on Claude inherit the person's MCP servers | fixed (`179df4cf`): `strict_mcp_config` on the engine's Claude sessions; asserted |
+| P2 the raw Codex ideation drops the env rules; the run entry records no deadline | fixed (`642f2fd4`): the strip and the defaults reach the raw call (asserted on member and selector); the run entry carries `deadline_seconds`. The gates: a Codex member mounts none by design, the member-prompt test pins it |
+| P3 the trace omits the stop's explanation | fixed (`f4fb9154`): the `stopped` row carries the sentence from the status file's note (`stop_note` in the data); the three fixtures show it |
+
+**Claude Code (claude-opus-5), thirteen findings.**
+
+| Finding | Answer |
+|---|---|
+| HIGH a judge session that fails to start ends the campaign with a traceback | fixed (`642f2fd4`): unjudged with the session's error; tested |
+| MEDIUM two concurrent engine sessions share one record | fixed (`179df4cf`): the number and the record are taken under the staging lock; eight threads tested |
+| MEDIUM-LOW the replanner staged for `claude_code` whatever the planner's host | fixed (`642f2fd4`): staged for the planner's own host |
+| MEDIUM-LOW the admission sentence never reaches the trace | fixed (`f4fb9154`) |
+| LOW-MEDIUM a `~` config path fails as a bug | fixed (`bed4c2c0`): expanded once by the resolver; tested |
+| LOW the roles' refusals do not name the file; `validate_config` not run for a runner's orchestrator | answered and fixed (`bed4c2c0`): the key locates the line in the one override file, the docstring says so; the orchestrator validates at construction, tested with a runner's file |
+| LOW `-a claude_code` still demands a Codex login | said on the `-a` row (`bed4c2c0`): the engine's own sessions follow `inference.default`; an all-Claude run sets `inference.default.cli` |
+| LOW `design_axes` missing from the guard | fixed (`6ee33d80`); the RelBench test spelling it renamed (the handler's own axes are its vocabulary) |
+| LOW contracts no test pins | the round's value round-trips through the checkpoint (`6ee33d80`); K>1 lanes, a continuation and the maintainer's overrun stay in the findings |
+| LOW leftovers: comments, pointers to a module that does not exist, the test shim, the function-local import | fixed (`642f2fd4`, `179df4cf`, `6ee33d80`) |
+| LOW the budget's floors as literals | fixed (`50b2b9b9`): sourced from the packaged config |
+| LOW the admission counts the finishing span twice | said on the page (`50b2b9b9`): the admission errs early by about one finishing span, never late; kept |
+| LOW the reconstruction inherits the implementation's Stop hooks | left for the owner, in the findings |
+
+**What the review did not change.** An unjudged attempt is never
+delivered, the verifier keeps working after its verdict, the
+reconstruction keeps its module's hooks: the owner's calls, in the
+findings below.
+
 ## Proof run
 
 **The fresh machine, `kapso-fresh-wp4`** (`e2-standard-4`, Ubuntu 24.04,
@@ -961,9 +1014,10 @@ For the user's decision, or a later package:
   could be ended, or its page could say to stop (WP2's page, or the
   adapter).
 - **What the trace should carry, from S4** (WP6's renderer): a voided
-  attempt's measured figure beside the void (`no score` hides 2.4002); the
-  admission sentence on the `stopped` line; a word for a null
-  `stop_detail`; the reserve's provenance (`derived` or `set`) on the
+  attempt's measured figure beside the void (`no score` hides 2.4002); a
+  word for a null `stop_detail` (the admission sentence and the finishing
+  cut are on the `stopped` line since the pull-request review); the
+  reserve's provenance (`derived` or `set`) on the
   budget line; a delegate's stop reason; wall-clock times, or the sessions'
   order; `cost $0.000 (Claude Code sessions only …)` on a campaign with no
   Claude session; `lens_planning` in the status file's phase list without
@@ -975,14 +1029,25 @@ For the user's decision, or a later package:
 - **The machine's Codex key is over its quota.** Every Codex session on the
   fresh machine failed; the Codex-host builds ran on the development box.
   The environment's, not the engine's; the record showed it by design.
+- **The reconstruction inherits the implementation module's Stop hooks**
+  (the pull-request review). Staged as the implementation module, it gets
+  `require-results` on the trading harness, which blocks the read-only
+  reconstruction once and tells it to run the backtest, on the attempt
+  that produced no results; `stop_hook_active` keeps it to one turn. The
+  way out is a staging without the module's hooks for the finishing
+  sessions that write nothing; a design call for the owner.
+- **Contracts no test pins** (the pull-request review): K>1 lanes at the
+  budget's end, a continuation that is not a new round, the maintainer
+  bridge's kept overrun. A resume from a restored `round_seconds` is
+  pinned now; the rest for WP8's reproduction or a later package.
 
 ## Built
 
 Branch `wp4-config` off `redesign` at `55a92430`, the commits below, each
-with its tests and the gate green at every one (the last gate: 1,705
+with its tests and the gate green at every one (the last gate: 1,713
 passed, 27 skipped, 2 deselected; the docs coverage check 43 commands and
 methods, the snippet check 6 quoted files, `mint validate` passing). The
-branch: 349 files, +18,648 −5,738.
+branch: 282 files, +9991 −5104.
 
 | Commit | What landed |
 |---|---|
@@ -1004,4 +1069,11 @@ branch: 349 files, +18,648 −5,738.
 | `8dc91cde` | the derived reserve bounded; the setup session follows the launch predicate |
 | `44e7fa6b` | the engine recorder wired at the workspace's birth; the judge's phase after a verification |
 | `a7a96478` | three trace fixtures from the proof run, with their tests |
-| the last commits | the proof run's record: this section, the findings, the Built table; the master's row |
+| `807527b9`, `71975eea`, `36781f1c`, `512b3dd7` | the proof run's record (the section, the findings, this table, the master's row); the facade tests without the machine's preflight |
+| `642f2fd4` | the pull-request review: the ideation rooms as shares bounded by their own timeouts; the judge's failures and an implementation not launched as unjudged attempts; the cuts attributed from the invocation that was cut; Codex's search disabled by config; the replanner on its own host |
+| `bed4c2c0` | the review: the config's shapes (`~`, a mapping where a value stood, the adapters' own maps, a spec's strings); the hosts a build runs on declared in the registry; the orchestrator's own validation; the preflight under an ensemble; the RelBench serving as the engine's override; the `-a` row |
+| `179df4cf` | the review: the engine's sessions take distinct records and mount only their own servers; the staging reads the hosts from the registry; the inference test's shim gone |
+| `f4fb9154` | the review: the trace's `stopped` row carries the sentence the campaign stopped on |
+| `50b2b9b9` | the review: the budget's floors from the packaged config; the admission's finishing span said |
+| `6ee33d80` | the review: the retired-name guard knows `design_axes`; the checkpoint's round round-trips |
+| the last commit | the review's answers (this section), the findings, the decisions |

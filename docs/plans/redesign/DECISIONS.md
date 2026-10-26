@@ -8,6 +8,105 @@ shows.
 
 ## 2026-10-26, WP4 (taken while building)
 
+**The hosts a build runs on are the adapters with a staging, declared in
+the registry.** `agents.yaml` names the staging each build-capable adapter
+gets (`host: claude_code` on the three Claude adapters, `host: codex` on
+Codex); `check_hosts` refuses the other adapters with those four, and the
+staging's own table is read from the same key. This reverses the earlier
+entry that every registered adapter stages and the staging's refusal is
+unreachable: the pull-request review showed `hosts.gemini` passing
+validation and failing at the first session. Alternative rejected: a
+staging for `gemini`, `openhands`, `aider` and `openai_compatible`, which
+have no layout to stage into. Shows in the hosts table and the `-a` row.
+
+**A judge session that fails to start leaves the attempt unjudged with
+its error.** The generator reads the invocation's `success`: a failed
+launch (a quota, a login revoked, a crashed CLI) is `the judge's session
+failed: <error>`, nothing to parse or resume; the raise for a completed
+turn with no session handle stays, that being a wiring bug. The feedback
+flow's existing catch marks the attempt unjudged too, so no scored
+candidate stays deliverable after a judge error. Why: the review showed
+the proof run's exhausted quota ending a campaign with a traceback in the
+one state the field exists for.
+
+**An implementation not launched is an attempt with no branch.** The lane
+returns the attempt with the error and `unjudged` saying the
+implementation was not launched; nothing resolves its commit, verifies or
+judges it. Why: the review reached GitPython's `BadName` from a refused
+session.
+
+**Ideation deadlines are shares, never raised, bounded by their own
+timeouts.** The sixty-second floors on a member's share and on its retry
+window are gone (a share under the floor is a short session, as
+everywhere else at the budget's end); the selector's share is bounded by
+the room read when it launches, the members done, so time they left
+flows to it and time they spent is not promised twice; a member's or the
+selector's own `timeout` bounds its deadline further. The split test
+reads the clamp twice: the shares from the first reading, the selector's
+bound from the second.
+
+**The web switch disables Codex's native search by config.** With `web:
+false` the adapter and the raw ideation pass `web_search="disabled"`
+(verified against the CLI, which accepts `disabled` and rejects a
+nonsense value); omitting `--search` alone leaves the CLI's default
+cached search on.
+
+**A cut is attributed from the invocation it cut.** The judge's rooms
+(the first invocation's, the retry's) are remembered and the finishing
+cut noted when the room of the one that was cut was the budget's; a retry
+refused for want of room is a finishing cut too. A verification's cut is
+attributed from the invocation's own outcome (killed at its deadline
+without completing), not from a comparison of its timeouts, so a verifier
+that fails at once with room to spare keeps its retry.
+
+**The trace's `stopped` row carries the sentence the campaign stopped
+on.** The status file's recent ring holds it as `stopping: …` (the
+admission refusal, the finishing cut); the trace reads the last such line
+into `stop_note` and renders it after the detail. Alternative rejected: a
+new status key, since the ring already carries the sentence and the
+prefix is the convention.
+
+**The resolver refuses a mapping where a value stood, expands `~`, and
+opens the adapters' own maps.** `enabled: {typo: false}` is refused as
+`bool expected, got a mapping` (a mapping is truthy, so it would have
+read as true); `learner.ingestor.agent_specific`,
+`learner.merger.agent_specific` and the new `inference.default.
+agent_specific: {}` are open namespaces; a spec's `cli`, `model` and
+`effort` must be non-empty strings when set, a list or `false` refused
+rather than read as unset. `ConfigError`'s docstring is narrowed to what
+the messages carry: the key and what is allowed, the file from the
+resolver; a build has one override file, so the key locates the line.
+
+**The orchestrator validates its config at construction, as the facade
+and the doctor do.** A benchmark runner constructs it directly. And the
+RelBench runner threads the bank serving as the engine's override (as the
+facade does), not as a key of its runtime file, which the resolver
+refuses.
+
+**The engine's own sessions: one record each, only their own servers.**
+The engine's inference sessions on Claude set `strict_mcp_config`, as
+every build session does; the session records are numbered under the
+staging lock, so parallel lanes minting their commit messages take
+distinct records.
+
+**The preflight skips the ideation role's row under an ensemble.** The
+members' sessions replace the role's own, so its host is not asked for.
+
+**The budget's floors are sourced from the packaged config** at import
+(`PACKAGED_BUDGET`); the dataclass defaults are no longer literals that
+could drift from `budget.min_iteration_seconds`.
+
+**The admission's finishing span is said, not changed.** The round's
+duration counts its finishing, which the reserve also holds back; the
+admission errs early by about one finishing span, never late. The page
+says so; the owner may want the round measured to its last lane's
+implementation instead.
+
+**The replanner's guidance is staged for the planner's own host.** The
+one staging call that still named `claude_code` follows
+`ideation.lens_planner.cli`, so a Codex planner reads Codex's guidance
+and no Claude layout is written into the ideation worktree.
+
 **The engine recorder is wired by the strategy, at the workspace's
 birth.** The earlier decision wired it in the orchestrator after the
 strategy existed, which left the strategy constructor's own inference
