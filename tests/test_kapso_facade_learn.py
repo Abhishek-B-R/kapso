@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+import kapso.core.preflight as preflight
 from kapso.core.preflight import PreflightError
 from kapso.kapso import Kapso
 from kapso.learning.bank_remote import connect_bank
@@ -231,6 +232,10 @@ def test_learn_push_preflight_fires_before_any_pipeline_work(
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
     kapso = Kapso(config=config_path)
     calls = stub_chain(monkeypatch, kapso._bank_home)
+    monkeypatch.setattr(preflight.shutil, "which", lambda name, *args, **kwargs: f"/usr/bin/{name}")
+    monkeypatch.setattr(preflight, "claude_logged_in", lambda: True)
+    monkeypatch.setattr(preflight, "codex_authenticated", lambda: True)
+    monkeypatch.setenv("OPENAI_API_KEY", "set")
     subprocess.run(
         ["git", "--git-dir", str(kapso._bank_home), "remote", "add",
          "origin", str(tmp_path / "no-such-remote.git")],

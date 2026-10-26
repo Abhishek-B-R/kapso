@@ -161,6 +161,7 @@ def test_resume_and_reply_load_the_campaigns_dotenv(tmp_path, monkeypatch):
     monkeypatch.undo()
     loaded.clear()
     monkeypatch.setattr(kapso_module, "load_dotenv", lambda path: loaded.append(path))
+    monkeypatch.setattr(kapso_module, "run_preflight", lambda *args, **kwargs: None)
     _fake_orchestrator(workspace, monkeypatch)
     _facade(tmp_path / "registry.jsonl").build(output=str(workspace), resume=True)
     assert loaded == [str(dotenv)]
