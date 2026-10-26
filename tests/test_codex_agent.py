@@ -217,7 +217,9 @@ def test_hosted_mcp_server_becomes_a_url_override(tmp_path, fake_codex, monkeypa
     assert "mcp_servers.leeroopedia.tool_timeout_sec=600" in argv
     # exec never prompts: a read-only sandbox refused the call as "requires
     # approval" until the gate's tools were pre-approved (live 2026-10-02).
-    assert 'mcp_servers.leeroopedia.default_tools_approval_mode="auto"' in argv
+    # Pre-approved: `auto` leaves a hosted gate's call refused under the
+    # read-only sandbox an inference session runs in (WP4's proof run).
+    assert 'mcp_servers.leeroopedia.default_tools_approval_mode="approve"' in argv
     assert "mcp_servers.leeroopedia.command" not in argv
     assert "mcp_servers.leeroopedia.env" not in argv
 
