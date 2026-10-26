@@ -77,6 +77,11 @@ class DeploymentRecord:
         return int(self.data["number"])
 
     @property
+    def campaign(self) -> Path:
+        """The campaign the deployment belongs to: `.kapso/deployments/<n>` up."""
+        return self.directory.parents[2]
+
+    @property
     def state(self) -> str:
         return self.data["state"]
 

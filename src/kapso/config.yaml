@@ -108,6 +108,8 @@ gates:
 deployment:
   coding_agent: claude_code
   model: "claude-opus-5"
+  call_timeout: 300    # one run() call of the deployed software, seconds
+  script_timeout: 600  # one lifecycle script of its target (start, stop, health, logs), seconds
 
 # =============================================================================
 # Harness — the domain layer a build loads (docs/research/harness-design.md).
