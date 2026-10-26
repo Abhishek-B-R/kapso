@@ -137,10 +137,12 @@ campaign         the directory
 state            complete | partial
 branch           the branch the view is narrowed to, or null
 header           objective, harness, experience (one label per source), evaluator,
-                 budget {elapsed_min, total_min}, cost {usd, coverage, unpriced_runs},
+                 budget {elapsed_min, total_min},
+                 cost {usd, coverage (the hosts the figure covers: all, or claude_code when a Codex
+                       session ran), unpriced_runs (Claude Code runs killed before their result)},
                  stopped_reason, stop_detail, experiments, rejected,
                  delivered {branch, commit}, status {state, phase, error}
-attempts[]       node, parent, branch, idea, sessions[] {label, module, host, runs[]},
+attempts[]       node, parent, branch, idea, sessions[] {label, module, host, hooks_staged, runs[]},
                  evaluation {score, valid, provenance, integrity_error, output},
                  verification {verdict, summary, findings} | null,
                  judge {stop, valid, feedback}, cards {read, listed, load_bearing},

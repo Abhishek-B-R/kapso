@@ -20,7 +20,7 @@ node 0  generic_exp_0  from main  14.0 min  $2.814
   load-bearing  none
 
 LESSONS
-mine at a9ddad3d302d, measured by you: 0 cards served
+mine at a9ddad3d302d, measured by you: 0 cards served (none of the bank's cards is eligible under this campaign's coordinate)
   read by nobody
 
 VOIDED OR REJECTED
@@ -34,7 +34,7 @@ generic_exp_0 @ ff9d7bdd774b (base 19bf1ea5c7ab)
 files changed   PLAN.md, changes.log, kapso_evaluation/eval_profile.md, kapso_evaluation/result.json, output_data_generic_exp_0/eval.pid, output_data_generic_exp_0/oof.pid, output_data_generic_exp_0/oof_check.py, predict.py, predictions.csv
 verification    none (no harness verification)
 integrity       provided; intact
-hooks           none fired in its sessions
+hooks           none staged in its sessions (no hook could deny anything)
 failures        none in its sessions
 judge
   ## Verdict: 0.8460 — short of the 0.85 bar by 0.004. Do not consolidate.

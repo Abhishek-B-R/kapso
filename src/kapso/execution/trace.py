@@ -119,6 +119,7 @@ def read_sessions(campaign: Path) -> List[Dict[str, Any]]:
             "label": file.parent.relative_to(root).as_posix(),
             "module": record["module"],
             "host": record["host"],
+            "hooks_staged": list(record["hooks"]),
             "runs": list(record["runs"]),
         })
     return sessions
@@ -694,7 +695,12 @@ def _lesson_lines(lessons: List[Dict[str, Any]]) -> List[str]:
     for lesson in lessons:
         label = source_line(lesson)
         if lesson["kind"] == "bank":
-            served = f"{lesson['served']} cards served" if lesson["served"] is not None else "count not recorded"
+            if lesson["served"] is None:
+                served = "count not recorded"
+            elif lesson["served"] == 0:
+                served = "0 cards served (none of the bank's cards is eligible under this campaign's coordinate)"
+            else:
+                served = f"{lesson['served']} cards served"
             lines.append(f"{label}: {served}")
             if not lesson["read_by"]:
                 lines.append("  read by nobody")
@@ -756,7 +762,13 @@ def _delivered_lines(data: Dict[str, Any]) -> List[str]:
                     fired += 1
                     if hook["decision"] == DENY:
                         denials.append(f"{session['label']}: {hook['name']} ({hook['event']}){': ' + hook['reason'] if hook['reason'] else ''}")
-        hooks = f"{fired} fired in its sessions" + (f", {len(denials)} denied" if denials else ", none denied") if fired else "none fired in its sessions"
+        staged = any(session["hooks_staged"] for session in own["sessions"])
+        if fired:
+            hooks = f"{fired} fired in its sessions" + (f", {len(denials)} denied" if denials else ", none denied")
+        elif staged:
+            hooks = "none fired in its sessions"
+        else:
+            hooks = "none staged in its sessions (no hook could deny anything)"
         lines.append(_row("hooks", hooks))
         for denial in denials:
             lines.append(f"  {denial}")
