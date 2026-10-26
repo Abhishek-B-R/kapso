@@ -759,3 +759,249 @@ callers. Every finding and what the plan now says:
 | 38 | P3: what goes beyond the row; the two open asks | the row will name the transfers and the size; Q2.9 declined; the hosted approval checked in proof (f) |
 
 Built on these answers; the owner checks the decisions.
+
+## Proof run
+
+**The fresh machine, `kapso-fresh-wp4`** (`e2-standard-4`, Ubuntu 24.04,
+created 2026-10-26 13:52 UTC, deleted after 1.50 h, about $0.20;
+`scripts/redesign/runs/wp4/`, one `run-N.log` per command, the campaigns
+archived as `campaign-*.tgz`). The wheel built from the branch at
+`7726831c`, reinstalled from `83f7398f` and `8dc91cde` as the findings
+below were fixed (`wheel.sha256` lists the three); the two CLIs; the
+campaign token from the secret store; Codex logged in with the API key
+(`install.log`). The fixture: the trading and churn examples, the trading
+harness and a copy of it for the shell-write check, three override files
+(`trading-codex.yaml`: `host: codex`, `judge: {cli: claude_code}`;
+`trading-claude.yaml`: `host: claude_code`; `stale-modes.yaml`: a
+`default_mode` and a `modes` block), run-1 to run-3.
+
+**What the machine could not run.** The API key behind the machine's
+Codex login is over its quota (`Quota exceeded. Check your plan and
+billing details`, every Codex session; run-5 to run-7): the first
+launches of (a) and (b) died in their first session, and every later
+build on the machine has its engine session on Codex (`inference.default`,
+the repo memory) recorded failed under `OTHER SESSIONS` and `SESSIONS
+FAILED`. The Codex-host builds ran on the development box instead, from
+the branch's source, with the Claude judge on the same campaign token
+(`scratchpad: devbox_wp4.sh`, the archives `campaign-devbox-{a,b}.tgz`);
+the box's ChatGPT login answered a 429 at 14:00 and cleared by 14:12.
+
+**(d) The doctor, the config line, the stale file** (run-3, run-4,
+run-35). `kapso doctor build` on the packaged defaults prints `config:
+packaged defaults`, the pairing rows (`claude_code is asked for
+claude-opus-5`, `codex is asked for gpt-5.6-sol`), eight checks passed;
+`--json` carries `overrides: []` and the effective config (`host:
+claude_code`). With the override file: `config: packaged defaults +
+/home/ubuntu/fixture/configs/trading-codex.yaml (overrides:
+search_strategy.params.host, search_strategy.params.judge.cli)`;
+`--show-config` prints the 296-line effective config, `host: codex` under
+`params`. The stale file is refused by name at the doctor and at the
+launch, before any session and with no campaign directory made:
+`stale-modes.yaml: the top level: unknown keys default_mode, modes; the
+keys are budget, deployment, evaluation_maintainer, experience, gates,
+harness, hosts, inbox, inference, knowledge_search, learner, learning,
+models, preflight, retry, search_strategy (and `benchmark`, a benchmark
+runner's own)`. The first wheel printed it as a traceback, the resolver
+raising a plain `ValueError` the CLI's error hook treats as a bug; fixed
+on the branch (`15d0f07a`), and run-35 shows the one-line form.
+
+**The hooks, scripted** (run-10): the engine's `protect-harness` script,
+run as the hosts run it, denies a Claude Code `Write` under the harness
+directory and a Codex `apply_patch` whose header names a harness file by
+a relative path, each with the reason (`… is under the harness directory
+(/home/ubuntu/fixture/examples/harnesses/trading), which is read-only in
+every session: fix the environment or your own files, never the harness.
+A harness that needs a change is reported in your final response, for its
+author`), and passes a write elsewhere; the trading harness's `deny-web`
+denies `WebSearch` with its reason. In the builds the implementation
+sessions never tried the web, so the live hooks fired on `SessionStart`
+only; the setup session's `protect-prepared` denied one write under
+`prepared/` (`campaign-b.tgz`).
+
+**(f) The hosted gate on Codex** (WP2's open row; on the development
+box, `scratchpad: hosted_gate_check.sh`): a Codex session under
+`--sandbox read-only` with Leeroopedia's server mounted as the adapter
+mounts it. With `default_tools_approval_mode="auto"` the session listed
+the eight tools and its `search_knowledge` call failed: `MCP tool call
+requires approval, but approval policy is never`. With `"approve"` the
+same call completed with the knowledge base's answer. The adapter now
+writes `approve` for a hosted gate (`aace2f11`).
+
+**(c) The churn example on the packaged host, twelve minutes, three
+experiments** (run-9, run-14, run-15; `campaign-c12.tgz`; the fixture
+`churn-unjudged`). One round: ideation 6.2 min, implementation 3.5 min,
+the evaluation at 9.7 min (0.8454 on the provided evaluator), then the
+judge launched with the 106 s the budget left (above the 60 s floor) and
+cut at its deadline: the attempt `unjudged: the judge's session ended at
+the budget's deadline`, the stop `budget_exhausted (finishing_cut)`,
+nothing delivered. The trace's header: `budget 11.5 of 12.0 min, 1.5 min
+reserved for finishing (the launch's over the brief's 45.0 min)`; the
+attempt's line carries its commit (`generic_exp_0 @ 60cb08e3876d`). The
+same build at eighteen minutes (run-17, run-22 to run-24;
+`campaign-c.tgz`): the round took 16.8 min, the next was refused,
+`budget_exhausted (attempt_would_not_fit)` with the note `the remaining
+… would not cover an attempt (the last took 16.8 min)` in the status
+file and the log, the attempt delivered at 0.8447 (`generic_exp_0 @
+0c06e7466509`; first candidate 14.1 min, delivery 16.9 min).
+
+**(b) The trading example with the harness on the Claude host, forty
+minutes, two experiments** (run-8, run-25 to run-27; `campaign-b.tgz`).
+One attempt reached the goal: Sharpe 2.2382 (baseline 0.14, target 1.0)
+at minute 14.9, verified `valid` with no findings, judged `stop` at
+minute 30.3; `goal_achieved`, `generic_exp_0 @ 1a102cc2c8dc` delivered.
+The budget line: `30.3 of 40.0 min, 11.5 min reserved for finishing`, the
+reserve derived from the harness's ten verification minutes, the judge's
+floor and the delivery, unbounded as the plan had it; the verification
+session wrote its verdict and kept working until its ten-minute cap
+(`exit: timeout`, the verdict taken). The run entries carried no
+deadline (a finding, fixed). The same build with the harness copy and a
+shell write that never fired (run-28, run-31 to run-33;
+`campaign-b2.tgz`, twenty minutes): one attempt scored 2.1312, verified
+`valid`, the judge cut at the budget's deadline, `finishing_cut`, nothing
+delivered: a second record of the unjudged attempt, with a harness.
+
+**The hash check, live** (run-36, run-37, run-42, run-46 to run-48;
+`campaign-b4.tgz`). A ten-minute build on the harness copy (run-36)
+launched its setup session with a negative deadline (`exceeded its
+-90.04s deadline`): the unbounded derived reserve (11.5 min) exceeded the
+budget. Fixed on the branch (`8dc91cde`: the reserve bounded, the setup
+session refused by the launch predicate with the reason) and the wheel
+reinstalled. The build again at twenty minutes with a shell write to
+`instructions/guardrails.md` of the harness copy during ideation
+(`inject-harness.log`: `15:14:47 appended a line …`): the
+implementation's staging refused it and the build failed with the
+message, in the status file and the log: `the harness changed since
+launch: trading 0.1.0 (cedac9605e0f) recorded, now db9ee558a39b (changed
+instructions/guardrails.md); restore the recorded content (for instance
+`git checkout` in /home/ubuntu/fixture/examples/harnesses/trading-b2) or
+start a new campaign with a new --output`.
+
+**(a) The churn example with `--coding-agent codex` on the packaged
+config, forty-five minutes, three experiments**, on the development box
+(`campaign-devbox-a.tgz`; the fixture `churn-codex`). Every session on
+Codex with the host's model: `ideation/iter1/codex_gpt-5.6-sol`,
+`generic_exp_0`, `feedback/generic_exp_0`, and the engine's own
+`engine/repo_memory/1` (success, 1.8 min) under `OTHER SESSIONS`. One
+round of 25.8 min, the ideation session alone 17.2 min (3.2M input
+tokens), the candidate scored 0.849 against the 0.85 target, the next
+round refused (`attempt_would_not_fit`), the attempt delivered
+(`generic_exp_0 @ 9ee5956a1bf9`). S1's numbers on this run: first
+candidate 22.2 min, delivery 26.9 min.
+
+**(b) again with `host: codex` and the judge on Claude**, on the
+development box (`campaign-devbox-b.tgz`; the fixture `trading-void`).
+The setup, ideation, implementation and verification sessions on Codex,
+the judge on Claude Code (`feedback/generic_exp_0 claude_code`): the
+role-level `cli`. The attempt measured 2.4002 and was voided by the
+verifier for a file added under `kapso_evaluation/`; the judge ran to
+the end (`not valid, continue`), the next round was refused, nothing
+delivered. The reserve: 17.2 min of 40, derived and unbounded, the
+second instance of the finding above.
+
+**S4's readings.** Two campaigns' records, read by Codex (gpt-6-astra,
+xhigh) and Claude Code (opus-5) with the trace and the record alone, on
+one question, why the campaign stopped and whether the last attempt was
+finished (`scratchpad: s4_brief_wp4.md`); graded against the record in
+`scripts/redesign/runs/wp4/s4/{b,devbox-b}/grading.md`. No claim either
+reader made was wrong on either campaign. What they opened files for
+became findings: the trace prints a null `stop_detail` as nothing (so a
+reader cannot tell elided from null), gives durations and no wall clock,
+does not reconcile a verification `timeout` with its `valid` verdict,
+does not say where a derived reserve came from, hides the measured
+figure behind `no score` on a voided attempt, prints `delegates
+risk-reviewer stopped` without the reason, and keeps the admission
+sentence in the status file and the log; and the record was missing the
+campaign's first engine session (the repo-memory bootstrap) and the
+deadline each run was launched with, both fixed on the branch.
+
+**(e)** The four benchmark runners' smoke is `tests/test_benchmark_runners.py`,
+on the development box under the gate.
+
+**Semantic hooks.** S1 on (a): first candidate 22.2 min, delivery 26.9
+min, on Codex; on the Claude host the eighteen-minute churn build gave
+14.1 and 16.9. S4: the two readings above.
+
+## Findings for later packages
+
+Fixed on this branch during the proof run:
+
+- **A config refusal printed as a traceback.** The resolver raised a plain
+  `ValueError`, which the CLI's error hook treats as a bug; the refusal
+  was right and unreadable. `ConfigError`, one line (`15d0f07a`).
+- **WP2's open row: `auto` does not pre-approve a hosted gate on Codex.**
+  The adapter writes `approve` for a hosted gate (`aace2f11`).
+- **The record did not carry the deadline a run was launched with.** One
+  key on the run entry, `deadline_seconds` (`83f7398f`).
+- **The derived reserve had no bound and the setup session no launch
+  predicate.** A ten-minute budget with a verifying harness derived 11.5
+  minutes and launched the setup session with a negative deadline; the
+  forty-minute builds kept 11.5 and 17.2 minutes out of the search. Both
+  reserves take the quarter bound; the setup session is refused with the
+  reason when its room is under the floor (`8dc91cde`).
+- **The campaign's first engine session was unrecorded.** The repo-memory
+  bootstrap runs in the strategy's constructor, before the orchestrator
+  wired the recorder; the strategy wires it at the workspace's birth
+  (`44e7fa6b`).
+- **The judge's phase stayed `verification`** in the status file when a
+  verification ran before it (`44e7fa6b`).
+
+For the user's decision, or a later package:
+
+- **An unjudged attempt with a score is not delivered.** Build (c) at
+  twelve minutes: a candidate scored 0.8454 at minute 9.7, the judge cut
+  at its deadline, `delivered: none succeeded`; build (b2): 2.1312,
+  verified valid, the same end. By this package's rule (`unjudged` is
+  never delivered, as `unverified` is not) a short budget that produced a
+  scored candidate hands over nothing. A design question for the user:
+  deliver the scored attempt with its `unjudged` flag, or keep the rule
+  and have the summary say a scored candidate exists on its branch.
+- **The verifier keeps working after its verdict.** Twice the verification
+  session wrote `verdict.json` and ran on until its ten-minute cap
+  (`exit: timeout`, 25–29 turns, $2.5). A session whose output file exists
+  could be ended, or its page could say to stop (WP2's page, or the
+  adapter).
+- **What the trace should carry, from S4** (WP6's renderer): a voided
+  attempt's measured figure beside the void (`no score` hides 2.4002); the
+  admission sentence on the `stopped` line; a word for a null
+  `stop_detail`; the reserve's provenance (`derived` or `set`) on the
+  budget line; a delegate's stop reason; wall-clock times, or the sessions'
+  order; `cost $0.000 (Claude Code sessions only …)` on a campaign with no
+  Claude session; `lens_planning` in the status file's phase list without
+  a session.
+- **Single-member Codex ideation is slow.** The churn build's ideation
+  session on Codex took 17.2 min and 3.2M input tokens for one candidate,
+  against 6–9 min on Claude; S1's numbers on Codex carry it. WP8's
+  benchmark reproduction, or the ideation prompt for a single member.
+- **The machine's Codex key is over its quota.** Every Codex session on the
+  fresh machine failed; the Codex-host builds ran on the development box.
+  The environment's, not the engine's; the record showed it by design.
+
+## Built
+
+Branch `wp4-config` off `redesign` at `55a92430`, the commits below, each
+with its tests and the gate green at every one (the last gate: 1,705
+passed, 27 skipped, 2 deselected; the docs coverage check 43 commands and
+methods, the snippet check 6 quoted files, `mint validate` passing). The
+branch: 349 files, +18,648 −5,738.
+
+| Commit | What landed |
+|---|---|
+| `b2939bec`, `f1513509`, `3ccd51d8` | the sub-plan, its planned decisions, its revision after the cross-model review |
+| `1d630a17` | the config as two layers: the resolver with the packaged file as the schema, the hosts table and the three roles, `--coding-agent` as the host, the preflight's pairing, the strategy's known parameters, the benchmark override files, the fixtures regenerated (change 1) |
+| `d0708cb1`, `41741786` | the design axes are the lens planner's (change 2) |
+| `f0572115` | every build session's config through one precedence; `agents.yaml` without model defaults (change 3) |
+| `59201c44` | the brief is the problem text; the launch record in the handle's words; the evaluation contract in three forms (change 4) |
+| `748ac313`, `f6127849` | the web as the engine's boundary per role, and the trading harness's `deny-web` hook (change 6) |
+| `e7c646d6`, `2ad2867e` | the budget's end: search and finishing rooms, the obligations, the derived reserve, admission from the last round, the two stop details, the unjudged attempt, the attempt's commit (change 7) |
+| `cf6d9530`, `37a40138` | the judge's retry resumes its session by reason; the resumed session's cost; the cards parser (change 8) |
+| `da8f75a2`, `a738820c` | the engine's own sessions in the record; the reconstruction staged and reading the branch; the initialisation session deleted (change 9) |
+| `0a253651` | the harness directory protected: the engine's `protect-harness` hook first in every staged session; the changed harness refused by file name (change 10) |
+| `a003953b` | the benchmark runners' paths, pinned to the former modes (change 11) |
+| `7726831c` | the pages, the READMEs and the skills; the retired-name check extended; the doctor's config line and `--show-config` tested (change 12) |
+| `15d0f07a` | the proof run's first finding: a config refusal is the engine's own error |
+| `aace2f11` | WP2's open row closed: a hosted gate's tools pre-approved on Codex; the fixture generator keeps written runs |
+| `83f7398f` | a run entry carries the deadline it was launched with |
+| `8dc91cde` | the derived reserve bounded; the setup session follows the launch predicate |
+| `44e7fa6b` | the engine recorder wired at the workspace's birth; the judge's phase after a verification |
+| `a7a96478` | three trace fixtures from the proof run, with their tests |
+| the last commits | the proof run's record: this section, the findings, the Built table; the master's row |
