@@ -44,7 +44,7 @@ from kapso.execution.inbox import (
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.gated_mcp.presets import get_mcp_config, knowledge_tools_block
 from kapso.harness.load import HarnessError
-from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE
+from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE, engine_session_record
 from kapso.harness.task_statement import prepared_names, setup_statement_path, write_task_statement
 from kapso.core.cli_inference import CliInference
 from kapso.core.config import load_config
@@ -363,6 +363,10 @@ class OrchestratorAgent:
             start_from_checkpoint=self.resume,
         )
         self.search_strategy.before_candidate_evaluation = self._admit_candidate
+        # The engine's own inference sessions are recorded with the
+        # campaign's, under engine/<role>/<n>.
+        records = Path(self.search_strategy.workspace_dir) / ".kapso" / "sessions"
+        self.llm.record_session = lambda role, host, session_dir: engine_session_record(records, role, host, session_dir)
 
         if self._resume_checkpoint is not None:
             try:

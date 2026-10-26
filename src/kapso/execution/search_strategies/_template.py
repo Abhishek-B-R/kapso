@@ -76,20 +76,6 @@ class MyStrategy(SearchStrategy):
         # Optional: Print initialization info
         print(f"[MyStrategy] Initialized with param1={self.param1}, param2={self.param2}")
         
-        # Optional: Initialize workspace with empty main file
-        # self._initialize_workspace()
-    
-    def _initialize_workspace(self) -> None:
-        """Optional: Create initial files in workspace."""
-        session = self.workspace.create_experiment_session(
-            branch_name=self.workspace.get_current_branch()
-        )
-        session.generate_code(
-            f"<problem>\n{self.problem_handler.get_problem_context()}\n</problem>\n\n"
-            + "Create an empty main.py file with a main() function placeholder."
-        )
-        self.workspace.finalize_session(session)
-        self.workspace.repo.git.stash()
 
     # =========================================================================
     # STEP 3: Implement the main search loop

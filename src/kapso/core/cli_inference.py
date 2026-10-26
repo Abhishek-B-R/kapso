@@ -17,7 +17,7 @@
 
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from kapso.core.config import deep_merge, load_config
 from kapso.core.llm import LLMBackend
@@ -54,6 +54,12 @@ class CliInference:
         self._backend = LLMBackend(models=models, retry_policy=retry_policy)
         self._agent_factory = agent_factory or CodingAgentFactory
         self._cli_cost = 0.0
+        # The engine's own sessions are recorded with the campaign's: the
+        # orchestrator sets this once the workspace exists (the staging's
+        # `engine_session_record` over the campaign's records directory),
+        # and it gives each session the record keys its adapter writes
+        # into. None records nothing (an inference with no campaign).
+        self.record_session: Optional[Callable[[Optional[str], str, Path], Dict[str, str]]] = None
 
     # ------------------------------------------------------------ roles
 
@@ -94,15 +100,17 @@ class CliInference:
             agent_specific.setdefault(
                 "auth_mode", spec.get("auth_mode", "oauth")
             )
-        agent = self._agent_factory.create(
-            CodingAgentConfig(
-                agent_type=spec["cli"],
-                model=spec["model"],
-                debug_model=spec["model"],
-                agent_specific=agent_specific,
-            )
-        )
         with tempfile.TemporaryDirectory(prefix="kapso-inference-") as scratch:
+            if self.record_session is not None:
+                agent_specific.update(self.record_session(role, spec["cli"], Path(scratch)))
+            agent = self._agent_factory.create(
+                CodingAgentConfig(
+                    agent_type=spec["cli"],
+                    model=spec["model"],
+                    debug_model=spec["model"],
+                    agent_specific=agent_specific,
+                )
+            )
             try:
                 agent.initialize(scratch)
                 result = agent.generate_code(

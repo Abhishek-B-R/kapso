@@ -80,11 +80,17 @@ def test_fallback_prompt_renders_and_tag_is_parsed(tmp_path, monkeypatch):
         workspace_dir=str(tmp_path),
         solution="the plan",
         stream_artifact_path=str(stream),
+        branch_name="generic_exp_3",
+        parent_branch_name="main",
+        staged=None,
     )
 
     assert text == "reconstructed: session died mid-eval"
     assert str(stream) in captured["prompt"]
     assert "the plan" in captured["prompt"]
+    # The prompt reads the branch before it concludes what was lost.
+    assert "git log --oneline main..generic_exp_3" in captured["prompt"]
+    assert "git diff --stat main..generic_exp_3" in captured["prompt"]
     assert captured["config"].agent_specific["env_strip"] == [
         "OPENAI_API_KEY"
     ]
@@ -124,6 +130,9 @@ def test_fallback_returns_empty_on_session_failure(monkeypatch, tmp_path):
         workspace_dir=str(tmp_path),
         solution="s",
         stream_artifact_path=str(tmp_path / "absent.jsonl"),
+        branch_name="b",
+        parent_branch_name="main",
+        staged=None,
     )
     assert text == ""
 

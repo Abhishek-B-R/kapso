@@ -117,6 +117,7 @@ def test_the_judge_and_the_reconstruction_run_on_their_roles_host(host, captured
     difficulties_module.generate_technical_difficulties(
         role(host), env_strip=["OPENAI_API_KEY"], timeout_seconds=60, workspace_dir=str(tmp_path),
         solution="s", stream_artifact_path=str(tmp_path / "absent.jsonl"),
+        branch_name="b", parent_branch_name="main", staged=None,
     )
     config = captured[-1]
     assert config.agent_type == host and config.model == HOSTS[host]["model"]

@@ -416,22 +416,6 @@ class GenericSearch(SearchStrategy):
         print(f"  - experiment_history_path: {self.experiment_history_path}")
         print(f"  - feedback_generator: {'configured' if self.feedback_generator else 'not configured'}")
         
-        # Initialize workspace with empty main file only for empty workspaces.
-        # If the workspace is seeded from an existing repo, we must not overwrite it.
-        if workspace_dir is None and not self.workspace.is_seeded:
-            self._initialize_workspace()
-    
-    def _initialize_workspace(self) -> None:
-        """Create initial empty main file."""
-        session = self.workspace.create_experiment_session(
-            branch_name=self.workspace.get_current_branch()
-        )
-        session.generate_code(
-            f"<problem>\n{self.problem_handler.get_problem_context()}\n</problem>\n\n"
-            + "Create an empty main with a main() function placeholder. No comments."
-        )
-        self.workspace.finalize_session(session)
-        self.workspace.repo.git.stash()
 
     def run(self, context: Any, budget_progress: float = 0.0) -> SearchNode:
         """
@@ -1461,6 +1445,12 @@ class GenericSearch(SearchStrategy):
             node.technical_difficulties = f"(the reconstruction was not launched: {not_launched})"
             self._note_finishing_cut(f"the reconstruction for node {node.node_id} was not launched: {not_launched}")
             return
+        # Staged like every session, on the implementation role's host, in
+        # the campaign (the branch is read there): its record is
+        # `difficulties/<branch>`.
+        staged = self.stage_harness_for(
+            "implementation", self.workspace_dir, f"difficulties/{node.branch_name}", self.implementation_role.cli,
+        )
         ensure_technical_difficulties(
             node,
             implementation_role=self.implementation_role,
@@ -1468,6 +1458,7 @@ class GenericSearch(SearchStrategy):
             deadline_seconds=deadline,
             workspace_dir=self.workspace_dir,
             session_stream_path=self._session_stream_path,
+            staged=staged,
         )
 
     def _await_registered_evaluation(self, output_text: str, session: str):

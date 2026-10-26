@@ -452,11 +452,12 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
         """
         mcp_config = {"mcpServers": self._mcp_servers}
         
-        # Create temp file that persists until cleanup()
-        # Use workspace-based path for easier debugging
-        # IMPORTANT: Use absolute path to avoid path duplication when Claude Code
-        # runs with cwd=workspace and looks for the config relative to that directory
-        config_dir = Path(self.workspace).resolve() / ".claude_mcp"
+        # The file lives with the session's record when it has one, so
+        # concurrent sessions in one directory (ensemble members) each keep
+        # their own; a session without a record keeps it in its workspace.
+        # Absolute, so the CLI (cwd=workspace) finds it however it looks.
+        base = Path(self._session_record_path).parent if self._session_record_path else Path(self.workspace).resolve()
+        config_dir = base / ".claude_mcp"
         config_dir.mkdir(exist_ok=True)
         config_path = config_dir / "mcp_config.json"
         

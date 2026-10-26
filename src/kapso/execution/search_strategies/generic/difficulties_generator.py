@@ -13,10 +13,12 @@ or outcome-based.
 
 import os
 import re
+from typing import Optional
 
 from kapso.core.prompt_loader import load_prompt, render_prompt
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.core.roles import SessionRole
+from kapso.harness.staging import StagedHarness
 
 _TAG_PATTERN = re.compile(
     r"<technical_difficulties>\s*(.*?)\s*</technical_difficulties>",
@@ -31,8 +33,14 @@ def generate_technical_difficulties(
     workspace_dir: str,
     solution: str,
     stream_artifact_path: str,
+    branch_name: str,
+    parent_branch_name: str,
+    staged: Optional[StagedHarness],
 ) -> str:
-    """Reconstruct the technical-difficulties report for one session.
+    """Reconstruct the technical-difficulties report for one session, on
+    the implementation role's host, staged and recorded like every session
+    (`difficulties/<branch>`); its prompt reads the branch before it
+    concludes what was lost.
 
     Returns the report text ("" if the fallback session itself failed —
     the node then carries an empty field, which downstream extraction
@@ -45,6 +53,8 @@ def generate_technical_difficulties(
         template,
         {
             "solution": solution,
+            "branch": branch_name,
+            "parent_branch": parent_branch_name,
             "stream_artifact_path": (
                 stream_artifact_path
                 if os.path.isfile(stream_artifact_path)
@@ -60,7 +70,7 @@ def generate_technical_difficulties(
         "timeout": timeout_seconds,
         "streaming": True,
         "planning_mode": False,
-    })
+    }, staged)
     agent = CodingAgentFactory.create(config)
     agent.initialize(workspace_dir)
     result = agent.generate_code(prompt)

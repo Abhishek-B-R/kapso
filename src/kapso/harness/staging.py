@@ -115,7 +115,7 @@ class StagedHarness:
         return args
 
 
-def _record_without_harness(
+def record_without_harness(
     module: str, host: str, session_dir: Path, session_id: str, records_dir: Path,
 ) -> StagedHarness:
     """What a session gets without a harness: nothing staged, and the
@@ -148,6 +148,21 @@ def _record_without_harness(
     return staged
 
 
+# The engine's own inference sessions (the repo-memory bootstrap, the
+# commit messages) are recorded under `engine/<role>/<n>/`.
+ENGINE_SESSIONS = "engine"
+
+
+def engine_session_record(records_dir: Path, role: Optional[str], host: str, session_dir: Path) -> Dict[str, str]:
+    """The record of one of the engine's own inference sessions,
+    `engine/<role>/<n>` numbered in order under the campaign's records:
+    the keys the adapter writes its runs and stream into."""
+    label = f"{ENGINE_SESSIONS}/{role or 'default'}"
+    earlier = records_dir / label
+    number = 1 + (sum(1 for child in earlier.iterdir() if child.is_dir()) if earlier.is_dir() else 0)
+    return dict(record_without_harness("engine", host, session_dir, f"{label}/{number}", records_dir).agent_specific)
+
+
 def existing_runs(record_path: Path) -> list:
     """The run entries a record at this path already holds: a session
     staged again under the same label (a phase re-run after a crash or a
@@ -177,7 +192,7 @@ def stage_harness(
     campaign_dir = Path(campaign_dir)
     records = Path(records_dir) if records_dir is not None else campaign_dir / SESSIONS_DIR
     if harness is None:
-        return _record_without_harness(module, host, session_dir, session_id, records)
+        return record_without_harness(module, host, session_dir, session_id, records)
     if module not in MODULES:
         raise ValueError(f"unknown module {module!r}; the modules are {', '.join(MODULES)}")
     if host not in _SKILLS_DIR:

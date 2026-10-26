@@ -634,6 +634,7 @@ def ensure_technical_difficulties(
     deadline_seconds: Optional[float],
     workspace_dir: str,
     session_stream_path: Callable[[str], str],
+    staged: StagedHarness,
 ) -> None:
     """Run the fallback reconstruction when the implementor's
     technical_difficulties tag is missing (crashed or deadline-killed
@@ -651,4 +652,7 @@ def ensure_technical_difficulties(
         workspace_dir=node.workspace_dir or workspace_dir,
         solution=node.solution,
         stream_artifact_path=session_stream_path(node.branch_name),
+        branch_name=node.branch_name,
+        parent_branch_name=node.parent_branch_name,
+        staged=staged,
     )

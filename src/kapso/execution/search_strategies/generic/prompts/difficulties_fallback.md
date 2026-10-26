@@ -10,6 +10,10 @@ deadline). Reconstruct that report from the evidence.
 
 ## Evidence
 
+- The branch `{{branch}}` from `{{parent_branch}}`: run
+  `git log --oneline {{parent_branch}}..{{branch}}` and
+  `git diff --stat {{parent_branch}}..{{branch}}` FIRST. What the session
+  committed is what it built, whatever the stream says about it.
 - Session process record (raw stream-json events; thinking, tool calls,
   errors): `{{stream_artifact_path}}`
 - The workspace you are in: training logs, PLAN.md, changes.log, and

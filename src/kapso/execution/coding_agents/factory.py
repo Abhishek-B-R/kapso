@@ -204,8 +204,10 @@ class CodingAgentFactory:
         entry's settings, then the role's effort and the session's own
         keys, then the staging's merge (the harness's hooks, servers and
         environment; ``staged`` is the session's StagedHarness, None
-        without one). Every build session is constructed here."""
-        settings: Dict[str, Any] = {**role.settings, "effort": role.effort, **own}
+        without one). Every build session is constructed here, and on
+        Claude Code mounts only the servers the engine stages
+        (`strict_mcp_config`), never the person's own."""
+        settings: Dict[str, Any] = {**role.settings, "effort": role.effort, "strict_mcp_config": True, **own}
         if staged is not None:
             settings = staged.merged_agent_specific(settings)
         return cls.build_config(role.cli, model=role.model, agent_specific=settings)
