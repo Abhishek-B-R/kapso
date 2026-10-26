@@ -265,10 +265,12 @@ kapso build --experience mine,leeroopedia,org-repo --brief kapso-brief.md ...
 Deploy runs one session that adapts a copy of the solution to a target,
 deploys it with the target's scripts, proves one call, and returns when the
 engine has checked the result. It takes minutes (up to thirty, the
-session's deadline): run it in the foreground with a tool timeout above
-that and read its summary; never background it and poll. The record is
-written when the deploy starts, so `kapso deploy <campaign> --status`
-has something to read even when a host call is cut.
+session's deadline). Run it in the foreground when your tool's timeout
+allows; when it does not (Claude Code's Bash tool stops at ten minutes),
+run it once in the background writing to a log and wait for the summary
+to appear there, never a second time. The record is written when the
+deploy starts, so `kapso deploy <campaign> --status` says what is
+deploying even while the call runs or after a host call is cut.
 
 ```bash
 kapso doctor deploy
