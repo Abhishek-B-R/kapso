@@ -42,14 +42,18 @@ override file a person writes; the configuration page shows one.
 Alternative rejected: a shipped `minimal.yaml`, a second shape to keep in
 step with the first.
 
-**The web knobs go on both roles; a harness that forbids the web lists a
-hook.** `implementation_web` (the row's own retirement) and the ideation
-`web_search` knob are the same domain rule (RelBench's temporal leakage,
-IOAI's leakage-safe harvest), and a hook is per module, which the knobs
-were not. Alternative rejected: a host-level `web` capability in `hosts`,
-not expressible per module. Whether Codex's hooks see its native web
-search is a host fact the proof run settles; the hook catches
-`curl`/`wget` on both hosts regardless.
+**The web stays a switch per role, the engine's boundary; a harness that
+forbids the web lists a hook, the domain rule.** `ideation.web` and
+`implementation.web` replace `web_search` and `implementation_web` with
+one name and one meaning on both hosts: off, the two native tools leave
+Claude Code's allow-list and go on `--disallowedTools`, and Codex is not
+given `--search`; the selector and the lens planner follow ideation's.
+The master's row said `implementation_web` becomes a hook; the review
+showed the knob is the only binding denial Codex has (a hook may not see
+its native search) and the only one a config without a harness has at
+all, so the switch is kept as the engine's permission boundary and the
+hook is the per-module domain rule a harness adds. The first draft
+deleted both knobs; revised after the review.
 
 **The axes are the planner's output.** The lens planner names the design
 axes it derives from the goal and the ideation page in an `<axes>` tag;
@@ -60,28 +64,44 @@ axes in `lens_planning.py` were domain prose in engine code. Alternative
 rejected: an axes list in the harness's ideation page that the engine
 parses, an engine-facing field in a page.
 
-**The task statement is written for every build.** One problem text for
-every session, harness or not; the generic handler renders the brief and
-the two reference lines and nothing else, and the evaluation contract
-lives in the implementation prompt once. Alternative rejected: keeping
-the handler's prose for builds without a harness, two renderings of the
+**The problem text is the brief; the evaluation contract is rendered once,
+in the implementation prompt.** The generic handler renders the brief and
+the two reference lines (where the evaluation and the data live) and
+nothing else; the implementation prompt carries the contract in three
+forms (a provided suite: run it, never edit it; a registered one: the
+maintainer's; none: build your own). The first draft wrote the task
+statement for every build; the review showed that without a harness
+nothing mounts or names the file, so it stays a harness build's file.
+Alternative rejected: keeping the handler's prose, two renderings of the
 same facts that drifted (the handler said `result.json` may be created,
-the prompt said where to write it).
+the prompt said where to write it, and the provided case got the
+build-your-own text).
 
-**The finishing sessions spend the reserve; no session starts on the
-floor; admission takes the last iteration's duration.** Verification and
-the judge are clamped against the whole remainder, a session whose clamp
-is the floor is not launched and the attempt says what is missing, and an
-iteration is admitted only when the searchable remainder covers the
-larger of the static floor and the previous iteration's own duration.
-Why: every campaign of WP2's, WP3's and WP6's proof runs that reached its
+**The budget's end: finishing obligations protected, a launch predicate,
+admission from the last round, the reserve derived.** A finishing session
+(the candidate's evaluation run, verification, the judge, the
+reconstruction) is clamped against the whole remainder less the
+obligations after it, each at its floor, the delivery's protected slice
+kept; a session is launched only when its room is at least the floor,
+and a deadline is never raised to the floor; a judge or verification the
+budget cuts leaves the attempt `unjudged` or `unverified` with the
+reason, its score kept, never delivered; an ordinary round is admitted
+when the searchable remainder covers the larger of the static floor and
+the last completed round's duration (the insured campaign keeps its own
+floor, the fidelity policy's reserved attempt its own gate); the reserve
+is derived from the obligations when `budget.reserve_minutes` is unset
+(the harness's verification minutes, the judge's observed duration, the
+delivery's slice) and bounded by a quarter of the budget when set. Why:
+every campaign of WP2's, WP3's and WP6's proof runs that reached its
 budget ended on a verification cut at its clamped deadline and a judge on
-the sixty-second floor, rejecting a scored attempt. Alternatives
-rejected: raising `min_iteration_seconds` (one number for every task),
-per-phase fractions (the IOAI runner's recorded lesson: a phase
-sub-budget starved ideation), a reserve derived from the harness's
-minutes (the judge has none). The default reserve is ten minutes, judged
-on the proof run's numbers.
+the sixty-second floor, rejecting a scored attempt. The first draft gave
+finishing sessions the whole remainder, floored the clamp and shipped a
+ten-minute reserve; the review showed the judge starving after
+verification, a reserve refusing short builds, the insured floor lost
+and the fidelity slice unprotected. Alternatives rejected: raising
+`min_iteration_seconds` (one number for every task), per-phase fractions
+(the IOAI runner's recorded lesson: a phase sub-budget starved ideation),
+marking a cut attempt invalid (the loss WP6 found, by another route).
 
 **The judge's retry resumes its session, records its reason, and does not
 follow a deadline.** Why: both S4 readers of WP6's proof run had to dig
@@ -94,9 +114,12 @@ the tamper.** Moving the contract's output would break every evaluator
 written so far; the integrity verifier already rejects added source and
 executables, and what was missing was the rule stated in the pages.
 
-**The maintainer is off by default.** It runs its own calibration and
-registration sessions per build, and most builds bring an evaluator or a
-harness verification; the block is `null` and one block turns it on.
+**The maintainer is off by default, its knobs in the config.** It runs
+its own calibration and registration sessions per build, and most builds
+bring an evaluator or a harness verification; the packaged block carries
+`enabled: false` and every knob the orchestrator held as a literal
+(Rule 1; the first draft shipped `null` and left seven literals in code),
+so a person turns it on with one key and sees what they are tuning.
 
 **No lighter ideation for small briefs here.** An effort change is a
 quality change nobody has measured; S1's time-to-first-candidate is
@@ -110,9 +133,15 @@ short campaign stop honestly rather than deliver a half-built attempt.
 literal to move with the block). One word per dimension across the brief,
 the flags, the API and the config.
 
-**`agents.yaml` loses its model defaults; `build_config` requires a
-model.** The `claude-opus-4-5` there duplicated the config's model and had
-gone stale (Rule 1); the hosts table is the one home.
+**`agents.yaml` loses its model defaults and gains `serves` and
+`settings`; `build_config` requires a model.** The `default_model` lines
+(`claude-opus-4-5` for Claude Code) duplicated the config's model and had
+gone stale (Rule 1); the hosts table is the one home. `serves` names the
+model family an adapter can be asked for (`claude`, `openai`, `any`), so
+the preflight's pairing row is the adapter's fact and the OSS and Vertex
+adapters, which run Claude Code with other models, are not refused;
+`settings` names the keys a host entry may set for that adapter, so a
+misspelled adapter setting is refused rather than ignored.
 
 **The engine's `protect-harness` hook rides every staged session.** The
 harness directory is the author's: WP3's proof lost a setup session's
