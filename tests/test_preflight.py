@@ -654,6 +654,7 @@ def test_build_refuses_inference_agent_in_config(
     assert "inference.roles" in failure.fix
 
 
+@pytest.mark.preflight
 def test_a_host_the_table_does_not_name_fails_before_workspace(
     packaged, full_machine, tmp_path, monkeypatch,
 ):

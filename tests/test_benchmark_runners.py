@@ -65,6 +65,7 @@ def no_signal(monkeypatch, runner):
 
 
 def test_mle_runner_enters_the_campaign_with_the_former_mode(entered, monkeypatch):
+    pytest.importorskip("mlebench")
     from benchmarks.mle import runner
 
     seen = {}
@@ -94,6 +95,7 @@ def test_mle_runner_enters_the_campaign_with_the_former_mode(entered, monkeypatc
 
 
 def test_ale_runner_enters_the_campaign_with_the_former_mode(entered, monkeypatch):
+    pytest.importorskip("ale_bench")
     from benchmarks.ale import runner
 
     monkeypatch.setattr(runner, "AleBench", lambda problem_id: FakeBenchmarkHandler())
@@ -111,6 +113,7 @@ def test_ale_runner_enters_the_campaign_with_the_former_mode(entered, monkeypatc
 
 
 def test_relbench_runner_runs_on_the_runtime_file_it_writes(entered, monkeypatch, tmp_path):
+    pytest.importorskip("relbench")
     import benchmarks.relbench.handler as handler_module
     from benchmarks.relbench import runner
 

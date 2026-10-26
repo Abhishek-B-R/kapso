@@ -98,6 +98,7 @@ def test_a_program_every_module_runs_refuses_with_its_fix(tmp_path, monkeypatch)
     assert "python3 (command, for the SessionStart hook): install python3 and put it on PATH" in str(caught.value)
 
 
+@pytest.mark.preflight
 def test_a_host_the_table_does_not_name_is_refused_before_anything_starts(tmp_path, monkeypatch):
     """A `--coding-agent` outside the config's hosts table is refused by
     name before the harness stages anything; every host the table may

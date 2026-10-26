@@ -219,6 +219,7 @@ def test_learn_auto_inits_missing_bank_then_fails_on_bad_source(tmp_path):
     assert kapso._bank_head()  # skeleton commit landed
 
 
+@pytest.mark.preflight
 def test_learn_push_preflight_fires_before_any_pipeline_work(
     tmp_path, monkeypatch
 ):
