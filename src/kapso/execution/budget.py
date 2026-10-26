@@ -19,6 +19,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
+from kapso.core.config import load_config
+
 
 _BUDGET_BLOCK_KEYS = {
     # The experiment cap is the facade's (a solve() argument), the three
@@ -46,6 +48,8 @@ _BUDGET_BLOCK_KEYS = {
 # measurement is the final checkout and the records, in seconds; and the
 # two stop details a budget's end records beside time and cost.
 RESERVE_FRACTION_BOUND = 0.25
+# The packaged budget block: the one home of the floors' defaults.
+PACKAGED_BUDGET = load_config()["budget"]
 DELIVERY_SECONDS = 30.0
 ATTEMPT_WOULD_NOT_FIT = "attempt_would_not_fit"
 FINISHING_CUT = "finishing_cut"
@@ -85,15 +89,17 @@ class BudgetSpec:
     # the judge's observed duration, the delivery's slice); a set value is
     # bounded by RESERVE_FRACTION_BOUND of the budget.
     finalization_reserve_seconds: Optional[float] = None
-    # Enforcement floors. Provisional values: below adapter startup plus one
-    # tool round-trip an agent call cannot do useful work; revisit once
-    # phase_telemetry provides measured call-duration distributions.
-    min_iteration_seconds: float = 60.0
+    # Enforcement floors, the packaged config's (`budget.min_iteration_seconds`,
+    # `budget.min_agent_timeout_seconds`): below adapter startup plus one
+    # tool round-trip an agent call cannot do useful work. A live campaign
+    # resolves them from its own config; the defaults serve direct
+    # construction.
+    min_iteration_seconds: float = PACKAGED_BUDGET["min_iteration_seconds"]
     # Insured floor: applied instead of min_iteration_seconds while the
     # problem handler reports a confirmed deliverable on disk. None keeps
     # the single floor for every state.
     min_iteration_seconds_insured: Optional[float] = None
-    min_agent_timeout_seconds: float = 60.0
+    min_agent_timeout_seconds: float = PACKAGED_BUDGET["min_agent_timeout_seconds"]
 
     def __post_init__(self) -> None:
         if self.time_budget_seconds is not None:
@@ -310,9 +316,9 @@ class BudgetSnapshot:
     time_budget_seconds: Optional[float] = None
     cost_budget_usd: Optional[float] = None
     finalization_reserve_seconds: float = 0.0
-    # Sourced from BudgetSpec at construction; the default only serves
-    # direct construction in tests.
-    min_agent_timeout_seconds: float = 60.0
+    # Sourced from BudgetSpec at construction; the default (the packaged
+    # config's) only serves direct construction in tests.
+    min_agent_timeout_seconds: float = PACKAGED_BUDGET["min_agent_timeout_seconds"]
     # The delivery's protected slice this round: the fidelity measurement
     # when a maintainer measures the delivered artifact, the checkout else.
     delivery_seconds: float = DELIVERY_SECONDS

@@ -114,7 +114,10 @@ is refused at launch with the reason.
 the larger of `budget.min_iteration_seconds` and the previous round's own
 duration, measured from its ideation's start to its last lane's judgment
 and recorded on the checkpoint, so a resume reasons from the history it
-restored. Before any round, the floor alone. A campaign whose handler
+restored. The duration counts the round's finishing (its verification and
+its judge), which the reserve holds back as well, so the admission errs
+early by about one finishing span rather than late. Before any round, the
+floor alone. A campaign whose handler
 reports a deliverable already banked is insured: it uses
 `min_iteration_seconds_insured` alone, the handler vouching for its
 endgame.
