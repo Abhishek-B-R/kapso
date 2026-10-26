@@ -1,5 +1,4 @@
 {
-  "additional_context": "",
   "brief": {
     "baseline": "0.14 (the shipped 20/100 moving-average cross; max drawdown\n0.11, annual turnover 3.5)",
     "budget": {
@@ -20,25 +19,24 @@
     ],
     "target": "1.0"
   },
-  "coding_agent": null,
   "config_path": null,
-  "context": null,
-  "cost_budget": null,
   "data_dir": "/home/ubuntu/fixture/examples/trading/data",
   "dotenv_path": "",
   "eval_dir": "/home/ubuntu/fixture/examples/trading/evaluation",
-  "finalization_reserve_minutes": null,
+  "experiments": 2,
   "harness": {
     "hash": "141a562fbace83553a2635f4ff7da69f4a8466438ed31324e7a21471db860d48",
     "name": "trading",
     "source": "/home/ubuntu/fixture/examples/harnesses/trading",
     "version": "0.1.0"
   },
+  "host": null,
   "kg_index": null,
-  "max_iterations": 2,
+  "minutes": 75.0,
   "output_path": "/campaign",
+  "reserve_minutes": null,
   "resumable_from_inbox": true,
   "schema_version": 2,
   "serving_scope": null,
-  "time_budget_minutes": 75.0
+  "usd": null
 }

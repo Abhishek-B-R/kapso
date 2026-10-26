@@ -165,7 +165,7 @@ def test_every_fresh_campaign_writes_a_launch_record_with_the_brief(tmp_path, mo
 
     record = read_launch_record(workspace)
     assert record["brief"] == brief.to_dict()
-    assert record["max_iterations"] == 2 and record["time_budget_minutes"] == 30
+    assert record["experiments"] == 2 and record["minutes"] == 30
 
 
 def test_a_resume_with_the_inbox_off_keeps_the_briefs_budget(tmp_path, monkeypatch):
@@ -197,10 +197,9 @@ def _checkpoint(goal: str) -> RunCheckpoint:
 def _launch_record(workspace, **values):
     record = {
         "brief": Brief(objective="recorded").to_dict(),
-        "config_path": None, "coding_agent": None,
-        "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": 60.0,
-        "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
-        "data_dir": None, "additional_context": "", "context": None,
+        "config_path": None, "host": None,
+        "output_path": str(workspace), "experiments": 3, "minutes": 60.0,
+        "usd": None, "reserve_minutes": None, "eval_dir": None, "data_dir": None,
         "resumable_from_inbox": True, "dotenv_path": "",
     }
     record.update(values)

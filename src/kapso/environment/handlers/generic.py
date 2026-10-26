@@ -33,7 +33,6 @@ class GenericProblemHandler(ProblemHandler):
         problem_description: Main problem description/prompt
         eval_dir: Optional evaluation directory path (copied to kapso_evaluation/)
         data_dir: Optional data directory path (copied to kapso_datasets/)
-        additional_context: Extra context to append (tips, requirements, etc.)
         
     Examples:
         # Simple - just provide problem description
@@ -57,86 +56,24 @@ class GenericProblemHandler(ProblemHandler):
         problem_description: str,
         eval_dir: Optional[str] = None,
         data_dir: Optional[str] = None,
-        additional_context: str = "",
     ):
-        """Initialize generic problem handler."""
-        super().__init__(additional_context=additional_context)
-        
-        # Core config
+        """The brief as the engine's problem text, with where the
+        evaluation and the data live when they were provided."""
         self.problem_description = problem_description
         self.eval_dir = eval_dir
         self.data_dir = data_dir
-        
-        # Build context once
         self._problem_context = self._build_problem_context()
-    
+
     def _build_problem_context(self) -> str:
-        """Build the full problem context string."""
-        parts = [
-            "# Problem Description",
-            self.problem_description,
-        ]
-        
-        # Add evaluation instructions
-        parts.extend([
-            "",
-            "# Evaluation",
-        ])
-        
-        # If eval_dir provided, mention it
+        """The brief and the two reference lines, nothing else: the
+        evaluation contract is the implementation prompt's, rendered once
+        (docs/plans/redesign/wp4-config.md, the problem text)."""
+        references = []
         if self.eval_dir and os.path.exists(self.eval_dir):
-            parts.extend([
-                "Evaluation scripts are provided in `kapso_evaluation/`.",
-                "Review and run the existing evaluation code.",
-                "Do not modify, delete, replace, or add evaluator source "
-                "files.",
-                "Runtime outputs such as `result.json` may be created.",
-            ])
-        else:
-            parts.extend([
-                "You are responsible for building and running evaluation.",
-                "Create evaluation code in the `kapso_evaluation/` directory.",
-            ])
-        
-        parts.extend([
-            "The evaluation should:",
-            "1. Test your solution against the goal criteria",
-            "2. Output a clear score or success/failure indication",
-            "3. Be fair and actually test what it claims to test",
-            "",
-            "After running evaluation, write results to `kapso_evaluation/result.json`:",
-            "```json",
-            "{",
-            '  "evaluation_script_path": "kapso_evaluation/evaluate.py",',
-            '  "evaluation_output": "Full output from running evaluation",',
-            '  "score": 0.95',
-            "}",
-            "```",
-        ])
-        
-        # Mention data directory if provided
+            references.append("The evaluation is provided in `kapso_evaluation/`.")
         if self.data_dir and os.path.exists(self.data_dir):
-            parts.extend([
-                "",
-                "# Data",
-                "Datasets are provided in `kapso_datasets/`.",
-            ])
-        
-        if self.additional_context:
-            parts.extend([
-                "",
-                "# Additional Context",
-                self.additional_context,
-            ])
-        
-        parts.extend([
-            "",
-            "# Execution Notes",
-            "- Do not use interactive outputs (tqdm, progress bars)",
-            "- Print meaningful progress to stdout",
-            "- Run your evaluation and report the result before completing",
-        ])
-        
+            references.append("The data is provided in `kapso_datasets/`.")
+        parts = [self.problem_description, *(["", *references] if references else [])]
         return "\n".join(parts)
     
     def get_problem_context(self, budget_progress: float = 0, **kwargs) -> str:

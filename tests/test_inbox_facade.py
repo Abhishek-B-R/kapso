@@ -108,13 +108,13 @@ def test_a_fresh_campaign_writes_the_launch_record_and_registers(tmp_path, monke
 
     _facade(registry).build(
         "Improve support\nmore detail", output=str(workspace),
-        budget=Budget(experiments=7, minutes=120), context=["a hint"],
+        budget=Budget(experiments=7, minutes=120),
     )
 
     record = read_launch_record(workspace)
-    assert record["max_iterations"] == 7 and record["time_budget_minutes"] == 120
+    assert record["experiments"] == 7 and record["minutes"] == 120
     assert record["output_path"] == str(workspace)
-    assert record["context"] == ["a hint"] and record["resumable_from_inbox"] is True
+    assert record["host"] is None and record["resumable_from_inbox"] is True
     assert "dotenv_path" in record
     assert record["brief"]["objective"] == "Improve support\nmore detail"
     listed = list_registered_campaigns(registry)
@@ -196,10 +196,9 @@ def _paused_campaign(tmp_path, *, requests=1, resumable=True, completed=2, max_i
         strategy_state={"node_history": [node.to_dict()]}, last_stop="waiting_for_user",
     ))
     write_launch_record(workspace, {
-        "config_path": None, "coding_agent": "codex",
-        "output_path": str(workspace), "max_iterations": max_iterations, "time_budget_minutes": 90,
-        "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": "./eval",
-        "data_dir": None, "additional_context": "", "context": None,
+        "config_path": None, "host": "codex",
+        "output_path": str(workspace), "experiments": max_iterations, "minutes": 90,
+        "usd": None, "reserve_minutes": None, "eval_dir": "./eval", "data_dir": None,
         "resumable_from_inbox": resumable, "dotenv_path": "",
     })
     return workspace

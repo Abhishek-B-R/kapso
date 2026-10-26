@@ -1396,11 +1396,12 @@ class GenericSearch(SearchStrategy):
     def _evaluation_instructions(self) -> str:
         """The evaluation contract the implementer follows: build-only in
         cost mode, where Kapso runs the evaluator after admission; otherwise
-        the registered contract when a maintainer owns evaluation, or the
-        historical build-your-own instructions."""
+        the registered contract when a maintainer owns evaluation, the
+        provided suite's when the build brought one, build-your-own else."""
+        provided = bool(self.provided_evaluation_manifest)
         if self._cost_enabled():
-            return deferred_evaluation_instructions(self.registered_evaluation_command)
-        return evaluation_instructions(self.registered_evaluation_command)
+            return deferred_evaluation_instructions(self.registered_evaluation_command, provided=provided)
+        return evaluation_instructions(self.registered_evaluation_command, provided=provided)
 
     def _ensure_technical_difficulties(self, node) -> None:
         """Run the fallback reconstruction when the implementor's

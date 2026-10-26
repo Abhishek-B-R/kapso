@@ -17,7 +17,7 @@ being a killed invocation; the times from the node's start and its
 phases' durations), the pull log's `session` key (the event's time
 against the same windows) and the current schemas (the solution record's
 `session_failures`, the checkpoint's `experience`, a node's fields the
-dataclass has gained, the launch record without its `mode`). The
+dataclass has gained, the launch record in the handle's words). The
 checkpoint's `agent_output` is blanked (the
 trace does not read it; the diff it does, for the delivered files).
 Paths under the campaign's own directory are rebased to `/campaign`.
@@ -85,9 +85,17 @@ def _build_from(campaign: Path, fixture: Path) -> None:
     rebase = lambda text: text.replace(root, REBASED_ROOT)
     for name in KEPT_RECORDS:
         (out / name).write_text(rebase((kapso / name).read_text(encoding="utf-8")), encoding="utf-8")
-    # The launch record at the current schema: the archives predate the
-    # config without modes (wp4-config.md), whose record has no `mode`.
-    launch_record = {key: value for key, value in launch.items() if key != "mode"}
+    # The launch record at the current schema (wp4-config.md): the
+    # archives predate the record in the handle's words, without the
+    # mode and the context arguments.
+    renamed = {
+        "max_iterations": "experiments", "time_budget_minutes": "minutes", "cost_budget": "usd",
+        "finalization_reserve_minutes": "reserve_minutes", "coding_agent": "host",
+    }
+    launch_record = {
+        renamed.get(key, key): value for key, value in launch.items()
+        if key not in ("mode", "context", "additional_context")
+    }
     launch_record["schema_version"] = LAUNCH_SCHEMA_VERSION
     (out / "launch.json").write_text(rebase(json.dumps(launch_record, indent=2, sort_keys=True) + "\n"), encoding="utf-8")
     status = json.loads((kapso / "status.json").read_text(encoding="utf-8"))

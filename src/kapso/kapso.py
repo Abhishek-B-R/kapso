@@ -1060,11 +1060,7 @@ class Kapso:
         on_status: Optional[Any] = None,
         iteration_evaluator: Optional[IterationEvaluator] = None,
         iteration_evaluator_failure_policy: str = "record",
-        # Engine knobs the harness package retires: context and
-        # additional_context.
         coding_agent: Optional[str] = None,
-        context: Optional[List[Any]] = None,
-        additional_context: str = "",
     ) -> Solution:
         """Build software that meets the brief, by experiment: propose a
         candidate, implement it on its own branch, measure it, keep the
@@ -1171,15 +1167,13 @@ class Kapso:
                 if record.get("dotenv_path"):
                     load_dotenv(record["dotenv_path"])
                 arguments = resume_arguments(record, {
-                    "coding_agent": coding_agent,
+                    "host": coding_agent,
                     "eval_dir": eval_dir,
                     "data_dir": data_dir,
-                    "additional_context": additional_context,
-                    "context": context,
-                    "max_iterations": max_iterations,
-                    "time_budget_minutes": time_budget_minutes,
-                    "cost_budget": cost_budget,
-                    "finalization_reserve_minutes": finalization_reserve_minutes,
+                    "experiments": max_iterations,
+                    "minutes": time_budget_minutes,
+                    "usd": cost_budget,
+                    "reserve_minutes": finalization_reserve_minutes,
                 })
                 # The loaded experience is campaign identity: a resume with
                 # nothing loaded takes the record's list and re-pins each
@@ -1218,15 +1212,13 @@ class Kapso:
                         f"fingerprints: {changed}. Pass the launch's values, or "
                         "start a new campaign in a new output path."
                     )
-                coding_agent = arguments["coding_agent"]
+                coding_agent = arguments["host"]
                 eval_dir = arguments["eval_dir"]
                 data_dir = arguments["data_dir"]
-                additional_context = arguments["additional_context"] or ""
-                context = arguments["context"]
-                max_iterations = arguments["max_iterations"]
-                time_budget_minutes = arguments["time_budget_minutes"]
-                cost_budget = arguments["cost_budget"]
-                finalization_reserve_minutes = arguments["finalization_reserve_minutes"]
+                max_iterations = arguments["experiments"]
+                time_budget_minutes = arguments["minutes"]
+                cost_budget = arguments["usd"]
+                finalization_reserve_minutes = arguments["reserve_minutes"]
         # The whole brief is the engine's goal text: the judge reads every
         # field, and the checkpoint fingerprints these exact bytes.
         goal_text = brief.render()
@@ -1279,23 +1271,6 @@ class Kapso:
         print()
 
         problem = self._build_problem_description(goal_text)
-
-        # Build context string from context items (text, not sources)
-        # Context items are converted to strings and appended to additional_context
-        context_parts = []
-        if context:
-            for item in context:
-                # Convert each context item to string
-                context_parts.append(str(item))
-
-        # Combine knowledge context + caller-provided context + context items
-        #
-        # Why:
-        # - The system already uses `additional_context` to inject KG snippets.
-        # - Research ideas should be injected the same way.
-        user_context = (additional_context or "").strip()
-        items_context = "\n\n".join(context_parts).strip()
-        combined_context = "\n\n".join([c for c in [user_context, items_context] if c])
 
         # The harness: the loaded one wins over the brief's line (as call
         # arguments win for budgets); a resume with none loaded takes the
@@ -1393,12 +1368,12 @@ class Kapso:
                         f"added — `kapso experience remove {index_record.name}` and add it again"
                     )
 
-        # Create problem handler with all options
+        # The engine's problem text: the brief, and where the evaluation
+        # and the data live.
         handler = GenericProblemHandler(
             problem_description=problem,
             eval_dir=eval_dir,
             data_dir=data_dir,
-            additional_context=combined_context,
         )
 
         # Create orchestrator
@@ -1437,9 +1412,8 @@ class Kapso:
 
         # Stage serving now that the workspace exists (see the plan/stage
         # note above): the clones, the record and the intro file the
-        # ideation and implementation prompts read at session time
-        # (`handler.additional_context` is frozen at construction and
-        # never was a seam).
+        # ideation and implementation prompts read at session time (the
+        # problem text is frozen at construction and never was a seam).
         # From the orchestrator's construction to `solve()`, a failure (the
         # serving's staging, the launch record) is published as the
         # campaign's through the status the strategy opened, the exception
@@ -1473,24 +1447,17 @@ class Kapso:
                     "harness": harness.ref_dict() if harness is not None else None,
                     "experience": [vars(source.ref()) for source in self._experience],
                     "config_path": self._launch_config_path(),
-                    "coding_agent": coding_agent,
+                    # The launch in the handle's words: the host the flag
+                    # set (None: the config's), the budget as resolved.
+                    "host": coding_agent,
                     "output_path": str(Path(workspace_dir).resolve()),
-                    "max_iterations": max_iterations,
-                    "time_budget_minutes": time_budget_minutes,
-                    "cost_budget": cost_budget,
-                    "finalization_reserve_minutes": finalization_reserve_minutes,
+                    "experiments": max_iterations,
+                    "minutes": time_budget_minutes,
+                    "usd": cost_budget,
+                    "reserve_minutes": finalization_reserve_minutes,
                     "eval_dir": _absolute(eval_dir),
                     "data_dir": _absolute(data_dir),
-                    "additional_context": additional_context,
-                    "context": (
-                        list(context)
-                        if context and all(isinstance(item, str) for item in context)
-                        else None
-                    ),
-                    "resumable_from_inbox": (
-                        iteration_evaluator is None
-                        and all(isinstance(item, str) for item in (context or []))
-                    ),
+                    "resumable_from_inbox": iteration_evaluator is None,
                     "dotenv_path": find_dotenv(usecwd=True),
                 })
                 # A build that named no output directory is registered now
@@ -1639,7 +1606,7 @@ class Kapso:
             return None
         checkpoint = RunCheckpointStore(campaign_dir).load()
         remaining = max(
-            1, int(record["max_iterations"]) - int(checkpoint.completed_iterations)
+            1, int(record["experiments"]) - int(checkpoint.completed_iterations)
         )
         print(
             f"Resuming {campaign_dir}: continuing node {request.node}'s session. "

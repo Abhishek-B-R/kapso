@@ -135,10 +135,10 @@ def _campaign(tmp_path, monkeypatch, experience):
         experience=experience,
     ))
     write_launch_record(workspace, {
-        "config_path": None, "coding_agent": None,
-        "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": None,
-        "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
-        "data_dir": None, "additional_context": "", "context": None, "harness": None,
+        "config_path": None, "host": None,
+        "output_path": str(workspace), "experiments": 3, "minutes": None,
+        "usd": None, "reserve_minutes": None, "eval_dir": None,
+        "data_dir": None, "harness": None,
         "experience": experience, "resumable_from_inbox": True, "dotenv_path": "",
     })
     captured = {}
@@ -259,10 +259,10 @@ def test_a_reply_rebuilds_the_object_with_the_launchs_bank(tmp_path, monkeypatch
     home = seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
     workspace = _paused_campaign(tmp_path)
     write_launch_record(workspace, {
-        "config_path": None, "coding_agent": None,
-        "output_path": str(workspace), "max_iterations": 3, "time_budget_minutes": None,
-        "cost_budget": None, "finalization_reserve_minutes": None, "eval_dir": None,
-        "data_dir": None, "additional_context": "", "context": None, "harness": None,
+        "config_path": None, "host": None,
+        "output_path": str(workspace), "experiments": 3, "minutes": None,
+        "usd": None, "reserve_minutes": None, "eval_dir": None,
+        "data_dir": None, "harness": None,
         "experience": [{"reference": "mine", "kind": "bank", "resolved": str(home), "head": _head(home),
                         "provenance": "measured by you", "scope": "harness"}],
         "resumable_from_inbox": True, "dotenv_path": "",

@@ -92,6 +92,7 @@ def candidate_strategy(tmp_path, count=1):
     strategy.fidelity_decision = None
     strategy.record_eval_duration = None
     strategy.implementation_role = SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=None)
+    strategy.provided_evaluation_manifest = {}
     strategy.budget_snapshot = None
     strategy.parent_policy = "best"
     strategy.env_strip = []
@@ -402,6 +403,7 @@ def test_cost_build_prompt_defers_all_evaluation_to_orchestrator():
     strategy = GenericSearch.__new__(GenericSearch)
     strategy.harness = None
     strategy.cost_config = {"enabled": True}
+    strategy.provided_evaluation_manifest = {}
     strategy.registered_evaluation_command = "python kapso_evaluation/kapso_eval.py"
     registered = strategy._evaluation_instructions()
     assert "Do not run the candidate or evaluation" in registered

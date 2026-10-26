@@ -186,19 +186,13 @@ class TestGenericProblemHandler(unittest.TestCase):
         self.assertTrue(handler.maximize_scoring)
 
 
-    def test_handler_problem_context_includes_evaluation_instructions(self):
-        """Test that problem context includes evaluation instructions."""
+    def test_handler_problem_context_is_the_brief_alone(self):
+        """The problem text is the brief; the evaluation contract is the
+        implementation prompt's (test_problem_text.py)."""
         from kapso.environment.handlers.generic import GenericProblemHandler
-        
-        handler = GenericProblemHandler(
-            problem_description="Test problem",
-        )
-        
-        context = handler.get_problem_context()
-        
-        # Should include evaluation instructions
-        self.assertIn("kapso_evaluation", context)
-        self.assertIn("evaluation", context.lower())
+
+        handler = GenericProblemHandler(problem_description="Test problem")
+        self.assertEqual(handler.get_problem_context(), "Test problem")
 
 
 class TestFeedbackGeneratorSignature(unittest.TestCase):

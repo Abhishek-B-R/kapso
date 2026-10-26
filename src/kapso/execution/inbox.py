@@ -417,14 +417,12 @@ def read_launch_record(workspace_dir: str | Path) -> Optional[Dict[str, Any]]:
 # the launch's, and one that names a bigger one is allowed (the checkpoint
 # does not fingerprint budgets).
 RESUME_FROM_RECORD = (
-    "coding_agent", "eval_dir", "data_dir", "additional_context",
-    "context", "max_iterations", "time_budget_minutes",
-    "cost_budget", "finalization_reserve_minutes",
+    "host", "eval_dir", "data_dir", "experiments", "minutes", "usd", "reserve_minutes",
 )
 # The launch settings the checkpoint fingerprints. Changing one is refused
 # by the checkpoint with a fingerprint mismatch that names nothing; naming
 # the setting here is what the person needs.
-FINGERPRINTED_LAUNCH_KEYS = ("coding_agent", "eval_dir", "config_path", "experience")
+FINGERPRINTED_LAUNCH_KEYS = ("host", "eval_dir", "config_path", "experience")
 _PATH_LAUNCH_KEYS = ("eval_dir", "config_path")
 # The loaded experience is campaign identity by its references and scopes;
 # the heads are re-pinned from the record, so a bank that moved since the

@@ -28,7 +28,7 @@ DEBUG_RUNTIME_LIMIT = 20*60
 class MleBenchHandler(ProblemHandler):
     def __init__(self, competition_id="spooky-author-identification", fetch_huggingface_models: bool = True):
         # No additional context needed - problem context is dynamically generated
-        super().__init__(additional_context="")
+        super().__init__()
         self.llm = CliInference()
         self.competition_id = competition_id
         self.problem_id = competition_id

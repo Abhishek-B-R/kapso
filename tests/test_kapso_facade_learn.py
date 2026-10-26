@@ -369,7 +369,7 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
     # nothing loaded: no intro, no override
     kapso = Kapso(config=config_path)
     kapso.build("test goal", output=str(tmp_path / "out1"))
-    off_context = captured["handler"].additional_context
+    off_context = captured["handler"].get_problem_context()
     assert "Experience" not in off_context
     assert captured["kwargs"]["strategy_params_overrides"] is None
 
@@ -379,7 +379,7 @@ def test_build_serving_staging_and_nothing_loaded_byte_identity(
     solution = kapso.build("test goal", output=str(tmp_path / "out2"))
     # the context is untouched (it is frozen at construction and never
     # was a seam): the intro is staged for the prompts to read
-    assert captured["handler"].additional_context == off_context
+    assert captured["handler"].get_problem_context() == off_context
     override = captured["kwargs"]["strategy_params_overrides"]
     assert "KAPSO_BANKS" in override["bank_serving"]
     intro_path = Path(override["experience_intro_path"])

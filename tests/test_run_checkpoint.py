@@ -752,11 +752,9 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     eval_dir.mkdir()
     (eval_dir / "evaluate.py").write_text("print('accuracy: 0.9')\n")
     write_launch_record(workspace, {
-        "config_path": None,
-        "coding_agent": None, "output_path": str(workspace),
-        "max_iterations": 3, "time_budget_minutes": 60.0, "cost_budget": None,
-        "finalization_reserve_minutes": None, "eval_dir": str(eval_dir),
-        "data_dir": None, "additional_context": "", "context": None,
+        "config_path": None, "host": None, "output_path": str(workspace),
+        "experiments": 3, "minutes": 60.0, "usd": None, "reserve_minutes": None,
+        "eval_dir": str(eval_dir), "data_dir": None,
         "resumable_from_inbox": True, "dotenv_path": "",
     })
     captured: Dict[str, Any] = {}
@@ -828,7 +826,7 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     assert captured["time_budget_minutes"] == 60.0
 
     with pytest.raises(
-        RunCheckpointIncompatibleError, match="coding_agent was None, now 'codex'"
+        RunCheckpointIncompatibleError, match="host was None, now 'codex'"
     ):
         kapso.build(output=str(workspace), resume=True, coding_agent="codex")
 
