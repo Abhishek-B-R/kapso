@@ -1024,6 +1024,12 @@ improve, the learn and its completion, the share and the cold start
 (the matrix's rows); the `uvx` and `pipx` branches of the launcher
 until the pin is on PyPI.
 
+**The reports** (`scripts/redesign/runs/wp7/<host>/report.md`): the
+second machine twenty-three of twenty-four steps, the learn's completion
+the one the learning system failed; the first machine thirteen of
+seventeen, the run that taught the driver; the development box eighteen
+of eighteen on Codex, six rows deferred to the machine by the matrix.
+
 ## Findings for later packages
 
 Fixed on this branch during the round:
