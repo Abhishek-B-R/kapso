@@ -18,7 +18,7 @@ import pytest
 import kapso.cli.harness as harness_cli
 from kapso.cli import main
 from kapso.core.front_matter import read_front_matter
-from kapso.harness.export import HarnessExportError, export_harness
+from kapso.harness.export import HarnessExportError, _codex_server_lines, export_harness
 
 TRADING = Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading"
 SKILLS_IN_ORDER = ("market-data", "strategy-families", "market-structure", "backtesting", "risk-limits", "lookahead-scan", "paper-trading")
@@ -49,7 +49,8 @@ def test_the_claude_code_export_writes_the_sessions_files_and_leaves_hooks_behin
     assert text.startswith(f"exported trading 0.1.0 for claude_code into {into}\n  .claude/skills/market-data/\n")
     assert "left behind: 7 hook(s) (session-brief, deny-web-fetch, protect-prepared, deny-web, deny-snapshot, scan-writes, require-results): campaign-bound" in text
     assert "left behind: the module page(s) (setup, ideation, implementation, verification, feedback, learning, deployment) and the routing per module" in text
-    assert text.endswith("next:\n  add to CLAUDE.md (never written by the export): @kapso-harness-trading.md")
+    assert "next:\n  add to CLAUDE.md (never written by the export): @kapso-harness-trading.md\n" in text
+    assert f"  export KAPSO_HARNESS_ROOT={TRADING} in the shell these skills run from (lookahead-scan" in text
 
 
 def test_the_codex_export_writes_toml_roles_and_prints_the_config_and_server_lines(tmp_path):
@@ -74,7 +75,7 @@ def test_the_codex_export_writes_toml_roles_and_prints_the_config_and_server_lin
 def test_one_existing_destination_refuses_the_whole_export_by_name(tmp_path):
     (tmp_path / ".claude" / "skills" / "backtesting").mkdir(parents=True)
     (tmp_path / "kapso-harness-trading.md").write_text("mine\n", encoding="utf-8")
-    with pytest.raises(HarnessExportError, match=r"^nothing written: \.claude/skills/backtesting, kapso-harness-trading\.md exist\(s\) under "):
+    with pytest.raises(HarnessExportError, match=r"^nothing written: \.claude/skills/backtesting, kapso-harness-trading\.md in the way under "):
         export_harness(TRADING, "claude_code", tmp_path)
     assert not (tmp_path / ".mcp.json").exists()
     assert not (tmp_path / ".claude" / "skills" / "market-data").exists()
@@ -110,3 +111,21 @@ def test_the_verb_exports_a_directory_and_refuses_a_harness_that_fails_check(set
     assert exit_.value.code == 1
     assert "fail" in capsys.readouterr().out
     assert not (tmp_path / "out2").exists()
+
+
+def test_a_file_on_the_way_to_a_destination_refuses_the_export_before_any_write(tmp_path):
+    into = tmp_path.resolve()
+    (into / ".claude").mkdir()
+    (into / ".claude" / "skills").write_text("a file where the skills directory must be")
+    with pytest.raises(HarnessExportError, match="in the way under"):
+        export_harness(TRADING, "claude_code", into)
+    assert not (into / ".claude" / "agents").exists() and not (into / "kapso-harness-trading.md").exists()
+
+
+def test_the_codex_lines_for_an_http_server_are_toml():
+    lines = _codex_server_lines("api", {"url": "https://api.example", "headers": {"X-Key": "k1", "Authorization": "${TOKEN}"}})
+    assert lines[0] == "codex mcp add api --url https://api.example"
+    tables = [line.split("config.toml: ", 1)[1] for line in lines[1:]]
+    parsed = [tomllib.loads(f"[mcp_servers.api]\n{table}") for table in tables]
+    assert parsed[0]["mcp_servers"]["api"]["http_headers"] == {"X-Key": "k1"}
+    assert parsed[1]["mcp_servers"]["api"]["env_http_headers"] == {"Authorization": "TOKEN"}

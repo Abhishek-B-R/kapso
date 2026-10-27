@@ -95,8 +95,12 @@ def recorded_reference(record: dict) -> str:
 
 
 def parse_experience_reference(
-    text: str, *, indexes_root: Path, cwd: Optional[Path] = None,
+    text: str, *, indexes_root: Path, cwd: Optional[Path] = None, must_exist: bool = True,
 ) -> ExperienceReference:
+    """The reference `text` names. A path or an index name must exist,
+    unless `must_exist` is off: then the reference is returned for the
+    caller to check (a host session lists what the config names and
+    leaves a missing source's gate off rather than stopping)."""
     raw = text.strip()
     if not raw:
         raise ExperienceReferenceError(f"an empty experience reference; the forms are:\n{FORMS}")
@@ -113,7 +117,7 @@ def parse_experience_reference(
         base = Path(cwd) if cwd is not None else Path.cwd()
         candidate = Path(raw).expanduser()
         directory = (candidate if candidate.is_absolute() else base / candidate).resolve()
-        if not directory.is_dir():
+        if must_exist and not directory.is_dir():
             raise ExperienceReferenceError(
                 f"no directory {directory}: a reference written as a path must exist; the forms are:\n{FORMS}"
             )
@@ -125,7 +129,7 @@ def parse_experience_reference(
         parsed = parse_git_reference(shorthand_spec(raw))
         return ExperienceReference(raw=raw, kind="git", url=parsed.url, rev=parsed.rev, scope=SCOPE_ALL)
     index = Path(indexes_root).expanduser() / raw
-    if valid_index_name(raw) and (index / INDEX_RECORD).is_file():
+    if valid_index_name(raw) and ((index / INDEX_RECORD).is_file() or not must_exist):
         return ExperienceReference(raw=raw, kind="index", path=index, name=raw, scope=SCOPE_ALL)
     if valid_index_name(raw):
         raise ExperienceReferenceError(

@@ -4,6 +4,7 @@ path and the watch line — the handoff every host (and the skill) needs,
 in one flag instead of a nohup/setsid recipe per host."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any, Dict, List
 import pytest
 
 import kapso.cli.common as cli_common
+import kapso.cli.experience as experience_cli
 from kapso.cli import main
 from kapso.execution.inbox import LAUNCH_SCHEMA_VERSION, inbox_path, load_requests, write_launch_record
 from kapso.execution.observability import BuildStatus
@@ -131,9 +133,8 @@ def test_reply_detach_refuses_a_live_campaign(tmp_path, monkeypatch, popen, caps
 def test_build_detach_validates_the_harness_before_it_forks(tmp_path, monkeypatch, popen, capsys):
     """A missing prerequisite of the build's own modules stops the parent
     with the message, and no child is started to die in its log."""
-    import shutil as _shutil
     harness = tmp_path / "harness"
-    _shutil.copytree(Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading", harness)
+    shutil.copytree(Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading", harness)
     manifest = harness / "harness.yaml"
     # No requirements file: that check asks python3 in a subprocess, and
     # this test's Popen stub stands in for every process.
@@ -215,7 +216,6 @@ def test_learn_detach_runs_the_crews_in_a_session_of_their_own(tmp_path, monkeyp
 
 
 def test_experience_add_detach_runs_an_ingest_in_a_session_of_its_own(tmp_path, monkeypatch, popen, capsys):
-    import kapso.cli.experience as experience_cli
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(experience_cli, "experience_settings", lambda config: {"indexes": str(tmp_path / "indexes")})
     _run(monkeypatch, "experience", "add", "--repo", "https://github.com/org/x", "--name", "org-x", "--detach")

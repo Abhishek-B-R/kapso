@@ -7,6 +7,7 @@ is not here: it is `learning.bank.local_path`, which `learn()` writes.
 
 import json
 import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,6 +68,13 @@ class ExperienceStore:
                 f"frees it, or name the revision another way"
             )
         return True
+
+    def reachable(self, reference: ExperienceReference) -> bool:
+        """Whether the remote answers: `git ls-remote` by its exit code (a
+        config-listed bank whose remote does not answer is a note, not a
+        stop)."""
+        probe = subprocess.run(["git", "ls-remote", "--exit-code", reference.url, "HEAD"], capture_output=True, text=True)
+        return probe.returncode == 0
 
     def resolve_bank(self, reference: ExperienceReference) -> Path:
         """The clone a git reference names, fetched the first time."""

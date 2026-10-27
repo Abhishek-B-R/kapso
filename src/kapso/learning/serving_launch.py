@@ -51,6 +51,7 @@ def plan_serving(
     task_coords: Dict[str, str],
     serve_dir,
     probe_budget: int,
+    holder: str = "campaign",
 ) -> Optional[Dict[str, Any]]:
     """The serving PLAN: everything deterministic about one launch's
     serving, computed WITHOUT touching `serve_dir` (a campaign's may not
@@ -88,6 +89,8 @@ def plan_serving(
     return {
         "serve_dir": str(serve_dir),
         "task": dict(task_coords),
+        # Whose pin the intro says: a campaign's, or a host session's.
+        "holder": holder,
         "banks": entries,
         # The hosted gate as loaded: its URL (the key's placeholder in it)
         # and per-call timeout from the config the source was loaded with,
@@ -129,7 +132,7 @@ def stage_serving(plan: Dict[str, Any], sources: List[ExperienceSource]) -> Dict
         if head != entry["head"]:
             raise RuntimeError(f"{entry['reference']}: the clone is at {head}, not the pinned {entry['head']}")
         counts[entry["reference"]] = served_count(Bank(str(checkout)), entry["scope"], plan["task"])
-    lines = source_lines(sources, counts, plan["task"])
+    lines = source_lines(sources, counts, plan["task"], plan["holder"])
     intro = compile_sources_intro(sources, lines)
     Path(plan["intro_path"]).write_text(intro + "\n")
     record_path = serve_dir / SERVING_RECORD_FILE
@@ -175,7 +178,7 @@ def served_count(bank: Bank, scope: str, task_coords: Dict[str, str]) -> int:
     return sum(1 for card in servable if card.eligible_for(task_coords))
 
 
-def source_lines(sources: List[ExperienceSource], counts: Dict[str, int], task_coords: Dict[str, str]) -> List[str]:
+def source_lines(sources: List[ExperienceSource], counts: Dict[str, int], task_coords: Dict[str, str], holder: str = "campaign") -> List[str]:
     """One line per source: what it is, how much of it is served under the
     task's coordinate, whose measurement it is. The intro and the launch
     banner both read these."""
@@ -186,7 +189,7 @@ def source_lines(sources: List[ExperienceSource], counts: Dict[str, int], task_c
         if source.kind == "bank":
             cards = counts.get(source.reference, 0)
             noun = f"{cards} card{'s' if cards != 1 else ''}"
-            pinned = f"at head `{(source.head or '')[:12]}`, pinned for this campaign"
+            pinned = f"at head `{(source.head or '')[:12]}`, pinned for this {holder}"
             if source.reference == MINE:
                 where = "every scope" if source.scope == SCOPE_ALL else under
                 lines.append(f"{noun} {source.provenance}, {where}, from your bank {pinned}")

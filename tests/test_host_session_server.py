@@ -183,7 +183,7 @@ def test_the_harness_is_the_coordinate_and_the_intro_is_the_servers_instructions
 def test_the_bank_stays_off_while_no_bank_is_loaded(tmp_path, codex_on_path):
     seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
     off = _prepare(tmp_path, tmp_path, requested=["bank"])
-    assert off.enabled == [] and off.notes == ["bank: off (no bank loaded; kapso-mcp --experience mine)"]
+    assert off.enabled == [] and off.notes == ["bank: off (no bank loaded: `kapso experience add mine` makes yours; `session_sources: [mine:all]` under `experience` in kapso-config.yaml serves it here)"]
     assert not (tmp_path / "sessions").exists()
 
 
@@ -199,8 +199,8 @@ def test_an_index_adds_the_search_gates(tmp_path, codex_on_path):
     assert set(gates.env) == {"KG_INDEX_PATH", "KAPSO_SERVING_INTRO"}
     without = _prepare(tmp_path, tmp_path, requested=list(INDEX_GATES))
     assert without.enabled == [] and without.notes == [
-        "idea: off (no index loaded; kapso-mcp --experience <name>)",
-        "code: off (no index loaded; kapso-mcp --experience <name>)",
+        "idea: off (no index loaded: `kapso experience add --repo <url> --name <name>` makes one; `session_sources` serves it here)",
+        "code: off (no index loaded: `kapso experience add --repo <url> --name <name>` makes one; `session_sources` serves it here)",
     ]
 
 
@@ -304,7 +304,7 @@ def test_main_serves_what_it_can_and_connects_with_every_other_gate_off(tmp_path
     assert served["gates"] == "research,campaign" and served["policy"] == "error"
     assert served["gate_params"] == {"campaign": {"config_path": None, "cwd": str(tmp_path)}}
     assert served["instructions"].startswith(f"## Kapso tools in this session (kapso-mcp {host_module.__version__})\n- on: research, campaign\n")
-    assert "- bank: off (no bank loaded; kapso-mcp --experience mine)" in served["instructions"]
+    assert "- bank: off (no bank loaded: `kapso experience add mine` makes yours" in served["instructions"]
     err = capsys.readouterr().err
     assert err.startswith(f"kapso-mcp {host_module.__version__} (config: the packaged defaults)\n")
     assert "kapso-mcp: serving research, campaign for" in err and "bank: off" in err
@@ -324,7 +324,7 @@ def test_the_config_lists_what_a_session_is_served_and_a_missing_source_is_a_not
     sources, notes = host_module.config_sources(settings)
     assert [source.reference for source in sources] == [index.reference]
     assert notes == [
-        "mine: not found, so its gate is off (`kapso experience add mine` makes it); it is listed under experience.session_sources",
+        "mine: not found, so its gate is off (`kapso experience add mine` makes it, as a first learn does); it is listed under experience.session_sources",
     ]
     settings["session_sources"] = "mine"
     with pytest.raises(ExperienceError, match="experience.session_sources must be a list of references"):

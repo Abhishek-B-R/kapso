@@ -79,6 +79,12 @@ def export_harness(root: Path, host: str, into: Path) -> HarnessExport:
         writes.append(_copy(root / "skills" / name, _SKILLS_DIR[host] / name, into))
     for name in manifest.listed("agents"):
         writes.append(_agent(root / "agents" / f"{name}.md", name, host, into, export))
+    referring = [name for name in manifest.listed("skills") if _mentions_harness_root(root / "skills" / name)]
+    if referring:
+        export.next_steps.append(
+            f"export KAPSO_HARNESS_ROOT={root} in the shell these skills run from ({', '.join(referring)} refer to it; "
+            "a campaign sets it, a session of your own does not)"
+        )
     servers = _servers(root, manifest)
     if servers and host == CLAUDE_HOST:
         file = into / CLAUDE_SERVERS_FILE
@@ -97,10 +103,11 @@ def export_harness(root: Path, host: str, into: Path) -> HarnessExport:
     pages = [module for module in MODULES if (root / "instructions" / f"{module}.md").is_file()]
     if pages:
         export.left_behind.append(f"the module page(s) ({', '.join(pages)}) and the routing per module: {PAGES_LEFT_BEHIND}")
-    existing = [path for path, _ in writes if (into / path).exists()]
-    if existing:
+    in_the_way = [path for path, _ in writes if _in_the_way(into, path)]
+    if in_the_way:
         raise HarnessExportError(
-            "nothing written: " + ", ".join(path.as_posix() for path in existing) + f" exist(s) under {into}; "
+            "nothing written: " + ", ".join(path.as_posix() for path in in_the_way) + f" in the way under {into} "
+            "(something at the path, a dangling link included, or a file where a directory on the way to it must be); "
             "move them, or export into an empty directory with --to and merge by hand"
         )
     for path, write in writes:
@@ -108,6 +115,30 @@ def export_harness(root: Path, host: str, into: Path) -> HarnessExport:
         write()
         export.written.append(path)
     return export
+
+
+def _in_the_way(into: Path, relative: Path) -> bool:
+    """Whether writing `relative` under `into` would meet something: the
+    destination itself in any form, or a file where a directory on the way
+    to it must be."""
+    target = into / relative
+    if target.exists() or target.is_symlink():
+        return True
+    for parent in target.parents:
+        if parent == into:
+            return False
+        if parent.exists() and not parent.is_dir():
+            return True
+    return False
+
+
+def _mentions_harness_root(directory: Path) -> bool:
+    return any("KAPSO_HARNESS_ROOT" in path.read_text(encoding="utf-8", errors="replace") for path in directory.rglob("*") if path.is_file())
+
+
+def _toml_table(mapping: Dict[str, str]) -> str:
+    """An inline TOML table, `{ "X-Key" = "value" }` (JSON's colon is not TOML's)."""
+    return "{ " + ", ".join(f"{json.dumps(key)} = {json.dumps(value)}" for key, value in mapping.items()) + " }"
 
 
 def _copy(source: Path, relative: Path, into: Path) -> Tuple[Path, Callable[[], None]]:
@@ -166,9 +197,9 @@ def _codex_server_lines(name: str, entry: Dict[str, Any]) -> List[str]:
         literal = {k: v for k, v in headers.items() if not is_reference(v)}
         referenced = {k: v[2:-1] for k, v in headers.items() if is_reference(v)}
         if literal:
-            lines.append(f"then under [mcp_servers.{name}] in ~/.codex/config.toml: http_headers = {json.dumps(literal)}")
+            lines.append(f"then under [mcp_servers.{name}] in ~/.codex/config.toml: http_headers = {_toml_table(literal)}")
         if referenced:
-            lines.append(f"then under [mcp_servers.{name}] in ~/.codex/config.toml: env_http_headers = {json.dumps(referenced)}")
+            lines.append(f"then under [mcp_servers.{name}] in ~/.codex/config.toml: env_http_headers = {_toml_table(referenced)}")
         return lines
     env = entry["env"]
     literal = [f"{k}={v}" for k, v in env.items() if not is_reference(v)]

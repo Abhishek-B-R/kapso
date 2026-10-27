@@ -48,6 +48,7 @@ from kapso.experience.sources import ExperienceSource, resolve_source, source_ex
 from kapso.gated_mcp.presets import GATES
 from kapso.gated_mcp.server import run_server
 from kapso.harness import load_harness
+from kapso.experience.store import ExperienceStore
 from kapso.learning.serving_launch import plan_serving, stage_serving, task_coordinates
 
 # The gates a host session gets without being asked. `idea` and `code`
@@ -57,7 +58,6 @@ from kapso.learning.serving_launch import plan_serving, stage_serving, task_coor
 DEFAULT_GATES = ("research", "repo_memory", "experiment_history", "bank", "campaign")
 INDEX_GATES = ("idea", "code")
 EXPERIMENT_HISTORY_NAME = "experiment_history.json"
-LOAD_HINT = "kapso-mcp --experience"
 # The project's config, read when `--config` is absent: the one file the
 # verbs take as `--config kapso-config.yaml`.
 PROJECT_CONFIG = "kapso-config.yaml"
@@ -121,9 +121,12 @@ def config_sources(settings: Dict[str, Any]) -> Tuple[List[ExperienceSource], Li
         )
     sources: List[ExperienceSource] = []
     notes: List[str] = []
+    store = ExperienceStore(settings["banks"], settings["indexes"])
     for raw in listed:
-        reference = parse_experience_reference(raw, indexes_root=Path(settings["indexes"]))
-        if source_exists(reference, settings=settings):
+        reference = parse_experience_reference(raw, indexes_root=Path(settings["indexes"]), must_exist=False)
+        # A bank you read is fetched the first time, when its remote answers.
+        first_fetch = reference.kind == "git" and not store.is_fetched(reference) and store.reachable(reference)
+        if first_fetch or source_exists(reference, settings=settings):
             sources.append(resolve_source(reference, settings=settings))
         else:
             notes.append(f"{raw}: not found, so its gate is off ({_makes_it(reference)}); it is listed under experience.session_sources")
@@ -135,7 +138,11 @@ def _makes_it(reference) -> str:
         return "LEEROOPEDIA_API_KEY in .env serves it"
     if reference.kind == "index":
         return f"`kapso experience add --repo <url> --name {reference.name}` makes it"
-    return f"`kapso experience add {reference.raw}` makes it"
+    if reference.kind == "git":
+        return "its remote did not answer `git ls-remote`; it is fetched the first time it does"
+    if reference.kind == "path":
+        return f"no bank at {reference.path}: a bank is a git repository whose main branch holds index.md, insights/ and procedures/"
+    return "`kapso experience add mine` makes it, as a first learn does"
 
 
 def project_config(root: Path) -> Optional[str]:
@@ -177,7 +184,7 @@ def prepare_host_gates(
     `none` without one. Request order is kept, duplicates dropped; an
     unknown gate or a campaign-only one is a configuration error, never
     silently skipped."""
-    plan = plan_serving(list(sources), task_coordinates(harness_name), session_dir, probe_budget)
+    plan = plan_serving(list(sources), task_coordinates(harness_name), session_dir, probe_budget, holder="session")
     env: Dict[str, str] = {}
     enabled: List[str] = []
     notes: List[str] = []
@@ -230,13 +237,13 @@ def prepare_host_gates(
                 env["EXPERIMENT_EMBEDDING_MODEL"] = str(embedding)
         elif gate == "bank":
             if staged is None or not plan["banks"]:
-                notes.append(f"bank: off (no bank loaded; {LOAD_HINT} mine)")
+                notes.append("bank: off (no bank loaded: `kapso experience add mine` makes yours; `session_sources: [mine:all]` under `experience` in kapso-config.yaml serves it here)")
                 continue
             env.update(staged["bank_serving"])
             env["KAPSO_SESSION"] = HOST_SESSION
         elif gate in INDEX_GATES:
             if plan is None or not plan["kg_index_path"]:
-                notes.append(f"{gate}: off (no index loaded; {LOAD_HINT} <name>)")
+                notes.append(f"{gate}: off (no index loaded: `kapso experience add --repo <url> --name <name>` makes one; `session_sources` serves it here)")
                 continue
             env["KG_INDEX_PATH"] = plan["kg_index_path"]
         enabled.append(gate)
