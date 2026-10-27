@@ -783,8 +783,11 @@ def step_experience_share(ctx: Context) -> Dict[str, Any]:
     # The second user, from its own home, loads the shared bank by its
     # reference (a bank needs no `add`: loading fetches it into the store)
     # through the session server, and lists what it reads.
+    # A local bare remote owned by another user is "dubious" to that
+    # user's git; a team shares over a git host, so the second user adds
+    # the one exception the simulation needs.
     second = ctx.shell(
-        f"sudo -u proof2 -H bash -lc 'cd ~; export PATH=$HOME/.local/bin:$PATH; "
+        f"sudo -u proof2 -H bash -lc 'cd ~; export PATH=$HOME/.local/bin:$PATH; git config --global --add safe.directory {remote}; "
         f"timeout 120 kapso-mcp --experience file://{remote} --root ~ < /dev/null 2>&1 | head -20; kapso experience list'",
         check=False, timeout=300,
     )
