@@ -444,16 +444,16 @@ See [How do I check my setup?](/docs/installation#how-do-i-check-my-setup) for t
 
 ## kapso-mcp
 
-A stdio MCP server for the coding-agent session you work in: the gates Kapso's own sessions get, configured from where the session runs. Not a `kapso` subcommand but a second executable, so a host can name it in a static MCP file.
+A stdio MCP server for the coding-agent session you work in: the gates Kapso's own sessions get, configured from where the session runs, and the campaign verbs as tools. Not a `kapso` subcommand but a second executable, so a host can name it in a static MCP file; [the plugin](/docs/coding-agent-skills) names it for Claude Code.
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--experience` | Comma-separated sources to serve, in the forms `kapso experience list` shows (`mine`, `mine:all`, a bank path or git reference, an index name); a bank mounts the `bank` gate, an index the `idea` and `code` gates | nothing loaded: no bank, no index |
+| `--experience` | Comma-separated sources to serve, in the forms `kapso experience list` shows (`mine`, `mine:all`, a bank path or git reference, an index name); a bank mounts the `bank` gate, an index the `idea` and `code` gates. Explicit, so strict: a source that does not exist refuses; an empty string loads nothing | the config's `experience.session_sources` (empty as packaged); a listed source that does not exist leaves its gate off, named in the instructions |
 | `--harness` | The harness the session works under (a name, a path or a git reference): its name is the coordinate `mine` serves cards by | `none` |
-| `--config` | Config whose experience, bank and embedding settings apply | packaged `config.yaml` |
+| `--config` | Config whose experience, bank and embedding settings apply, and the one the campaign tools pass to the verbs | `kapso-config.yaml` at the repository root when there is one, else the packaged `config.yaml` |
 | `--root` | The directory the session works in | the current directory |
 
-`research`, `repo_memory` and `experiment_history` ride by what the directory holds; a gate that cannot be served is named on stderr with its reason. The intro naming the loaded sources is the server's instructions, so the session sees what it is served on connect.
+The `campaign` gate always rides: `kapso_build_start` launches a campaign detached and returns its receipt, `kapso_status` reads one as `kapso watch --json` prints it, `kapso_stop` ends one; the tools refuse without `kapso` on PATH and inside a campaign directory, and a campaign's own sessions never get them. `research`, `repo_memory` and `experiment_history` ride by what the directory holds. The server prints its version and config line on start, names every gate left off on stderr and in its instructions with the reason, and connects whatever is off; the intro naming the loaded sources opens those instructions, so the session sees what it is served on connect.
 
 ```bash
 claude mcp add kapso -- kapso-mcp --experience mine

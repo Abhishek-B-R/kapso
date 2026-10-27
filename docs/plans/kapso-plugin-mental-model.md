@@ -350,6 +350,8 @@ the session-start brief (S5), delegation tools (S6), host-session learning
 
 ## 9. Proposal v0 (to iterate)
 
+*Superseded on 2026-10-27 by `docs/plans/redesign/wp7-plugin.md`: the plugin built there carries ten commands over WP1's and WP3's verbs (`build`, `experience`, no `evolve`, `research` or `bank`), six skills, and `kapso-mcp` with the `campaign` gate; this section is kept for the reasoning.*
+
 Principles, from the brief and the skill-lab findings: own the moment, not a
 category; one-command install; background by default with a clean handoff;
 never block the host session; secrets never cross the model; the skill carries
@@ -399,6 +401,8 @@ Layers, in delivery order:
    mining tier. Out of scope for the first release.
 
 ## 10. Questions to settle before building
+
+*Superseded on 2026-10-27 by `docs/plans/redesign/wp7-plugin.md` and `DECISIONS.md` (WP7), where each question is settled.*
 
 1. Hosts and order: Claude Code first with the full UI, Codex and Cursor
    through manifests, OpenCode through the skill folders it already reads?

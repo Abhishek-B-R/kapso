@@ -114,7 +114,7 @@ claude mcp add kapso -- kapso-mcp --experience mine
 codex mcp add kapso -- kapso-mcp --experience mine,org-x --harness ./harness
 ```
 
-`--harness` gives the session its coordinate, the name `mine` serves cards by, as a build's harness does; without it the coordinate is `none`. The session is staged under `learning.serving.session_root`, one directory per server process, and removed when the server exits; the intro naming the sources is the server's instructions, so the session sees what it is served on connect. The gates a directory supports (`research`, `repo_memory`, `experiment_history`) ride along; one that cannot be served is named on stderr with its reason. See [Use the gates from your own coding agent](/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).
+With no `--experience`, the server serves what the project's `kapso-config.yaml` lists under `experience.session_sources` (`[mine:all]` is the line `kapso learn` offers once a campaign is banked): sessions, not builds, which load what their brief or flags name. `--harness` gives the session its coordinate, the name `mine` serves cards by, as a build's harness does; without it the coordinate is `none`. The session is staged under `learning.serving.session_root`, one directory per server process, and removed when the server exits; the intro naming the sources is the server's instructions, so the session sees what it is served on connect. The gates a directory supports (`research`, `repo_memory`, `experiment_history`) ride along; one that cannot be served is named on stderr with its reason. See [Use the gates from your own coding agent](/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).
 
 ## What this machine has
 

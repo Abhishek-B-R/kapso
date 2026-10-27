@@ -1,76 +1,113 @@
 ---
-title: "Give Claude Code, Codex or OpenCode the Kapso skill so it runs campaigns correctly"
-sidebarTitle: "Kapso skill for coding agents"
-description: "Copy one skill folder into your project and your coding agent operates Kapso the way the docs say: it checks the install with kapso doctor, writes a goal with a metric in it, launches the campaign in the background and hands you kapso watch. One folder each for Claude Code, Codex and OpenCode."
-keywords: ["Kapso skill", "Claude Code skill", "Codex skill", "OpenCode skill", "SKILL.md", "coding agent Kapso"]
+title: "Install the Kapso plugin in Claude Code, Codex or Cursor"
+sidebarTitle: "The Kapso plugin"
+description: "One plugin gives your coding agent the whole of Kapso: ten commands, six skills that set it up, state an objective and its evaluation, author a harness, operate and diagnose a campaign and review a finished run, and an MCP server that serves the session your experience and the campaign verbs as tools."
+keywords: ["Kapso plugin", "Claude Code plugin", "Codex plugin", "Cursor plugin", "kapso-mcp", "/kapso:build", "/kapso:setup", "coding agent Kapso"]
 ---
 
-The Kapso skill is one `SKILL.md` file that teaches a coding agent how to operate Kapso from a session: verify the install, launch and follow a campaign, answer a campaign that is waiting on you, resume an interrupted run, learn from a finished campaign, serve a build the experience it should start from, and deploy the winner. It lives in the repository under [`skills/`](https://github.com/Leeroo-AI/kapso/tree/main/skills), one folder per agent, and an agent that has it reaches the right command first instead of reading the package source until its turn budget runs out. This documentation is also served to agents through an MCP server, described on [Docs in your coding agent](/docs/agent-access); the skill is the complement, for the agent that runs Kapso rather than reads about it.
+The Kapso plugin is one directory, [`plugin/`](https://github.com/Leeroo-AI/kapso/tree/main/plugin) in the repository, that Claude Code, Codex and Cursor each read through their own manifest. It carries the commands you type, the skills the agent follows, and the MCP server that serves your session what Kapso knows. With it, a coding agent sets Kapso up to a green `doctor`, turns a wish into a brief with an evaluation Kapso can protect, launches the campaign detached and hands you the watch line, answers a campaign that is waiting on you, tells a slow run from a dead one, reviews a finished run from its record, and writes a harness from your repository. Without it, the same agent reads the package source until its turn budget runs out.
 
-## What the skill tells the agent
-
-The file is about 270 lines of facts and rules, written for the mistakes agents made without it. The ones that matter most:
-
-- The package is `leeroo-kapso`. The PyPI package named `kapso` is an unrelated tool that shadows the `kapso` command, and an agent that installs it by name breaks the install it was asked to verify.
-- Every model call runs through the `claude` and `codex` CLIs, which must be logged in, and `OPENAI_API_KEY` is read from `.env` in the working directory for embeddings only. `kapso doctor <verb>` comes before any run, and `--models` probes each configured model live.
-- A goal names a success metric and a number, and the judge when there is one: "accuracy above 0.85 as measured by `eval/evaluate.py`". When the repository has no evaluation and the request names none, the agent asks once, in one line, and ends its turn; if you have none, it launches without `--eval-dir` and Kapso builds its own evaluation in `kapso_evaluation/`. It never writes an evaluator on your behalf.
-- A campaign runs for tens of minutes to hours, so the agent launches it with `--detach` and `--output` in a sibling directory, and hands you `kapso watch <campaign> --follow` in the same reply, with the goal it passed and the note that your own metric can replace the one it assumed.
-- `WAITING ON YOU` is a pause, not a failure. The agent reads the request with `kapso inbox <campaign>` and answers with `kapso inbox reply`, and it never restarts the campaign or puts a secret in the reply. See [the inbox](/docs/build/inbox).
-- A dead campaign resumes with `kapso build --output <campaign> --resume` and nothing else, since the checkpoint and the launch record carry the brief and the flags. See [Resuming runs](/docs/build/resume-and-budgets).
-- `learn("./campaign")` banks what a campaign taught, and a build is served the bank only when it loads it: `--experience mine`. Outside sources are ingested with `kapso experience add` and loaded the same way. See [Trajectory learning](/docs/learning/overview) and [Experience](/docs/experience).
-- `deploy()` is a minutes-long foreground operation on a real `Solution` (the object `build()` returned, or `Solution.open(path)`), not a campaign. See [Deploy](/docs/deploy/targets).
-- A one-file change with an obvious fix is faster by hand. The agent says which it is doing and never launches a campaign you did not ask for.
-
-The full text is in [`plugin/skills/kapso/SKILL.md`](https://github.com/Leeroo-AI/kapso/blob/main/plugin/skills/kapso/SKILL.md), one file for every host.
-
-## Install the skill
-
-The skill ships in the repository, not in the PyPI package. Clone the repository once, then copy the folder for your agent into the project you want to run Kapso from, or into your home directory for every project:
+## Install
 
 ```bash
-git clone https://github.com/Leeroo-AI/kapso
+# Claude Code
+claude plugin marketplace add Leeroo-AI/kapso
+claude plugin install kapso@kapso
 
-# Claude Code: project or ~/.claude/skills/kapso
-mkdir -p .claude/skills && cp -r kapso/plugin/skills/kapso .claude/skills/kapso
-
-# Codex CLI: project (found walking up to the git root) or ~/.agents/skills/kapso
-mkdir -p .agents/skills && cp -r kapso/plugin/skills/kapso .agents/skills/kapso
-
-# OpenCode: project or ~/.config/opencode/skills/kapso
-mkdir -p .opencode/skills && cp -r kapso/plugin/skills/kapso .opencode/skills/kapso
+# Codex
+codex plugin marketplace add Leeroo-AI/kapso
+codex plugin add kapso@kapso
+codex mcp add kapso -- kapso-mcp          # the server, once: Codex does not expose a plugin's MCP tools to a session
 ```
 
-| Agent | Folder in the repository | Where the agent looks |
-|-------|--------------------------|-----------------------|
-| Claude Code | `plugin/skills/kapso/` | `.claude/skills/kapso` in the project, or `~/.claude/skills/kapso` |
-| Codex CLI | `plugin/skills/kapso/` | `.agents/skills/kapso` in the project or any parent up to the git root, or `~/.agents/skills/kapso` |
-| OpenCode | `plugin/skills/kapso/` | `.opencode/skills/kapso` in the project, or `~/.config/opencode/skills/kapso`; OpenCode also reads the Claude Code and Codex locations |
+The repository is the marketplace: `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json` at its root name the one plugin at `./plugin`. The plugin's version is the package's, so install the package at the same version (`/kapso:setup` does, pinned). Cursor reads the same directory through `.cursor-plugin/plugin.json`; point Cursor's plugin installer at the repository. Cursor was not part of this release's proof: the skills and the MCP entry are the files the other two hosts ran.
 
-The three copies are separate files on purpose, so each can follow its agent's conventions. Today they are identical: campaigns launch, resume and reply with `--detach`, which starts the run in a session of its own on every host (the Codex copy used to need `setsid -f` where the others used `nohup`). Copy the folder written for your agent.
+To try the plugin from a clone without installing it, Claude Code takes `claude --plugin-dir ./plugin` for one session.
 
-The skill states facts for Kapso 0.7.x. Copy it from the release you have installed, and copy it again when you upgrade.
+## What the plugin ships
 
-## How each agent loads it
+Ten commands, each a short prompt that hands over to a skill with your request:
 
-Claude Code lists the skill in its catalog by the description in the frontmatter and loads it when a request mentions Kapso, a campaign, or a metric to push in a project where Kapso is installed; you can also invoke it as `/kapso`. Codex either reads the file itself when the request matches or takes `$kapso` in the prompt; the sidecar `agents/openai.yaml` in the Codex folder supplies the display name and one-line description that its `/skills` list shows. OpenCode loads it through its `skill` tool, and a project's `opencode.json` can allow or deny it under `permission.skill`.
+| Command | What it does |
+|---|---|
+| `/kapso:setup` | Install Kapso, run the logins, write the keys to `.env`, verify with `kapso doctor build --json` |
+| `/kapso:build <wish>` | Discover the repository, write `kapso-brief.md`, get the evaluation approved, launch detached |
+| `/kapso:watch [campaign]` | How a campaign is doing, in three lines; with no path, every campaign alive or waiting |
+| `/kapso:inbox [campaign] [note]` | What a paused campaign is waiting on you for, and the reply that resumes it |
+| `/kapso:resume <campaign>` | The diagnosis first, then the resume from the checkpoint |
+| `/kapso:review [campaign]` | What a finished run did: what won, the evidence, what was voided, the next action |
+| `/kapso:learn [campaign]` | Bank what the campaign taught, detached; then the offer to serve the bank to every session |
+| `/kapso:deploy [campaign] [--target]` | Deploy the delivered solution, prove one call, hand back the handle |
+| `/kapso:harness new\|improve\|check\|…` | Write a harness from the repository, improve one from a run, or the verbs |
+| `/kapso:experience add\|list\|share\|…` | Your bank, the team's, an ingested corpus: what a build or this session is served |
 
-A request that never names Kapso may not load the skill at all. That is the intended routing: the agent then fixes the code by hand, which for a small task is the right call, and with the skill loaded it says so and offers a campaign when the task is a search with a judge to beat.
+Six skills, the procedures the commands follow and the agent reaches on its own when a request matches their descriptions:
 
-## What changes with the skill
+| Skill | When it fires | What it holds |
+|---|---|---|
+| `kapso-setup` | "set up kapso", a red `doctor` | Detect before asking; install with the method the machine has; the logins; the keys, never printed; `doctor` to green; three closing lines |
+| `kapso-build` | "build X and verify it", "get the AUC above 0.85", `/kapso:build` | Listen for the two things; discover in silence; the brief in one message; at most one more round; the detached launch and the handoff |
+| `kapso-evaluation` | called by `kapso-build` | The evaluator contract; an evaluator found is audited, a criterion without one gets an evaluator built, neither gets candidates proposed; one approval |
+| `kapso-harness` | "write a harness for X", "the attempts keep doing Y" | A first harness proposed from the repository within two minutes; one question per silent module; `check` to green; the improve loop from a trace |
+| `kapso-review` | "what did it do", "is it safe to merge" | The trace and the record read; one message: the diff in outline, the evidence with its version, the voided attempts, the spend, the next action |
+| `kapso` | "how is the campaign", "it died", "stop it", "deploy it" | The operating facts: the handoff, the inbox, slow against stalled against dead, the stop and the resume, learn, experience, deploy, the config |
 
-We measured the skill the way it was written: the same prompts, with and without the skill, against a small churn-model repository on one machine, scored against a rubric per prompt. The prompts cover installing, launching, following, the inbox, resuming, learning, deploying, config changes, and two vague requests with no evaluation in the repository. A failure is a run that broke a rule the rubric names: a campaign launched without asking, a foreground run that hit the wall clock without a reply, an invented API, an edit to a file it should not have touched.
+The skills are one file each under [`plugin/skills/`](https://github.com/Leeroo-AI/kapso/tree/main/plugin/skills), the same text for every host, with a Codex sidecar beside each. `kapso-evaluation` is hidden from Claude Code's menu and still the agent's to call. A trigger suite under `plugin/evals/` checks that each skill fires on its own phrasings and stays quiet on its near misses, on both hosts.
 
-| Agent and model | Date | Without the skill | With the skill |
-|-----------------|------|-------------------|----------------|
-| Claude Code, `claude-opus-5`, ten prompts | 2026-09-06 | 4 failures, 291 tool calls, $12.45 | 0 failures, 120 tool calls, $5.14 |
-| Codex CLI, `gpt-6-astra`, eleven prompts | 2026-09-07 | 2 failures, 203 tool calls, 51 min | 0 failures, 80 tool calls, 12.5 min |
-| OpenCode, Kimi K2.7 Code on Fireworks, twelve prompts | 2026-09-07 | 7 failures, 293 tool calls, 80 min, $1.87 | 0 failures, 124 tool calls, 18 min, $0.56 |
+## The first session
 
-The per-prompt tables, the rubric and every product defect the runs turned up are in the [findings log](https://github.com/Leeroo-AI/kapso/blob/main/docs/plans/coding-agent-skill-findings.md) in the repository. The numbers are ours, from one toy project; treat them as the size of the effect, not a benchmark.
+```text
+/kapso:setup
+/kapso:build get the churn model's ROC AUC above 0.85 without changing the prediction contract
+```
 
-## Limits
+Setup detects what the machine has, installs what is missing, starts the logins and shows you the links, asks only for the keys your next step needs, and ends when `kapso doctor build --json` is green: under five minutes, at most three questions. Build reads the repository in silence, hands the evaluation to `kapso-evaluation`, and sends one message: what it found with the evidence, the brief as `kapso-brief.md`, the evaluation's protocol when one was built or changed, and the one thing to confirm. On "go" it launches with `--detach` and hands you `kapso watch <campaign> --follow`. The campaign outlives the session; `WAITING ON YOU` is a pause answered through `/kapso:inbox`. See [Your first build](/docs/first-build) for what the campaign does from there.
 
-The skill is instructions, not code. It does not install Kapso or log in the CLIs; [Installation](/docs/installation) does that, and `kapso doctor` is the first thing the skill has the agent run. An agent with the skill can still poll a campaign's log after launching it, or promise to keep watching a run when its session is about to end; the skill tells it not to, and the smaller the model, the more often it does anyway. The skill does not make a model that does not follow instructions follow them: the open-weight model above needed three rules restated as literal actions before it stopped launching campaigns without asking, and the same wording then held on the other two agents.
+## What a session is served
+
+The plugin's MCP server, `kapso-mcp`, starts with the session and serves it the campaign verbs as tools (`kapso_build_start`, `kapso_status`, `kapso_stop`), web research, the repository's memory when a campaign built one, the experiment history inside a campaign directory, and the bank tools over what the project's config lists:
+
+```yaml
+# kapso-config.yaml, at the project root
+experience:
+  session_sources: [mine:all]
+```
+
+That line serves every later session of the project your bank; `/kapso:learn` offers it once a campaign has been banked. It serves sessions, not builds: a build loads what its brief or `--experience` names. A listed source that does not exist leaves its tools off, named in the server's instructions with the line that makes it, and the server connects whatever is off. `kapso-mcp` reads `kapso-config.yaml` at the repository root when no `--config` is passed, and prints its version and config line on start. On Claude Code the server's state is under `/mcp` and its lines in the session's debug log; on Codex, `codex mcp list` and `~/.codex/log/`.
+
+A campaign's own sessions never get the plugin: the ideation, implementation and judge sessions Kapso starts run with it switched off, so a campaign never launches a campaign.
+
+## The second engineer
+
+A teammate with the plugin installed loads the bank you shared:
+
+```bash
+kapso experience share https://github.com/acme/kapso-bank.git     # you, once; create the repository first
+kapso experience add acme/kapso-bank@main --config kapso-config.yaml   # them, once
+kapso experience update --config kapso-config.yaml                     # them, whenever they want your newest lessons
+```
+
+Their `session_sources` lists `acme/kapso-bank@main` beside `mine:all`, and their builds load it with `--experience`. To hand the plugin itself to everyone who opens the repository, Claude Code reads a marketplace from the project's settings:
+
+```json
+// .claude/settings.json
+{"extraKnownMarketplaces": {"kapso": {"source": {"source": "github", "repo": "Leeroo-AI/kapso"}}}}
+```
+
+## Without the plugin
+
+OpenCode reads the skills as a folder: `ln -s <clone>/plugin/skills .opencode/skills` loads the six at once (skills only: the commands are Claude Code's, and OpenCode's own `mcp` configuration takes `kapso-mcp` as a stdio server). Any host takes the server alone:
+
+```bash
+claude mcp add kapso -- kapso-mcp --experience mine:all
+codex mcp add kapso -- kapso-mcp --experience mine:all
+```
+
+`--experience` replaces the config's list for that session; an empty string loads nothing. The one operating skill, [`plugin/skills/kapso/SKILL.md`](https://github.com/Leeroo-AI/kapso/blob/main/plugin/skills/kapso/SKILL.md), is also what an agent reading the repository is told to start from.
+
+## Measured
+
+The operating skill was first measured on Kapso 0.4.x, the same prompts with and without it on three hosts; the [findings log](https://github.com/Leeroo-AI/kapso/blob/main/docs/plans/coding-agent-skill-findings.md) has the tables and every product defect the runs turned up. This release's plugin is measured by its trigger suite (`claude plugin eval plugin` on Claude Code, `scripts/redesign/plugin_round.sh codex-triggers` on Codex) and by the proof round recorded in `docs/plans/redesign/wp7-plugin.md`.
 
 ## Related
 
@@ -81,14 +118,14 @@ The skill is instructions, not code. It does not install Kapso or log in the CLI
   <Card title="Installation" icon="download" href="/docs/installation">
     The package, the coding-agent CLIs, and `kapso doctor`
   </Card>
-  <Card title="The inbox" icon="inbox" href="/docs/build/inbox">
-    What WAITING ON YOU means and how to answer it
+  <Card title="Experience" icon="layer-group" href="/docs/experience">
+    What a build, or a session, is served
   </Card>
   <Card title="CLI reference" icon="terminal" href="/docs/reference/cli">
-    Every command and flag the skill names
+    Every command and flag the skills name
   </Card>
 </CardGroup>
 
-Related pages: [Docs in your coding agent](/docs/agent-access) · [Installation](/docs/installation) · [The inbox](/docs/build/inbox) · [CLI reference](/docs/reference/cli)
+Related pages: [Docs in your coding agent](/docs/agent-access) · [Installation](/docs/installation) · [Experience](/docs/experience) · [CLI reference](/docs/reference/cli)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).
