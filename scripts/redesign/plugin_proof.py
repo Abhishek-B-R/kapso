@@ -107,10 +107,13 @@ class ClaudeHost:
 
     def turn(self, cwd: Path, prompt: str, session: Optional[str], transcript: Path) -> Turn:
         sid = session or str(uuid.uuid4())
-        argv = ["claude", "-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "--model", CLAUDE_MODEL]
+        # The turn's deadline is the `timeout` command's: a turn that
+        # overstays ends with exit 124 and its stream so far, and the round
+        # goes on with what it has.
+        argv = ["timeout", str(TURN_TIMEOUT), "claude", "-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "--model", CLAUDE_MODEL]
         argv += ["--resume", sid] if session else ["--session-id", sid]
         started = time.monotonic()
-        run = subprocess.run(argv, input=prompt, capture_output=True, text=True, cwd=str(cwd), timeout=TURN_TIMEOUT)
+        run = subprocess.run(argv, input=prompt, capture_output=True, text=True, cwd=str(cwd))
         with open(transcript, "a", encoding="utf-8") as out:
             out.write(json.dumps({"proof_prompt": prompt}) + "\n" + run.stdout + ("\n" if not run.stdout.endswith("\n") else ""))
             if run.stderr.strip():
@@ -139,13 +142,13 @@ class CodexHost:
 
     def turn(self, cwd: Path, prompt: str, session: Optional[str], transcript: Path) -> Turn:
         last = cwd / ".proof-last.txt"
-        argv = ["codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "danger-full-access", "-C", str(cwd), "-m", CODEX_MODEL, "-o", str(last)]
+        argv = ["timeout", str(TURN_TIMEOUT), "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "danger-full-access", "-C", str(cwd), "-m", CODEX_MODEL, "-o", str(last)]
         if session:
             argv += ["resume", session, "-"]
         else:
             argv.append(prompt)
         started = time.monotonic()
-        run = subprocess.run(argv, input=prompt if session else None, capture_output=True, text=True, cwd=str(cwd), timeout=TURN_TIMEOUT)
+        run = subprocess.run(argv, input=prompt if session else None, capture_output=True, text=True, cwd=str(cwd))
         seconds = time.monotonic() - started
         with open(transcript, "a", encoding="utf-8") as out:
             out.write(json.dumps({"proof_prompt": prompt}) + "\n" + run.stdout + ("\n" if not run.stdout.endswith("\n") else ""))
