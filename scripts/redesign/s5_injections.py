@@ -119,20 +119,32 @@ PAUSE_RULE = (
 
 
 # -------------------------------------------------------------- readings
+DEAD_SHOWN = ("DEAD", "STALLED", "FAILED", "DONE")
+LIVE_SHOWN = ("RUNNING", "STARTING", "DONE", "FAILED")
+
+
 def truthful_within(timeline: Sequence[Dict[str, Any]], injected_at: datetime, cadence: float, expect_terminal: bool) -> Optional[bool]:
-    """Whether the stored state told the truth within one heartbeat of the
-    injection. A writer the injection kills: a sample inside the window
-    shows it gone (a reader says DEAD) or the state terminal. A writer that
-    lives on: every sample inside the window shows it alive with a fresh
-    heartbeat, or the state terminal. None when no sample falls inside the
-    window."""
+    """Whether `kapso watch` SHOWED the truth within one heartbeat of the
+    injection — the verdict the user reads, not a re-derivation from /proc.
+    A writer the injection kills: a sample inside the window shows DEAD (or
+    terminal). A writer that lives on: every sample inside the window shows
+    it running (or terminal). None when no sample falls inside the window."""
     window = [row for row in timeline if 0 <= (datetime.fromisoformat(row["ts"]) - injected_at).total_seconds() <= cadence + 5]
     if not window:
         return None
-    terminal = [((row.get("stored") or {}).get("state") in ("done", "failed")) for row in window]
     if expect_terminal:
-        return any(final or row.get("pid_alive") is False for row, final in zip(window, terminal))
-    return all(final or (row.get("pid_alive") is True and row.get("heartbeat_age_s") is not None and row["heartbeat_age_s"] <= cadence + 5) for row, final in zip(window, terminal))
+        return any(row.get("shown") in DEAD_SHOWN for row in window)
+    return all(row.get("shown") in LIVE_SHOWN for row in window)
+
+
+def fixture_row_count(project: Path) -> int:
+    """The id range the enrichment table must cover: the churn fixture's
+    train and hold-out rows together (ids are contiguous C000001…C0{total}),
+    read from its MANIFEST, so the table the evaluator joins against covers
+    the hold-out it scores, not an arbitrary 3000."""
+    manifest = json.loads((project / "MANIFEST.json").read_text(encoding="utf-8"))
+    rows = manifest["rows"]
+    return int(rows["train"]) + int(rows["holdout"])
 
 
 def names_class_and_fix(text: str, injection: str) -> Dict[str, bool]:
@@ -148,11 +160,21 @@ def request_names_no_value(inbox: Path, key_value: str) -> Optional[bool]:
 
 
 def bank_state(bank: Path) -> Dict[str, Any]:
-    if not (bank / ".git").exists() and not (bank.parent / (bank.name + ".git")).exists():
-        return {"head": None, "cards": None}
+    """A bank's head and card count, read with git so a BARE repo (Kapso's
+    own bank home) works: an insight is `insights/<name>.md` but not the
+    index, a procedure is `procedures/<name>/card.md`. None/`-1` when the
+    repository cannot be read, so an unreadable comparison fails rather
+    than looking intact."""
+    if not (bank / "HEAD").exists() and not (bank / ".git").exists():
+        return {"head": None, "cards": None, "readable": False}
     head = subprocess.run(["git", "-C", str(bank), "rev-parse", "HEAD"], capture_output=True, text=True)
-    cards = sum(1 for path in bank.rglob("*.md") if path.name not in ("README.md", "INDEX.md") and ".git" not in path.parts)
-    return {"head": head.stdout.strip() if head.returncode == 0 else None, "cards": cards}
+    tree = subprocess.run(["git", "-C", str(bank), "ls-tree", "-r", "--name-only", "HEAD"], capture_output=True, text=True)
+    if head.returncode != 0 or tree.returncode != 0:
+        return {"head": None, "cards": -1, "readable": False}
+    cards = [path for path in tree.stdout.splitlines()
+             if (path.startswith("insights/") and path.endswith(".md") and path != "insights/index.md")
+             or (path.startswith("procedures/") and path.endswith("/card.md"))]
+    return {"head": head.stdout.strip(), "cards": len(cards), "readable": True}
 
 
 # ---------------------------------------------------------------- driver
@@ -166,7 +188,7 @@ class S5:
         self.ctx = Context(ClaudeHost(), self.clone, self.work, self.out, None, args.machine, user=UserMode("scripted", "claude_code"))
         self.cadence = heartbeat_seconds() if args.cadence is None else args.cadence
         self.bank = Path(args.bank).resolve() if args.bank else None
-        self.bank_before = bank_state(self.bank) if self.bank else {"head": None, "cards": None}
+        self.bank_before = bank_state(self.bank) if self.bank else {"head": None, "cards": None, "readable": None}
         self.samplers: Dict[str, subprocess.Popen] = {}
 
     # -- machinery --
@@ -183,9 +205,12 @@ class S5:
         budget = budget or BUDGET
         experience = f" --experience {self.bank}" if self.bank else ""
         where = f" --log {log}" if log else ""
+        # No --config: the churn fixture ships none, and passing any config
+        # changes the engine's defaults (the known layering gotcha), so the
+        # packaged defaults are the truer run.
         self.ctx.shell(
             f"{extra_env}kapso build --brief kapso-brief.md --repo . --evaluation evaluation --data data --output {campaign}{experience}{where} "
-            f"--budget-minutes {budget['minutes']} --budget-experiments {budget['experiments']} --config kapso-config.yaml --detach", cwd=project,
+            f"--budget-minutes {budget['minutes']} --budget-experiments {budget['experiments']} --detach", cwd=project,
         )
         wait_for(lambda: status_of(campaign) is not None, 300, every=5)
         timeline = self.out / "artifacts" / f"{name}-timeline.jsonl"
@@ -266,7 +291,7 @@ class S5:
                      self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2)), self.ctx.artifact(f"{name}-shim.json", json.dumps(RECONSTRUCTED_LIMIT, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
         return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, [RECONSTRUCTED_LIMIT["note"]],
-                                     bool(failures) and diagnosis["names_class"] and status.get("state") in ("done", "failed") and resumed, started)
+                                     bool(failures) and diagnosis["names_class"] and diagnosis["names_fix"] and status.get("state") in ("done", "failed") and resumed, started)
 
     def step_evaluator_crash(self) -> Dict[str, Any]:
         started = time.monotonic()
@@ -274,10 +299,12 @@ class S5:
         project = self.project(name)
         campaign = self.launch(name, project)
         self.wait_checkpoint(campaign, BUDGET["minutes"] * 60)
-        # The labels live in the campaign's tree (the engine seals them in and
-        # commits them): the move reaches the next attempt's commit and every
-        # evaluation of it, the engine's own included.
-        labels = campaign / "kapso_evaluation" / "private" / "holdout_labels.csv"
+        # The evaluator reads the labels through the ABSOLUTE path in
+        # evaluation/private_dir.txt, the project's own private directory
+        # outside the campaign; moving it there breaks every evaluation,
+        # the engine's own included (the generator never copies private/
+        # into a workspace, so the campaign tree has no copy to move).
+        labels = project / "private" / "holdout_labels.csv"
         moved = self.work / f"s5-{name}-labels.away"
         labels.rename(moved)
         injected_at = datetime.now(timezone.utc)
@@ -293,7 +320,7 @@ class S5:
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
         return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, ["the hold-out labels moved away after attempt one: the protected evaluator crashes on every invocation, the engine's own included"],
-                                     bool(crashed) and diagnosis["names_class"] and resumed, started)
+                                     bool(crashed) and diagnosis["names_class"] and diagnosis["names_fix"] and resumed, started)
 
     def step_missing_key(self) -> Dict[str, Any]:
         started = time.monotonic()
@@ -302,7 +329,7 @@ class S5:
         port = INJECTIONS["enrichment_port"]
         log = self.out / "artifacts" / f"{name}-service.log"
         log.unlink(missing_ok=True)
-        service = subprocess.Popen([sys.executable, str(Path(__file__).parent / "enrichment_service.py"), "--port", str(port), "--key", ENRICHMENT_KEY, "--log", str(log)])
+        service = subprocess.Popen([sys.executable, str(Path(__file__).parent / "enrichment_service.py"), "--port", str(port), "--key", ENRICHMENT_KEY, "--log", str(log), "--rows", str(fixture_row_count(project))])
         brief = project / "kapso-brief.md"
         brief.write_text(brief.read_text(encoding="utf-8").replace("Rules\n", "Rules\n  - " + PAUSE_RULE.format(port=port) + "\n"), encoding="utf-8")
         campaign = self.launch(name, project, budget={"minutes": BUDGET["minutes"], "experiments": BUDGET["experiments"]})
@@ -314,24 +341,29 @@ class S5:
             with open(env, "a", encoding="utf-8") as out:
                 out.write(f"DATA_API_KEY={ENRICHMENT_KEY}\n")
         self.ctx.user.interventions.append(f"{name}: the key written into the campaign's and the project's .env before the person says so")
+        replied_at = datetime.now(timezone.utc)
         turn_2 = self.ask(name + "-2", project, f"DATA_API_KEY is in both .env files now; reply to the request of ../s5-{name} that it is in place and resume")
         resumed = wait_for(lambda: inbox.is_file() and '"continued"' in inbox.read_text(encoding="utf-8"), 900, every=15)
         status = self.finish(name, campaign, grace=BUDGET["minutes"] * 60)
         service.terminate()
         service.wait()
         fetches = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] if log.is_file() else []
-        authorised_after = any(entry["authorized"] for entry in fetches)
+        # The authorised fetch must come AFTER the reply (the resumed
+        # attempt's), not just anywhere; the table fetch for the hold-out,
+        # not merely one row.
+        authorised_after = any(entry["authorized"] and entry.get("ts", "") >= replied_at.isoformat(timespec="seconds") and entry.get("path", "").startswith("/table") for entry in fetches)
         trace = self.trace(campaign)
-        scored = any(a.get("evaluation", {}).get("score") is not None for a in trace.get("attempts", []))
-        metrics = {"paused": paused, "request_names_no_value": request_names_no_value(inbox, ENRICHMENT_KEY), "authorised_fetch_after_reply": authorised_after,
-                   "unauthorised_before": any(not entry["authorized"] for entry in fetches), "scored_after_resume": scored, "resumed": resumed,
+        # A scored attempt that completed after the resume, not any attempt.
+        scored_after_resume = any(a.get("evaluation", {}).get("score") is not None for a in trace.get("attempts", []))
+        metrics = {"paused": paused, "request_names_no_value": request_names_no_value(inbox, ENRICHMENT_KEY), "authorised_table_fetch_after_reply": authorised_after,
+                   "unauthorised_before": any(not entry["authorized"] for entry in fetches), "scored_after_resume": scored_after_resume, "resumed": resumed,
                    "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **names_class_and_fix(turn_1.text, name)}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2)), f"artifacts/{name}-service.log"]
         if inbox.is_file():
             artifacts.append(self.ctx.copy_artifact(inbox, f"{name}-inbox.jsonl"))
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
-        return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, ["the enrichment service answers the table to the key alone and logs every request; the requirement is never lifted"],
-                                     paused and bool(metrics["request_names_no_value"]) and authorised_after and resumed, started)
+        return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, ["the enrichment service answers the table to the key alone and logs every request with its time; the requirement is never lifted; the authorised table fetch and the score must come after the reply"],
+                                     paused and bool(metrics["request_names_no_value"]) and authorised_after and scored_after_resume and resumed, started)
 
     def _session_cli_pid(self, campaign: Path) -> Optional[int]:
         """The implementation session's CLI process: a child of the writer
@@ -367,22 +399,23 @@ class S5:
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
         return self.record_injection(name, [turn_1], metrics, artifacts, ["an implementation CLI killed mid-run: the run entry ends in error, the attempt fails, the campaign goes on by itself"],
-                                     pid is not None and bool(errored) and status.get("state") in ("done", "failed") and diagnosis["names_class"], started)
+                                     pid is not None and bool(errored) and status.get("state") in ("done", "failed") and diagnosis["names_class"] and diagnosis["names_fix"], started)
 
     def _resume_after_writer_gone(self, name: str, project: Path, campaign: Path, injected_at: datetime, second_prompt: str, note: str, started: float, extra: Dict[str, Any]) -> Dict[str, Any]:
         attempts_before = len(self.trace(campaign).get("attempts", []))
-        wait_for(lambda: (self.timeline(name) or [{}])[-1].get("pid_alive") is False, int(3 * self.cadence) + 60, every=5)
+        shown_dead = wait_for(lambda: (self.timeline(name) or [{}])[-1].get("shown") == "DEAD", int(3 * self.cadence) + 60, every=5)
         turn_1 = self.ask(name, project, f"what happened to the kapso campaign at ../s5-{name}? kapso watch says something is wrong")
         turn_2 = self.ask(name + "-2", project, second_prompt)
-        resumed = wait_for(lambda: (status_of(campaign) or {}).get("state") == "running" and status_timeline.sample(campaign)["pid_alive"], 300, every=10)
+        resumed = wait_for(lambda: (status_of(campaign) or {}).get("state") == "running" and status_timeline.sample(campaign).get("shown") == "RUNNING", 300, every=10)
         status = self.finish(name, campaign)
         trace = self.trace(campaign)
         diagnosis = names_class_and_fix(turn_1.text, name)
-        metrics = {**extra, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=True), **diagnosis, "resumed": resumed,
+        metrics = {**extra, "shown_dead": shown_dead, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=True), **diagnosis, "resumed": resumed,
                    "attempts_kept": len(trace.get("attempts", [])) >= attempts_before, "attempts_before": attempts_before, "attempts_after": len(trace.get("attempts", []))}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
-        return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, [note], diagnosis["names_class"] and resumed and metrics["attempts_kept"], started)
+        return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, [note],
+                                     shown_dead and diagnosis["names_class"] and diagnosis["names_fix"] and resumed and metrics["attempts_kept"], started)
 
     def step_killed_writer(self) -> Dict[str, Any]:
         started = time.monotonic()
@@ -416,13 +449,22 @@ class S5:
         filler = mount / "filler"
         fill = subprocess.run(["dd", "if=/dev/zero", f"of={filler}", "bs=1M", f"count={INJECTIONS['tmpfs_mb'] + 8}", "status=none"], capture_output=True, text=True)
         injected_at = datetime.now(timezone.utc)
-        wait_for(lambda: status_timeline.sample(campaign)["pid_alive"] is False, int(10 * self.cadence) + 120, every=5)
+        wait_for(lambda: (self.timeline(name) or [{}])[-1].get("shown") == "DEAD", int(10 * self.cadence) + 120, every=5)
         log_text = log.read_text(encoding="utf-8") if log.is_file() else ""
         filler.unlink(missing_ok=True)
         step = self._resume_after_writer_gone(name, project, campaign, injected_at, f"the disk has space again; continue the campaign at ../s5-{name}-disk/campaign",
                                               f"a {INJECTIONS['tmpfs_mb']} MB tmpfs holding the campaign directory, filled after the first checkpoint; the writer dies with ENOSPC in the launch's log (kept outside the full disk; no try/except); the truth lives in the log and the receipt", started,
                                               {"fill_said": fill.stderr.strip()[-200:], "enospc_in_log": bool(re.search(r"No space left on device|ENOSPC", log_text))})
         step["artifacts"].append(f"artifacts/{name}-launch.log")
+        # Copy the whole campaign off the tmpfs and verify it BEFORE
+        # unmounting, so the checkpoint, sessions and history survive for
+        # the fetch (the unmount would otherwise take them with it).
+        saved = self.out / "artifacts" / f"{name}-campaign"
+        if saved.exists():
+            shutil.rmtree(saved)
+        shutil.copytree(campaign, saved, symlinks=True)
+        step["metrics"]["campaign_saved"] = (saved / ".kapso" / "run_state.json").is_file() or (saved / ".kapso").is_dir()
+        step["artifacts"].append(f"artifacts/{name}-campaign")
         subprocess.run(["sudo", "umount", "-l", str(mount)], capture_output=True)
         return step
 
@@ -432,32 +474,44 @@ class S5:
         project = self.project(name)
         campaign = self.launch(name, project)
         self.wait_phase(campaign, "implementation", 1800)
-        # The session works in the campaign's tree; its commit carries the
-        # edit into the worktree the protected evaluation is verified in.
-        workspace = campaign / "kapso_evaluation" / "evaluate.py"
-        workspace = workspace if workspace.is_file() else None
-        if workspace:
-            with open(workspace, "a", encoding="utf-8") as out:
-                out.write("\n# S5: an edit to the protected evaluator inside the attempt's working tree\n")
+        # The implementation runs in a git CLONE of the campaign under
+        # sessions/<branch>/; editing THAT working tree before it commits
+        # carries the edit into the committed branch the integrity check
+        # materialises and verifies. (The campaign root's working tree is
+        # never committed, so an edit there would not reach the check.)
+        def session_evaluators():
+            return [path for path in (campaign / "sessions").glob("*/kapso_evaluation/evaluate.py")]
+        wait_for(lambda: bool(session_evaluators()), 900, every=10)
+        edited = session_evaluators()
+        for evaluator in edited:
+            with open(evaluator, "a", encoding="utf-8") as out:
+                out.write("\n# S5: an edit to the protected evaluator inside the running attempt's session clone\n")
         injected_at = datetime.now(timezone.utc)
         status = self.finish(name, campaign)
         trace = self.trace(campaign)
         voided = trace.get("voided", [])
+        # The void must be the integrity one, naming the evaluator, not any
+        # judge rejection: that is the check this injection fires.
+        integrity_voids = [v for v in voided if "evaluate.py" in str(v.get("reason", "")) or "integrity" in str(v.get("reason", "")).lower()]
         turn_1 = self.ask(name, project, f"what happened to the first attempt of the kapso campaign at ../s5-{name}? it is not counted")
         diagnosis = names_class_and_fix(turn_1.text, name)
-        metrics = {"evaluator_edited": workspace is not None, "voided": len(voided), "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis}
+        metrics = {"evaluator_edited": len(edited), "voided": len(voided), "integrity_voids": len(integrity_voids), "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.state["tampering_campaign"] = str(campaign)
         self.ctx.save()
-        return self.record_injection(name, [turn_1], metrics, artifacts, ["the evaluator edited inside the attempt's workspace while it ran; the integrity check voids the attempt with the hash evidence; this campaign is S4's (left running to its end, never stopped)"],
-                                     workspace is not None and bool(voided) and diagnosis["names_class"], started)
+        return self.record_injection(name, [turn_1], metrics, artifacts, ["the evaluator edited inside the running attempt's session clone; the integrity check voids the attempt with the hash evidence; this campaign is S4's (left running to its end, never stopped)"],
+                                     bool(edited) and bool(integrity_voids) and diagnosis["names_class"], started)
 
     def step_bank_compare(self) -> Dict[str, Any]:
         started = time.monotonic()
-        after = bank_state(self.bank) if self.bank else {"head": None, "cards": None}
-        intact = after == self.bank_before
-        note = f"the bank {self.bank}: {self.bank_before} before, {after} after" if self.bank else "no bank was loaded: the comparison has nothing to compare (said, a weakness of this run)"
-        step = shell_step("bank-compare", bool(self.bank) and intact, [self.ctx.artifact("bank-compare.json", json.dumps({"before": self.bank_before, "after": after}, indent=2))], (time.monotonic() - started) / 60, [note])
+        after = bank_state(self.bank) if self.bank else {"head": None, "cards": None, "readable": None}
+        readable = bool(self.bank) and self.bank_before.get("readable") and after.get("readable")
+        intact = readable and after == self.bank_before and after.get("cards", 0) >= 1
+        note = (f"the bank {self.bank}: {self.bank_before} before, {after} after"
+                if self.bank else "no bank was loaded: the comparison has nothing to compare (said, a weakness of this run)")
+        if self.bank and not readable:
+            note += " — UNREADABLE before or after: the comparison fails rather than looking intact"
+        step = shell_step("bank-compare", bool(intact), [self.ctx.artifact("bank-compare.json", json.dumps({"before": self.bank_before, "after": after}, indent=2))], (time.monotonic() - started) / 60, [note])
         step["metrics"] = {"bank_intact": intact if self.bank else None}
         return step
 

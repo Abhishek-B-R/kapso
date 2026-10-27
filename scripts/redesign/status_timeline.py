@@ -10,6 +10,7 @@ state was truthful and S6 can read both builds on one elapsed grid.
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -41,16 +42,33 @@ def heartbeat_seconds() -> float:
     return float(run.stdout.strip())
 
 
+SHOWN_STATES = ("DEAD", "STALLED", "WAITING", "FAILED", "DONE", "RUNNING", "STARTING")
+_STATE_WORD = re.compile(r"\b(" + "|".join(SHOWN_STATES) + r")\b")
+
+
+def shown_state(watch_text: str) -> Optional[str]:
+    """The state `kapso watch` prints for the campaign — the verdict the
+    user reads (DEAD when the writer is gone, STALLED on a stale heartbeat),
+    not a re-derivation. None when nothing was printed."""
+    match = _STATE_WORD.search(watch_text)
+    return match.group(1) if match else None
+
+
 def sample(campaign: Path) -> Dict[str, Any]:
-    status_path = campaign / ".kapso" / "status.json"
+    """One timeline row: the state `kapso watch` SHOWS (the product's own
+    liveness verdict), beside the stored status it serialises. `watch` is
+    the user's window; the stored fields are kept for provenance, the raw
+    pid only as a secondary observation."""
     now = datetime.now(timezone.utc)
-    row: Dict[str, Any] = {"ts": now.isoformat(timespec="seconds"), "stored": None, "pid_alive": None, "heartbeat_age_s": None}
-    if not status_path.is_file():
+    row: Dict[str, Any] = {"ts": now.isoformat(timespec="seconds"), "shown": None, "stored": None, "pid_alive": None, "heartbeat_age_s": None}
+    human = subprocess.run(["kapso", "watch", str(campaign)], capture_output=True, text=True)
+    row["shown"] = shown_state(human.stdout)
+    data = subprocess.run(["kapso", "watch", str(campaign), "--json"], capture_output=True, text=True)
+    if data.returncode != 0 or not data.stdout.strip():
         return row
-    text = status_path.read_text(encoding="utf-8")
-    if not text.strip():
+    status = json.loads(data.stdout)
+    if not isinstance(status, dict) or "state" not in status:
         return row
-    status = json.loads(text)
     row["stored"] = {key: status.get(key) for key in ("state", "phase", "iteration", "best", "stopped_reason", "heartbeat_at", "pid", "error")}
     pid = status.get("pid")
     row["pid_alive"] = isinstance(pid, int) and Path(f"/proc/{pid}").exists()

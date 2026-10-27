@@ -12,13 +12,14 @@ import argparse
 import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Optional, Sequence
 from urllib.parse import parse_qs, urlparse
 
 SEGMENTS = ("new", "steady", "lapsing", "champion")
-ROWS = 3000  # the fixture's hold-out and training ids together are served by range
+ROWS = 13000  # the churn fixture's train (10000) + hold-out (3000) ids, C000001…C013000; the driver passes the fixture's own count
 
 
 def row(customer_id: str) -> dict:
@@ -36,12 +37,13 @@ def table_csv(ids: Sequence[str]) -> str:
 
 class Handler(BaseHTTPRequestHandler):
     key = ""
+    rows = ROWS
     log_path: Optional[Path] = None
 
     def _log(self, status: int, note: str) -> None:
         if self.log_path:
             with open(self.log_path, "a", encoding="utf-8") as log:
-                log.write(json.dumps({"path": self.path, "status": status, "authorized": status == 200, "note": note}) + "\n")
+                log.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "path": self.path, "status": status, "authorized": status == 200, "note": note}) + "\n")
 
     def _send(self, status: int, body: str, content_type: str = "application/json") -> None:
         data = body.encode("utf-8")
@@ -59,7 +61,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         url = urlparse(self.path)
         if url.path == "/table":
-            ids = [f"C{number:06d}" for number in range(1, ROWS + 1)]
+            ids = [f"C{number:06d}" for number in range(1, self.rows + 1)]
             self._log(200, "the table")
             self._send(200, table_csv(ids), "text/csv")
         elif url.path == "/enrich":
@@ -74,9 +76,10 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
-def serve(port: int, key: str, log_path: Optional[Path]) -> HTTPServer:
+def serve(port: int, key: str, log_path: Optional[Path], rows: int = ROWS) -> HTTPServer:
     Handler.key = key
     Handler.log_path = log_path
+    Handler.rows = rows
     return HTTPServer(("127.0.0.1", port), Handler)
 
 
@@ -85,8 +88,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--key", required=True, help="the value DATA_API_KEY must carry (a placeholder the round makes up)")
     parser.add_argument("--log", default=None, help="every request appended as one JSON line")
+    parser.add_argument("--rows", type=int, default=ROWS, help="the id range to serve (C000001…C0{rows}); the fixture's train + hold-out count")
     args = parser.parse_args(argv)
-    server = serve(args.port, args.key, Path(args.log) if args.log else None)
+    server = serve(args.port, args.key, Path(args.log) if args.log else None, args.rows)
     print(f"enrichment service on 127.0.0.1:{args.port}", flush=True)
     server.serve_forever()
     return 0

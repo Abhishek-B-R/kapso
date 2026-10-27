@@ -68,9 +68,9 @@ def test_the_shim_passes_through_and_answers_an_armed_session_turn_n_times(tmp_p
     assert third.returncode == 0 and third.stdout.startswith("real:"), "after N the CLI runs"
 
 
-def test_the_enrichment_service_answers_the_key_alone_and_logs_every_request(tmp_path):
+def test_the_enrichment_service_answers_the_key_alone_logs_with_time_and_covers_the_fixture_range(tmp_path):
     log = tmp_path / "requests.log"
-    server = service.serve(0, "the-key", log)
+    server = service.serve(0, "the-key", log, rows=13000)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -79,46 +79,68 @@ def test_the_enrichment_service_answers_the_key_alone_and_logs_every_request(tmp
     assert refused.value.code == 401
     request = urllib.request.Request(f"http://127.0.0.1:{port}/table", headers={"Authorization": "Bearer the-key"})
     body = urllib.request.urlopen(request).read().decode()
-    assert body.startswith("id,segment,risk_score\nC000001,") and body.count("\n") == service.ROWS + 1
+    # The table covers the hold-out ids the evaluator scores (C010001…C013000), not an arbitrary 3000.
+    assert body.startswith("id,segment,risk_score\nC000001,") and body.count("\n") == 13001 and "\nC013000," in body
     request = urllib.request.Request(f"http://127.0.0.1:{port}/enrich?customer_id=C010001", headers={"Authorization": "Bearer the-key"})
     assert json.loads(urllib.request.urlopen(request).read())["id"] == "C010001"
     server.shutdown()
     entries = [json.loads(line) for line in log.read_text().splitlines()]
     assert [entry["authorized"] for entry in entries] == [False, True, True] and entries[0]["status"] == 401
+    assert all("ts" in entry for entry in entries), "every request is timestamped, so a fetch can be placed after the reply"
     assert service.row("C000001") == service.row("C000001") and service.row("C000001") != service.row("C000002")
 
 
-def test_the_timeline_reads_the_stored_state_beside_the_observed_liveness(tmp_path):
-    campaign = tmp_path / "campaign"
-    (campaign / ".kapso").mkdir(parents=True)
-    assert timeline.sample(campaign)["stored"] is None
-    beat = (datetime.now(timezone.utc) - timedelta(seconds=90)).isoformat(timespec="seconds")
-    (campaign / ".kapso" / "status.json").write_text(json.dumps({"state": "running", "phase": "ideation", "iteration": 1, "pid": os.getpid(), "heartbeat_at": beat}))
-    row = timeline.sample(campaign)
-    assert row["stored"]["state"] == "running" and row["pid_alive"] is True and 85 <= row["heartbeat_age_s"] <= 95
-    (campaign / ".kapso" / "status.json").write_text(json.dumps({"state": "running", "pid": 2 ** 22 - 1, "heartbeat_at": beat}))
-    assert timeline.sample(campaign)["pid_alive"] is False
+def test_shown_state_reads_the_verdict_kapso_watch_prints():
+    assert timeline.shown_state("churn-campaign   DEAD   120s ago") == "DEAD"
+    assert timeline.shown_state("state: RUNNING (phase implementation)") == "RUNNING"
+    assert timeline.shown_state("nothing here") is None
 
 
-def _row(seconds_after, state, pid_alive, base, age=0):
-    return {"ts": (base + timedelta(seconds=seconds_after)).isoformat(timespec="seconds"), "stored": {"state": state}, "pid_alive": pid_alive, "heartbeat_age_s": age}
+def test_the_sampler_records_what_watch_shows_beside_the_stored_status(tmp_path, monkeypatch):
+    beat = (datetime.now(timezone.utc) - timedelta(seconds=20)).isoformat(timespec="seconds")
+    calls = {"human": "churn   DEAD   200s ago", "json": json.dumps({"state": "running", "phase": "implementation", "pid": 2 ** 22 - 1, "heartbeat_at": beat, "best": None})}
+
+    def fake_run(cmd, capture_output, text):
+        out = calls["json"] if "--json" in cmd else calls["human"]
+        return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+
+    monkeypatch.setattr(timeline.subprocess, "run", fake_run)
+    row = timeline.sample(tmp_path / "campaign")
+    assert row["shown"] == "DEAD" and row["stored"]["state"] == "running" and row["pid_alive"] is False
 
 
-def test_truthful_within_one_heartbeat_is_read_from_the_timeline():
+def _row(seconds_after, shown, base):
+    return {"ts": (base + timedelta(seconds=seconds_after)).isoformat(timespec="seconds"), "shown": shown}
+
+
+def test_truthful_within_one_heartbeat_is_read_from_what_watch_showed():
     base = datetime(2026, 10, 27, 10, 0, tzinfo=timezone.utc)
-    rows = [_row(-60, "running", True, base), _row(30, "running", False, base), _row(90, "running", False, base)]
-    assert s5.truthful_within(rows, base, 60.0, expect_terminal=True) is True, "a killed writer seen gone within a heartbeat"
-    rows = [_row(-60, "running", True, base), _row(30, "running", True, base, age=20), _row(200, "running", False, base)]
-    assert s5.truthful_within(rows, base, 60.0, expect_terminal=True) is False, "a killed writer still alive a heartbeat later"
-    rows = [_row(-60, "running", True, base), _row(30, "running", True, base, age=20), _row(90, "running", True, base, age=20)]
-    assert s5.truthful_within(rows, base, 60.0, expect_terminal=False) is True, "a living writer alive and beating"
-    rows = [_row(-60, "running", True, base), _row(30, "running", True, base, age=200)]
-    assert s5.truthful_within(rows, base, 60.0, expect_terminal=False) is False, "alive but silent: a stale heartbeat"
-    rows = [_row(-60, "running", True, base), _row(30, "running", False, base)]
-    assert s5.truthful_within(rows, base, 60.0, expect_terminal=False) is False, "stored running, nothing runs"
-    rows = [_row(-60, "running", True, base), _row(40, "done", True, base)]
-    assert s5.truthful_within(rows, base, 60.0, expect_terminal=False) is True
-    assert s5.truthful_within([_row(-60, "running", True, base), _row(200, "failed", True, base)], base, 60.0, expect_terminal=False) is None, "no sample inside the window"
+    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(30, "DEAD", base)], base, 60.0, expect_terminal=True) is True, "watch showed DEAD within a heartbeat"
+    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(30, "RUNNING", base), _row(200, "DEAD", base)], base, 60.0, expect_terminal=True) is False, "still shown RUNNING a heartbeat later"
+    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(30, "RUNNING", base), _row(90, "RUNNING", base)], base, 60.0, expect_terminal=False) is True, "a living writer shown running"
+    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(30, "STALLED", base)], base, 60.0, expect_terminal=False) is False, "shown STALLED is not a happy run"
+    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(40, "DONE", base)], base, 60.0, expect_terminal=False) is True
+    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(200, "FAILED", base)], base, 60.0, expect_terminal=False) is None, "no sample inside the window"
+
+
+def test_bank_state_reads_a_bare_repo_and_fails_unreadable(tmp_path):
+
+    bare = tmp_path / "bank.git"
+    work = tmp_path / "work"
+    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    subprocess.run(["git", "clone", "-q", str(bare), str(work)], check=True)
+    run = lambda *a: subprocess.run(["git", "-C", str(work), *a], capture_output=True, text=True, check=True)
+    run("config", "user.email", "x@x")
+    run("config", "user.name", "x")
+    (work / "insights").mkdir()
+    (work / "insights" / "a-card.md").write_text("# card\n")
+    (work / "insights" / "index.md").write_text("# index\n")
+    run("add", "-A")
+    run("commit", "-q", "-m", "one card")
+    run("push", "-q", "origin", "HEAD")
+    state = s5.bank_state(bare)
+    assert state["readable"] is True and state["cards"] == 1 and state["head"], "the bare bank's one card, index.md excluded"
+    assert s5.bank_state(tmp_path / "nope")["readable"] is False
 
 
 def test_the_request_names_the_variable_and_never_a_value_and_the_diagnosis_names_its_class(tmp_path):
