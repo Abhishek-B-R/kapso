@@ -1113,6 +1113,14 @@ For later packages:
   rows of data, so the session's prompt carried something the size of
   the data. The repo-memory builder (WP6's engine sessions) should bound
   what it quotes, and say what it left out.
+- **A shared bank's clone reads the remote's HEAD.** The experience
+  store's fetch reads `repo.head.commit` after cloning a bank you read;
+  a remote whose HEAD names a branch the bank never pushed (a bare
+  repository made with `git init` points at `master`, the bank pushes
+  `main`) ends in a traceback from inside GitPython rather than a line
+  naming the branch. The round's remote is made with `main` as its first
+  branch, as a git host's would be; the experience package should read
+  the bank's `main` explicitly and refuse a remote without it by name.
 - **The fresh machine's examples' dependencies.** Ubuntu 24.04 ships no
   `python3-pyarrow`, so an apt line for the examples fails whole; the
   round makes a uv venv first on PATH. WP9's provisioning should do the
