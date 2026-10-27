@@ -1,0 +1,124 @@
+{
+  "_": "The semantic suite's one home (docs/plans/redesign/wp9-semantic-suite.md): per test its required steps per host, its run-level bars and its judge; per step its kind and its budgets (docs/plans/kapso-plugin-skills.md: a message is one assistant turn, a question a turn that ends asking, minutes exclude the wait for the person's answer, longest_message_lines counts lines outside fenced blocks); the knobs every driver reads. A timeline's sampling cadence is the engine config's budget.checkpoint_heartbeat_seconds, read through load_config, never copied here. report.py reads this file beside it.",
+  "tests": {
+    "S2-mechanical": {
+      "required_steps": {
+        "claude_code": ["install", "setup", "cold-install", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools", "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review", "deploy", "learn", "learn-complete", "session-brief", "experience-share", "harness-improve", "campaign-session-isolation", "cold-start"],
+        "codex": ["install", "setup", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools", "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review", "deploy", "session-brief", "campaign-session-isolation", "codex-rules-probe"]
+      },
+      "bars": {},
+      "judge": null
+    },
+    "S2": {
+      "required_steps": {
+        "claude_code": ["install", "setup", "cold-install", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools", "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review", "deploy", "learn", "learn-complete", "session-brief", "experience-share", "second-engineer-build", "harness-improve", "campaign-session-isolation", "cold-start"],
+        "codex": ["install", "setup", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools", "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review", "deploy", "learn", "learn-complete", "session-brief", "experience-share", "second-engineer-build", "harness-improve", "campaign-session-isolation", "codex-rules-probe"]
+      },
+      "bars": {},
+      "judge": {"rubric": "s2", "dimensions": ["proactive", "clear", "not annoying", "engaging", "return on attention"], "scale": [1, 5], "bar": 4}
+    },
+    "S1": {
+      "required_steps": {
+        "claude_code": ["sandbox", "prerequisite-campaign", "prerequisite-killed", "task1-python", "task1-cli", "task2-python", "task2-cli", "task3-python", "task3-cli", "task4-python", "task4-cli", "task5-python", "task5-cli", "task6-python", "task6-cli", "comprehension", "flow-counts"],
+        "codex": ["sandbox", "prerequisite-campaign", "prerequisite-killed", "task1-python", "task1-cli", "task2-python", "task2-cli", "task3-python", "task3-cli", "task4-python", "task4-cli", "task5-python", "task5-cli", "task6-python", "task6-cli", "comprehension", "flow-counts"]
+      },
+      "bars": {"first_try_count": {"min": 9}, "errors_led_to_fix": {"min": 1.0}, "comprehension_correct": {"min": 1.0}, "python_lines": {"max": 12}, "cli_commands": {"max": 6}},
+      "judge": {"rubric": "s1", "dimensions": ["names say what the calls do", "the flows fit the design's lengths", "nothing needed the docs do not say"], "scale": [0, 1], "bar": 1}
+    },
+    "S4": {
+      "required_steps": {"claude_code": ["fact-sheet", "reading-claude_code", "reading-codex"], "codex": ["fact-sheet", "reading-claude_code", "reading-codex"]},
+      "bars": {"readers_correct_min": {"min": 6}},
+      "judge": {"rubric": "s4", "dimensions": ["what won", "why", "what was voided and on what evidence", "what was rejected and why", "what it cost", "safe to merge"], "scale": [0, 1], "bar": 1}
+    },
+    "S5": {
+      "required_steps": {"claude_code": ["provider-limit", "evaluator-crash", "missing-key", "killed-session", "killed-writer", "full-disk", "tampering", "bank-compare"], "codex": ["provider-limit", "evaluator-crash", "missing-key", "killed-session", "killed-writer", "full-disk", "tampering", "bank-compare"]},
+      "bars": {"user_messages_max": {"max": 2}, "truthful_within_heartbeat": {"min": 1.0}, "requests_name_no_value": {"min": 1.0}, "bank_intact": {"min": 1.0}},
+      "judge": null
+    },
+    "S6": {
+      "required_steps": {"claude_code": ["build-one", "learn", "build-two", "comparison"], "codex": ["build-one", "learn", "build-two", "comparison"]},
+      "bars": {"gap_min": {"min": 0.0}, "lessons_cited": {"min": 1}, "scored_observations_min": {"min": 1}},
+      "judge": null
+    },
+    "author": {
+      "required_steps": {"claude_code": ["round-1", "guide-fixes", "round-2"], "codex": ["round-1", "guide-fixes", "round-2"]},
+      "bars": {"structural_gaps_round2": {"max": 0}, "check_green_round2": {"min": 1}},
+      "judge": {"rubric": "author", "dimensions": ["pages under forty lines", "every skill named on its page", "no task value in the harness", "the ladder respected"], "scale": [0, 1], "bar": 1}
+    }
+  },
+  "steps": {
+    "install": {"kind": "shell", "minutes": 15},
+    "setup": {"kind": "conversation", "messages": 3, "questions": 3, "minutes": 5, "longest_message_lines": 40},
+    "cold-install": {"kind": "shell", "minutes": 10},
+    "build-churn": {"kind": "conversation", "messages": 3, "questions": 2, "minutes": 5, "longest_message_lines": 12},
+    "build-pause": {"kind": "conversation", "messages": 3, "questions": 2, "minutes": 5, "longest_message_lines": 12},
+    "watch": {"kind": "conversation", "messages": 2, "questions": 0, "minutes": 2, "longest_message_lines": 8},
+    "inbox": {"kind": "conversation", "messages": 3, "questions": 1, "minutes": 5, "longest_message_lines": 20},
+    "review": {"kind": "conversation", "messages": 2, "questions": 1, "minutes": 5, "longest_message_lines": 12},
+    "deploy": {"kind": "conversation", "messages": 3, "questions": 0, "minutes": 35, "longest_message_lines": 30},
+    "build-fraud": {"kind": "conversation", "messages": 4, "questions": 2, "minutes": 10, "longest_message_lines": 12},
+    "build-data-only": {"kind": "conversation", "messages": 3, "questions": 1, "minutes": 5, "longest_message_lines": 12},
+    "build-empty-wish": {"kind": "conversation", "messages": 3, "questions": 1, "minutes": 5, "longest_message_lines": 12},
+    "harness-new": {"kind": "conversation", "messages": 14, "questions": 8, "minutes": 25, "longest_message_lines": 60},
+    "harness-probe": {"kind": "shell", "minutes": 25},
+    "harness-improve": {"kind": "conversation", "messages": 3, "questions": 1, "minutes": 10, "longest_message_lines": 40},
+    "learn": {"kind": "conversation", "messages": 2, "questions": 1, "minutes": 5, "longest_message_lines": 20},
+    "learn-complete": {"kind": "shell", "minutes": 150},
+    "experience-share": {"kind": "conversation", "messages": 4, "questions": 1, "minutes": 5, "longest_message_lines": 30},
+    "second-engineer-build": {"kind": "conversation", "messages": 3, "questions": 1, "minutes": 20, "longest_message_lines": 12},
+    "harness-export": {"kind": "conversation", "messages": 2, "questions": 0, "minutes": 3, "longest_message_lines": 30},
+    "session-brief": {"kind": "conversation", "messages": 1, "questions": 0, "minutes": 3, "longest_message_lines": 20},
+    "campaign-tools": {"kind": "conversation", "messages": 4, "questions": 0, "minutes": 5, "longest_message_lines": 30},
+    "campaign-session-isolation": {"kind": "shell", "minutes": 20},
+    "codex-rules-probe": {"kind": "shell", "minutes": 5},
+    "triggers": {"kind": "shell", "minutes": 120},
+    "cold-start": {"kind": "shell", "minutes": 5},
+    "sandbox": {"kind": "shell", "minutes": 10},
+    "prerequisite-campaign": {"kind": "build", "minutes": 75},
+    "prerequisite-killed": {"kind": "build", "minutes": 10},
+    "task1-python": {"kind": "attempt", "minutes": 20}, "task1-cli": {"kind": "attempt", "minutes": 10},
+    "task2-python": {"kind": "attempt", "minutes": 20}, "task2-cli": {"kind": "attempt", "minutes": 10},
+    "task3-python": {"kind": "attempt", "minutes": 20}, "task3-cli": {"kind": "attempt", "minutes": 10},
+    "task4-python": {"kind": "attempt", "minutes": 15}, "task4-cli": {"kind": "attempt", "minutes": 15},
+    "task5-python": {"kind": "attempt", "minutes": 10}, "task5-cli": {"kind": "attempt", "minutes": 10},
+    "task6-python": {"kind": "attempt", "minutes": 10}, "task6-cli": {"kind": "attempt", "minutes": 10},
+    "comprehension": {"kind": "reading", "minutes": 15},
+    "flow-counts": {"kind": "shell", "minutes": 1},
+    "fact-sheet": {"kind": "shell", "minutes": 5},
+    "reading-claude_code": {"kind": "reading", "minutes": 20},
+    "reading-codex": {"kind": "reading", "minutes": 20},
+    "provider-limit": {"kind": "injection", "minutes": 60},
+    "evaluator-crash": {"kind": "injection", "minutes": 60},
+    "missing-key": {"kind": "injection", "minutes": 75},
+    "killed-session": {"kind": "injection", "minutes": 45},
+    "killed-writer": {"kind": "injection", "minutes": 45},
+    "full-disk": {"kind": "injection", "minutes": 45},
+    "tampering": {"kind": "injection", "minutes": 60},
+    "bank-compare": {"kind": "shell", "minutes": 2},
+    "build-one": {"kind": "build", "minutes": 75},
+    "build-two": {"kind": "build", "minutes": 75},
+    "comparison": {"kind": "shell", "minutes": 2},
+    "round-1": {"kind": "conversation", "messages": 6, "questions": 0, "minutes": 40, "longest_message_lines": 80},
+    "guide-fixes": {"kind": "shell", "minutes": 60},
+    "round-2": {"kind": "conversation", "messages": 6, "questions": 0, "minutes": 40, "longest_message_lines": 80}
+  },
+  "user": {
+    "persona": {
+      "claude_code": {"vendor": "codex", "model": "gpt-6-astra", "effort": "medium"},
+      "codex": {"vendor": "claude_code", "model": "claude-opus-5", "effort": null}
+    },
+    "turn_cap": 8
+  },
+  "judge": {"vendor": "gemini", "model": "vertex_ai/gemini-4-argon", "passes": 2},
+  "readers": {"claude_code": {"model": "claude-opus-5"}, "codex": {"model": "gpt-6-astra", "effort": "medium"}},
+  "builds": {"prerequisite": {"minutes": 60, "experiments": 3}, "s6": {"minutes": 60, "experiments": 3}, "s5": {"minutes": 40, "experiments": 2}, "second_engineer": {"minutes": 10, "experiments": 1}},
+  "injections": {"provider_limit_count": 3, "tmpfs_mb": 64, "enrichment_port": 8765},
+  "machine": {"max_run": {"S1": "6h", "S2": "6h", "S4": "3h", "S5": "6h", "S6": "6h", "author": "3h"}},
+  "fixtures": {
+    "churn-first-build": "b4685e5dcdd6a5a778ed1828121d0f72e6e6c52cc07f5cff29a864318f7ecd5e",
+    "fraud-no-evaluator": "9279bea5b768519ba51e89c7eab504973ba7942273e8ed8b4d2ed406bb731409",
+    "trading": "e5a7bd756ed3a82a1a3ca536fa1f8a338d829e1dc8112c3b660af2ab99d72745",
+    "pipeline-dbt": "60040372f7caf292206375711784277ef875a12cd26a1404f0fe63bcfe7dfe68"
+  },
+  "released": {"version": "0.7.10"}
+}

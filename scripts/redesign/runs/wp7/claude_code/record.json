@@ -21,7 +21,8 @@
         "artifacts/details.txt",
         "artifacts/plugin-list.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "shell"
     },
     {
       "name": "setup",
@@ -35,7 +36,8 @@
       ],
       "notes": [
         "link clicks: judged by hand from the transcript (the logins were present, so none were needed)"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "build-churn",
@@ -48,7 +50,8 @@
         "artifacts/build-churn-brief.md",
         "artifacts/build-churn-status.json"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "build-pause",
@@ -61,7 +64,8 @@
         "artifacts/build-pause-brief.md",
         "artifacts/build-pause-status.json"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "watch",
@@ -73,7 +77,8 @@
       "artifacts": [
         "artifacts/watch-answers.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "triggers",
@@ -93,7 +98,8 @@
         "holdout: {'holdout': '10/10'}; cross-skill false positives: none",
         "the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way",
         "verdict recomputed from the artifacts after the bar's rule read the held-out cases as their own group"
-      ]
+      ],
+      "kind": "shell"
     },
     {
       "name": "harness-export",
@@ -109,7 +115,8 @@
         "artifacts/export-codex-files.txt",
         "artifacts/export-refusal.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "campaign-tools",
@@ -121,7 +128,8 @@
       "artifacts": [
         "artifacts/campaign-tools.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "inbox",
@@ -136,7 +144,8 @@
       ],
       "notes": [
         "the injected pause arrived: True"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "build-fraud",
@@ -152,7 +161,8 @@
       ],
       "notes": [
         "evaluator files written by the session: ['kapso_evaluation/evaluate.py']"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "build-data-only",
@@ -166,7 +176,8 @@
       ],
       "notes": [
         "candidate criteria judged by hand from the answers artifact"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "build-empty-wish",
@@ -180,7 +191,8 @@
       ],
       "notes": [
         "candidate criteria judged by hand from the answers artifact"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "harness-new",
@@ -196,7 +208,8 @@
       ],
       "notes": [
         "compared with the shipped harness by hand from harness-new-tree.txt"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "harness-probe",
@@ -209,7 +222,8 @@
         "artifacts/harness-probe-launch.txt",
         "artifacts/harness-probe-status.json"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "shell"
     },
     {
       "name": "review",
@@ -224,7 +238,8 @@
       ],
       "notes": [
         "the churn campaign ended: done"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "deploy",
@@ -236,7 +251,8 @@
       "artifacts": [
         "artifacts/deploy-answers.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "learn",
@@ -251,7 +267,8 @@
       "notes": [
         "the serving offer (session_sources) was made: True",
         "the learning crews ran on claude-opus-5 for this round (--learn-model): the token's window for the shipped model was spent"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "learn-complete",
@@ -266,7 +283,8 @@
       ],
       "notes": [
         "state failed, cards 0"
-      ]
+      ],
+      "kind": "shell"
     },
     {
       "name": "session-brief",
@@ -280,7 +298,8 @@
       ],
       "notes": [
         "the sources recognised in the instructions: judged by hand from the answer"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "cold-start",
@@ -294,7 +313,8 @@
       ],
       "notes": [
         "partial: the uvx and pipx branches resolve only once the pin is on PyPI"
-      ]
+      ],
+      "kind": "shell"
     },
     {
       "name": "harness-improve",
@@ -307,7 +327,8 @@
         "artifacts/harness-improve-answers.txt",
         "artifacts/harness-improve-check.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "cold-install",
@@ -319,7 +340,8 @@
       "artifacts": [
         "artifacts/cold-install.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "shell"
     },
     {
       "name": "campaign-session-isolation",
@@ -331,7 +353,8 @@
       "artifacts": [
         "artifacts/isolation.json"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "shell"
     },
     {
       "name": "experience-share",
@@ -346,7 +369,8 @@
       ],
       "notes": [
         "the second user loads the shared bank by reference through kapso-mcp and lists it under the banks it reads; a served build at a tiny budget is left to WP9's round"
-      ]
+      ],
+      "kind": "conversation"
     }
   ],
   "notes": [
@@ -374,5 +398,19 @@
     "transcripts/setup.jsonl",
     "transcripts/watch-2.jsonl",
     "transcripts/watch.jsonl"
-  ]
+  ],
+  "run_id": "S2-mechanical-claude_code-20261027T022441Z",
+  "user": {
+    "kind": "scripted",
+    "card": null,
+    "interventions": [
+      "the key written where the request's fix line says before the person says so (inbox)",
+      "the fixture written for the criteria steps (build-data-only, build-empty-wish)",
+      "the harness's module answers from the driver's policy (harness-new)"
+    ]
+  },
+  "pins": {
+    "wheel_sha256": "c16a36e94479eabe691953f4ff86b7c822bae41701c602afac19cefa73f3c74e"
+  },
+  "advisory": null
 }

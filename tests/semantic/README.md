@@ -52,15 +52,44 @@ with the card and the fixture's README, driving the host CLI turn by turn.
 
 ## Runs and reports
 
-A run record is JSON: `test` (S1 to S6), `host`, `machine`, `package`
-(version and wheel sha256), `started`, `finished`, `steps` (each with
-`name`, `messages`, `questions`, `minutes`, `longest_message_lines`,
-`completed`, `artifacts` as paths relative to the record's directory, or
-`deferred` with the reason), `judge` (dimension to score), `notes`,
-`transcripts` (paths). `report.py` renders it against `budgets.json`, the
-limits from `docs/plans/kapso-plugin-skills.md` one entry per step, and
-writes pass or fail per step: a step the budgets do not know fails, a
-missing artifact fails, a deferred step is reported and not counted.
+The suite's one home is `suite.json` beside this file: per test its
+required steps per host, its run-level bars and its judge; per step its
+kind and its budgets (the limits from `docs/plans/kapso-plugin-skills.md`,
+at the rubric's caps); the knobs every driver reads (the persona's vendor
+and model per host, the turn cap, the judge's route and passes, the
+builds' budgets, the injections' sizes, the machines' lifetimes, the
+fixture manifests' hashes). A timeline's sampling cadence is the engine
+config's `budget.checkpoint_heartbeat_seconds`, read through
+`load_config`, never copied.
+
+A run record is JSON: `test` (`S1`, `S2`, `S2-mechanical`, `S4`, `S5`,
+`S6`, `author`), `host`, `machine`, `run_id` (`<test>-<host>-<UTC stamp>`,
+immutable: a rerun is a new record), `advisory` (the reason when an arm
+ran on the development box, else null), `package` (version and wheel
+sha256), `pins` (`wheel_sha256`, `source_rev`, `plugin_rev`, `docs_rev`,
+`cli_versions`, `fixture_manifest_sha256`, `suite_sha256`,
+`config_sha256`, as far as a driver knows them), `user` (`kind` scripted
+or persona, `card`, `card_sha256`, `vendor`, `model`, `effort`,
+`prompt_sha256`, `interventions`: the driver's own acts, named),
+`started`, `finished`, `steps` (each with `name`, `kind`: `conversation`
+with `messages`, `questions`, `minutes`, `longest_message_lines`; or
+`attempt`, `injection`, `build`, `reading`, `shell` with `minutes` and a
+`metrics` mapping; `completed`, `artifacts` as paths relative to the
+record's directory, `notes`; or `deferred` with the reason), `metrics`
+(the run-level values the test's bars read), `judge` (`vendor`, `model`,
+`route`, `passes`: two, each `scores` mapping a dimension to `{score,
+evidence: [{where, quote}]}`, `adjudication` per straddling dimension,
+`failure` when the judge's reply broke the contract, `prompt_path`,
+`raw_paths`), `notes`, `transcripts` (paths).
+
+`report.py <record.json> <out.md>` renders the record and computes the
+verdict (its exit status: 0 a pass, 1 a failure, 3 an advisory pass):
+every required step present and passing, every present step passing (a
+step the suite does not know fails; a deferred step is reported and not
+counted, but a required one deferred fails the run), every bar met by the
+record's metrics, the judge at the bar in both passes where the test
+requires one, no judge failure; an advisory record never passes as a
+fresh-machine acceptance.
 
 The counting rules: a message is one assistant turn; a question is a
 turn that ends asking; rounds are messages; minutes exclude the wait for
@@ -70,6 +99,7 @@ hand and said so in the record's notes; transcripts are kept whole.
 
 The plugin round (`docs/plans/redesign/wp7-plugin.md`, test
 `S2-mechanical`: S2's steps without the simulated user and the judge) is
-driven by `scripts/redesign/plugin_proof.py`, one host per run, and its
-record lives under `scripts/redesign/runs/wp7/<host>/record.json` with
-`report.md` beside it.
+driven by `scripts/redesign/plugin_proof.py`, one host per run; its three
+records live under `scripts/redesign/runs/wp7/<host>/record.json` with
+`report.md` beside each, re-derived into this shape by
+`scripts/redesign/rederive_records.py` when WP9 introduced it.

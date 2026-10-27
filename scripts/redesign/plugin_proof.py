@@ -3,7 +3,7 @@
 acceptance matrix's steps driven on one host by a scripted person (S2
 without the simulated user and the judge), each step recorded in the
 semantic record shape (tests/semantic/README.md, test `S2-mechanical`)
-and rendered by tests/semantic/report.py against tests/semantic/budgets.json.
+and rendered by tests/semantic/report.py against tests/semantic/suite.json.
 
     python3 scripts/redesign/plugin_proof.py --host claude_code|codex --clone <repo> --out <dir>
         [--work <dir>] [--steps a,b,...] [--from <step>] [--wheel <path>] [--machine <name>]
@@ -299,9 +299,10 @@ def status_of(campaign: Path) -> Optional[Dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def record_step(name: str, turns: Sequence[Turn], completed: bool, artifacts: Sequence[str], notes: Sequence[str] = (), extra_minutes: float = 0.0) -> Dict[str, Any]:
+def record_step(name: str, turns: Sequence[Turn], completed: bool, artifacts: Sequence[str], notes: Sequence[str] = (), extra_minutes: float = 0.0, kind: str = "conversation") -> Dict[str, Any]:
     return {
         "name": name,
+        "kind": kind,
         "messages": len(turns),
         "questions": sum(1 for turn in turns if turn.asked),
         "minutes": round(sum(turn.seconds for turn in turns) / 60 + extra_minutes, 1),
@@ -313,7 +314,7 @@ def record_step(name: str, turns: Sequence[Turn], completed: bool, artifacts: Se
 
 
 def shell_step(name: str, completed: bool, artifacts: Sequence[str], minutes: float, notes: Sequence[str] = ()) -> Dict[str, Any]:
-    return record_step(name, [], completed, artifacts, notes, extra_minutes=round(minutes, 1))
+    return record_step(name, [], completed, artifacts, notes, extra_minutes=round(minutes, 1), kind="shell")
 
 
 # --------------------------------------------------------- answer policies
@@ -960,6 +961,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model instead of the shipped one (said in the record)")
     parser.add_argument("--pause-minutes", type=int, default=10, help="the injected pause campaign's budget; a slow box needs more than the machine's ten for its session to reach the ask")
     parser.add_argument("--recompute-triggers", action="store_true", help="read the trigger step's verdict again from its artifacts, run nothing")
+    parser.add_argument("--advisory", default=None, help="the reason this arm runs on the development box; the record is marked and never a fresh-machine acceptance")
     args = parser.parse_args(argv)
     host = ClaudeHost() if args.host == "claude_code" else CodexHost()
     out = Path(args.out).resolve()
@@ -967,11 +969,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     work.mkdir(parents=True, exist_ok=True)
     ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model, args.pause_minutes)
     record_file = out / "record.json"
+    started = datetime.now(timezone.utc)
+    wheel_sha256 = subprocess.run(["sha256sum", str(ctx.wheel)], capture_output=True, text=True).stdout.split()[0] if ctx.wheel else "-"
     record = json.loads(record_file.read_text()) if record_file.exists() else {
         "test": "S2-mechanical", "host": host.name, "machine": args.machine,
-        "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1],
-                    "wheel_sha256": subprocess.run(["sha256sum", str(ctx.wheel)], capture_output=True, text=True).stdout.split()[0] if ctx.wheel else "-"},
-        "started": datetime.now(timezone.utc).isoformat(timespec="seconds"), "finished": None, "steps": [], "notes": [], "transcripts": [],
+        "run_id": f"S2-mechanical-{host.name}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
+        "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": wheel_sha256},
+        "pins": {"wheel_sha256": wheel_sha256},
+        "user": {"kind": "scripted", "card": None, "interventions": [
+            "the key written where the request's fix line says before the person says so (inbox)",
+            "the fixture written for the criteria steps (build-data-only, build-empty-wish)",
+            "the harness's module answers from the driver's policy (harness-new)",
+        ]},
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [], "transcripts": [],
     }
     if args.recompute_triggers:
         # The verdict's rule changed after the suite ran: the same evidence

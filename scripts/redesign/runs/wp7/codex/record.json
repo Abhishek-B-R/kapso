@@ -21,7 +21,8 @@
       ],
       "notes": [
         "Codex: the plugin's skills load by name; its MCP tools reach a session through the `codex mcp add` line the setup skill runs"
-      ]
+      ],
+      "kind": "shell"
     },
     {
       "name": "setup",
@@ -37,7 +38,8 @@
       "notes": [
         "link clicks: judged by hand from the transcript (the logins were present, so none were needed)",
         "the `codex mcp add kapso -- kapso-mcp` line's effect is the mcp list artifact"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "cold-install",
@@ -57,7 +59,8 @@
         "artifacts/export-codex-files.txt",
         "artifacts/export-refusal.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "campaign-tools",
@@ -69,7 +72,8 @@
       "artifacts": [
         "artifacts/campaign-tools.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "build-fraud",
@@ -85,7 +89,8 @@
       ],
       "notes": [
         "evaluator files written by the session: ['evaluation/evaluate.py']"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "learn",
@@ -107,7 +112,8 @@
       ],
       "notes": [
         "the sources recognised in the instructions: judged by hand from the answer"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "experience-share",
@@ -139,7 +145,8 @@
         "holdout: {'holdout': '10/10'}; cross-skill false positives: none",
         "the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way",
         "verdict recomputed from the artifacts after the bar's rule read the held-out cases as their own group"
-      ]
+      ],
+      "kind": "shell"
     },
     {
       "name": "build-data-only",
@@ -153,7 +160,8 @@
       ],
       "notes": [
         "candidate criteria judged by hand from the answers artifact"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "build-empty-wish",
@@ -167,7 +175,8 @@
       ],
       "notes": [
         "candidate criteria judged by hand from the answers artifact"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "build-churn",
@@ -180,7 +189,8 @@
         "artifacts/build-churn-brief.md",
         "artifacts/build-churn-status.json"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "watch",
@@ -192,7 +202,8 @@
       "artifacts": [
         "artifacts/watch-answers.txt"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "review",
@@ -207,7 +218,8 @@
       ],
       "notes": [
         "the churn campaign ended: done"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "build-pause",
@@ -220,7 +232,8 @@
         "artifacts/build-pause-brief.md",
         "artifacts/build-pause-status.json"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "conversation"
     },
     {
       "name": "inbox",
@@ -235,7 +248,8 @@
       ],
       "notes": [
         "the injected pause arrived: True"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "deploy",
@@ -249,7 +263,8 @@
       ],
       "notes": [
         "the campaign deployed is the second machine's delivered churn campaign (generic_exp_0 at 0.847), restored under this box's work directory by restore_campaign.py with its old home rewritten and its deployment removed: the box's own sixty-minute build delivered nothing (see build-churn and review)"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "campaign-session-isolation",
@@ -261,7 +276,8 @@
       "artifacts": [
         "artifacts/isolation.json"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "shell"
     },
     {
       "name": "harness-new",
@@ -277,7 +293,8 @@
       ],
       "notes": [
         "compared with the shipped harness by hand from harness-new-tree.txt"
-      ]
+      ],
+      "kind": "conversation"
     },
     {
       "name": "codex-rules-probe",
@@ -291,7 +308,8 @@
       ],
       "notes": [
         "the session's cwd is a gitignored subdirectory of a repository, as an implementation session's is; the rules file sits in it"
-      ]
+      ],
+      "kind": "shell"
     },
     {
       "name": "harness-probe",
@@ -304,7 +322,8 @@
         "artifacts/harness-probe-launch.txt",
         "artifacts/harness-probe-status.json"
       ],
-      "notes": []
+      "notes": [],
+      "kind": "shell"
     }
   ],
   "notes": [
@@ -330,5 +349,19 @@
     "transcripts/setup.jsonl",
     "transcripts/watch-2.jsonl",
     "transcripts/watch.jsonl"
-  ]
+  ],
+  "run_id": "S2-mechanical-codex-20261027T011212Z",
+  "user": {
+    "kind": "scripted",
+    "card": null,
+    "interventions": [
+      "the key written where the request's fix line says before the person says so (inbox)",
+      "the fixture written for the criteria steps (build-data-only, build-empty-wish)",
+      "the harness's module answers from the driver's policy (harness-new)"
+    ]
+  },
+  "pins": {
+    "wheel_sha256": "c16a36e94479eabe691953f4ff86b7c822bae41701c602afac19cefa73f3c74e"
+  },
+  "advisory": "the Codex half ran on the development box under the owner's own Codex login, by the owner's decision (WP7)"
 }
