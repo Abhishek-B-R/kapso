@@ -32,9 +32,9 @@ Generated data is never committed.
 |---|---|---|
 | `examples/churn-first-build` | tabular, evaluator present, baseline 0.797 AUC (SE 0.010) with 0.832 reachable by boosting alone | built (WP0, moved under the examples in WP1) |
 | `examples/fraud-no-evaluator` | labelled data and a protocol, no evaluator | built (WP1), not yet run |
-| `empty-wish` | a README and nothing else | WP9 |
-| `trading-strategy` | the author's fixture | WP9 |
-| `pipeline-dbt` | the third domain for the guide's test | WP9 |
+| `empty-wish` | a README and nothing else | the driver writes it (a directory holding one README is no example); run in WP7's round |
+| `examples/trading` | the author's fixture (the design's `trading-strategy`) | built (WP2); the interview, the probe and the improve pass run in WP7's round |
+| `examples/pipeline-dbt` | the third domain for the guide's test | WP9 |
 
 The evaluator contract every fixture meets: one command from the workspace
 root; the metric on its own line as the last line, `name: value`; a
