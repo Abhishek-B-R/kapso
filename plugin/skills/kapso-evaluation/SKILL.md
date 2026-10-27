@@ -20,8 +20,10 @@ An evaluator the campaign protects:
   and `score`;
 - keeps the hold-out and its labels inside the evaluation directory, protected with
   it, never under the data directory a build copies (`--data` lands in
-  `kapso_datasets/`, which every attempt can read): the churn example's pattern is a
-  `private/` directory named by `evaluation/private_dir.txt` beside the script;
+  `kapso_datasets/`, which every attempt can read); a `private/` directory named by a
+  pointer file beside the script is the shape (the churn example keeps its `private/`
+  beside the evaluation directory with an absolute pointer, which an audit moves
+  inside the copy so the evaluation travels whole);
 - is deterministic under a seed, so repeats agree and the noise is the data's;
 - has a `--fast` mode for smoke checks whose number is marked not comparable with a
   full score;

@@ -21,6 +21,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -381,7 +382,7 @@ def step_cold_install(ctx: Context) -> Dict[str, Any]:
         f"uv tool install --python 3.12 /tmp/{wheel.name} >/dev/null 2>&1; echo kapso $(kapso --version); echo kapso-mcp $(kapso-mcp --version); "
         "echo which $(which kapso) $(which kapso-mcp)"
     )
-    run = ctx.shell(f"sudo -u {user} -H bash -lc {json.dumps(script)}", timeout=1200, check=False)
+    run = ctx.shell(f"sudo -u {user} -H bash -lc {shlex.quote(script)}", timeout=1200, check=False)
     text = run.stdout + run.stderr
     versions = re.findall(r"^(kapso|kapso-mcp) (\S+)", run.stdout, re.M)
     completed = run.returncode == 0 and len({version for _, version in versions}) == 1 and len(versions) == 2
