@@ -63,6 +63,11 @@ def render(record: dict, budgets: Dict[str, dict], root: Path) -> str:
         for dimension, score in record["judge"].items():
             lines.append(f"| {dimension} | {score} |")
         lines.append("")
+    noted = [step for step in record["steps"] if step.get("notes")]
+    if noted:
+        lines.append("Step notes:")
+        lines.extend(f"- {step['name']}: {note}" for step in noted for note in step["notes"])
+        lines.append("")
     if record.get("notes"):
         lines.append("Notes:")
         lines.extend(f"- {note}" for note in record["notes"])

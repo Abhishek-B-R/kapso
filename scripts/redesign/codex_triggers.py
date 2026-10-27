@@ -82,7 +82,13 @@ def loaded_skills(stream: Iterable[str], rollout: Iterable[str]) -> List[str]:
     for line in stream:
         record = json.loads(line)
         if record["type"] == "item.completed" and record["item"]["type"] == "command_execution":
-            for name in SKILL_FILE.findall(record["item"]["command"]):
+            item = record["item"]
+            # A load is a read that succeeded: a command that names the
+            # file without reading it (an `echo`), or that failed, is none.
+            inner = re.sub(r"^/bin/\w+ -lc ['\"]", "", item["command"]).lstrip()
+            if item.get("exit_code", 0) != 0 or inner.startswith("echo"):
+                continue
+            for name in SKILL_FILE.findall(item["command"]):
                 note(name)
     for line in rollout:
         record = json.loads(line)
@@ -102,22 +108,27 @@ def thread_id(stream: Iterable[str]) -> str:
     raise ValueError("no thread.started event in the stream")
 
 
-def grade(graders: Sequence[Dict[str, Any]], loaded: Sequence[str]) -> List[Dict[str, Any]]:
+def grade(graders: Sequence[Dict[str, Any]], loaded: Sequence[str], started: bool = True) -> List[Dict[str, Any]]:
     """Each Skill grader over the loaded skills, as `claude plugin eval`
     applies it to the Skill tool's JSON input: the count of loads whose
     `{"skill": "<name>"}` matches `input_match`, between min and max. A
-    refusal (max 0) passes when the expected skill was loaded as well:
-    Codex reads skills as references."""
-    counts = {grader["name"]: sum(1 for name in loaded if re.search(grader["input_match"], json.dumps({"skill": name}))) for grader in graders}
+    refusal (max 0) fails when the forbidden skill was the first read (the
+    session routed to it); a later read beside the expected skill passes,
+    marked `read_after` (Codex reads skills as references). A run that
+    never started fails every grader: no evidence is not a pass."""
+    matches = lambda grader, name: bool(re.search(grader["input_match"], json.dumps({"skill": name})))
+    counts = {grader["name"]: sum(1 for name in loaded if matches(grader, name)) for grader in graders}
     expected_loaded = any(counts[g["name"]] >= g["min"] for g in graders if g["max"] != 0)
     results = []
     for grader in graders:
         count = counts[grader["name"]]
         if grader["max"] == 0:
-            passed = count == 0 or expected_loaded
+            first = bool(loaded) and matches(grader, loaded[0])
+            passed = started and (count == 0 or (expected_loaded and not first))
+            results.append({"name": grader["name"], "count": count, "passed": passed, "read_after": passed and count > 0})
         else:
-            passed = count >= grader["min"] and (grader["max"] is None or count <= grader["max"])
-        results.append({"name": grader["name"], "count": count, "passed": passed})
+            passed = started and count >= grader["min"] and (grader["max"] is None or count <= grader["max"])
+            results.append({"name": grader["name"], "count": count, "passed": passed})
     return results
 
 
@@ -152,11 +163,12 @@ def run_case(case: Dict[str, Any], run: int, out: Path, model: str, effort: str,
             stdout=stream, stderr=err, text=True, cwd=str(project),
         )
     lines = stream_file.read_text(encoding="utf-8").splitlines()
-    loaded = loaded_skills(lines, rollout_lines(thread_id(lines))) if any('"thread.started"' in line for line in lines) else []
-    graders = grade(case["graders"], loaded)
+    begun = any('"thread.started"' in line for line in lines)
+    loaded = loaded_skills(lines, rollout_lines(thread_id(lines))) if begun else []
+    graders = grade(case["graders"], loaded, begun)
     return {
         "case": case["name"], "run": run, "exit": completed.returncode, "seconds": round(time.monotonic() - started, 1),
-        "loaded": loaded, "graders": graders, "passed": all(g["passed"] for g in graders),
+        "started": begun, "loaded": loaded, "graders": graders, "passed": all(g["passed"] for g in graders),
     }
 
 
@@ -164,16 +176,19 @@ def report(results: List[Dict[str, Any]], skipped: List[str]) -> str:
     by_case: Dict[str, List[Dict[str, Any]]] = {}
     for result in results:
         by_case.setdefault(result["case"], []).append(result)
-    lines = ["| case | runs | passed | first read | loaded |", "|---|---|---|---|---|"]
-    failed = 0
+    lines = ["| case | runs | passed | first read | loaded | read after |", "|---|---|---|---|---|---|"]
+    failed, read_after = 0, 0
     for name, runs in by_case.items():
         passed = sum(1 for r in runs if r["passed"])
         failed += passed < len(runs)
         loaded = sorted({skill for r in runs for skill in r["loaded"]})
         first = sorted({r["loaded"][0] for r in runs if r["loaded"]})
-        lines.append(f"| {name} | {len(runs)} | {passed}/{len(runs)} | {', '.join(first) or '(none)'} | {', '.join(loaded) or '(none)'} |")
+        later = sum(1 for r in runs for g in r["graders"] if g.get("read_after"))
+        read_after += later > 0
+        lines.append(f"| {name} | {len(runs)} | {passed}/{len(runs)} | {', '.join(first) or '(none)'} | {', '.join(loaded) or '(none)'} | {later} |")
     lines.append("")
     lines.append(f"{len(by_case) - failed} of {len(by_case)} cases passed every run; "
+                 f"{read_after} case(s) read a forbidden skill after the expected one (a pass under the host's rule, a first read would have failed); "
                  f"{len(skipped)} explicit case(s) skipped (Codex's explicit form is `$kapso-<skill>`).")
     return "\n".join(lines)
 
@@ -184,7 +199,7 @@ def regrade(out: Path) -> int:
     document = json.loads((out / "results.json").read_text(encoding="utf-8"))
     graders = {case["name"]: case["graders"] for case in cases(tag=document["tag"])}
     for result in document["results"]:
-        result["graders"] = grade(graders[result["case"]], result["loaded"])
+        result["graders"] = grade(graders[result["case"]], result["loaded"], result.get("started", True))
         result["passed"] = all(g["passed"] for g in result["graders"])
     (out / "results.json").write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     text = report(document["results"], document["skipped"])

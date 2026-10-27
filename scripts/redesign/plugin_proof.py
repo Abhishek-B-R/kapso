@@ -61,7 +61,7 @@ STEP_NAMES = [
     "install", "setup", "cold-install", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools",
     "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review",
     "deploy", "learn", "learn-complete", "session-brief", "experience-share", "harness-improve",
-    "campaign-session-isolation", "cold-start",
+    "campaign-session-isolation", "codex-rules-probe", "cold-start",
 ]
 # Codex's explicit skill for each Claude Code command.
 CODEX_SKILL = {"setup": "kapso-setup", "build": "kapso-build", "review": "kapso-review", "harness": "kapso-harness"}
@@ -72,6 +72,9 @@ CODEX_DEFERRED = {
     "learn-complete": "hours on the development box; the Claude Code half runs it",
     "experience-share": "deferred on Codex by the matrix",
     "cold-start": "the launcher is Claude Code's path; Codex runs kapso-mcp from PATH",
+}
+CLAUDE_DEFERRED = {
+    "codex-rules-probe": "Codex's mechanism; Claude Code's is the plugin switch, which the isolation step reads",
 }
 
 
@@ -874,6 +877,48 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
     return shell_step("campaign-session-isolation", completed, [ctx.artifact("isolation.json", json.dumps(report, indent=1))], (time.monotonic() - started) / 60)
 
 
+def step_codex_rules_probe(ctx: Context) -> Dict[str, Any]:
+    """Codex's isolation, live: a session whose working directory is a
+    gitignored subdirectory of a repository (an implementation session's
+    shape), with the installed adapter's rules file and command-line
+    lines, asked to run `kapso build --help`. The refusal is the evidence;
+    the command's usage line would be the failure."""
+    started = time.monotonic()
+    root = ctx.work / "rules-probe"
+    if root.exists():
+        shutil.rmtree(root)
+    session = root / "sessions" / "probe"
+    session.mkdir(parents=True)
+    ctx.shell(
+        f"git init -q {root} && printf 'sessions/\\n' > {root}/.gitignore && git -C {root} add .gitignore "
+        f"&& git -C {root} -c user.name=probe -c user.email=probe@example.com commit -qm seed"
+    )
+    # The rules file as the installed adapter writes it, from its own constants.
+    write = (
+        "from pathlib import Path; from kapso.execution.coding_agents.adapters.codex_agent import CAMPAIGN_RULES, CAMPAIGN_RULES_FILE; "
+        f"target = Path({str(session)!r}) / CAMPAIGN_RULES_FILE; target.parent.mkdir(parents=True, exist_ok=True); "
+        "target.write_text(CAMPAIGN_RULES, encoding='utf-8'); print(target)"
+    )
+    rules = ctx.shell(f"python3 -c {shlex.quote(write)}").stdout.strip()
+    prompt = "Run exactly this shell command and report its first output line verbatim, or the refusal you get: kapso build --help"
+    trust = f'projects.{json.dumps(str(session))}.trust_level="trusted"'
+    run = ctx.shell(
+        f"cd {session} && timeout 300 codex exec --skip-git-repo-check --sandbox workspace-write --json "
+        f"-c {shlex.quote(trust)} -c {shlex.quote('mcp_servers.kapso.command=\"kapso-mcp\"')} -c mcp_servers.kapso.enabled=false "
+        f"{shlex.quote(prompt)}", check=False, timeout=360,
+    )
+    final = ""
+    for line in run.stdout.splitlines():
+        if line.startswith("{"):
+            event = json.loads(line)
+            if event.get("type") == "item.completed" and event["item"].get("type") == "agent_message":
+                final = event["item"].get("text") or final
+    refused = "never inside a Kapso campaign session" in final and "usage: kapso build" not in final.lower()
+    artifacts = [ctx.artifact("codex-rules-probe.txt", f"rules file: {rules}\n\nfinal message:\n{final}\n\nstderr:\n{run.stderr[-2000:]}\n")]
+    return shell_step("codex-rules-probe", refused and Path(rules).is_file(), artifacts, (time.monotonic() - started) / 60,
+                      ["the session's cwd is a gitignored subdirectory of a repository, as an implementation session's is; the rules file sits in it"])
+
+
 def step_cold_start(ctx: Context) -> Dict[str, Any]:
     started = time.monotonic()
     launcher = ctx.clone / "plugin" / "scripts" / "kapso-mcp"
@@ -891,7 +936,7 @@ STEPS: Dict[str, Callable[[Context], Dict[str, Any]]] = {
     "build-empty-wish": step_build_empty_wish, "harness-new": step_harness_new, "harness-probe": step_harness_probe,
     "review": step_review, "deploy": step_deploy, "learn": step_learn, "learn-complete": step_learn_complete,
     "session-brief": step_session_brief, "experience-share": step_experience_share, "harness-improve": step_harness_improve,
-    "campaign-session-isolation": step_campaign_session_isolation, "cold-start": step_cold_start,
+    "campaign-session-isolation": step_campaign_session_isolation, "codex-rules-probe": step_codex_rules_probe, "cold-start": step_cold_start,
 }
 assert list(STEPS) == STEP_NAMES
 
@@ -943,6 +988,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"== {name}", flush=True)
         if host.name == "codex" and name in CODEX_DEFERRED:
             step = {"name": name, "deferred": CODEX_DEFERRED[name]}
+        elif host.name == "claude_code" and name in CLAUDE_DEFERRED:
+            step = {"name": name, "deferred": CLAUDE_DEFERRED[name]}
         else:
             step = STEPS[name](ctx)
         record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]

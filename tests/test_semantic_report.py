@@ -41,7 +41,7 @@ def _record(*steps):
 
 def test_a_step_passes_within_its_limits_with_its_artifacts_and_fails_otherwise(tmp_path):
     (tmp_path / "kapso-brief.md").write_text("Objective x\n")
-    within = _step("build-churn", messages=3, questions=2, minutes=4.5, longest_message_lines=24, artifacts=["kapso-brief.md"])
+    within = _step("build-churn", messages=3, questions=2, minutes=4.5, longest_message_lines=12, artifacts=["kapso-brief.md"])
     assert report.step_passes(within, BUDGETS["build-churn"], tmp_path)
     assert not report.step_passes(_step("build-churn", questions=3), BUDGETS["build-churn"], tmp_path)
     assert not report.step_passes(_step("build-churn", completed=False), BUDGETS["build-churn"], tmp_path)
@@ -68,3 +68,11 @@ def test_the_budgets_cover_every_step_of_the_round():
     assert set(proof.STEP_NAMES) <= set(BUDGETS), sorted(set(proof.STEP_NAMES) - set(BUDGETS))
     for name, limits in BUDGETS.items():
         assert limits and set(limits) <= set(report.LIMIT_KEYS), name
+
+
+def test_each_steps_notes_are_rendered_beside_the_table(tmp_path):
+    (tmp_path / "kapso-brief.md").write_text("Objective x\n")
+    step = _step("setup", artifacts=["kapso-brief.md"])
+    step["notes"] = ["the link clicks judged by hand from the transcript"]
+    text = report.render(_record(step), BUDGETS, tmp_path)
+    assert "Step notes:\n- setup: the link clicks judged by hand from the transcript\n" in text
