@@ -19,6 +19,7 @@ the standard library and PyYAML (the examples' python3 has it).
 import argparse
 import glob
 import json
+import math
 import os
 import re
 import shlex
@@ -36,31 +37,35 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 # The persona driver sits beside this script; a run from anywhere finds it.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import simulated_user  # noqa: E402
+import judge as judge_module  # noqa: E402  (final_texts: the host's text on both vendors; litellm rides along)
 
 SUITE_PATH = Path(__file__).resolve().parent.parent.parent / "tests" / "semantic" / "suite.json"
 SUITE = json.loads(SUITE_PATH.read_text(encoding="utf-8"))
-CLAUDE_MODEL = "claude-opus-5-5"
-CODEX_MODEL = "gpt-6-astra"
-TURN_TIMEOUT = 1800
+CLAUDE_MODEL = SUITE["hosts"]["claude_code"]["model"]
+CODEX_MODEL = SUITE["hosts"]["codex"]["model"]
+TURN_TIMEOUT = SUITE["turn_timeout"]
+_CHURN_B, _FRAUD_B, _PAUSE_B = SUITE["builds"]["churn"], SUITE["builds"]["fraud"], SUITE["builds"]["pause"]
 # A turn that waits for a word without a question mark: "say go and I'll launch".
+# An approval request, matched only against the FINAL line: a plain
+# courtesy ("let me know if you want the full trace") is not a question,
+# so those weak phrases are gone and a real request has to end the turn.
 APPROVAL_ASKED = re.compile(
-    r"\b(say|reply|type|answer)\b[^\n]{0,30}\bgo\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b"
-    r"|\blet me know\b|\bonce you.ve answered\b|\bafter you answer\b|\byour answers?\b|\bif you say\b|\bsay yes\b",
+    r"\b(say|reply|type)\b[^\n]{0,30}\b(go|yes)\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b|\bif you say\b|\bsay the word\b",
     re.I,
 )
 CHURN_WISH = (
     "get the churn model's ROC AUC above 0.85 without changing the prediction contract; "
-    "the campaign goes to ../churn-campaign with a budget of 60 minutes and 3 experiments"
+    f"the campaign goes to ../churn-campaign with a budget of {_CHURN_B['minutes']} minutes and {_CHURN_B['experiments']} experiments"
 )
 PAUSE_WISH = (
     "get the churn model's ROC AUC above 0.85; one rule for the brief: before training, the enrichment table "
     "must be fetched from the enrichment service with the DATA_API_KEY in .env, and a session that lacks the key "
     "asks for it through the inbox. Launch now without asking me for the key: the campaign's own session asks "
-    "when it needs it. The campaign goes to ../churn-pause-campaign with a budget of {minutes} minutes and 1 experiment"
+    f"when it needs it. The campaign goes to ../churn-pause-campaign with a budget of {{minutes}} minutes and {_PAUSE_B['experiments']} experiment"
 )
 FRAUD_WISH = (
     "build a fraud scorer on data/transactions.csv that beats the rule-based one in score.py, and prove it; "
-    "the campaign goes to ../fraud-campaign with a budget of 10 minutes and 1 experiment"
+    f"the campaign goes to ../fraud-campaign with a budget of {_FRAUD_B['minutes']} minutes and {_FRAUD_B['experiments']} experiment"
 )
 # The order the round runs in; the budgets file bounds every name.
 STEP_NAMES = [
@@ -80,6 +85,15 @@ CODEX_DEFERRED = {
 }
 # What each step is for, told to the persona with the card (the scripted
 # policies' knowledge, as a person would hold it).
+# The card a step is answered with when it differs from the run's card: the
+# trading author knows the harness interview's module answers (patience 8);
+# the second engineer owns the served build. The rest fall back to the run's card.
+STEP_CARDS = {
+    "harness-new": "trading-author",
+    "harness-probe": "trading-author",
+    "harness-improve": "trading-author",
+    "second-engineer-build": "second-engineer",
+}
 STEP_INTENTS = {
     "setup": "set Kapso up on this machine to a green doctor; you have no Leeroopedia or OpenAI key and want none added; no harness for now",
     "build-churn": "get one proposal for the churn build and have it launched detached at the budget the brief names; you do not hold the data API key a rule may mention, the campaign's own session asks through the inbox when it needs it",
@@ -119,9 +133,11 @@ def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
     if any(tool["name"] == "AskUserQuestion" for tool in tools):
         return True
     lines = [line.strip().rstrip("*_`)\"' ") for line in text.splitlines() if line.strip()]
-    closing = "\n".join(lines[-8:])
-    # A numbered question's line may run on past its question mark.
-    return "?" in closing or bool(APPROVAL_ASKED.search(closing))
+    if not lines:
+        return False
+    # A question mark in the closing lines, or an approval request anchored
+    # to the FINAL line (so a courtesy sign-off is not counted a question).
+    return "?" in "\n".join(lines[-3:]) or bool(APPROVAL_ASKED.search(lines[-1]))
 
 
 def lines_outside_fences(text: str) -> int:
@@ -227,7 +243,9 @@ class UserMode:
         if spec != "scripted" and not spec.startswith("persona:"):
             raise ValueError(f"--user is scripted or persona:<card>, not {spec!r}")
         self.kind = "scripted" if spec == "scripted" else "persona"
+        self.host = host
         self.card = None
+        self.cards: Dict[str, Any] = {}
         self.settings: Dict[str, Any] = {}
         self.turn_cap = SUITE["user"]["turn_cap"]
         self.prompt_sha256 = None
@@ -238,7 +256,25 @@ class UserMode:
             self.prompt_sha256 = simulated_user.template_sha256()
         self.interventions: List[str] = []
         self.events: List[str] = []
+        self.capped: set = set()
         self.pushback: Optional[bool] = None
+
+    def card_for(self, step: str):
+        """The card a step is answered with: a per-step card (the trading
+        author answers the harness interview, the second engineer the
+        served build) falls back to the run's card. Loaded once and cached."""
+        name = STEP_CARDS.get(step)
+        if not name or self.kind != "persona":
+            return self.card
+        if name not in self.cards:
+            self.cards[name] = simulated_user.load_card(simulated_user.PERSONAS / f"{name}.yaml")
+        return self.cards[name]
+
+    def ended_well(self, step: str, predicate: bool) -> bool:
+        """A persona step is complete only when its evidence holds AND the
+        exchange resolved (the persona said DONE), never when the turn cap
+        cut a user still asking for help off."""
+        return bool(predicate) and (self.kind != "persona" or step not in self.capped)
 
     def record(self) -> Dict[str, Any]:
         block: Dict[str, Any] = {"kind": self.kind, "card": self.card.name if self.card else None, "interventions": self.interventions, "events": self.events, "pushback": self.pushback}
@@ -306,21 +342,28 @@ class Context:
             return turns
         history: List[Dict[str, Any]] = []
         intent = STEP_INTENTS.get(step, step)
-        cap = min(max_turns, self.user.turn_cap)
+        card = self.user.card_for(step)
+        if card is not self.user.card:
+            self.user.interventions.append(f"{step}: answered by the {card.name} card (its knowledge the step needs), not the run's {self.user.card.name}")
+        # A step's own line budget caps the exchange when it is longer than
+        # the global turn cap, so a legitimate interview is not cut short.
+        step_messages = SUITE["steps"].get(step, {}).get("messages")
+        cap = min(max_turns, max(self.user.turn_cap, step_messages or 0))
         for index in range(cap):
             turn = self.host.turn(cwd, prompt, session, transcript)
             turns.append(turn)
             session = turn.session
             history.append({"role": "user", "text": prompt})
             history.append({"role": "assistant", "text": turn.text, "asked": turn.asked})
-            reply = simulated_user.next_message(self.user.card, cwd, intent, history, turn.text, self.host.name, self.user.settings)
+            reply = simulated_user.next_message(card, cwd, intent, history, turn.text, self.host.name, self.user.settings)
             with open(transcript, "a", encoding="utf-8") as out:
                 out.write(json.dumps({"persona_reply": reply.text, "persona_session": reply.session, "done": reply.done}) + "\n")
             if reply.done:
                 self.user.events.append(f"{step}: the persona said DONE after {index + 1} turn(s)")
                 return turns
             prompt = reply.text
-        self.user.events.append(f"{step}: the turn cap ({cap}) ended the exchange without DONE")
+        self.user.events.append(f"{step}: the turn cap ({cap}) ended the exchange without DONE: the step is incomplete")
+        self.user.capped.add(step)
         return turns
 
     def task_view(self, project: Path, planted: Optional[str] = None) -> None:
@@ -532,13 +575,20 @@ def step_cold_install(ctx: Context) -> Dict[str, Any]:
 def _launch_and_wait_status(ctx: Context, project: Path, campaign: Path, wish: str, step: str, policy=go_policy) -> Dict[str, Any]:
     turns = ctx.converse(step, project, ctx.host.command("build", wish), policy, max_turns=4)
     brief = project / "kapso-brief.md"
-    launched = wait_for(lambda: status_of(campaign) is not None, 180)
+    # A LIVE launch: the campaign reaches running (or a non-failed terminal),
+    # not merely a status file a child wrote before failing on start.
+    launched = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("starting", "running", "done"), 300)
+    state = (status_of(campaign) or {}).get("state")
+    # A proposal was offered before the launch (the host asked), the step's
+    # shape; the brief the host wrote names the objective.
+    proposed = bool(turns) and any(turn.asked for turn in turns)
     artifacts = []
     if brief.is_file():
         artifacts.append(ctx.copy_artifact(brief, f"{step}-brief.md"))
-    if launched:
+    if status_of(campaign) is not None:
         artifacts.append(ctx.copy_artifact(campaign / ".kapso" / "status.json", f"{step}-status.json"))
-    return {"turns": turns, "launched": launched, "brief": brief.is_file(), "artifacts": artifacts, "notes": []}
+    return {"turns": turns, "launched": launched, "proposed": proposed, "brief": brief.is_file(), "state": state, "artifacts": artifacts,
+            "notes": [f"the launch reached: {state}; a proposal was offered: {proposed}"]}
 
 
 PLANTED_BASELINE = "The current model scores about 0.90 ROC AUC on the held-out rows."
@@ -559,17 +609,12 @@ def plant_baseline(ctx: Context, project: Path) -> None:
 
 def pushed_back(transcript: Path) -> Optional[bool]:
     """Whether the persona corrected the planted figure: None when no host
-    turn carried it (nothing to push back on), else whether a persona
-    reply named the true one."""
-    stated, corrected = False, False
-    for line in transcript.read_text(encoding="utf-8").splitlines():
-        if not line.startswith("{"):
-            continue
-        row = json.loads(line)
-        if row.get("type") == "result" and "0.90" in (row.get("result") or ""):
-            stated = True
-        if "persona_reply" in row and any(figure in row["persona_reply"] for figure in ("0.80", "0.797", "0.8 ")):
-            corrected = True
+    turn carried it (nothing to push back on), else whether a persona reply
+    named the true one. The host's text is read from BOTH vendors' row
+    shapes (judge.final_texts), so the Codex arm's check is not blind."""
+    rows = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines() if line.startswith("{")]
+    stated = any("0.90" in turn["text"] for turn in judge_module.final_texts(rows) if turn["role"] == "assistant")
+    corrected = any("persona_reply" in row and any(figure in row["persona_reply"] for figure in ("0.80", "0.797", "0.8 ")) for row in rows)
     return corrected if stated else None
 
 
@@ -587,7 +632,8 @@ def step_build_churn(ctx: Context) -> Dict[str, Any]:
         ctx.user.card.planted = None
         ctx.user.pushback = pushed_back(ctx.out / "transcripts" / "build-churn.jsonl")
         result["notes"].append(f"the planted baseline: {'corrected by the persona' if ctx.user.pushback else 'not corrected' if ctx.user.pushback is False else 'never stated by the host'}")
-    return record_step("build-churn", result["turns"], result["launched"] and result["brief"], result["artifacts"], result["notes"])
+    completed = ctx.user.ended_well("build-churn", result["launched"] and result["proposed"] and result["brief"])
+    return record_step("build-churn", result["turns"], completed, result["artifacts"], result["notes"])
 
 
 def step_build_pause(ctx: Context) -> Dict[str, Any]:
@@ -610,13 +656,18 @@ def step_watch(ctx: Context) -> Dict[str, Any]:
     first = ctx.converse("watch", project, ctx.host.command("watch", "../churn-campaign"), lambda text, index: None, max_turns=1)
     second = ctx.converse("watch-2", project, "how is the kapso campaign in ../churn-campaign going?", lambda text, index: None, max_turns=1)
     turns = first + second
-    text = "\n".join(turn.text for turn in turns).lower()
-    completed = all(not turn.asked for turn in turns) and any(word in text for word in ("running", "setup", "ideation", "implementation", "phase", "best"))
-    return record_step("watch", turns, completed, [ctx.artifact("watch-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))])
+    answer = "\n".join(turn.text for turn in turns).lower()
+    status = status_of(Path(campaign)) or {}
+    state, phase = (status.get("state") or "").lower(), (status.get("phase") or "").lower()
+    # The answer must name the real state (or phase), so a host that
+    # reported a dead campaign as running would fail here.
+    reflects = bool(state) and (state in answer or (phase and phase in answer))
+    completed = ctx.user.ended_well("watch", all(not turn.asked for turn in turns) and reflects)
+    return record_step("watch", turns, completed, [ctx.artifact("watch-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))], [f"the status at the read: state={state or '-'} phase={phase or '-'}; the answer reflected it: {reflects}"])
 
 
 CASE_NAME = re.compile(r"^(?P<skill>[a-z]+)-(?P<kind>[eicn])\d+$|^(?P<holdout>holdout)-\d+$")
-TRIGGER_BAR = 0.9   # eighteen of twenty per skill
+TRIGGER_BAR = SUITE["triggers"]["bar"]   # eighteen of twenty per skill
 
 
 def trigger_bar(out_dir: Path, host: str) -> Dict[str, Any]:
@@ -745,13 +796,17 @@ def step_inbox(ctx: Context) -> Dict[str, Any]:
         "document: reply to the request that the key is in place and that it must reach 0.85 without the enrichment table.",
         lambda text, index: None, max_turns=1,
     )
-    artifacts = [ctx.artifact("inbox-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     inbox = campaign / ".kapso" / "inbox.jsonl"
+    replied = inbox.is_file() and any('"replied"' in line or '"reply"' in line for line in inbox.read_text(encoding="utf-8").splitlines())
+    # The requirement is kept: the suspended work must actually resume (the
+    # orchestrator writes a `continued` event), not just be answered.
+    continued = wait_for(lambda: inbox.is_file() and '"continued"' in inbox.read_text(encoding="utf-8"), 600, every=15)
+    artifacts = [ctx.artifact("inbox-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     if inbox.is_file():
         artifacts.append(ctx.copy_artifact(inbox, "inbox.jsonl"))
-    replied = inbox.is_file() and any('"reply"' in line or '"answer"' in line or '"note"' in line for line in inbox.read_text(encoding="utf-8").splitlines())
     ctx.shell(f"kapso build --output {campaign} --stop", check=False)
-    return record_step("inbox", turns, paused and replied, artifacts, notes)
+    notes.append(f"the request was replied: {replied}; the campaign resumed (a continued event): {continued}")
+    return record_step("inbox", turns, ctx.user.ended_well("inbox", paused and replied and continued), artifacts, notes)
 
 
 def step_build_fraud(ctx: Context) -> Dict[str, Any]:
@@ -789,18 +844,35 @@ def evaluator_contract(ctx: Context, project: Path, evaluator: str) -> str:
     result = workspace / "kapso_evaluation" / "result.json"
     if not result.is_file():
         return "no result.json beside the script"
-    keys = set(json.loads(result.read_text(encoding="utf-8")))
+    payload = json.loads(result.read_text(encoding="utf-8"))
+    keys = set(payload)
     if not {"evaluation_script_path", "evaluation_output", "score"} <= keys:
         return f"result.json lacks {sorted({'evaluation_script_path', 'evaluation_output', 'score'} - keys)}"
+    score = payload.get("score")
+    if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score)):
+        return f"the score is not a finite number: {score!r}"
+    # A malformed submission must be REJECTED (a scorer that accepts anything
+    # is not a protected evaluator): a predict.py that writes the wrong
+    # columns, re-run, must exit non-zero with a printed reason.
+    predict = workspace / "predict.py"
+    if predict.is_file():
+        predict.write_text("import argparse, csv, sys\np = argparse.ArgumentParser(); p.add_argument('--data'); p.add_argument('--out'); a = p.parse_args()\nw = csv.writer(open(a.out, 'w')); w.writerow(['wrong', 'columns']); w.writerow(['x', 'y'])\n", encoding="utf-8")
+        (workspace / "predictions.csv").unlink(missing_ok=True)
+        malformed = ctx.shell(f"python3 kapso_evaluation/{Path(evaluator).name}", cwd=workspace, check=False, timeout=900)
+        if malformed.returncode == 0:
+            return "a malformed submission (wrong prediction columns) was accepted, not rejected"
     return "ok"
 
 
 def _criteria_step(ctx: Context, name: str, project: Path, wish: str) -> Dict[str, Any]:
+    # Any campaign that appears under the work tree during the step is a
+    # launch — the one behaviour "do not launch anything" must catch.
+    before = {str(path) for path in ctx.work.rglob(".kapso/status.json")}
     turns = ctx.converse(name, project, ctx.host.command("build", wish), stop_here_policy, max_turns=3)
-    launched = any(path.name == "status.json" for path in ctx.work.rglob("status.json") if name in str(path))
+    launched = bool({str(path) for path in ctx.work.rglob(".kapso/status.json")} - before)
     proposed = turns and turns[0].asked
     artifacts = [ctx.artifact(f"{name}-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
-    return record_step(name, turns, bool(proposed) and not launched, artifacts, ["candidate criteria judged by hand from the answers artifact"])
+    return record_step(name, turns, ctx.user.ended_well(name, bool(proposed) and not launched), artifacts, [f"candidate criteria judged by hand from the answers artifact; a campaign was launched: {launched} (the step forbids it)"])
 
 
 def step_build_data_only(ctx: Context) -> Dict[str, Any]:
@@ -891,9 +963,17 @@ def step_review(ctx: Context) -> Dict[str, Any]:
         turns += ctx.converse("review-2", project, "is the branch the campaign delivered in ../churn-campaign safe to merge?", lambda text, index: None, max_turns=1)
     artifacts = [ctx.artifact("review-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     solution = campaign / ".kapso" / "solution.json"
+    branch = None
     if solution.is_file():
         artifacts.append(ctx.copy_artifact(solution, "churn-solution.json"))
-    return record_step("review", turns, finished and solution.is_file(), artifacts, [f"the churn campaign ended: {(status_of(campaign) or {}).get('state')}"])
+        branch = (json.loads(solution.read_text(encoding="utf-8")).get("delivered") or {}).get("branch")
+    answer = "\n".join(turn.text for turn in turns).lower()
+    # The answer must name the delivered branch and give a merge verdict,
+    # so "I can't read that campaign" does not pass review.
+    named = bool(branch) and branch.lower() in answer
+    verdict = any(word in answer for word in ("merge", "safe", "do not merge", "not safe"))
+    completed = ctx.user.ended_well("review", finished and solution.is_file() and named and verdict)
+    return record_step("review", turns, completed, artifacts, [f"the churn campaign ended: {(status_of(campaign) or {}).get('state')}; the answer named the delivered branch {branch!r}: {named}; a merge verdict: {verdict}"])
 
 
 def step_deploy(ctx: Context) -> Dict[str, Any]:
@@ -907,7 +987,9 @@ def step_deploy(ctx: Context) -> Dict[str, Any]:
         artifacts.append(ctx.copy_artifact(deployment / "deployment.json", "deploy-deployment.json"))
     parity = deploy_parity(deployment, campaign)
     ctx.shell(f"kapso deploy {campaign} --stop --number 1", cwd=project, check=False)
-    return record_step("deploy", turns, deployment.is_dir() and parity != "differs", artifacts, [f"the deployed call against the delivered predictions: {parity}"])
+    # Parity must be "same": a "differs (...)" string or a "not established"
+    # is not a proven deployment (the old `!= "differs"` let both pass).
+    return record_step("deploy", turns, (deployment / "deployment.json").is_file() and parity == "same", artifacts, [f"the deployed call against the delivered predictions: {parity}"])
 
 
 def deploy_parity(deployment: Path, campaign: Path) -> str:
@@ -970,10 +1052,13 @@ def step_session_brief(ctx: Context) -> Dict[str, Any]:
     project_config(project, {"experience": {"session_sources": ["mine:all"]}})
     prompt = "What experience is this session served, according to your MCP server's instructions? Then read one card from the bank with the bank tools and quote its title."
     turns = ctx.converse("session-brief", project, prompt, lambda text, index: None, max_turns=1)
+    bank_tools = [tool for turn in turns for tool in turn.tools if "bank" in tool["name"]]
+    # A successful bank read: the tool did not error (a named-but-failed
+    # call is not a card read).
+    bank_read = any(not tool.get("is_error") for tool in bank_tools)
     names = [tool["name"] for turn in turns for tool in turn.tools]
-    bank_read = any("bank" in name for name in names)
     artifacts = [ctx.artifact("session-brief.txt", "\n".join(names) + "\n\n" + "\n".join(turn.text for turn in turns))]
-    return record_step("session-brief", turns, bank_read, artifacts, ["the sources recognised in the instructions: judged by hand from the answer"])
+    return record_step("session-brief", turns, ctx.user.ended_well("session-brief", bank_read), artifacts, [f"a bank tool succeeded (a card read): {bank_read}; the sources recognised judged by hand from the answer"])
 
 
 def step_experience_share(ctx: Context) -> Dict[str, Any]:
@@ -1019,14 +1104,20 @@ def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
     campaign = Path("/home/proof2/second-campaign")
     read_status = lambda: json.loads(ctx.shell(f"sudo cat {campaign}/.kapso/status.json", check=False).stdout or "null")
     done = wait_for(lambda: (read_status() or {}).get("state") in ("done", "failed"), budget["minutes"] * 60 + 600, every=30)
-    solution = ctx.shell(f"sudo cat {campaign}/.kapso/solution.json", check=False).stdout
-    served = "bank-remote" in solution
+    solution_text = ctx.shell(f"sudo cat {campaign}/.kapso/solution.json", check=False).stdout
+    solution = json.loads(solution_text) if solution_text.strip() else {}
+    served = "bank-remote" in solution_text
+    final_state = (read_status() or {}).get("state")
+    # Scored: the delivered branch has a score; and the build read a bank
+    # card (a pull record under the campaign names the shared bank).
+    scored = bool((solution.get("delivered") or {}).get("score") is not None) if solution else False
+    read_bank = "bank-remote" in ctx.shell(f"sudo cat {campaign}/.kapso/experiment_history.json 2>/dev/null; sudo cat {campaign}/.kapso/solution.json", check=False).stdout
     artifacts = [ctx.artifact("second-engineer-launch.txt", launch.stdout + launch.stderr)]
-    if solution.strip():
-        artifacts.append(ctx.artifact("second-engineer-solution.json", solution))
+    if solution_text.strip():
+        artifacts.append(ctx.artifact("second-engineer-solution.json", solution_text))
     ctx.user.interventions.append("second-engineer-build: the churn fixture copied to the second user's home; the build run as that user with the bank by reference")
-    return shell_step("second-engineer-build", launch.returncode == 0 and done and served, artifacts, (time.monotonic() - started) / 60,
-                      [f"the shared bank named among the build's experience: {served}"], kind="build")
+    return shell_step("second-engineer-build", launch.returncode == 0 and done and final_state == "done" and served and scored, artifacts, (time.monotonic() - started) / 60,
+                      [f"served the shared bank: {served}; a scored delivery: {scored}; the bank in the build's records: {read_bank}; final state: {final_state}"], kind="build")
 
 
 def step_harness_improve(ctx: Context) -> Dict[str, Any]:
@@ -1230,6 +1321,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             step = STEPS[name](ctx)
         record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]
         record["user"] = {**record.get("user", {}), **user.record(), "interventions": sorted(set(record.get("user", {}).get("interventions", [])) | set(user.interventions))}
+        # A persona that never corrected the planted baseline makes the arm
+        # advisory (the not-annoying and engaging dimensions are not earned
+        # against a user who nodded through a wrong figure).
+        if user.pushback is False and not record.get("advisory"):
+            record["advisory"] = "the persona did not correct the planted baseline: the engaging and not-annoying dimensions are advisory for this arm"
         record["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         record["transcripts"] = sorted(f"transcripts/{path.name}" for path in (out / "transcripts").glob("*.jsonl"))
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")

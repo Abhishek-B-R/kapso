@@ -104,6 +104,9 @@ def _claude_command(prompt: str, model: str) -> List[str]:
 
 
 def _final_text(vendor: str, stdout: str) -> str:
+    """The persona's final message, raising when the vendor refused the
+    turn (a quota or limit): a refused persona is NEVER a satisfied user
+    whose words become the host's next prompt."""
     if vendor == "codex":
         final = ""
         for line in stdout.splitlines():
@@ -112,8 +115,13 @@ def _final_text(vendor: str, stdout: str) -> str:
             event = json.loads(line)
             if event.get("type") == "item.completed" and event["item"].get("type") == "agent_message":
                 final = event["item"].get("text") or final
+        if not final:
+            raise RuntimeError(f"the persona's codex session produced no agent_message (a refusal or limit): {stdout.strip()[-800:]}")
         return final
-    return json.loads(stdout).get("result") or ""
+    result = json.loads(stdout)
+    if result.get("is_error") or result.get("subtype") not in (None, "success"):
+        raise RuntimeError(f"the persona's claude session errored ({result.get('subtype')}, is_error={result.get('is_error')}): a refused persona is not a satisfied user")
+    return result.get("result") or ""
 
 
 def _session(vendor: str, stdout: str) -> Optional[str]:
@@ -135,7 +143,11 @@ def next_message(card: Card, task_dir: Path, intent: str, history: Sequence[Dict
     vendor = VENDOR_FOR_HOST[host]
     if settings["vendor"] != vendor:
         raise ValueError(f"the persona for a {host} host is {vendor}'s, not {settings['vendor']}'s")
-    readme = (task_dir / "README.md").read_text(encoding="utf-8")
+    # The task view's README is optional: a step whose directory has none
+    # (a freshly exported harness) gives the persona an empty view rather
+    # than crashing the run.
+    readme_path = task_dir / "README.md"
+    readme = readme_path.read_text(encoding="utf-8") if readme_path.is_file() else "(no README in this directory)"
     asked = sum(1 for turn in history if turn["role"] == "assistant" and turn.get("asked"))
     prompt = build_prompt(card, readme, intent, history, host_message, asked)
     with tempfile.TemporaryDirectory(prefix="persona-") as scratch:

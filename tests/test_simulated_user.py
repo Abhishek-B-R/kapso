@@ -104,5 +104,15 @@ def test_a_failed_or_empty_persona_session_raises_rather_than_reading_as_satisfi
     with pytest.raises(RuntimeError, match=r"the persona's codex session failed \(exit 1\): Quota exceeded"):
         simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"])
     _fake_run(monkeypatch, calls, _codex_stream(""))
-    with pytest.raises(RuntimeError, match="answered nothing"):
+    with pytest.raises(RuntimeError, match="no agent_message"):
         simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"])
+    # A Claude session that returns is_error (a limit/quota) is a refusal,
+    # never a satisfied user, even though the process exited 0.
+    _fake_run(monkeypatch, calls, json.dumps({"result": "API Error: 429", "is_error": True, "subtype": "error_during_execution", "session_id": "s-1"}))
+    with pytest.raises(RuntimeError, match="refused persona is not a satisfied user"):
+        simulated_user.next_message(card, task, "intent", [], "Shall I?", "codex", SETTINGS["codex"])
+    # With no README in the task directory the persona still runs (an empty view, not a crash).
+    _fake_run(monkeypatch, calls, _codex_stream("go"))
+    bare = task.parent / "bare"
+    bare.mkdir()
+    assert simulated_user.next_message(card, bare, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"]).text == "go"

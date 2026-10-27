@@ -71,11 +71,13 @@ def test_the_persona_is_offered_every_turn_and_done_ends_the_step_as_an_event(tm
 
 
 def test_the_turn_cap_ends_the_step_as_an_event_never_a_pass(tmp_path, monkeypatch):
-    user, _ = _persona(monkeypatch, ["more", "more", "more"])
-    host = FakeHost([("Question one?", True), ("Question two?", True), ("Question three?", True)])
+    user, _ = _persona(monkeypatch, ["more", "more", "more", "more", "more", "more", "more", "more"])
+    host = FakeHost([("Question?", True)] * 8)
     ctx = _context(tmp_path, host, user)
-    turns = ctx.converse("harness-new", tmp_path / "work", "/kapso:harness new", proof.harness_policy, max_turns=3)
-    assert len(turns) == 3 and user.events == ["harness-new: the turn cap (3) ended the exchange without DONE"]
+    turns = ctx.converse("watch", tmp_path / "work", "/kapso:watch", lambda t, i: None, max_turns=8)
+    assert len(turns) == 8 and user.events[-1].endswith("the step is incomplete") and "watch" in user.capped
+    # The cap makes even a satisfied-looking predicate incomplete.
+    assert user.ended_well("watch", True) is False and user.ended_well("other", True) is True
 
 
 def test_the_scripted_loop_still_ends_on_a_turn_that_does_not_ask(tmp_path):

@@ -78,8 +78,11 @@ def test_the_run_metrics_promote_round_two_and_the_steps_match_the_suite():
     assert set(author.SUITE["tests"]["author"]["bars"]) == {"structural_gaps_round2", "check_green_round2"}
 
 
-def test_the_author_rubric_is_the_designs_words():
+def test_the_author_rubric_scores_only_the_harness_and_the_classifier_owns_the_classes():
     rubric = (ROOT / "tests" / "semantic" / "rubrics" / "author.md").read_text(encoding="utf-8")
     for dimension in author.SUITE["tests"]["author"]["judge"]["dimensions"]:
         assert f"**{dimension}**" in rubric, dimension
-    assert "structural gap" in rubric and "contradiction" in rubric
+    # The guess classification is NOT asked of the harness judge (its JSON
+    # contract rejects extra output); it lives in the author test's classifier.
+    assert "classified separately" in rubric
+    assert "structural_gap" in author.CLASSIFY and "contradiction" in author.CLASSIFY
