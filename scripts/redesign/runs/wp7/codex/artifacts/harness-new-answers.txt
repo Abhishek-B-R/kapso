@@ -1,62 +1,60 @@
-I propose a `trading` harness for daily-bar strategy research with causal signals, pinned data, and independent verification.
+I propose a `trading` harness for causal strategy development on pinned daily bars.
 
-The repository supports these standing rules:
+Standing rules, drawn from this repository:
 
-- Use only information available at each bar; positions earn returns from the following bar (`repo/strategy.py`, `kapso-brief.md`).
-- Preserve the signal interface and position bounds defined by the strategy contract (`repo/README.md`).
-- Develop only on development data; reserve held-out bars for evaluation (`kapso-brief.md`).
-- Use the pinned snapshot and prohibit live price fetches (`kapso-brief.md`).
+- Use only current and earlier bars; earn returns on the following bar (`repo/strategy.py`, evaluator).
+- Preserve the `signal(bars)` interface and position bounds (`repo/README.md`).
+- Keep holdout bars exclusive to evaluation (`kapso-brief.md`).
+- Use the prepared snapshot; prohibit live price fetches (`kapso-brief.md`).
 - Never modify the evaluator (`kapso-brief.md`).
-- Report drawdown and turnover alongside performance; distinguish smoke checks from full evaluations (`evaluation/evaluate.py`).
+- Report drawdown and turnover alongside the score (`README.md`, evaluator).
 
 Proposed components:
 
 | Component | Evidence and purpose |
 |---|---|
-| Snapshot preparation skill | `README.md` describes setup pinning; `MANIFEST.json` supplies hashes to detect data changes. |
-| Leakage-check skill and script | `README.md` requires a scan before backtesting; prevents obvious future-data access. |
-| Backtest skill | Evaluator documents invocation, smoke mode, risk output, and result artifacts. |
-| Verification auditor | `README.md` explicitly calls for an auditor to review timing and validity. |
-| Snapshot and network hooks | `README.md` describes denying snapshot writes and web fetches. |
-| Result-artifact hook | `README.md` describes requiring equity and trade outputs. |
+| Snapshot-pinning skill | `MANIFEST.json` and README’s setup procedure; prevent data drift |
+| Look-ahead scan skill | README explicitly calls for scanning before backtests |
+| Backtesting skill | Evaluator’s timing, costs, output artifacts, and smoke-test distinction |
+| Look-ahead auditor delegate | README explicitly calls for verification by an auditor |
+| Fetch and snapshot-protection hooks | README describes both protections |
+| Verification checks | Signal contract, causality, snapshot integrity, evaluator integrity, and result artifacts |
 
-No external service or credential-backed client is evidenced, so I propose no MCP server. Ideation, feedback, learning, and deployment have no specific domain procedures evidenced; those pages would remain omitted pending your input.
-
-Proposed directory:
+No server is needed for the evidenced local CSV workflow. Deployment and learning have no concrete procedures here and will remain omitted pending follow-up.
 
 ```text
 trading/
 ├── harness.yaml
-├── requirements.txt
 ├── instructions/
 │   ├── guardrails.md
 │   ├── setup.md
+│   ├── ideation.md
 │   ├── implementation.md
-│   └── verification.md
+│   ├── verification.md
+│   └── feedback.md
 ├── skills/
-│   ├── prepare-snapshot/{SKILL.md,prepare.py}
-│   ├── leakage-check/{SKILL.md,scan.py}
-│   └── backtest/SKILL.md
-├── agents/
-│   └── auditor.md
-└── hooks/
-    ├── protect-snapshot/{hook.json,check.py}
-    ├── no-live-fetch/{hook.json,check.py}
-    └── require-results/{hook.json,check.py}
+│   ├── pin-snapshot/{SKILL.md,scripts/pin.py}
+│   ├── lookahead-scan/{SKILL.md,scripts/scan.py}
+│   └── backtesting/SKILL.md
+├── agents/lookahead-auditor.md
+├── hooks/
+│   ├── deny-web-fetch/{hook.json,check.py}
+│   └── protect-snapshot/{hook.json,check.py}
+└── requirements.txt
 ```
 
-Pages will stay under forty lines. Targets, dates, costs, budgets, and dataset locations will come from the task and evaluator rather than being copied into the harness. The referenced sibling harness is absent. The authoring documentation URL also returned 404, so its schema still needs verification against the installed CLI.
+Pages will stay under forty lines. Task dates, targets, budgets, and dataset locations will remain in the task statement. The online authoring guide returned 404; I read its local source.
 
-Confirm this proposal so I can write and validate it?
+Shall I create this harness and run `kapso harness check`?
 
-The invoked [kapso-harness skill](/home/ubuntu/.codex/plugins/cache/kapso/kapso/0.8.0.dev1/skills/kapso-harness/SKILL.md) explicitly requires: “Nothing is written before the user confirms.” No files have been changed.
+Confirmation is required by the invoked [kapso-harness skill](/home/ubuntu/kapso/.claude/worktrees/kapso-plugin/plugin/skills/kapso-harness/SKILL.md): “Nothing is written before the user confirms.” No files have been changed.
 
 ---
 
-Created [trading/harness.yaml](trading/harness.yaml) with three skills, an auditor, and three hooks.
+Created [trading/harness.yaml](trading/harness.yaml) with three skills, a look-ahead auditor, and two protection hooks.
 
-`kapso harness check ./trading` passes with no warnings or missing requirements. Behavioral checks passed for snapshot integrity, leakage detection, hook decisions, and result validation.
+`kapso harness check` passes without warnings or missing prerequisites. Snapshot integrity, leakage detection, hook behavior, and development-only causality checks also passed.
 
-Optional module procedures remain omitted pending your answers. Hooks are safeguards, not a sandbox; independent review remains required.
+Deployment and learning guidance remain omitted. Hooks catch common mistakes but do not provide isolation.
 
-Ready for a probe build through `kapso-build`; none launched.
+The harness is ready for a probe build; none has been launched.

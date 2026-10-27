@@ -1,6 +1,6 @@
 Initialized Kapso
-Harness: trading 0.1.0 (318aea24ab8e) from /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/trading-author/trading
-kapso build started in a session of its own (pid 238885)
+Harness: trading 0.1.0 (25992651bf33) from /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/trading-author/trading
+kapso build started in a session of its own (pid 2493262)
   log:     /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/trading-probe.log
   status:  /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/trading-probe/.kapso/status.json
   follow:  kapso watch /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/trading-probe --follow

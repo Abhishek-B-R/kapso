@@ -21,8 +21,19 @@
 | build-empty-wish | 2 | 1 | 1.3 | 12 lines | yes | 1/1 | pass |
 | harness-new | 3 | 2 | 3.3 | 27 lines | no | 1/1 | FAIL |
 | harness-probe | 0 | 0 | 0.0 | 0 lines | no | 0/0 | FAIL |
-| review | 2 | 0 | 2.2 | 20 lines | yes | 2/2 | pass |
+| review | 2 | 0 | 2.2 | 20 lines | yes | 2/2 | FAIL |
 | deploy | 2 | 0 | 9.4 | 8 lines | yes | 1/1 | pass |
+
+Step notes:
+- setup: link clicks: judged by hand from the transcript (the logins were present, so none were needed)
+- triggers: the bar per skill is read off triggers-main/REPORT.md
+- inbox: the injected pause arrived: True
+- build-fraud: evaluator files written by the session: ['kapso_evaluation/evaluate.py']
+- build-data-only: candidate criteria judged by hand from the answers artifact
+- build-empty-wish: candidate criteria judged by hand from the answers artifact
+- harness-new: compared with the shipped harness by hand from harness-new-tree.txt
+- harness-probe: no harness was written
+- review: the churn campaign ended: done
 
 Transcripts:
 - transcripts/build-churn.jsonl
@@ -43,4 +54,4 @@ Transcripts:
 - transcripts/watch-2.jsonl
 - transcripts/watch.jsonl
 
-Result: FAIL (13/17 steps)
+Result: FAIL (12/17 steps)

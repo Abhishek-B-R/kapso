@@ -957,7 +957,10 @@ the current driver closed in two messages (4.5 minutes, the second of
 21 lines): the proposal, then the harness written and `check` green,
 with the learning and deployment pages omitted and said rather than
 asked for (the skill's one question per silent module was not asked;
-the Findings). **The
+the Findings); the probe build on that harness, a fresh campaign of ten
+minutes and one experiment, ran its experiment to the end with no
+score (`max_iterations`, `score=None`: the trading evaluator produced no
+result for the attempt), 8.8 minutes. **The
 probe build** on that harness at ten minutes and one experiment ended
 `goal_achieved`. **(i) Improve** from the probe's trace: the session read
 where the attempts diverged, which hooks fired and what the engine's
@@ -1064,7 +1067,14 @@ until the pin is on PyPI.
 
 **The reports** (`scripts/redesign/runs/wp7/<host>/report.md`), under
 the budgets at the rubric's caps since the pull-request review (twelve
-lines outside fences, three setup messages): TODO-TALLY.
+lines outside fences, three setup messages): the second machine twenty
+of twenty-four steps (the learn's completion, which the learning system
+failed; three handoffs over twelve lines: the pause build's 13, the fraud
+build's 16, the review's 15); the first machine twelve of seventeen,
+the run that taught the driver; the development box eighteen of nineteen
+on Codex, the trigger step the one failure (two cross-skill false
+positives under the first-read rule), six rows deferred to the machine
+by the matrix.
 
 ## Findings for later packages
 
@@ -1403,3 +1413,4 @@ check 6 quoted files, `mint validate` and `mint broken-links` passing).
 | `a27a88e5` | the plugin page, the README's step 0, the installation page's `/kapso:setup`, the reference lines, the superseded notes, the validator's CLI pinned (change 10) |
 | `1f952164`, `3e2ab47b` | the round's driver, budgets and report; `kapso --version` and `kapso-mcp --version` (change 11) |
 | `1829844b` to the round's last commit | the round's findings as they landed: the driver's fixes (the wheel copy, the questions a turn asks in every shape the hosts wrote them, the second user run from its own home, the pause as its own step, the token in each fixture's `.env`, the key written before the person says so, a numbered list answered in one reply, the probe launch clearing a leftover result, a turn's and a trigger run's deadline as the `timeout` command's, the held-out cases as their own group, the bar read per skill and recomputable, the isolation campaign of its own, the shared remote where the second user can read it, the pause campaign's budget as an option, the machine's delivered campaign stood in for the box's deploy, a Codex session's exit read as the word it is); the churn example on pandas 3; the evaluation skill's churn note; the learn command's offer in the same reply; the operating skill's line on the local target after an upgrade; the plugin page's teammate lines by the bank's reference; the trigger graders counting a skill's commands, and the Codex rule for a near miss that read the expected skill too; the Codex adapter's disabled server defined whole; the decisions of the build and the findings of the round |
+| `5721e4f4` to the review's last commit | the pull-request review's fixes: the stop reaching every process under the writer and refusing companion flags, abbreviations refused at every parser, the campaign gate's tilde, pid and refusal key, a config-listed source degrading and a bank fetched on first use, the export's TOML and preflight and the harness-root line, one name for the terminal states, a host session's pin, the skills' and pages' corrections, the Codex grader's first-read rule, the reports' step notes, the budgets at the rubric's caps, the `codex-rules-probe` step, the probe step clearing a previous campaign, the plan's corrections, the sixty answers, the decisions |

@@ -7,7 +7,7 @@
     "wheel_sha256": "c16a36e94479eabe691953f4ff86b7c822bae41701c602afac19cefa73f3c74e"
   },
   "started": "2026-10-27T01:12:12+00:00",
-  "finished": "2026-10-27T06:12:00+00:00",
+  "finished": "2026-10-27T07:41:52+00:00",
   "steps": [
     {
       "name": "install",
@@ -127,7 +127,7 @@
       "questions": 0,
       "minutes": 47.9,
       "longest_message_lines": 0,
-      "completed": true,
+      "completed": false,
       "artifacts": [
         "artifacts/triggers-main",
         "artifacts/triggers-main.log",
@@ -135,7 +135,7 @@
         "artifacts/triggers-holdout.log"
       ],
       "notes": [
-        "main: {'build': '18/18', 'harness': '18/18', 'kapso': '17/17', 'review': '18/18', 'setup': '18/18'}; cross-skill false positives: none",
+        "main: {'build': '18/18', 'harness': '17/18', 'kapso': '17/17', 'review': '17/18', 'setup': '18/18'}; cross-skill false positives: ['harness-c03', 'review-c02']",
         "holdout: {'holdout': '10/10'}; cross-skill false positives: none",
         "the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way",
         "verdict recomputed from the artifacts after the bar's rule read the held-out cases as their own group"
@@ -170,22 +170,6 @@
       ]
     },
     {
-      "name": "harness-new",
-      "messages": 2,
-      "questions": 1,
-      "minutes": 3.7,
-      "longest_message_lines": 22,
-      "completed": true,
-      "artifacts": [
-        "artifacts/harness-new-answers.txt",
-        "artifacts/harness-new-check.txt",
-        "artifacts/harness-new-tree.txt"
-      ],
-      "notes": [
-        "compared with the shipped harness by hand from harness-new-tree.txt"
-      ]
-    },
-    {
       "name": "build-churn",
       "messages": 1,
       "questions": 0,
@@ -207,19 +191,6 @@
       "completed": true,
       "artifacts": [
         "artifacts/watch-answers.txt"
-      ],
-      "notes": []
-    },
-    {
-      "name": "harness-probe",
-      "messages": 0,
-      "questions": 0,
-      "minutes": 8.8,
-      "longest_message_lines": 0,
-      "completed": true,
-      "artifacts": [
-        "artifacts/harness-probe-launch.txt",
-        "artifacts/harness-probe-status.json"
       ],
       "notes": []
     },
@@ -291,9 +262,55 @@
         "artifacts/isolation.json"
       ],
       "notes": []
+    },
+    {
+      "name": "harness-new",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 4.5,
+      "longest_message_lines": 21,
+      "completed": true,
+      "artifacts": [
+        "artifacts/harness-new-answers.txt",
+        "artifacts/harness-new-check.txt",
+        "artifacts/harness-new-tree.txt"
+      ],
+      "notes": [
+        "compared with the shipped harness by hand from harness-new-tree.txt"
+      ]
+    },
+    {
+      "name": "codex-rules-probe",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 0.2,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/codex-rules-probe.txt"
+      ],
+      "notes": [
+        "the session's cwd is a gitignored subdirectory of a repository, as an implementation session's is; the rules file sits in it"
+      ]
+    },
+    {
+      "name": "harness-probe",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 8.8,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/harness-probe-launch.txt",
+        "artifacts/harness-probe-status.json"
+      ],
+      "notes": []
     }
   ],
-  "notes": [],
+  "notes": [
+    "wheels: the campaign steps run from 04:15 UTC on (build-churn, build-pause, watch, inbox, harness-new, harness-probe, review, deploy, campaign-session-isolation, codex-rules-probe) ran on the second wheel bb288573\u2026 (rebuilt after the Codex adapter's fix, 6db87600); the other steps on the first c16a36e9\u2026 (built at 3e2ab47b), the package line's",
+    "the trigger step's verdict was recomputed after the pull-request review under the first-read rule (87 of 89 main cases; two cross-skill false positives named in its notes)"
+  ],
   "transcripts": [
     "transcripts/build-churn.jsonl",
     "transcripts/build-data-only.jsonl",

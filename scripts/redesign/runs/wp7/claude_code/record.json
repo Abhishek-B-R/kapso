@@ -1,376 +1,378 @@
 {
- "test": "S2-mechanical",
- "host": "claude_code",
- "machine": "kapso-fresh-wp7b",
- "package": {
-  "version": "0.8.0.dev1",
-  "wheel_sha256": "c16a36e94479eabe691953f4ff86b7c822bae41701c602afac19cefa73f3c74e"
- },
- "started": "2026-10-27T02:24:41+00:00",
- "finished": "2026-10-27T04:38:55+00:00",
- "steps": [
-  {
-   "name": "install",
-   "messages": 0,
-   "questions": 0,
-   "minutes": 0.1,
-   "longest_message_lines": 0,
-   "completed": true,
-   "artifacts": [
-    "artifacts/validate.json",
-    "artifacts/details.txt",
-    "artifacts/plugin-list.txt"
-   ],
-   "notes": []
+  "test": "S2-mechanical",
+  "host": "claude_code",
+  "machine": "kapso-fresh-wp7b",
+  "package": {
+    "version": "0.8.0.dev1",
+    "wheel_sha256": "c16a36e94479eabe691953f4ff86b7c822bae41701c602afac19cefa73f3c74e"
   },
-  {
-   "name": "setup",
-   "messages": 1,
-   "questions": 0,
-   "minutes": 0.8,
-   "longest_message_lines": 10,
-   "completed": true,
-   "artifacts": [
-    "artifacts/setup-doctor.json"
-   ],
-   "notes": [
-    "link clicks: judged by hand from the transcript (the logins were present, so none were needed)"
-   ]
-  },
-  {
-   "name": "build-churn",
-   "messages": 2,
-   "questions": 1,
-   "minutes": 1.6,
-   "longest_message_lines": 9,
-   "completed": true,
-   "artifacts": [
-    "artifacts/build-churn-brief.md",
-    "artifacts/build-churn-status.json"
-   ],
-   "notes": []
-  },
-  {
-   "name": "build-pause",
-   "messages": 1,
-   "questions": 0,
-   "minutes": 1.2,
-   "longest_message_lines": 13,
-   "completed": true,
-   "artifacts": [
-    "artifacts/build-pause-brief.md",
-    "artifacts/build-pause-status.json"
-   ],
-   "notes": []
-  },
-  {
-   "name": "watch",
-   "messages": 2,
-   "questions": 0,
-   "minutes": 0.7,
-   "longest_message_lines": 3,
-   "completed": true,
-   "artifacts": [
-    "artifacts/watch-answers.txt"
-   ],
-   "notes": []
-  },
-  {
-   "name": "triggers",
-   "messages": 0,
-   "questions": 0,
-   "minutes": 21.1,
-   "longest_message_lines": 0,
-   "completed": true,
-   "artifacts": [
-    "artifacts/triggers-main",
-    "artifacts/triggers-main.log",
-    "artifacts/triggers-holdout",
-    "artifacts/triggers-holdout.log"
-   ],
-   "notes": [
-    "main: {'build': '19/20', 'harness': '20/20', 'kapso': '20/21', 'review': '19/20', 'setup': '20/20'}; cross-skill false positives: none",
-    "holdout: {'holdout': '10/10'}; cross-skill false positives: none",
-    "the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way",
-    "verdict recomputed from the artifacts after the bar's rule read the held-out cases as their own group"
-   ]
-  },
-  {
-   "name": "harness-export",
-   "messages": 1,
-   "questions": 0,
-   "minutes": 0.7,
-   "longest_message_lines": 4,
-   "completed": true,
-   "artifacts": [
-    "artifacts/export-claude_code.txt",
-    "artifacts/export-claude_code-files.txt",
-    "artifacts/export-codex.txt",
-    "artifacts/export-codex-files.txt",
-    "artifacts/export-refusal.txt"
-   ],
-   "notes": []
-  },
-  {
-   "name": "campaign-tools",
-   "messages": 1,
-   "questions": 0,
-   "minutes": 0.7,
-   "longest_message_lines": 5,
-   "completed": true,
-   "artifacts": [
-    "artifacts/campaign-tools.txt"
-   ],
-   "notes": []
-  },
-  {
-   "name": "inbox",
-   "messages": 2,
-   "questions": 1,
-   "minutes": 1.8,
-   "longest_message_lines": 8,
-   "completed": true,
-   "artifacts": [
-    "artifacts/inbox-answers.txt",
-    "artifacts/inbox.jsonl"
-   ],
-   "notes": [
-    "the injected pause arrived: True"
-   ]
-  },
-  {
-   "name": "build-fraud",
-   "messages": 2,
-   "questions": 1,
-   "minutes": 2.7,
-   "longest_message_lines": 16,
-   "completed": true,
-   "artifacts": [
-    "artifacts/build-fraud-brief.md",
-    "artifacts/build-fraud-status.json",
-    "artifacts/fraud-evaluators.txt"
-   ],
-   "notes": [
-    "evaluator files written by the session: ['kapso_evaluation/evaluate.py']"
-   ]
-  },
-  {
-   "name": "build-data-only",
-   "messages": 2,
-   "questions": 1,
-   "minutes": 2.8,
-   "longest_message_lines": 10,
-   "completed": true,
-   "artifacts": [
-    "artifacts/build-data-only-answers.txt"
-   ],
-   "notes": [
-    "candidate criteria judged by hand from the answers artifact"
-   ]
-  },
-  {
-   "name": "build-empty-wish",
-   "messages": 2,
-   "questions": 1,
-   "minutes": 2.0,
-   "longest_message_lines": 12,
-   "completed": true,
-   "artifacts": [
-    "artifacts/build-empty-wish-answers.txt"
-   ],
-   "notes": [
-    "candidate criteria judged by hand from the answers artifact"
-   ]
-  },
-  {
-   "name": "harness-new",
-   "messages": 2,
-   "questions": 1,
-   "minutes": 3.0,
-   "longest_message_lines": 30,
-   "completed": true,
-   "artifacts": [
-    "artifacts/harness-new-answers.txt",
-    "artifacts/harness-new-check.txt",
-    "artifacts/harness-new-tree.txt"
-   ],
-   "notes": [
-    "compared with the shipped harness by hand from harness-new-tree.txt"
-   ]
-  },
-  {
-   "name": "harness-probe",
-   "messages": 0,
-   "questions": 0,
-   "minutes": 9.8,
-   "longest_message_lines": 0,
-   "completed": true,
-   "artifacts": [
-    "artifacts/harness-probe-launch.txt",
-    "artifacts/harness-probe-status.json"
-   ],
-   "notes": []
-  },
-  {
-   "name": "review",
-   "messages": 2,
-   "questions": 0,
-   "minutes": 2.1,
-   "longest_message_lines": 15,
-   "completed": true,
-   "artifacts": [
-    "artifacts/review-answers.txt",
-    "artifacts/churn-solution.json"
-   ],
-   "notes": [
-    "the churn campaign ended: done"
-   ]
-  },
-  {
-   "name": "deploy",
-   "messages": 2,
-   "questions": 0,
-   "minutes": 5.0,
-   "longest_message_lines": 10,
-   "completed": true,
-   "artifacts": [
-    "artifacts/deploy-answers.txt"
-   ],
-   "notes": []
-  },
-  {
-   "name": "learn",
-   "messages": 1,
-   "questions": 1,
-   "minutes": 1.1,
-   "longest_message_lines": 6,
-   "completed": true,
-   "artifacts": [
-    "artifacts/learn-answers.txt"
-   ],
-   "notes": [
-    "the serving offer (session_sources) was made: True",
-    "the learning crews ran on claude-opus-5 for this round (--learn-model): the token's window for the shipped model was spent"
-   ]
-  },
-  {
-   "name": "learn-complete",
-   "messages": 0,
-   "questions": 0,
-   "minutes": 37.1,
-   "longest_message_lines": 0,
-   "completed": false,
-   "artifacts": [
-    "artifacts/learn-status.json",
-    "artifacts/experience-list.txt"
-   ],
-   "notes": [
-    "state failed, cards 0"
-   ]
-  },
-  {
-   "name": "session-brief",
-   "messages": 1,
-   "questions": 0,
-   "minutes": 0.2,
-   "longest_message_lines": 3,
-   "completed": true,
-   "artifacts": [
-    "artifacts/session-brief.txt"
-   ],
-   "notes": [
-    "the sources recognised in the instructions: judged by hand from the answer"
-   ]
-  },
-  {
-   "name": "cold-start",
-   "messages": 0,
-   "questions": 0,
-   "minutes": 0.1,
-   "longest_message_lines": 0,
-   "completed": true,
-   "artifacts": [
-    "artifacts/cold-start.txt"
-   ],
-   "notes": [
-    "partial: the uvx and pipx branches resolve only once the pin is on PyPI"
-   ]
-  },
-  {
-   "name": "harness-improve",
-   "messages": 2,
-   "questions": 1,
-   "minutes": 3.3,
-   "longest_message_lines": 19,
-   "completed": true,
-   "artifacts": [
-    "artifacts/harness-improve-answers.txt",
-    "artifacts/harness-improve-check.txt"
-   ],
-   "notes": []
-  },
-  {
-   "name": "cold-install",
-   "messages": 0,
-   "questions": 0,
-   "minutes": 0.2,
-   "longest_message_lines": 0,
-   "completed": true,
-   "artifacts": [
-    "artifacts/cold-install.txt"
-   ],
-   "notes": []
-  },
-  {
-   "name": "campaign-session-isolation",
-   "messages": 0,
-   "questions": 0,
-   "minutes": 8.9,
-   "longest_message_lines": 0,
-   "completed": true,
-   "artifacts": [
-    "artifacts/isolation.json"
-   ],
-   "notes": []
-  },
-  {
-   "name": "experience-share",
-   "messages": 1,
-   "questions": 0,
-   "minutes": 0.3,
-   "longest_message_lines": 5,
-   "completed": true,
-   "artifacts": [
-    "artifacts/experience-share.txt",
-    "artifacts/experience-second-user.txt"
-   ],
-   "notes": [
-    "the second user loads the shared bank by reference through kapso-mcp and lists it under the banks it reads; a served build at a tiny budget is left to WP9's round"
-   ]
-  }
- ],
- "notes": [],
- "transcripts": [
-  "transcripts/build-churn.jsonl",
-  "transcripts/build-data-only.jsonl",
-  "transcripts/build-empty-wish.jsonl",
-  "transcripts/build-fraud.jsonl",
-  "transcripts/build-pause.jsonl",
-  "transcripts/campaign-tools.jsonl",
-  "transcripts/deploy-2.jsonl",
-  "transcripts/deploy.jsonl",
-  "transcripts/experience-share.jsonl",
-  "transcripts/harness-export.jsonl",
-  "transcripts/harness-improve.jsonl",
-  "transcripts/harness-new.jsonl",
-  "transcripts/inbox-reply.jsonl",
-  "transcripts/inbox.jsonl",
-  "transcripts/learn.jsonl",
-  "transcripts/review-2.jsonl",
-  "transcripts/review.jsonl",
-  "transcripts/session-brief.jsonl",
-  "transcripts/setup.jsonl",
-  "transcripts/watch-2.jsonl",
-  "transcripts/watch.jsonl"
- ]
+  "started": "2026-10-27T02:24:41+00:00",
+  "finished": "2026-10-27T04:38:55+00:00",
+  "steps": [
+    {
+      "name": "install",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 0.1,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/validate.json",
+        "artifacts/details.txt",
+        "artifacts/plugin-list.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "setup",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 0.8,
+      "longest_message_lines": 10,
+      "completed": true,
+      "artifacts": [
+        "artifacts/setup-doctor.json"
+      ],
+      "notes": [
+        "link clicks: judged by hand from the transcript (the logins were present, so none were needed)"
+      ]
+    },
+    {
+      "name": "build-churn",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 1.6,
+      "longest_message_lines": 9,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-churn-brief.md",
+        "artifacts/build-churn-status.json"
+      ],
+      "notes": []
+    },
+    {
+      "name": "build-pause",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 1.2,
+      "longest_message_lines": 13,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-pause-brief.md",
+        "artifacts/build-pause-status.json"
+      ],
+      "notes": []
+    },
+    {
+      "name": "watch",
+      "messages": 2,
+      "questions": 0,
+      "minutes": 0.7,
+      "longest_message_lines": 3,
+      "completed": true,
+      "artifacts": [
+        "artifacts/watch-answers.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "triggers",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 21.1,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/triggers-main",
+        "artifacts/triggers-main.log",
+        "artifacts/triggers-holdout",
+        "artifacts/triggers-holdout.log"
+      ],
+      "notes": [
+        "main: {'build': '19/20', 'harness': '20/20', 'kapso': '20/21', 'review': '19/20', 'setup': '20/20'}; cross-skill false positives: none",
+        "holdout: {'holdout': '10/10'}; cross-skill false positives: none",
+        "the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way",
+        "verdict recomputed from the artifacts after the bar's rule read the held-out cases as their own group"
+      ]
+    },
+    {
+      "name": "harness-export",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 0.7,
+      "longest_message_lines": 4,
+      "completed": true,
+      "artifacts": [
+        "artifacts/export-claude_code.txt",
+        "artifacts/export-claude_code-files.txt",
+        "artifacts/export-codex.txt",
+        "artifacts/export-codex-files.txt",
+        "artifacts/export-refusal.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "campaign-tools",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 0.7,
+      "longest_message_lines": 5,
+      "completed": true,
+      "artifacts": [
+        "artifacts/campaign-tools.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "inbox",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 1.8,
+      "longest_message_lines": 8,
+      "completed": true,
+      "artifacts": [
+        "artifacts/inbox-answers.txt",
+        "artifacts/inbox.jsonl"
+      ],
+      "notes": [
+        "the injected pause arrived: True"
+      ]
+    },
+    {
+      "name": "build-fraud",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 2.7,
+      "longest_message_lines": 16,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-fraud-brief.md",
+        "artifacts/build-fraud-status.json",
+        "artifacts/fraud-evaluators.txt"
+      ],
+      "notes": [
+        "evaluator files written by the session: ['kapso_evaluation/evaluate.py']"
+      ]
+    },
+    {
+      "name": "build-data-only",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 2.8,
+      "longest_message_lines": 10,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-data-only-answers.txt"
+      ],
+      "notes": [
+        "candidate criteria judged by hand from the answers artifact"
+      ]
+    },
+    {
+      "name": "build-empty-wish",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 2.0,
+      "longest_message_lines": 12,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-empty-wish-answers.txt"
+      ],
+      "notes": [
+        "candidate criteria judged by hand from the answers artifact"
+      ]
+    },
+    {
+      "name": "harness-new",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 3.0,
+      "longest_message_lines": 30,
+      "completed": true,
+      "artifacts": [
+        "artifacts/harness-new-answers.txt",
+        "artifacts/harness-new-check.txt",
+        "artifacts/harness-new-tree.txt"
+      ],
+      "notes": [
+        "compared with the shipped harness by hand from harness-new-tree.txt"
+      ]
+    },
+    {
+      "name": "harness-probe",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 9.8,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/harness-probe-launch.txt",
+        "artifacts/harness-probe-status.json"
+      ],
+      "notes": []
+    },
+    {
+      "name": "review",
+      "messages": 2,
+      "questions": 0,
+      "minutes": 2.1,
+      "longest_message_lines": 15,
+      "completed": true,
+      "artifacts": [
+        "artifacts/review-answers.txt",
+        "artifacts/churn-solution.json"
+      ],
+      "notes": [
+        "the churn campaign ended: done"
+      ]
+    },
+    {
+      "name": "deploy",
+      "messages": 2,
+      "questions": 0,
+      "minutes": 5.0,
+      "longest_message_lines": 10,
+      "completed": true,
+      "artifacts": [
+        "artifacts/deploy-answers.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "learn",
+      "messages": 1,
+      "questions": 1,
+      "minutes": 1.1,
+      "longest_message_lines": 6,
+      "completed": true,
+      "artifacts": [
+        "artifacts/learn-answers.txt"
+      ],
+      "notes": [
+        "the serving offer (session_sources) was made: True",
+        "the learning crews ran on claude-opus-5 for this round (--learn-model): the token's window for the shipped model was spent"
+      ]
+    },
+    {
+      "name": "learn-complete",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 37.1,
+      "longest_message_lines": 0,
+      "completed": false,
+      "artifacts": [
+        "artifacts/learn-status.json",
+        "artifacts/experience-list.txt"
+      ],
+      "notes": [
+        "state failed, cards 0"
+      ]
+    },
+    {
+      "name": "session-brief",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 0.2,
+      "longest_message_lines": 3,
+      "completed": true,
+      "artifacts": [
+        "artifacts/session-brief.txt"
+      ],
+      "notes": [
+        "the sources recognised in the instructions: judged by hand from the answer"
+      ]
+    },
+    {
+      "name": "cold-start",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 0.1,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/cold-start.txt"
+      ],
+      "notes": [
+        "partial: the uvx and pipx branches resolve only once the pin is on PyPI"
+      ]
+    },
+    {
+      "name": "harness-improve",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 3.3,
+      "longest_message_lines": 19,
+      "completed": true,
+      "artifacts": [
+        "artifacts/harness-improve-answers.txt",
+        "artifacts/harness-improve-check.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "cold-install",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 0.2,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/cold-install.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "campaign-session-isolation",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 8.9,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/isolation.json"
+      ],
+      "notes": []
+    },
+    {
+      "name": "experience-share",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 0.3,
+      "longest_message_lines": 5,
+      "completed": true,
+      "artifacts": [
+        "artifacts/experience-share.txt",
+        "artifacts/experience-second-user.txt"
+      ],
+      "notes": [
+        "the second user loads the shared bank by reference through kapso-mcp and lists it under the banks it reads; a served build at a tiny budget is left to WP9's round"
+      ]
+    }
+  ],
+  "notes": [
+    "wheels: harness-improve, cold-install, experience-share and campaign-session-isolation ran on the second wheel bb288573\u2026 (rebuilt after the Codex adapter's fix, 6db87600); every other step on the first c16a36e9\u2026 (built at 3e2ab47b), the package line's"
+  ],
+  "transcripts": [
+    "transcripts/build-churn.jsonl",
+    "transcripts/build-data-only.jsonl",
+    "transcripts/build-empty-wish.jsonl",
+    "transcripts/build-fraud.jsonl",
+    "transcripts/build-pause.jsonl",
+    "transcripts/campaign-tools.jsonl",
+    "transcripts/deploy-2.jsonl",
+    "transcripts/deploy.jsonl",
+    "transcripts/experience-share.jsonl",
+    "transcripts/harness-export.jsonl",
+    "transcripts/harness-improve.jsonl",
+    "transcripts/harness-new.jsonl",
+    "transcripts/inbox-reply.jsonl",
+    "transcripts/inbox.jsonl",
+    "transcripts/learn.jsonl",
+    "transcripts/review-2.jsonl",
+    "transcripts/review.jsonl",
+    "transcripts/session-brief.jsonl",
+    "transcripts/setup.jsonl",
+    "transcripts/watch-2.jsonl",
+    "transcripts/watch.jsonl"
+  ]
 }
