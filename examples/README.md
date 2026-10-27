@@ -13,6 +13,7 @@ example builds on. Install Kapso and log the coding-agent CLIs in first
 |---|---|---|---|
 | [churn-first-build](churn-first-build/README.md) | 45 | your first build: an evaluator present, a baseline, a target, the record | `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach` |
 | [fraud-no-evaluator](fraud-no-evaluator/README.md) | 45 | no evaluator: the campaign builds one from the brief's protocol, then protects it | `kapso build --brief kapso-brief.md --data data --repo repo --output campaign --detach` |
+| [pipeline-dbt](pipeline-dbt/README.md) | 30 | a dbt pipeline on DuckDB whose exports carry defects: the data contract made to hold at the staging layer; the third domain a harness author writes for | `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach` |
 | [trading](trading/README.md) | 75 | a harness on the build: a setup session, pages and hooks in every session, verification per attempt | `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach` |
 | [ml_model_development](ml_model_development/README.md) | 45 | a Kaggle tabular model, and the full loop (research, learn, build again) | `kapso build --brief kapso-brief.md --repo repo --output campaign --detach` |
 | [prompt_engineering](prompt_engineering/README.md) | 60 | the prompt as the thing under test, scored on AIME problems | `kapso build --brief kapso-brief.md --repo repo --output campaign --detach` |
