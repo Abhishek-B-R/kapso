@@ -108,6 +108,13 @@ defaults:
         campaign_budget: null
         unit: "credits"
         weight: 0.0
+      # Sampler behind `parent_policy: weighted`. Lower temperature moves
+      # toward `best`, higher toward uniform; the offspring penalty
+      # down-weights parents that were already expanded.
+      parent_sampling:
+        temperature: 1.0
+        offspring_penalty: 1.0
+        seed: 0
   models:
     # Semantic search over past experiments (`search_similar_experiments`
     # and the ideation gate's similarity lookup) embeds every node's

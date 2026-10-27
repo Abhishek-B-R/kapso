@@ -10,12 +10,15 @@
 # - Read-only access to codebase during ideation
 # - Full RepoMemory access via MCP tools
 
+import math
 import os
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from kapso.core.config import load_platform_defaults
 from kapso.gated_mcp.presets import knowledge_tools_block, user_setup_gaps
 from kapso.execution.search_strategies.base import (
     SearchStrategy,
@@ -104,7 +107,10 @@ from kapso.execution.search_strategies.generic.shared_cache import (
 )
 
 
-PARENT_POLICIES = frozenset({"best", "baseline"})
+PARENT_POLICIES = frozenset({"best", "baseline", "weighted"})
+DEFAULT_PARENT_SAMPLING = load_platform_defaults()["search_strategy"]["params"][
+    "parent_sampling"
+]
 
 
 def normalize_parent_policy(value: Any) -> str:
@@ -115,6 +121,44 @@ def normalize_parent_policy(value: Any) -> str:
             f"parent_policy must be one of: {allowed}"
         )
     return value
+
+
+def normalize_parent_sampling(config: Any) -> Dict[str, Any]:
+    """Resolve the weighted-policy settings over the config defaults."""
+    if config is not None and not isinstance(config, dict):
+        raise ValueError("parent_sampling must be a mapping")
+    values = dict(DEFAULT_PARENT_SAMPLING)
+    if config is not None:
+        unknown = set(config) - values.keys()
+        if unknown:
+            raise ValueError(f"Unknown parent_sampling keys: {sorted(unknown)}")
+        values.update(config)
+    for name in ("temperature", "offspring_penalty"):
+        value = values[name]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"parent_sampling.{name} must be a number")
+        if not math.isfinite(value):
+            raise ValueError(f"parent_sampling.{name} must be finite")
+    if values["temperature"] <= 0:
+        raise ValueError("parent_sampling.temperature must be positive")
+    if values["offspring_penalty"] < 0:
+        raise ValueError("parent_sampling.offspring_penalty must be non-negative")
+    if isinstance(values["seed"], bool) or not isinstance(values["seed"], int):
+        raise ValueError("parent_sampling.seed must be an integer")
+    return values
+
+
+def parent_weights(
+    children: Sequence[int],
+    temperature: float,
+    offspring_penalty: float,
+) -> List[float]:
+    """Sampling weights for candidates listed best first, with each one's
+    child count. Rank, not raw score, keeps the weight scale-free."""
+    return [
+        math.exp(-rank / temperature) / (1 + offspring_penalty * count)
+        for rank, count in enumerate(children)
+    ]
 
 
 @dataclass(frozen=True)
@@ -204,7 +248,10 @@ class GenericSearch(SearchStrategy):
           between the member fan-out and the selector. Default absent = NO
           split — each role gets the full clamped ideation timeout, the
           selector's clamp recomputed after the members finish.
-        - parent_policy: Parent branch selection: best or baseline (default: best).
+        - parent_policy: Parent branch selection: best, baseline or weighted
+          (default: best). `weighted` samples a scored candidate by rank,
+          down-weighted by how many children it already has; its temperature,
+          offspring_penalty and seed come from `parent_sampling`.
           Under `best`, before any validly evaluated node exists, the latest
           committed non-error, non-tampered node is used so in-progress work
           continues in place; `main` only when no committed work exists.
@@ -221,6 +268,9 @@ class GenericSearch(SearchStrategy):
             (config.params or {}).get("parent_policy", "best")
         )
         self.cost_config = normalize_cost_config((config.params or {}).get("cost"))
+        self.parent_sampling = normalize_parent_sampling(
+            (config.params or {}).get("parent_sampling")
+        )
         self.before_candidate_evaluation = None
         # How each node's build session ended, keyed by node id: the lanes
         # of one round run at once and each judge reads only its own node's.
@@ -464,6 +514,8 @@ class GenericSearch(SearchStrategy):
                 f"(missing {', '.join(missing)}): {fix}"
             )
         print(f"  - parent_policy: {self.parent_policy}")
+        if self.parent_policy == "weighted":
+            print(f"  - parent_sampling: {self.parent_sampling}")
         print(f"  - experiment_history_path: {self.experiment_history_path}")
         print(f"  - feedback_generator: {'configured' if self.feedback_generator else 'not configured'}")
         
@@ -1493,11 +1545,15 @@ class GenericSearch(SearchStrategy):
         if self.parent_policy == "baseline":
             return ParentSelection(branch_name="main", node_id=None)
 
-        best = self.get_best_experiment()
-        if best is not None:
+        parent = (
+            self._sample_parent()
+            if self.parent_policy == "weighted"
+            else self.get_best_experiment()
+        )
+        if parent is not None:
             return ParentSelection(
-                branch_name=best.branch_name,
-                node_id=best.node_id,
+                branch_name=parent.branch_name,
+                node_id=parent.node_id,
             )
 
         # No validly evaluated node exists yet. Committed-but-unevaluated
@@ -1523,6 +1579,35 @@ class GenericSearch(SearchStrategy):
             )
         return ParentSelection(branch_name="main", node_id=None)
 
+    def _sample_parent(self) -> Optional[SearchNode]:
+        """Draw one scored candidate, ranked as `best` ranks them. The draw
+        is seeded from the configured seed and the node count, so a resumed
+        campaign repeats the choice it would have made uninterrupted."""
+        ranked = sorted(
+            self._scored_nodes(),
+            key=lambda node: selection_score(node, self._selection_config()),
+            reverse=True,
+        )
+        if not ranked:
+            return None
+        sampling = self.parent_sampling
+        children = [
+            sum(1 for node in self.node_history if node.parent_node_id == parent.node_id)
+            for parent in ranked
+        ]
+        weights = parent_weights(
+            children, sampling["temperature"], sampling["offspring_penalty"]
+        )
+        rng = random.Random(f"{sampling['seed']}:{len(self.node_history)}")
+        return rng.choices(ranked, weights=weights)[0]
+
+    def _scored_nodes(self) -> List[SearchNode]:
+        return [
+            node
+            for node in self.node_history
+            if not node.had_error and node.evaluation_valid and node.score is not None
+        ]
+
     def get_experiment_history(self, best_last: bool = False) -> List[SearchNode]:
         """Return all nodes, optionally sorted by score (unscored sort worst)."""
         if best_last:
@@ -1540,11 +1625,7 @@ class GenericSearch(SearchStrategy):
         """Return the best successful SCORED node — a node whose evaluation
         never completed (score=None) can never be best; on minimize metrics
         it would otherwise key as 0 and out-rank every real score."""
-        valid = [
-            node
-            for node in self.node_history
-            if not node.had_error and node.evaluation_valid and node.score is not None
-        ]
+        valid = self._scored_nodes()
         if not valid:
             return None
         return max(
