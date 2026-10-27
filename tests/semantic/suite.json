@@ -65,7 +65,7 @@
     "learn": {"kind": "conversation", "messages": 2, "questions": 1, "minutes": 5, "longest_message_lines": 20},
     "learn-complete": {"kind": "shell", "minutes": 150},
     "experience-share": {"kind": "conversation", "messages": 4, "questions": 1, "minutes": 5, "longest_message_lines": 30},
-    "second-engineer-build": {"kind": "conversation", "messages": 3, "questions": 1, "minutes": 20, "longest_message_lines": 12},
+    "second-engineer-build": {"kind": "build", "minutes": 20},
     "harness-export": {"kind": "conversation", "messages": 2, "questions": 0, "minutes": 3, "longest_message_lines": 30},
     "session-brief": {"kind": "conversation", "messages": 1, "questions": 0, "minutes": 3, "longest_message_lines": 20},
     "campaign-tools": {"kind": "conversation", "messages": 4, "questions": 0, "minutes": 5, "longest_message_lines": 30},

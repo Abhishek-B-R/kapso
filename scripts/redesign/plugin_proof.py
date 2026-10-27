@@ -33,6 +33,11 @@ import yaml
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+# The persona driver sits beside this script; a run from anywhere finds it.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import simulated_user  # noqa: E402
+
+SUITE = json.loads((Path(__file__).resolve().parent.parent.parent / "tests" / "semantic" / "suite.json").read_text(encoding="utf-8"))
 CLAUDE_MODEL = "claude-opus-5-5"
 CODEX_MODEL = "gpt-6-astra"
 TURN_TIMEOUT = 1800
@@ -60,18 +65,40 @@ FRAUD_WISH = (
 STEP_NAMES = [
     "install", "setup", "cold-install", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools",
     "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review",
-    "deploy", "learn", "learn-complete", "session-brief", "experience-share", "harness-improve",
+    "deploy", "learn", "learn-complete", "session-brief", "experience-share", "second-engineer-build", "harness-improve",
     "campaign-session-isolation", "codex-rules-probe", "cold-start",
 ]
 # Codex's explicit skill for each Claude Code command.
 CODEX_SKILL = {"setup": "kapso-setup", "build": "kapso-build", "review": "kapso-review", "harness": "kapso-harness"}
+# Claude Code's launcher path, by design; every other step runs on Codex
+# too (advisory on the development box until the machine's Codex key has
+# credit: docs/plans/redesign/wp9-semantic-suite.md).
 CODEX_DEFERRED = {
     "cold-install": "one machine: the cold wheel install is the fresh machine's step",
-    "harness-improve": "deferred on Codex by the matrix",
-    "learn": "hours on the development box; the Claude Code half runs it",
-    "learn-complete": "hours on the development box; the Claude Code half runs it",
-    "experience-share": "deferred on Codex by the matrix",
     "cold-start": "the launcher is Claude Code's path; Codex runs kapso-mcp from PATH",
+}
+# What each step is for, told to the persona with the card (the scripted
+# policies' knowledge, as a person would hold it).
+STEP_INTENTS = {
+    "setup": "set Kapso up on this machine to a green doctor; you have no Leeroopedia or OpenAI key and want none added; no harness for now",
+    "build-churn": "get one proposal for the churn build and have it launched detached at the budget the brief names; you do not hold the data API key a rule may mention, the campaign's own session asks through the inbox when it needs it",
+    "build-pause": "have the campaign launched now without being asked for the key: its own session asks through the inbox when it needs it",
+    "watch": "how the campaign is going, in a few lines", "watch-2": "how the campaign is going, in a few lines",
+    "inbox": "answer the campaign's request: the key is now in both .env files; there is no enrichment service and no enrichment table; the campaign must reach 0.85 without it",
+    "build-fraud": "a fraud scorer that beats the rule-based one, with an evaluator proposed from the protocol and approved by you, then launched",
+    "build-data-only": "see the candidate criteria and the recommended one; take the first; do not launch anything",
+    "build-empty-wish": "see what could be built here and the candidate criteria; take the first; do not launch anything",
+    "harness-new": "a proposal first, then the harness written and checked green; answer every numbered question in one reply, in order",
+    "review": "the review of the finished churn campaign, then whether its branch is safe to merge",
+    "review-2": "whether the delivered branch is safe to merge",
+    "deploy": "deploy the delivered churn campaign to the local target and call it once with the inputs its proof used",
+    "deploy-2": "call the deployment once with the inputs its proof used",
+    "learn": "launch the learn from the churn campaign, detached, and hear how it will be served",
+    "session-brief": "what this session is served and one read of the bank",
+    "experience-share": "share your bank to the remote given, so a teammate can read it",
+    "harness-improve": "one improvement proposed from the probe's trace, applied on your go, the check green again",
+    "campaign-tools": "launch a tiny campaign through the session's tools rather than the shell, read its status, stop it",
+    "harness-export": "what timestamp discipline the backtesting skill asks for, in three lines",
 }
 CLAUDE_DEFERRED = {
     "codex-rules-probe": "Codex's mechanism; Claude Code's is the plugin switch, which the isolation step reads",
@@ -181,11 +208,42 @@ class CodexHost:
 
 
 # --------------------------------------------------------------- context
+class UserMode:
+    """Who answers the host: the scripted policies of the mechanical round,
+    or a persona card through the other vendor's CLI. The driver's own
+    acts are named as interventions either way; a persona run records
+    the pins the review asked for, every DONE and every turn cap."""
+
+    def __init__(self, spec: str, host: str):
+        if spec != "scripted" and not spec.startswith("persona:"):
+            raise ValueError(f"--user is scripted or persona:<card>, not {spec!r}")
+        self.kind = "scripted" if spec == "scripted" else "persona"
+        self.card = None
+        self.settings: Dict[str, Any] = {}
+        self.turn_cap = SUITE["user"]["turn_cap"]
+        self.prompt_sha256 = None
+        if self.kind == "persona":
+            name = spec.split(":", 1)[1]
+            self.card = simulated_user.load_card(simulated_user.PERSONAS / f"{name}.yaml")
+            self.settings = SUITE["user"]["persona"][host]
+            self.prompt_sha256 = simulated_user.template_sha256()
+        self.interventions: List[str] = []
+        self.events: List[str] = []
+        self.pushback: Optional[bool] = None
+
+    def record(self) -> Dict[str, Any]:
+        block: Dict[str, Any] = {"kind": self.kind, "card": self.card.name if self.card else None, "interventions": self.interventions, "events": self.events, "pushback": self.pushback}
+        if self.card:
+            block.update({"card_sha256": self.card.sha256, "vendor": self.settings["vendor"], "model": self.settings["model"], "effort": self.settings.get("effort"), "prompt_sha256": self.prompt_sha256})
+        return block
+
+
 class Context:
-    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = 10):
+    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = 10, user: Optional[UserMode] = None):
         self.host, self.clone, self.work, self.out, self.wheel, self.machine = host, clone, work, out, wheel, machine
         self.learn_model = learn_model
         self.pause_minutes = pause_minutes
+        self.user = user or UserMode("scripted", host.name)
         self.state_file = out / "state.json"
         self.state: Dict[str, Any] = json.loads(self.state_file.read_text()) if self.state_file.exists() else {}
         (out / "transcripts").mkdir(parents=True, exist_ok=True)
@@ -218,20 +276,53 @@ class Context:
         return f"artifacts/{name}"
 
     def converse(self, step: str, cwd: Path, opening: str, answer: Callable[[str, int], Optional[str]], max_turns: int = 8) -> List[Turn]:
+        """The exchange of one step. Scripted: the policy answers a turn that
+        asks, and a turn that does not ask ends the step. Persona: every
+        host turn is offered to the persona, who answers or says DONE; the
+        turn cap ends the step as an event, never a pass."""
         transcript = self.out / "transcripts" / f"{step}.jsonl"
         turns: List[Turn] = []
         session, prompt = None, opening
-        for index in range(max_turns):
+        if self.user.kind == "scripted":
+            for index in range(max_turns):
+                turn = self.host.turn(cwd, prompt, session, transcript)
+                turns.append(turn)
+                session = turn.session
+                if not turn.asked:
+                    break
+                reply = answer(turn.text, index)
+                if reply is None:
+                    break
+                prompt = reply
+            return turns
+        history: List[Dict[str, Any]] = []
+        intent = STEP_INTENTS.get(step, step)
+        cap = min(max_turns, self.user.turn_cap)
+        for index in range(cap):
             turn = self.host.turn(cwd, prompt, session, transcript)
             turns.append(turn)
             session = turn.session
-            if not turn.asked:
-                break
-            reply = answer(turn.text, index)
-            if reply is None:
-                break
-            prompt = reply
+            history.append({"role": "user", "text": prompt})
+            history.append({"role": "assistant", "text": turn.text, "asked": turn.asked})
+            reply = simulated_user.next_message(self.user.card, cwd, intent, history, turn.text, self.host.name, self.user.settings)
+            with open(transcript, "a", encoding="utf-8") as out:
+                out.write(json.dumps({"persona_reply": reply.text, "persona_session": reply.session, "done": reply.done}) + "\n")
+            if reply.done:
+                self.user.events.append(f"{step}: the persona said DONE after {index + 1} turn(s)")
+                return turns
+            prompt = reply.text
+        self.user.events.append(f"{step}: the turn cap ({cap}) ended the exchange without DONE")
         return turns
+
+    def task_view(self, project: Path, planted: Optional[str] = None) -> None:
+        """What the persona reads: the repository's own README (never the
+        example's, which teaches the Kapso lines and quotes the recorded
+        result), with a planted wrong fact when the step checks pushback."""
+        own = project / "repo" / "README.md"
+        text = own.read_text(encoding="utf-8") if own.is_file() else f"# {project.name}\n\nA repository with no README of its own.\n"
+        if planted:
+            text = text.rstrip() + f"\n\n{planted}\n"
+        (project / "README.md").write_text(text, encoding="utf-8")
 
     def fixture(self, name: str, target: str, generate: bool = True) -> Path:
         """A copy of an example under the work directory, its data generated,
@@ -245,6 +336,9 @@ class Context:
         if generate:
             self.shell("python3 generate.py", cwd=path, timeout=600)
         self.seed_env(path)
+        if self.user.kind == "persona":
+            self.task_view(path)
+            self.user.interventions.append(f"{target}: the example's README replaced by the repository's own for the persona (no Kapso line, no recorded result)")
         return path
 
     def seed_env(self, project: Path) -> None:
@@ -313,8 +407,8 @@ def record_step(name: str, turns: Sequence[Turn], completed: bool, artifacts: Se
     }
 
 
-def shell_step(name: str, completed: bool, artifacts: Sequence[str], minutes: float, notes: Sequence[str] = ()) -> Dict[str, Any]:
-    return record_step(name, [], completed, artifacts, notes, extra_minutes=round(minutes, 1), kind="shell")
+def shell_step(name: str, completed: bool, artifacts: Sequence[str], minutes: float, notes: Sequence[str] = (), kind: str = "shell") -> Dict[str, Any]:
+    return record_step(name, [], completed, artifacts, notes, extra_minutes=round(minutes, 1), kind=kind)
 
 
 # --------------------------------------------------------- answer policies
@@ -435,7 +529,39 @@ def _launch_and_wait_status(ctx: Context, project: Path, campaign: Path, wish: s
         artifacts.append(ctx.copy_artifact(brief, f"{step}-brief.md"))
     if launched:
         artifacts.append(ctx.copy_artifact(campaign / ".kapso" / "status.json", f"{step}-status.json"))
-    return {"turns": turns, "launched": launched, "brief": brief.is_file(), "artifacts": artifacts}
+    return {"turns": turns, "launched": launched, "brief": brief.is_file(), "artifacts": artifacts, "notes": []}
+
+
+PLANTED_BASELINE = "The current model scores about 0.90 ROC AUC on the held-out rows."
+PLANTED_TRUTH = "the current churn model's ROC AUC is about 0.80 (0.797 on the held-out rows), not 0.90"
+
+
+def plant_baseline(ctx: Context, project: Path) -> None:
+    """The pushback check: the task view and the brief state the baseline
+    as 0.90 where the card knows about 0.80; a proposal carries the wrong
+    figure and a persona that reads corrects it."""
+    ctx.task_view(project, PLANTED_BASELINE)
+    brief = project / "kapso-brief.md"
+    lines = brief.read_text(encoding="utf-8").splitlines(keepends=True)
+    brief.write_text("".join("Baseline     0.90 (the shipped logistic regression)\n" if line.startswith("Baseline") else line for line in lines), encoding="utf-8")
+    ctx.user.card.planted = PLANTED_TRUTH
+    ctx.user.interventions.append("build-churn: the task view's README and the brief's Baseline line state 0.90 (planted); the card is certain of about 0.80")
+
+
+def pushed_back(transcript: Path) -> Optional[bool]:
+    """Whether the persona corrected the planted figure: None when no host
+    turn carried it (nothing to push back on), else whether a persona
+    reply named the true one."""
+    stated, corrected = False, False
+    for line in transcript.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("{"):
+            continue
+        row = json.loads(line)
+        if row.get("type") == "result" and "0.90" in (row.get("result") or ""):
+            stated = True
+        if "persona_reply" in row and any(figure in row["persona_reply"] for figure in ("0.80", "0.797", "0.8 ")):
+            corrected = True
+    return corrected if stated else None
 
 
 def step_build_churn(ctx: Context) -> Dict[str, Any]:
@@ -445,8 +571,14 @@ def step_build_churn(ctx: Context) -> Dict[str, Any]:
     ctx.state["churn_campaign"] = str(campaign)
     ctx.state["churn_launched_at"] = time.time()
     ctx.save()
+    if ctx.user.kind == "persona":
+        plant_baseline(ctx, project)
     result = _launch_and_wait_status(ctx, project, campaign, CHURN_WISH, "build-churn")
-    return record_step("build-churn", result["turns"], result["launched"] and result["brief"], result["artifacts"])
+    if ctx.user.kind == "persona":
+        ctx.user.card.planted = None
+        ctx.user.pushback = pushed_back(ctx.out / "transcripts" / "build-churn.jsonl")
+        result["notes"].append(f"the planted baseline: {'corrected by the persona' if ctx.user.pushback else 'not corrected' if ctx.user.pushback is False else 'never stated by the host'}")
+    return record_step("build-churn", result["turns"], result["launched"] and result["brief"], result["artifacts"], result["notes"])
 
 
 def step_build_pause(ctx: Context) -> Dict[str, Any]:
@@ -592,6 +724,7 @@ def step_inbox(ctx: Context) -> Dict[str, Any]:
     paused = wait_for(lambda: (campaign / ".kapso" / "inbox.jsonl").is_file(), ctx.pause_minutes * 60 + 300, every=15)
     notes = [f"the injected pause arrived: {paused}"]
     turns = ctx.converse("inbox", project, ctx.host.command("inbox", "../churn-pause-campaign"), lambda text, index: None, max_turns=1)
+    ctx.user.interventions.append("inbox: the key written where the request's fix line says before the person says so")
     # The person does what the request's fix line says before saying so:
     # the key into the campaign's .env (and the project's), never the reply.
     for env in (campaign / ".env", project / ".env"):
@@ -616,10 +749,41 @@ def step_build_fraud(ctx: Context) -> Dict[str, Any]:
     project = ctx.fixture("fraud-no-evaluator", "fraud")
     campaign = ctx.work / "fraud-campaign"
     result = _launch_and_wait_status(ctx, project, campaign, FRAUD_WISH, "build-fraud")
-    evaluators = [str(path.relative_to(project)) for path in project.rglob("evaluate.py")]
+    evaluators = [str(path.relative_to(project)) for path in project.rglob("evaluate.py") if "campaign" not in path.parts]
     artifacts = result["artifacts"] + [ctx.artifact("fraud-evaluators.txt", "\n".join(evaluators) + "\n")]
     ctx.shell(f"kapso build --output {campaign} --stop", check=False)
-    return record_step("build-fraud", result["turns"], result["brief"] and result["launched"], artifacts, [f"evaluator files written by the session: {evaluators}"])
+    contract = evaluator_contract(ctx, project, evaluators[0]) if evaluators else "no evaluator written"
+    artifacts.append(ctx.artifact("fraud-contract.txt", contract + "\n"))
+    return record_step("build-fraud", result["turns"], result["brief"] and result["launched"] and contract == "ok", artifacts,
+                       [f"evaluator files written by the session: {evaluators}", f"the evaluator's contract: {contract}"])
+
+
+def evaluator_contract(ctx: Context, project: Path, evaluator: str) -> str:
+    """The contract every fixture meets, on the evaluator a session wrote:
+    one command from a workspace root, the metric on its own line last as
+    `name: value`, result.json beside the script with the engine's keys.
+    Returns "ok" or the first breach."""
+    workspace = ctx.work / f"{project.name}-contract"
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    shutil.copytree(project / "repo", workspace, ignore=shutil.ignore_patterns("__pycache__"))
+    if (project / "data").is_dir():
+        shutil.copytree(project / "data", workspace / "kapso_datasets")
+    source = (project / evaluator).parent
+    shutil.copytree(source, workspace / "kapso_evaluation", ignore=shutil.ignore_patterns("result.json", "__pycache__"))
+    run = ctx.shell(f"python3 kapso_evaluation/{Path(evaluator).name}", cwd=workspace, check=False, timeout=900)
+    if run.returncode != 0:
+        return f"exit {run.returncode}: {(run.stdout + run.stderr).strip().splitlines()[-1:] or ['no output']}"
+    last = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""
+    if not re.match(r"^[a-z_]+: -?[0-9.]+$", last):
+        return f"the last line is not `name: value`: {last!r}"
+    result = workspace / "kapso_evaluation" / "result.json"
+    if not result.is_file():
+        return "no result.json beside the script"
+    keys = set(json.loads(result.read_text(encoding="utf-8")))
+    if not {"evaluation_script_path", "evaluation_output", "score"} <= keys:
+        return f"result.json lacks {sorted({'evaluation_script_path', 'evaluation_output', 'score'} - keys)}"
+    return "ok"
 
 
 def _criteria_step(ctx: Context, name: str, project: Path, wish: str) -> Dict[str, Any]:
@@ -654,6 +818,8 @@ def step_harness_new(ctx: Context) -> Dict[str, Any]:
     brief.write_text("".join(line for line in brief.read_text(encoding="utf-8").splitlines(keepends=True) if not line.startswith("Harness")), encoding="utf-8")
     ctx.state["trading_project"] = str(project)
     ctx.save()
+    if ctx.user.kind == "scripted":
+        ctx.user.interventions.append("harness-new: the harness's module answers from the driver's policy")
     turns = ctx.converse("harness-new", project, ctx.host.command("harness", "new"), harness_policy, max_turns=12)
     # The session writes where the repository points (`../harnesses/trading`
     # in the README) or under the project: both are the person's.
@@ -728,12 +894,30 @@ def step_deploy(ctx: Context) -> Dict[str, Any]:
         turns += ctx.converse("deploy-2", project, "call the deployment once with the inputs its proof used and show me the answer", lambda text, index: None, max_turns=1)
     deployment = campaign / ".kapso" / "deployments" / "1"
     artifacts = [ctx.artifact("deploy-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
-    if deployment.is_dir():
-        for name in ("record.json", "kapso_deployment.json"):
-            if (deployment / name).is_file():
-                artifacts.append(ctx.copy_artifact(deployment / name, f"deploy-{name}"))
+    if (deployment / "deployment.json").is_file():
+        artifacts.append(ctx.copy_artifact(deployment / "deployment.json", "deploy-deployment.json"))
+    parity = deploy_parity(deployment, campaign)
     ctx.shell(f"kapso deploy {campaign} --stop --number 1", cwd=project, check=False)
-    return record_step("deploy", turns, deployment.is_dir(), artifacts)
+    return record_step("deploy", turns, deployment.is_dir() and parity != "differs", artifacts, [f"the deployed call against the delivered predictions: {parity}"])
+
+
+def deploy_parity(deployment: Path, campaign: Path) -> str:
+    """Deployment parity: the deployed call's observed answer for its proof
+    input against the delivered branch's own prediction for that row.
+    "same", "differs", or why it is not established."""
+    record = deployment / "deployment.json"
+    if not record.is_file():
+        return "not established: no deployment record"
+    observed = json.loads(record.read_text(encoding="utf-8")).get("observed") or {}
+    predictions = campaign / "predictions.csv"
+    if "id" not in observed or not predictions.is_file():
+        return "not established: no observed row or no predictions.csv on the delivered branch"
+    for line in predictions.read_text(encoding="utf-8").splitlines()[1:]:
+        row_id, _, value = line.partition(",")
+        if row_id == str(observed["id"]):
+            delivered = float(value)
+            return "same" if abs(delivered - float(observed["churn_probability"])) <= 1e-6 else f"differs (deployed {observed['churn_probability']}, delivered {delivered})"
+    return "not established: the proof's id is not in predictions.csv"
 
 
 def step_learn(ctx: Context) -> Dict[str, Any]:
@@ -807,6 +991,33 @@ def step_experience_share(ctx: Context) -> Dict[str, Any]:
     shared = ctx.shell(f"git -C {remote} log --oneline -1", check=False).returncode == 0
     loaded = "banks you read" in second.stdout and "serving" in second.stdout
     return record_step("experience-share", turns, shared and loaded, artifacts, ["the second user loads the shared bank by reference through kapso-mcp and lists it under the banks it reads; a served build at a tiny budget is left to WP9's round"])
+
+
+def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
+    """The design's ninth step: the second engineer, on its own install,
+    builds at a tiny budget served the shared bank by its reference, and
+    the record names the bank among what the build was served."""
+    started = time.monotonic()
+    project = Path(ctx.state["churn_project"])
+    budget = SUITE["builds"]["second_engineer"]
+    ctx.shell(f"sudo rm -rf /home/proof2/churn-second /home/proof2/second-campaign /home/proof2/second-campaign.log; sudo cp -r {project} /home/proof2/churn-second; sudo chown -R proof2:proof2 /home/proof2/churn-second")
+    launch = ctx.shell(
+        "sudo -u proof2 -H bash -lc 'cd ~/churn-second; export PATH=$HOME/.local/bin:$PATH; "
+        "kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output ~/second-campaign "
+        f"--experience file:///tmp/bank-remote.git --budget-minutes {budget['minutes']} --budget-experiments {budget['experiments']} --detach'",
+        check=False, timeout=600,
+    )
+    campaign = Path("/home/proof2/second-campaign")
+    read_status = lambda: json.loads(ctx.shell(f"sudo cat {campaign}/.kapso/status.json", check=False).stdout or "null")
+    done = wait_for(lambda: (read_status() or {}).get("state") in ("done", "failed"), budget["minutes"] * 60 + 600, every=30)
+    solution = ctx.shell(f"sudo cat {campaign}/.kapso/solution.json", check=False).stdout
+    served = "bank-remote" in solution
+    artifacts = [ctx.artifact("second-engineer-launch.txt", launch.stdout + launch.stderr)]
+    if solution.strip():
+        artifacts.append(ctx.artifact("second-engineer-solution.json", solution))
+    ctx.user.interventions.append("second-engineer-build: the churn fixture copied to the second user's home; the build run as that user with the bank by reference")
+    return shell_step("second-engineer-build", launch.returncode == 0 and done and served, artifacts, (time.monotonic() - started) / 60,
+                      [f"the shared bank named among the build's experience: {served}"], kind="build")
 
 
 def step_harness_improve(ctx: Context) -> Dict[str, Any]:
@@ -942,7 +1153,8 @@ STEPS: Dict[str, Callable[[Context], Dict[str, Any]]] = {
     "inbox": step_inbox, "build-fraud": step_build_fraud, "build-data-only": step_build_data_only,
     "build-empty-wish": step_build_empty_wish, "harness-new": step_harness_new, "harness-probe": step_harness_probe,
     "review": step_review, "deploy": step_deploy, "learn": step_learn, "learn-complete": step_learn_complete,
-    "session-brief": step_session_brief, "experience-share": step_experience_share, "harness-improve": step_harness_improve,
+    "session-brief": step_session_brief, "experience-share": step_experience_share, "second-engineer-build": step_second_engineer_build,
+    "harness-improve": step_harness_improve,
     "campaign-session-isolation": step_campaign_session_isolation, "codex-rules-probe": step_codex_rules_probe, "cold-start": step_cold_start,
 }
 assert list(STEPS) == STEP_NAMES
@@ -962,25 +1174,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--pause-minutes", type=int, default=10, help="the injected pause campaign's budget; a slow box needs more than the machine's ten for its session to reach the ask")
     parser.add_argument("--recompute-triggers", action="store_true", help="read the trigger step's verdict again from its artifacts, run nothing")
     parser.add_argument("--advisory", default=None, help="the reason this arm runs on the development box; the record is marked and never a fresh-machine acceptance")
+    parser.add_argument("--user", default="scripted", help="who answers the host: scripted (the mechanical round) or persona:<card> (a card under tests/semantic/personas through the other vendor's CLI)")
     args = parser.parse_args(argv)
     host = ClaudeHost() if args.host == "claude_code" else CodexHost()
     out = Path(args.out).resolve()
     work = Path(args.work).resolve() if args.work else out / "work"
     work.mkdir(parents=True, exist_ok=True)
-    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model, args.pause_minutes)
+    user = UserMode(args.user, host.name)
+    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model, args.pause_minutes, user)
+    test_name = "S2" if user.kind == "persona" else "S2-mechanical"
     record_file = out / "record.json"
     started = datetime.now(timezone.utc)
     wheel_sha256 = subprocess.run(["sha256sum", str(ctx.wheel)], capture_output=True, text=True).stdout.split()[0] if ctx.wheel else "-"
     record = json.loads(record_file.read_text()) if record_file.exists() else {
-        "test": "S2-mechanical", "host": host.name, "machine": args.machine,
-        "run_id": f"S2-mechanical-{host.name}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
+        "test": test_name, "host": host.name, "machine": args.machine,
+        "run_id": f"{test_name}-{host.name}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
         "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": wheel_sha256},
         "pins": {"wheel_sha256": wheel_sha256},
-        "user": {"kind": "scripted", "card": None, "interventions": [
-            "the key written where the request's fix line says before the person says so (inbox)",
-            "the fixture written for the criteria steps (build-data-only, build-empty-wish)",
-            "the harness's module answers from the driver's policy (harness-new)",
-        ]},
+        "user": user.record(),
         "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [], "transcripts": [],
     }
     if args.recompute_triggers:
@@ -1009,6 +1220,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             step = STEPS[name](ctx)
         record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]
+        record["user"] = {**record.get("user", {}), **user.record(), "interventions": sorted(set(record.get("user", {}).get("interventions", [])) | set(user.interventions))}
         record["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         record["transcripts"] = sorted(f"transcripts/{path.name}" for path in (out / "transcripts").glob("*.jsonl"))
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
