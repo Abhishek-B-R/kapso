@@ -741,6 +741,28 @@ local (5.72 h, about $0.77). Report `tests/semantic/reports/s1-claude-1.md`.
 - **`python_lines` 16 > 12 and the judge's "flows fit the design's
   lengths" 0** — a bar not loosened to pass; see findings and DECISIONS.
 
+### author, Claude host, fresh GCP machine — run `author-claude-1` (2026-10-27)
+
+The cold author wrote a Kapso harness from the guide alone, over two rounds;
+`kapso harness check` was green both times and the judge's four quality
+dimensions (pages under forty lines, every skill named, no task value, the
+ladder respected) all passed, 3/3 steps. Report
+`tests/semantic/reports/author-claude-1.md`. **Verdict: FAIL** on one bar —
+`structural_gaps_round2` 6 > 0 — with one fix and one design finding:
+
+- **The grade crashed on a malformed classify reply** (commit `7300a665`):
+  the judge pasted a quote-heavy guide code example into a JSON `"why"`
+  string unescaped, so `extract_json` fail-loud raised (Rule 2). The `"why"`
+  now asks for quote-free prose that cites the guide by reference, and the
+  reply is archived before validation (as `judge_material` does); the
+  offline re-grade then parsed and scored (gaps 8 then 6; check green).
+- **The improvement loop is not wired** (DECISIONS): `guide-fixes` can
+  neither classify round-1's gaps on the machine (the judge is dev-box-only)
+  nor edit the guide, so round-2 is written against the same guide and the
+  max-0 bar is unreachable by construction. Left as an owner decision; the
+  arm proved the author can write a passing harness, not that the guide
+  improves between rounds.
+
 ## Findings for later packages
 
 From `s1-claude-1` — the signal the suite exists to catch, kept for the

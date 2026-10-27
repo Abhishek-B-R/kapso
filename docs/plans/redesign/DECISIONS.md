@@ -2101,3 +2101,40 @@ was **not** loosened to pass the run. Two readings are left for the owner:
   task — more directly.
 
 Until the owner chooses, the bar stands and the run reads FAIL honestly.
+
+## WP9 author improvement loop is not wired end to end (2026-10-27)
+
+The first live author arm (`author-claude-1`) surfaced that the round-1 →
+guide-fixes → round-2 loop does not actually improve the guide between
+rounds, so `structural_gaps_round2` (bar: max 0) is unreachable by
+construction, not by the guide's quality. Two gaps, both needing an owner
+decision rather than a patch:
+
+- **The gaps are classified only after the whole run.** `step_guide_fixes`
+  reads `round-1`'s `classification`, but a guess is classified into
+  structural-gap / contradiction / domain-decision / already-in-guide only
+  by the Gemini judge, which runs on the development box in the `--grade`
+  step *after* the machine run. On the machine, between the rounds, the
+  classification is empty, so zero gaps are fed.
+- **Nothing writes the gaps into the guide.** `step_guide_fixes` records the
+  (empty) gap list and a `git diff` of the guide pages; it never edits them.
+  So even with the gaps in hand, the guide is unchanged for round 2.
+
+The arm still showed the author *can* write a passing harness from the guide
+alone (round-2 `kapso harness check` green; all four judge dimensions —
+pages under forty lines, every skill named, no task value, the ladder
+respected — pass; 3/3 steps). What it cannot yet show is the guide getting
+*better* between rounds.
+
+Options for the owner:
+1. **Multi-stage orchestration** — run round-1 on the machine, fetch, classify
+   and write the guide fixes on the development box (the judge's home), push
+   the improved guide back, then run round-2. Keeps "judge on the dev box".
+2. **In-run classification + edit** — give the machine the judge route and an
+   agent that writes the classified gaps into the guide between rounds.
+3. **Redefine round-2** as an independent second author (measuring the guide's
+   consistency across cold authors, not its improvement), and set the bar to
+   "no worse than round-1" rather than max 0.
+
+Until the owner chooses, the author arm's `structural_gaps_round2` bar reads
+FAIL honestly, but as a harness-wiring gap, not a guide-quality verdict.
