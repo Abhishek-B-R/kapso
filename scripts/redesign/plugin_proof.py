@@ -50,7 +50,7 @@ PAUSE_WISH = (
     "get the churn model's ROC AUC above 0.85; one rule for the brief: before training, the enrichment table "
     "must be fetched from the enrichment service with the DATA_API_KEY in .env, and a session that lacks the key "
     "asks for it through the inbox. Launch now without asking me for the key: the campaign's own session asks "
-    "when it needs it. The campaign goes to ../churn-pause-campaign with a budget of 10 minutes and 1 experiment"
+    "when it needs it. The campaign goes to ../churn-pause-campaign with a budget of {minutes} minutes and 1 experiment"
 )
 FRAUD_WISH = (
     "build a fraud scorer on data/transactions.csv that beats the rule-based one in score.py, and prove it; "
@@ -179,9 +179,10 @@ class CodexHost:
 
 # --------------------------------------------------------------- context
 class Context:
-    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None):
+    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = 10):
         self.host, self.clone, self.work, self.out, self.wheel, self.machine = host, clone, work, out, wheel, machine
         self.learn_model = learn_model
+        self.pause_minutes = pause_minutes
         self.state_file = out / "state.json"
         self.state: Dict[str, Any] = json.loads(self.state_file.read_text()) if self.state_file.exists() else {}
         (out / "transcripts").mkdir(parents=True, exist_ok=True)
@@ -454,7 +455,7 @@ def step_build_pause(ctx: Context) -> Dict[str, Any]:
         shutil.rmtree(campaign)
     ctx.state["pause_campaign"] = str(campaign)
     ctx.save()
-    result = _launch_and_wait_status(ctx, project, campaign, PAUSE_WISH, "build-pause")
+    result = _launch_and_wait_status(ctx, project, campaign, PAUSE_WISH.format(minutes=ctx.pause_minutes), "build-pause")
     return record_step("build-pause", result["turns"], result["launched"] and result["brief"], result["artifacts"])
 
 
@@ -584,7 +585,7 @@ def step_campaign_tools(ctx: Context) -> Dict[str, Any]:
 def step_inbox(ctx: Context) -> Dict[str, Any]:
     project = ctx.work / "churn-pause"
     campaign = Path(ctx.state["pause_campaign"])
-    paused = wait_for(lambda: (campaign / ".kapso" / "inbox.jsonl").is_file(), 900, every=15)
+    paused = wait_for(lambda: (campaign / ".kapso" / "inbox.jsonl").is_file(), ctx.pause_minutes * 60 + 300, every=15)
     notes = [f"the injected pause arrived: {paused}"]
     turns = ctx.converse("inbox", project, ctx.host.command("inbox", "../churn-pause-campaign"), lambda text, index: None, max_turns=1)
     # The person does what the request's fix line says before saying so:
@@ -905,13 +906,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--wheel", default=None, help="the wheel the cold install uses")
     parser.add_argument("--machine", default=os.uname().nodename)
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model instead of the shipped one (said in the record)")
+    parser.add_argument("--pause-minutes", type=int, default=10, help="the injected pause campaign's budget; a slow box needs more than the machine's ten for its session to reach the ask")
     parser.add_argument("--recompute-triggers", action="store_true", help="read the trigger step's verdict again from its artifacts, run nothing")
     args = parser.parse_args(argv)
     host = ClaudeHost() if args.host == "claude_code" else CodexHost()
     out = Path(args.out).resolve()
     work = Path(args.work).resolve() if args.work else out / "work"
     work.mkdir(parents=True, exist_ok=True)
-    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model)
+    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model, args.pause_minutes)
     record_file = out / "record.json"
     record = json.loads(record_file.read_text()) if record_file.exists() else {
         "test": "S2-mechanical", "host": host.name, "machine": args.machine,
