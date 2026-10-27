@@ -778,7 +778,9 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
     started = time.monotonic()
     campaign = Path(ctx.state["churn_campaign"])
     findings = []
-    for stream in sorted(campaign.rglob("stream.jsonl")):
+    # The implementation sessions' streams are `.kapso/sessions/<branch>/stream.jsonl`,
+    # the ideation sessions' `.kapso/ideation/iter<n>/<host>_<model>.stream.txt`.
+    for stream in sorted([*campaign.rglob("stream.jsonl"), *campaign.rglob("*.stream.txt")]):
         for line in stream.read_text(encoding="utf-8").splitlines():
             if not line.startswith("{"):
                 continue
@@ -793,8 +795,12 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
                     "servers": [server.get("name") for server in event.get("mcp_servers", [])],
                 })
                 break
+    # A Codex session in the campaign carries the execpolicy rule in its
+    # workspace instead; the file's presence is the evidence.
+    rules = campaign / ".codex" / "rules" / "kapso-campaign.rules"
+    report = {"claude_sessions": findings, "codex_rules_file": rules.is_file()}
     completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings)
-    return shell_step("campaign-session-isolation", completed, [ctx.artifact("isolation.json", json.dumps(findings, indent=1))], (time.monotonic() - started) / 60)
+    return shell_step("campaign-session-isolation", completed, [ctx.artifact("isolation.json", json.dumps(report, indent=1))], (time.monotonic() - started) / 60)
 
 
 def step_cold_start(ctx: Context) -> Dict[str, Any]:

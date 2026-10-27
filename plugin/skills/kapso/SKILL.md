@@ -286,8 +286,9 @@ A scheduled target (the trading example's `paper-trading`) runs on its own; read
 `--logs`, and `run()` runs one cycle on demand. The original solution is untouched:
 the deployment lives under `<campaign>/.kapso/deployments/<n>/`. `--target auto` lets
 the session choose among the targets this machine can serve and records why. The
-local target runs the function in the engine's own interpreter: a kapso upgrade
-replaces it, so the solution's requirements are reinstalled there after one.
+local target runs the function in the engine's own interpreter: upgrading the
+`leeroo-kapso` package replaces it, so the solution's requirements are reinstalled
+there after an upgrade.
 
 ## Models and config
 

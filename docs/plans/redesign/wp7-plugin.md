@@ -803,6 +803,99 @@ explicit loading, the brief as the server's instructions), 7 (the tools
 land last in this package). Decision 9 was drift in the first plan and
 is now the rule above. The owner checks the decisions.
 
+## Findings for later packages
+
+Fixed on this branch during the round:
+
+- **The churn example's predictor failed on pandas 3.** It told its
+  categorical columns by `dtype == object`, which pandas 3 no longer
+  gives string columns, so the median imputer met strings and the
+  shipped predictor failed on a current install; both hosts' sessions
+  patched the seed before they could measure the baseline. The predictor
+  asks pandas whether a column is string or bool (`d1f0627d`).
+- **Neither command had `--version`.** The setup skill tells one install
+  from two by reading `kapso --version` and `kapso-mcp --version`; both
+  print the package's version now, pinned by the version test
+  (`3e2ab47b`).
+- **A session's shell carries no `CLAUDE_CODE_OAUTH_TOKEN`.** Claude Code
+  keeps its own token from its tool subprocesses, so on a machine logged
+  in by token alone, `kapso doctor` inside a session read "not logged
+  in" and a campaign launched from the session would have had no login.
+  The project's `.env` is the doctor's own fix line and the round seeds
+  it there (`be0103cb`); a stored login, the ordinary case, needs
+  nothing.
+- **The plugin's commands fire where the operating skill's phrasings
+  were expected.** Claude Code answered "how is the campaign doing" by
+  invoking `/kapso:watch`, the plugin routing the request through the
+  command that hands over to the skill; the first suite counted those
+  misses (the operating skill at seven of thirteen on its own phrasings,
+  every miss a command firing, no skill invoked wrongly anywhere). A
+  command counts for its skill now and a near miss refuses the commands
+  that are the skill's alone (`ad2911e0`).
+- **The evaluation skill misdescribed the churn example's hold-out.** It
+  keeps `private/` beside the evaluation directory with an absolute
+  pointer; a session's audit moves it inside the copy so the evaluation
+  travels whole, and the skill says so (`ca168851`).
+- **The round's driver**, as the round taught it: a question among a
+  turn's closing lines, and an approval request without a question
+  mark; the second user's install in its own home; the injected pause as
+  a step whose wish says to launch and let the campaign ask; the key
+  written where the request's fix line says before the person says so;
+  a numbered list of harness questions answered in one reply; the
+  harness found where the README points; a trigger run that overstays
+  ending with its stream rather than the suite; the bar read per skill
+  (`1829844b` to `1753bd52`).
+- **Thirty minutes is too short a churn build for a review.** Neither
+  host's campaign scored an attempt by the budget's end on the first
+  attempt (the ideation alone takes a quarter of an hour, as WP1's proof
+  found); the round builds for sixty minutes (`0904eec6`).
+
+For later packages:
+
+- **A command's handover to its skill is not always followed.** After
+  invoking `/kapso:watch`, the session acted on the command's one line
+  rather than loading the operating skill it names; the commands carry
+  the line that matters, which is why it worked. WP9's simulated-user
+  round should read the commands' bodies as the procedure a session
+  follows, and shorten the skills' handover lines where a command can
+  stand alone.
+- **A session reads labels wherever they sit.** The evaluation skill's
+  contract (the hold-out inside the evaluation directory) and the churn
+  example's layout (beside it, by an absolute pointer) both leave the
+  labels readable by an attempt; only the brief's rule and the judge
+  stand between them. The evaluation maintainer package owns the
+  question of a hold-out an attempt cannot read.
+- **The skills' documentation links point at the next release's pages.**
+  The harness skill sends a session to `docs.leeroo.com/docs/harnesses/write.md`,
+  which the site serves once the redesign ships; a Codex session in the
+  round reported the 404 and went on from the repository and the skill
+  alone. WP10 publishes the pages and WP11's release gate reads every
+  link the six skills carry.
+- **An attempt whose ideation exhausted its deadline is recorded as a
+  branch error.** The development box's thirty-minute churn campaign
+  ended with attempt 0 rejected as `ValueError: Unknown Git ref:
+  generic_exp_0`: the implementation never launched, so the branch never
+  existed, and the record names the missing branch rather than the
+  deadline. The review session read it right ("ideation exhausted its
+  deadline; implementation never launched") and the deploy session
+  refused with the engine's own line; the engine should record the
+  reason it knows (WP6's record, WP1's strategy).
+- **The fresh machine's examples' dependencies.** Ubuntu 24.04 ships no
+  `python3-pyarrow`, so an apt line for the examples fails whole; the
+  round makes a uv venv first on PATH. WP9's provisioning should do the
+  same, and the examples' pages should name the one install line.
+- **Every Claude token's weekly window for the learning crews' model was
+  spent**, so the round's learn ran on `claude-opus-5` through the
+  project's config (said in the record and the decisions); the release
+  gate needs a token with room for the shipped model, or a week's
+  distance from the last campaigns.
+- **`kapso build --stop` for a paused campaign.** A campaign that is
+  `done` with `stopped_reason: waiting_for_user` is refused by state
+  (`done` is terminal; there is nothing to end), and the round's inbox
+  step ends its pause campaign only after the reply has resumed it. The
+  operating skill says a paused campaign resumes through the inbox; a
+  person who wants it gone has no verb and deletes the directory.
+
 ## Built
 
 Branch `wp7-plugin` off `redesign` at `e792fadd`, the commits below, each
