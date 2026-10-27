@@ -193,17 +193,7 @@ class S5:
 
     # -- machinery --
     def project(self, name: str) -> Path:
-        project = self.ctx.fixture("churn-first-build", f"s5-{name}-project")
-        # An unreachable target, so the campaign keeps working instead of
-        # meeting a 0.85 goal in its first node and stopping. Every injection
-        # here (a killed writer, an evaluator crash, a rate limit, a full disk)
-        # can only be exercised against a campaign that is still running; with
-        # the shipped 0.85 goal the churn task is solved in node 0 and the
-        # injection races the campaign's own completion (and loses). The task's
-        # ROC-AUC ceiling is well under 0.99, so the run uses its whole budget.
-        brief = project / "kapso-brief.md"
-        brief.write_text(brief.read_text(encoding="utf-8").replace("0.85", "0.99"), encoding="utf-8")
-        return project
+        return self.ctx.fixture("churn-first-build", f"s5-{name}-project")
 
     def launch(self, name: str, project: Path, extra_env: str = "", budget: Optional[Dict[str, int]] = None, campaign: Optional[Path] = None, log: Optional[Path] = None) -> Path:
         """The campaign launched as the operating skill launches it (the WP7
@@ -254,16 +244,6 @@ class S5:
     def wait_phase(self, campaign: Path, phase: str, seconds: int) -> bool:
         return wait_for(lambda: (status_of(campaign) or {}).get("phase") == phase or (status_of(campaign) or {}).get("state") in ("done", "failed"), seconds, every=10)
 
-    def wait_checkpoint(self, campaign: Path, seconds: int) -> bool:
-        """The first checkpoint: an attempt evaluated (a score or a void in
-        the trace), or the campaign over."""
-        def reached() -> bool:
-            if (status_of(campaign) or {}).get("state") in ("done", "failed"):
-                return True
-            trace = self.trace(campaign)
-            return any(attempt["evaluation"].get("score") is not None for attempt in trace.get("attempts", [])) or bool(trace.get("voided"))
-        return wait_for(reached, seconds, every=20)
-
     def record_injection(self, name: str, turns, metrics: Dict[str, Any], artifacts: List[str], notes: List[str], completed: bool, started: float) -> Dict[str, Any]:
         step = record_step(name, turns, completed, artifacts, notes, extra_minutes=(time.monotonic() - started) / 60 - sum(turn.seconds for turn in turns) / 60, kind="injection")
         step["metrics"] = {**metrics, "user_messages": len(turns), "bank_intact": bank_state(self.bank) == self.bank_before if self.bank else None}
@@ -286,11 +266,16 @@ class S5:
         (shim / "exit").write_text(str(RECONSTRUCTED_LIMIT["exit"]), encoding="utf-8")
         (shim / "stdout.jsonl").write_text("\n".join(json.dumps(row) for row in RECONSTRUCTED_LIMIT["stdout"]) + "\n", encoding="utf-8")
         (shim / "stderr.txt").write_text(RECONSTRUCTED_LIMIT["stderr"] + "\n", encoding="utf-8")
-        campaign = self.launch(name, project, extra_env=f"PATH={shim}:$PATH ")
-        self.wait_phase(campaign, "implementation", 1800)
+        # Arm before the first session runs: kapso drives each coding session as
+        # `claude -p`, the shim fires on an armed `claude -p` call, and the churn
+        # task is solved in a single node -- so arming only after the
+        # implementation phase races a campaign that may make no further call
+        # (observed: the shim never fired). Arming at launch injects the limit on
+        # the campaign's first session, reliably.
         (shim / "armed").write_text("", encoding="utf-8")
-        injected_at = datetime.now(timezone.utc)
+        campaign = self.launch(name, project, extra_env=f"PATH={shim}:$PATH ")
         wait_for(lambda: (shim / "fired").is_file(), 1800, every=10)
+        injected_at = datetime.now(timezone.utc)
         status = self.finish(name, campaign)
         (shim / "armed").unlink(missing_ok=True)
         trace = self.trace(campaign)
@@ -304,15 +289,25 @@ class S5:
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)),
                      self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2)), self.ctx.artifact(f"{name}-shim.json", json.dumps(RECONSTRUCTED_LIMIT, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
+        # Success = the limit was injected and the engineer handled it
+        # correctly, whether the campaign rode it out on its own (retried the
+        # 429s and finished: status done) or was blocked and the engineer
+        # resumed it. Demanding `resumed` alone wrongly fails the first, correct
+        # outcome -- the engineer rightly declines to resume a campaign that is
+        # not stuck (observed, and named by the engineer itself).
         return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, [RECONSTRUCTED_LIMIT["note"]],
-                                     bool(failures) and diagnosis["names_class"] and diagnosis["names_fix"] and status.get("state") in ("done", "failed") and resumed, started)
+                                     bool(failures) and diagnosis["names_class"] and diagnosis["names_fix"] and (resumed or status.get("state") == "done"), started)
 
     def step_evaluator_crash(self) -> Dict[str, Any]:
         started = time.monotonic()
         name = "evaluator-crash"
         project = self.project(name)
         campaign = self.launch(name, project)
-        self.wait_checkpoint(campaign, BUDGET["minutes"] * 60)
+        # Move the labels while the campaign is implementing node 0, before its
+        # first evaluation reads them: waiting for a checkpoint instead races a
+        # node 0 that meets its goal and finishes before the labels are moved
+        # (observed: the labels moved 16 s after the campaign had finished).
+        self.wait_phase(campaign, "implementation", BUDGET["minutes"] * 60)
         # The evaluator reads the labels through the ABSOLUTE path in
         # evaluation/private_dir.txt, the project's own private directory
         # outside the campaign; moving it there breaks every evaluation,

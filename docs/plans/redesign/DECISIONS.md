@@ -2139,23 +2139,31 @@ Options for the owner:
 Until the owner chooses, the author arm's `structural_gaps_round2` bar reads
 FAIL honestly, but as a harness-wiring gap, not a guide-quality verdict.
 
-## WP9 S5 injection campaigns use an unreachable target — RESOLVED (2026-10-27)
+## WP9 S5 injections stage early and accept correct handling — RESOLVED (2026-10-27)
 
-The earlier "S5 campaign longevity" open question is resolved in code, per the
-owner's "do the best long-term fix". The live S5 arms showed the injection
-steps racing the campaign's own completion: the shared churn-first-build task
-meets its 0.85 goal in node 0 and stops in ~10 minutes, so an injection fired
-after that (a rate limit, an evaluator crash) lands on a finished campaign and
-never stages. The cold engineer itself diagnosed this on evaluator-crash ("the
-labels moved 16 s after the campaign finished; raise the target so it keeps
-going").
+The earlier "S5 campaign longevity" open question is resolved, per the owner's
+"do the best long-term fix". The live S5 arms showed the injection steps racing
+the churn task's node-0 completion: it meets its 0.85 goal in ~10 minutes, so a
+rate limit, an evaluator crash, a killed writer or a full disk injected after
+that lands on a finished campaign. The cold engineer itself diagnosed this on
+evaluator-crash ("the labels moved 16 s after the campaign finished").
 
-Fix: S5's `project()` stamps an unreachable target (0.99, well above the task's
-ROC-AUC ceiling) into its brief copy, and the S5 build budget restores
-`experiments: 3`. The campaign then uses its whole budget across several nodes,
-so every injection acts on a live campaign — node 1's session call trips the
-rate-limit shim, node 1's evaluation crashes on the moved labels, and the
-killed-writer/full-disk injections (already moved to the implementation phase)
-have a solid window. This is model-independent, where a "harder task" would be
-fragile across models. The S5 arm is correspondingly longer (several nodes per
-step), which is the right trade for reliable staging.
+A first attempt — stamping an unreachable target (0.99) so the campaign keeps
+running — was tried and REVERTED. The intelligent review of that run found two
+problems: the engineer detected the artificial goal ("0.99 can't be reached;
+the data generator caps the signal"), which distorts its behaviour; and the
+campaign then rode out the rate limit and finished on its own, so the engineer
+rightly declined to resume it and the `resumed` check failed. The lesson: the
+product handled the failure correctly; the test was mis-calibrated.
+
+Fix (kept): each injection fires EARLY, while the campaign is still working and
+has budget — killed-writer and full-disk at the implementation phase, the
+evaluator crash at implementation (labels moved before the first evaluation),
+and the rate-limit shim ARMED AT LAUNCH so it trips the campaign's first
+`claude -p` session reliably (arming only after implementation raced a
+single-node campaign and never fired). And provider-limit's success now accepts
+the engineer's correct handling either way — the campaign rode out the limit
+and finished (status done) OR it was blocked and the engineer resumed it —
+rather than demanding a resume that is wrong when the campaign was not stuck.
+The achievable 0.85 goal is kept, so the resume paths (killed writer, full
+disk, a blocked evaluator) still work as designed.
