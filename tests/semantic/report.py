@@ -25,6 +25,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts" / "redesign"))
+from judge import resolve as resolve_judge  # noqa: E402
+
 SUITE_PATH = Path(__file__).resolve().parent / "suite.json"
 COUNT_KEYS = ("messages", "questions", "minutes", "longest_message_lines")
 EXIT_PASS, EXIT_FAIL, EXIT_ADVISORY = 0, 1, 3
@@ -69,23 +72,19 @@ def judge_outcome(record: dict, spec: Optional[dict], expected_passes: int) -> D
         return outcome
     passes = judge["passes"]
     bar = spec["bar"]
-    adjudication = judge.get("adjudication", {})
     labels = sorted({label for p in passes for label in p.get("items", {})})
+    finals = resolve_judge(judge, spec["dimensions"], bar)
+
+    def item_straddles(dimension: str, label: str) -> bool:
+        scores = [p.get("items", {}).get(label, {}).get(dimension, {}).get("score") for p in passes]
+        scores = [score for score in scores if score is not None]
+        return bool(scores) and min(scores) < bar <= max(scores)
+
     ok = len(passes) == expected_passes and bool(labels)
     for dimension in spec["dimensions"]:
-        item_finals, any_straddle, dim_ok = [], False, bool(labels)
-        for label in labels:
-            item_scores = [p.get("items", {}).get(label, {}).get(dimension, {}).get("score") for p in passes]
-            if any(score is None for score in item_scores):
-                dim_ok = False
-                continue
-            straddled = min(item_scores) < bar <= max(item_scores)
-            any_straddle = any_straddle or straddled
-            adjudicated = adjudication.get(f"{dimension}|{label}", {}).get("score")
-            item_finals.append(adjudicated if straddled and adjudicated is not None else min(item_scores))
-        final = min(item_finals) if item_finals else None
-        outcome["dimensions"][dimension] = {"final": final, "straddled": any_straddle}
-        ok = ok and dim_ok and final is not None and final >= bar
+        final = finals[dimension]
+        outcome["dimensions"][dimension] = {"final": final, "straddled": any(item_straddles(dimension, label) for label in labels)}
+        ok = ok and final is not None and final >= bar
     outcome["ok"] = ok
     return outcome
 

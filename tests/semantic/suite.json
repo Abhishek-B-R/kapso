@@ -22,7 +22,7 @@
         "claude_code": ["sandbox", "prerequisite-campaign", "prerequisite-killed", "task1-python", "task1-cli", "task2-python", "task2-cli", "task3-python", "task3-cli", "task4-python", "task4-cli", "task5-python", "task5-cli", "task6-python", "task6-cli", "comprehension", "flow-counts"],
         "codex": ["sandbox", "prerequisite-campaign", "prerequisite-killed", "task1-python", "task1-cli", "task2-python", "task2-cli", "task3-python", "task3-cli", "task4-python", "task4-cli", "task5-python", "task5-cli", "task6-python", "task6-cli", "comprehension", "flow-counts"]
       },
-      "bars": {"first_try_count": {"min": 9}, "errors_led_to_fix": {"min": 1.0}, "comprehension_correct": {"min": 1.0}, "python_lines": {"max": 12}, "cli_commands": {"max": 6}},
+      "bars": {"first_try_count": {"min": 9}, "errors_led_to_fix": {"min": 1.0}, "wrong_calls_max": {"max": 1}, "comprehension_correct": {"min": 1.0}, "python_lines": {"max": 12}, "cli_commands": {"max": 6}},
       "judge": {"rubric": "s1", "dimensions": ["names say what the calls do", "the flows fit the design's lengths", "nothing needed the docs do not say"], "scale": [0, 1], "bar": 1}
     },
     "S4": {

@@ -36,6 +36,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
 from plugin_proof import SUITE, ClaudeHost, CodexHost, record_step, shell_step, status_of, wait_for  # noqa: E402
+import judge  # noqa: E402  (the shared judge-block resolver; litellm rides along, present where S1 runs)
 
 RELEASED = SUITE["released"]["version"]
 PREREQUISITE = SUITE["builds"]["prerequisite"]
@@ -47,9 +48,9 @@ TASKS = [
      "verb": "build", "evidence": "campaign-2"},
     {"number": 3, "goal": "the churn build again, under the harness at ./harness, at 10 minutes and 1 experiment, into ./campaign-3 (the task's deviation: the harness is named by its path, since no bundled harness ships yet)",
      "verb": "build", "evidence": "campaign-3", "harness": True},
-    {"number": 4, "goal": "the delivered result of the campaign at ./campaign-prereq deployed to the local target, then called once", "verb": "deploy", "evidence": "deployment"},
-    {"number": 5, "goal": "lessons learned from the campaign at ./campaign-prereq (start the learn; it runs on its own)", "verb": "learn", "evidence": "learn-status"},
-    {"number": 6, "goal": "the campaign at ./campaign-killed was interrupted before it finished; continue it from where it stopped", "verb": "resume", "evidence": "resumed"},
+    {"number": 4, "restore": "campaign-prereq", "goal": "the delivered result of the campaign at ./campaign-prereq deployed to the local target, then called once", "verb": "deploy", "evidence": "deployment"},
+    {"number": 5, "restore": "campaign-prereq", "clear_learning": True, "goal": "lessons learned from the campaign at ./campaign-prereq (start the learn; it runs on its own)", "verb": "learn", "evidence": "learn-status"},
+    {"number": 6, "restore": "campaign-killed", "goal": "the campaign at ./campaign-killed was interrupted before it finished; continue it from where it stopped", "verb": "resume", "evidence": "resumed"},
 ]
 VERB_PATTERNS = {
     "build": {"cli": re.compile(r"\bkapso\s+build\b(?!.*--resume)"), "python": re.compile(r"\.build\(")},
@@ -134,7 +135,12 @@ def session_init(rows: Sequence[dict]) -> Dict[str, Any]:
     return {"plugins": None, "mcp_servers": None, "kapso_commands": None, "web_tools": None}
 
 
-def is_cold(init: Dict[str, Any]) -> bool:
+def is_cold(init: Dict[str, Any]) -> Optional[bool]:
+    """True when the session proved it is cold (no plugin, server, Kapso
+    command or web tool); None when no init row carried the proof (a Codex
+    session), which the sandbox step reports as not proved, never a pass."""
+    if init["plugins"] is None:
+        return None
     return init["plugins"] == [] and init["mcp_servers"] == [] and init["kapso_commands"] == [] and init["web_tools"] == []
 
 
@@ -170,9 +176,29 @@ def executions(rows: Sequence[dict], verb: str, surface: str, sandbox: Path) -> 
             for block in row["message"].get("content", []):
                 if block.get("type") == "tool_result" and block.get("tool_use_id") in pending:
                     content = block.get("content")
-                    text = content if isinstance(content, str) else "".join(part.get("text", "") for part in content or [] if isinstance(part, dict))
-                    pending.pop(block["tool_use_id"])["errored"] = bool(block.get("is_error")) or bool(re.search(r"Traceback \(most recent call last\)|^Error:|error: ", text, re.M))
+                    result = content if isinstance(content, str) else "".join(part.get("text", "") for part in content or [] if isinstance(part, dict))
+                    pending.pop(block["tool_use_id"])["errored"] = bool(block.get("is_error")) or _looks_errored(result)
+        elif row.get("type") == "item.completed" and (row.get("item") or {}).get("type") == "command_execution":
+            # Codex's shape: the command and its exit status in one row.
+            item = row["item"]
+            command = item.get("command", "")
+            run_text = command
+            if surface == "python":
+                scripts = re.findall(r"\b(\S+\.py)\b", command)
+                run_text = "\n".join((sandbox / script).read_text(encoding="utf-8", errors="replace") for script in scripts if (sandbox / script).is_file())
+                if not re.search(r"\bpython3?\b", command):
+                    continue
+            if NOT_COUNTED.search(command):
+                continue
+            if pattern.search(run_text):
+                exit_code = item.get("exit_code")
+                errored = (exit_code not in (0, None)) or _looks_errored(item.get("aggregated_output") or "")
+                found.append({"command": command, "errored": errored})
     return found
+
+
+def _looks_errored(text: str) -> bool:
+    return bool(re.search(r"Traceback \(most recent call last\)|^Error:|error: ", text, re.M))
 
 
 def attempt_metrics(found: Sequence[Dict[str, Any]], evidence: bool, started: float, evidence_at: Optional[float]) -> Dict[str, Any]:
@@ -183,7 +209,8 @@ def attempt_metrics(found: Sequence[Dict[str, Any]], evidence: bool, started: fl
     wrong = len([entry for entry in found[: first_success if first_success is not None else len(found)] if entry["errored"]])
     led_to_fix = None
     if wrong:
-        led_to_fix = first_success is not None and all(found[index]["errored"] is False for index in [first_success]) and found[first_success - 1]["errored"] is True
+        # One step: exactly one errored call, and it was followed by the success.
+        led_to_fix = first_success is not None and wrong == 1
     return {
         "first_try": bool(found) and found[0]["errored"] is False and evidence,
         "wrong_calls": wrong,
@@ -231,7 +258,7 @@ def evidence_of(task: Dict[str, Any], sandbox: Path, prereq: Path) -> bool:
     if kind == "deployment":
         return (prereq / ".kapso" / "deployments" / "1" / "deployment.json").is_file()
     if kind == "learn-status":
-        return any((sandbox / "task" / "learning" / "status").glob("*.json")) or any((prereq.parent / "task" / "learning" / "status").glob("*.json"))
+        return any(sandbox.glob("**/learning/status/*.json"))
     if kind == "resumed":
         status = status_of(sandbox / "campaign-killed") or {}
         return status.get("state") == "running" and pid_alive(status.get("pid"))
@@ -297,10 +324,12 @@ class S1:
         cli = self.shell("command -v kapso && kapso --version", check=False)
         probe, transcript = self.turn("sandbox", "Say only the word ready.")
         init = session_init(plugin_proof_rows(transcript))
-        cold = is_cold(init) if self.args.host == "claude_code" else None
+        cold = is_cold(init)
+        isolated = (cold is True) if self.args.host == "claude_code" else True
+        proof = {True: "proved cold from the session's init", False: "NOT cold (the init carried a plugin, server, command or web tool)", None: "not provable from the stream; the CODEX_COLD flags set the isolation"}[cold]
         artifacts = [self.artifact("sandbox.json", json.dumps({"pages": count, "import": version.stdout.strip(), "cli": cli.stdout.strip(), "init": init, "cold": cold}, indent=2))]
-        return shell_step("sandbox", version.returncode == 0 and cli.returncode == 0 and (cold is not False), artifacts, (time.monotonic() - started) / 60,
-                          [f"{count} public pages; the package {version.stdout.strip()} in the sandbox's venv; the session's init: {json.dumps(init)}"])
+        return shell_step("sandbox", version.returncode == 0 and cli.returncode == 0 and isolated, artifacts, (time.monotonic() - started) / 60,
+                          [f"{count} public pages; the package {version.stdout.strip()} in the sandbox's venv; isolation: {proof}"])
 
     def _build(self, name: str, example: str, minutes: int, experiments: int, kill_after: Optional[int] = None) -> Dict[str, Any]:
         started = time.monotonic()
@@ -322,11 +351,33 @@ class S1:
         return shell_step(f"prerequisite-{'campaign' if not kill_after else 'killed'}", launch.returncode == 0 and done, [self.artifact(f"{name}-status.json", json.dumps(status, indent=2))],
                           (time.monotonic() - started) / 60, [f"delivered: {(status.get('best') or {}).get('score')}" if not kill_after else f"the writer killed at {kill_after} minutes, phase {status.get('phase')}"], kind="build")
 
+    def _snapshot(self, name: str) -> None:
+        snap = self.sandbox / ".snap" / name
+        if snap.exists():
+            shutil.rmtree(snap)
+        snap.parent.mkdir(parents=True, exist_ok=True)
+        if (self.sandbox / name).exists():
+            shutil.copytree(self.sandbox / name, snap, symlinks=True)
+
+    def _restore(self, name: str) -> None:
+        snap = self.sandbox / ".snap" / name
+        live = self.sandbox / name
+        if not snap.exists():
+            return
+        if live.exists():
+            self.shell(f"kapso build --output {live} --stop", check=False)
+            shutil.rmtree(live)
+        shutil.copytree(snap, live, symlinks=True)
+
     def step_prerequisite_campaign(self) -> Dict[str, Any]:
-        return self._build("campaign-prereq", "churn-first-build", PREREQUISITE["minutes"], PREREQUISITE["experiments"])
+        step = self._build("campaign-prereq", "churn-first-build", PREREQUISITE["minutes"], PREREQUISITE["experiments"])
+        self._snapshot("campaign-prereq")
+        return step
 
     def step_prerequisite_killed(self) -> Dict[str, Any]:
-        return self._build("campaign-killed", "churn-first-build", PREREQUISITE["minutes"], PREREQUISITE["experiments"], kill_after=5)
+        step = self._build("campaign-killed", "churn-first-build", PREREQUISITE["minutes"], PREREQUISITE["experiments"], kill_after=5)
+        self._snapshot("campaign-killed")
+        return step
 
     def step_attempt(self, task: Dict[str, Any], surface: str) -> Dict[str, Any]:
         name = f"task{task['number']}-{surface}"
@@ -341,6 +392,11 @@ class S1:
             if leftover.exists():
                 self.shell(f"kapso build --output {leftover} --stop", check=False)
                 shutil.rmtree(leftover)
+        if task.get("restore"):
+            self._restore(task["restore"])
+        if task.get("clear_learning"):
+            for status in self.sandbox.glob("**/learning/status"):
+                shutil.rmtree(status, ignore_errors=True)
         turn, transcript = self.turn(name, prompt)
         rows = plugin_proof_rows(transcript)
         found = executions(rows, task["verb"], surface, self.sandbox)
@@ -365,19 +421,29 @@ class S1:
             "evaluator": "the script the campaign protects and runs on every candidate; the metric on its last line; result.json beside it",
             "record": "the campaign directory's .kapso/: solution.json, status.json, the sessions and attempts; Solution.open reads it; kapso trace renders it",
         }
-        artifacts = [self.artifact("comprehension-answers.txt", turn.text), self.artifact("comprehension-facts.json", json.dumps(facts, indent=2))]
-        return record_step("comprehension", [turn], bool(turn.text.strip()), artifacts, ["graded by the judge against comprehension-facts.json (the s1 rubric)"], kind="reading")
+        key = "\n".join(f"- {verb}: {fact}" for verb, fact in facts.items())
+        self.artifact("comprehension-facts.json", json.dumps(facts, indent=2))
+        answers = f"# The engineer's answers\n\n{turn.text}\n\n# The key (what each call does; the engineer never saw it)\n\n{key}\n"
+        artifacts = [self.artifact("comprehension-answers.txt", answers), "artifacts/comprehension-facts.json"]
+        return record_step("comprehension", [turn], bool(turn.text.strip()), artifacts, ["the answers and the key handed to the judge (the s1 rubric); --grade reads the comprehension dimension into comprehension_correct"], kind="reading")
 
     def step_flow_counts(self, record: Dict[str, Any]) -> Dict[str, Any]:
         started = time.monotonic()
-        scripts, commands = [], []
+        # Per task, so a filename reused across tasks is not conflated; the
+        # bar is per flow (one task's path), so report the longest.
+        per_task_lines, per_task_commands, detail = {}, {}, {}
         for step in record["steps"]:
-            if step.get("kind") == "attempt":
-                scripts += step.get("metrics", {}).get("scripts", [])
-                commands += step.get("metrics", {}).get("commands", [])
-        lines = python_lines(self.sandbox, sorted(set(scripts)))
-        metrics = {"python_lines": lines, "cli_commands": len(commands)}
-        step = shell_step("flow-counts", True, [self.artifact("flow-counts.json", json.dumps({**metrics, "scripts": sorted(set(scripts)), "commands": commands}, indent=2))], (time.monotonic() - started) / 60)
+            if step.get("kind") != "attempt":
+                continue
+            metrics = step.get("metrics", {})
+            if metrics.get("scripts"):
+                per_task_lines[step["name"]] = python_lines(self.sandbox, metrics["scripts"])
+            if metrics.get("commands"):
+                per_task_commands[step["name"]] = len(metrics["commands"])
+            detail[step["name"]] = {"scripts": metrics.get("scripts", []), "commands": metrics.get("commands", [])}
+        metrics = {"python_lines": max(per_task_lines.values(), default=0), "cli_commands": max(per_task_commands.values(), default=0)}
+        step = shell_step("flow-counts", True, [self.artifact("flow-counts.json", json.dumps({**metrics, "per_task_python_lines": per_task_lines, "per_task_cli_commands": per_task_commands, "detail": detail}, indent=2))], (time.monotonic() - started) / 60,
+                          ["python_lines and cli_commands are the longest single task's flow (the bar is per flow); the per-task figures are kept; a script read in its final state is a known limit when a filename is reused within a task"])
         step["metrics"] = metrics
         return step
 
@@ -394,10 +460,28 @@ def run_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "first_try_count": sum(1 for step in attempts if step["metrics"]["first_try"]),
         "errors_led_to_fix": (sum(1 for step in errored if step["metrics"]["error_led_to_fix"]) / len(errored)) if errored else 1.0,
+        "wrong_calls_max": max((step["metrics"]["wrong_calls"] for step in attempts), default=0),
         "comprehension_correct": record.get("metrics", {}).get("comprehension_correct"),
         "python_lines": counts.get("python_lines"),
         "cli_commands": counts.get("cli_commands"),
     }
+
+
+COMPREHENSION_DIMENSION = "names say what the calls do"
+
+
+def grade(record: Dict[str, Any]) -> Dict[str, Any]:
+    """The judge's block into the record: `comprehension_correct` is 1.0
+    when the judge resolved the comprehension dimension (the answers named
+    every call correctly against the key) to the bar, else 0.0."""
+    block = record.get("judge") or {}
+    if block.get("failure") or not block.get("passes"):
+        return record
+    spec = SUITE["tests"]["S1"]["judge"]
+    final = judge.resolve(block, spec["dimensions"], spec["bar"]).get(COMPREHENSION_DIMENSION)
+    record.setdefault("metrics", {})["comprehension_correct"] = 1.0 if final is not None and final >= spec["bar"] else 0.0
+    record["metrics"] = {**record["metrics"], **run_metrics(record)}
+    return record
 
 
 STEP_NAMES = ["sandbox", "prerequisite-campaign", "prerequisite-killed", *[f"task{task['number']}-{surface}" for task in TASKS for surface in ("python", "cli")], "comprehension", "flow-counts"]
@@ -415,7 +499,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--advisory", default=None)
     parser.add_argument("--steps", default=None)
     parser.add_argument("--from", dest="start", default=None)
+    parser.add_argument("--grade", action="store_true", help="read the judge's block into comprehension_correct (on the development box)")
     args = parser.parse_args(argv)
+    record_file = Path(args.out).resolve() / "record.json"
+    if args.grade:
+        record = grade(json.loads(record_file.read_text()))
+        record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        print(json.dumps(record["metrics"]))
+        return 0
     if args.package == "branch" and not args.wheel:
         parser.error("--wheel is the branch's package; --package released needs none")
     driver = S1(args)

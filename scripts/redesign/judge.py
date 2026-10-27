@@ -251,6 +251,30 @@ def judge_record(record_dir: Path, rubric: str, inputs: Optional[Sequence[str]],
     return block
 
 
+def resolve(block: dict, dimensions: Sequence[str], bar: int) -> Dict[str, Optional[int]]:
+    """The final score per dimension, the one way everything reads a judge
+    block: the minimum over the judged items of each item's resolved score
+    (a straddling item's adjudication deciding, else the minimum over
+    passes). None for a dimension whose items are not all scored, so a
+    broken block never silently passes. report.py, S1 and S4 all call this."""
+    passes = block.get("passes", [])
+    adjudication = block.get("adjudication", {})
+    labels = sorted({label for a_pass in passes for label in a_pass.get("items", {})})
+    finals: Dict[str, Optional[int]] = {}
+    for dimension in dimensions:
+        item_finals, complete = [], bool(labels)
+        for label in labels:
+            scores = [a_pass.get("items", {}).get(label, {}).get(dimension, {}).get("score") for a_pass in passes]
+            if any(score is None for score in scores):
+                complete = False
+                continue
+            straddled = min(scores) < bar <= max(scores)
+            adjudicated = adjudication.get(f"{dimension}|{label}", {}).get("score")
+            item_finals.append(adjudicated if straddled and adjudicated is not None else min(scores))
+        finals[dimension] = min(item_finals) if complete and item_finals else None
+    return finals
+
+
 def preflight(suite: dict) -> str:
     settings = suite["judge"]
     reply = ask('Reply with exactly one JSON object: {"ok": true}', settings)

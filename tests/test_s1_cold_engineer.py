@@ -51,8 +51,8 @@ def test_the_init_event_proves_the_sandbox_cold():
     init = s1.session_init([warm])
     assert init == {"plugins": ["kapso@kapso"], "mcp_servers": ["plugin:kapso:kapso"], "kapso_commands": ["kapso:build"], "web_tools": ["WebFetch"]} and not s1.is_cold(init)
     cold = {"type": "system", "subtype": "init", "plugins": [{"source": "cc-plugin-telemetry@builtin"}], "mcp_servers": [], "slash_commands": ["help"], "tools": ["Bash", "Read"]}
-    assert s1.is_cold(s1.session_init([cold]))
-    assert not s1.is_cold(s1.session_init([]))
+    assert s1.is_cold(s1.session_init([cold])) is True
+    assert s1.is_cold(s1.session_init([])) is None, "no init row (a Codex session): coldness is not provable from the stream, not a silent pass"
 
 
 def _stream(calls):
@@ -80,6 +80,27 @@ def test_the_counted_verbs_executions_are_read_from_the_stream(tmp_path):
     assert len(found) == 1 and found[0]["errored"] is False
     assert s1.executions(_stream([("kapso build --output c --resume --detach", False)]), "resume", "cli", tmp_path)
     assert not s1.executions(_stream([("kapso build --output c --resume --detach", False)]), "build", "cli", tmp_path)
+
+
+def _codex_stream(calls):
+    """A Codex stream of command_execution items, each (command, exit_code)."""
+    return [{"type": "item.completed", "item": {"type": "command_execution", "command": command, "exit_code": code, "aggregated_output": "done" if code == 0 else "Error: boom"}} for command, code in calls]
+
+
+def test_executions_read_the_codex_stream_too(tmp_path):
+    rows = _codex_stream([("kapso build --help", 0), ("kapso build --brief b.md --output c1", 1), ("kapso build --brief b.md --repo repo --output c1 --detach", 0)])
+    found = s1.executions(rows, "build", "cli", tmp_path)
+    assert [entry["errored"] for entry in found] == [True, False], "the --help is not counted; the first run errored (exit 1), the second succeeded"
+    assert s1.attempt_metrics(found, evidence=True, started=0.0, evidence_at=60.0)["first_try"] is False
+
+
+def test_error_led_to_fix_is_one_step_only(tmp_path):
+    # One wrong call then a success is a one-step fix; two is not.
+    one = s1.executions(_stream([("kapso build --brief b --output c", True), ("kapso build --brief b --repo r --output c --detach", False)]), "build", "cli", tmp_path)
+    assert s1.attempt_metrics(one, evidence=True, started=0.0, evidence_at=1.0)["error_led_to_fix"] is True
+    two = s1.executions(_stream([("kapso build --output c", True), ("kapso build --brief b --output c", True), ("kapso build --brief b --repo r --output c --detach", False)]), "build", "cli", tmp_path)
+    metrics = s1.attempt_metrics(two, evidence=True, started=0.0, evidence_at=1.0)
+    assert metrics["wrong_calls"] == 2 and metrics["error_led_to_fix"] is False, "two wrong calls is not a one-step fix"
 
 
 def test_the_evidence_predicates_read_what_a_task_leaves(tmp_path):
@@ -119,4 +140,35 @@ def test_the_two_counts_and_the_run_metrics(tmp_path):
         {"name": "task2-cli", "kind": "attempt", "metrics": {"first_try": False, "wrong_calls": 1, "error_led_to_fix": False}},
         {"name": "flow-counts", "kind": "shell", "metrics": {"python_lines": 9, "cli_commands": 5}},
     ], "metrics": {"comprehension_correct": 1.0}}
-    assert s1.run_metrics(record) == {"first_try_count": 1, "errors_led_to_fix": 0.5, "comprehension_correct": 1.0, "python_lines": 9, "cli_commands": 5}
+    assert s1.run_metrics(record) == {"first_try_count": 1, "errors_led_to_fix": 0.5, "wrong_calls_max": 2, "comprehension_correct": 1.0, "python_lines": 9, "cli_commands": 5}
+    assert set(s1.SUITE["tests"]["S1"]["bars"]) >= {"wrong_calls_max", "comprehension_correct"}
+
+
+def test_grade_projects_the_comprehension_dimension_into_the_metric():
+    dim = s1.COMPREHENSION_DIMENSION
+    other = [d for d in s1.SUITE["tests"]["S1"]["judge"]["dimensions"] if d != dim]
+
+    def block(score):
+        passes = [{"items": {"comprehension": {dim: {"score": score, "evidence": []}, **{d: {"score": 1, "evidence": []} for d in other}}}} for _ in range(2)]
+        return {"failure": None, "passes": passes, "adjudication": {}}
+
+    assert s1.grade({"steps": [], "judge": block(1), "metrics": {}})["metrics"]["comprehension_correct"] == 1.0
+    assert s1.grade({"steps": [], "judge": block(0), "metrics": {}})["metrics"]["comprehension_correct"] == 0.0
+    assert s1.grade({"steps": [], "judge": {"failure": "x", "passes": []}, "metrics": {}})["metrics"] == {}
+
+
+def test_flow_counts_are_per_task_so_a_reused_filename_is_not_conflated(tmp_path):
+    (tmp_path / "solve.py").write_text("a = 1\nb = 2\nc = 3\n")
+    record = {"steps": [
+        {"name": "task1-python", "kind": "attempt", "metrics": {"scripts": ["solve.py"], "commands": []}},
+        {"name": "task2-python", "kind": "attempt", "metrics": {"scripts": ["solve.py"], "commands": []}},
+        {"name": "task1-cli", "kind": "attempt", "metrics": {"scripts": [], "commands": ["kapso build a", "kapso build b"]}},
+    ]}
+
+    class _Driver:
+        sandbox = tmp_path
+        out = tmp_path
+        artifact = staticmethod(lambda name, text: (tmp_path / name).write_text(text) or f"artifacts/{name}")
+
+    step = s1.S1.step_flow_counts(_Driver(), record)
+    assert step["metrics"] == {"python_lines": 3, "cli_commands": 2}, "the longest single task's flow, not the sum over tasks"
