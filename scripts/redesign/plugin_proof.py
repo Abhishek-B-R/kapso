@@ -683,6 +683,11 @@ def step_harness_probe(ctx: Context) -> Dict[str, Any]:
     if not harness:
         return shell_step("harness-probe", False, [], 0, ["no harness was written"])
     campaign = ctx.work / "trading-probe"
+    # A previous probe is stopped and cleared: the launch and the wait
+    # below are the new campaign's, never a finished one's status.
+    if campaign.exists():
+        ctx.shell(f"kapso build --output {campaign} --stop", check=False)
+        shutil.rmtree(campaign)
     ctx.state["probe_campaign"] = str(campaign)
     ctx.save()
     # The interview's session may have run the evaluator while testing the
@@ -873,7 +878,8 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
     # A Codex engine session runs in a temporary workspace that is gone
     # with it, rules file included; the adapter's test pins the file, the
     # live evidence is the sessions running with the isolation lines.
-    completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings) and codex_ok
+    # On the Codex host a Codex session must have run: no session is no evidence.
+    completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings) and codex_ok and (bool(ran) or ctx.host.name != "codex")
     return shell_step("campaign-session-isolation", completed, [ctx.artifact("isolation.json", json.dumps(report, indent=1))], (time.monotonic() - started) / 60)
 
 

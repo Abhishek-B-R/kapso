@@ -95,7 +95,8 @@ The user has neither: continue, and say which doctor row would report it.
 kapso doctor build --json --config kapso-config.yaml
 ```
 
-Read the JSON: every row with `"required": true` must be `"ok": true`; fix what a
+(Without the flag when the project has no `kapso-config.yaml` yet: the packaged
+config is the default.) Read the JSON: every row with `"required": true` must be `"ok": true`; fix what a
 failing row's `fix` says and run it again. Rows with `"required": false` are optional
 and name what they would enable; leave them unless asked. Use the next verb's rows
 (`build` first), never the union: `kapso doctor` alone asks for the stores an ingest
