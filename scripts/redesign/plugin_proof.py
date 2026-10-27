@@ -219,14 +219,26 @@ class Context:
         return turns
 
     def fixture(self, name: str, target: str, generate: bool = True) -> Path:
-        """A copy of an example under the work directory, its data generated."""
+        """A copy of an example under the work directory, its data generated,
+        the session's credentials in its `.env`."""
         path = self.work / target
         if path.exists():
             shutil.rmtree(path)
         shutil.copytree(self.clone / "examples" / name, path, ignore=shutil.ignore_patterns("campaign", "__pycache__", "data", "private"))
         if generate:
             self.shell("python3 generate.py", cwd=path, timeout=600)
+        self.seed_env(path)
         return path
+
+    def seed_env(self, project: Path) -> None:
+        """A host session's shell carries no `CLAUDE_CODE_OAUTH_TOKEN` (the
+        host keeps its own token from its tools), so a machine logged in
+        by token puts it in the project's `.env`, the doctor's fix line;
+        a machine with a stored login has nothing to seed."""
+        token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        if token:
+            with open(project / ".env", "a", encoding="utf-8") as env:
+                env.write(f"CLAUDE_CODE_OAUTH_TOKEN={token}\n")
 
 
 def project_config(project: Path, blocks: Dict[str, Any]) -> Path:
@@ -544,6 +556,7 @@ def step_build_empty_wish(ctx: Context) -> Dict[str, Any]:
         shutil.rmtree(project)
     project.mkdir(parents=True)
     (project / "README.md").write_text("# churn-work\n\nOur churn modelling work will live here.\n", encoding="utf-8")
+    ctx.seed_env(project)
     return _criteria_step(ctx, "build-empty-wish", project, "build something useful here")
 
 
