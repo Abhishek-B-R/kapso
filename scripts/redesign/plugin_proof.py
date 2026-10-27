@@ -769,7 +769,9 @@ def step_experience_share(ctx: Context) -> Dict[str, Any]:
     remote = ctx.work / "bank-remote.git"
     ctx.shell(f"rm -rf {remote} && git init -q --bare {remote}")
     turns = ctx.converse("experience-share", project, ctx.host.command("experience", f"share file://{remote}"), go_policy, max_turns=3)
-    second = ctx.shell(f"sudo -u proof2 -H bash -lc 'export PATH=$HOME/.local/bin:$PATH; kapso experience add file://{remote} && kapso experience list'", check=False)
+    # From the second user's own home: a directory that user cannot see
+    # is no place to run `kapso` from (its `.env` lookup starts there).
+    second = ctx.shell(f"sudo -u proof2 -H bash -lc 'cd ~; export PATH=$HOME/.local/bin:$PATH; kapso experience add file://{remote} && kapso experience list'", check=False)
     artifacts = [ctx.artifact("experience-share.txt", "\n".join(turn.text for turn in turns)), ctx.artifact("experience-second-user.txt", second.stdout + second.stderr)]
     shared = ctx.shell(f"git -C {remote} log --oneline -1", check=False).returncode == 0
     return record_step("experience-share", turns, shared and second.returncode == 0, artifacts, ["the second user's served build at a tiny budget is run by hand when the window allows; recorded here as the add and the list"])

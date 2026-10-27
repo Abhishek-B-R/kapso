@@ -1063,6 +1063,18 @@ For later packages:
   let the validator hand a non-parsing document back to the crew as a
   finding, the way it hands back a missing block. Until then a learn of
   an hour can end on one such line.
+- **A learn dies when a crew writes no report.** The second machine's
+  learn passed the mining and failed in the exam: `report-writer
+  produced no report for churn-campaign/…_facade`, a crew session that
+  ended without its file, and the frame fails loud on it after fifty
+  minutes of work. The learning package's crews should get the retry
+  the build's sessions have, or the frame should hand the missing file
+  back as a finding for one more pass.
+- **`kapso` from a directory the user cannot see.** The second user's
+  commands, run from the first user's work directory, died in
+  python-dotenv's walk from the working directory (`Starting path not
+  found`) before any verb ran; the round runs that user from its home.
+  Rare for a person, but the CLI could say so in one line.
 - **The fresh machine's examples' dependencies.** Ubuntu 24.04 ships no
   `python3-pyarrow`, so an apt line for the examples fails whole; the
   round makes a uv venv first on PATH. WP9's provisioning should do the
