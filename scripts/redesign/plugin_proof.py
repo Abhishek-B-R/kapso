@@ -334,12 +334,15 @@ HARNESS_ANSWERS = [
 
 
 def harness_policy(text: str, index: int) -> Optional[str]:
+    """The proposal gets "go"; a turn that asks about modules gets every
+    answer its questions call for, in one reply, as a person answering a
+    numbered list would."""
     lower = text.lower()
     if index == 0 and ("confirm" in lower or "go" in lower or "proposal" in lower or "write" in lower):
         return "go"
-    for key, answer in HARNESS_ANSWERS:
-        if key in lower:
-            return answer
+    answers = [f"{key}: {answer}" for key, answer in HARNESS_ANSWERS if key in lower]
+    if answers:
+        return "\n".join(answers) + "\nNothing else to add; write them in the cheapest form and run the check."
     return "Use your best judgement from the repository; nothing else to add."
 
 
@@ -579,7 +582,12 @@ def step_harness_new(ctx: Context) -> Dict[str, Any]:
     ctx.state["trading_project"] = str(project)
     ctx.save()
     turns = ctx.converse("harness-new", project, ctx.host.command("harness", "new"), harness_policy, max_turns=12)
-    manifests = [path for path in project.rglob("harness.yaml") if "campaign" not in path.parts]
+    # The session writes where the repository points (`../harnesses/trading`
+    # in the README) or under the project: both are the person's.
+    manifests = [
+        path for path in (*project.rglob("harness.yaml"), *(ctx.work / "harnesses").rglob("harness.yaml"))
+        if "campaign" not in path.parts and (ctx.work / "harnesses").exists() or path.is_relative_to(project)
+    ]
     artifacts = [ctx.artifact("harness-new-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     green = False
     if manifests:
