@@ -74,12 +74,13 @@ class Turn:
 
 
 def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
-    """A turn that ends asking: the AskUserQuestion tool, or a last line
-    that is a question."""
+    """A turn that ends asking: the AskUserQuestion tool, or a question
+    among its closing lines (an approval request is often followed by a
+    sentence on why it is needed)."""
     if any(tool["name"] == "AskUserQuestion" for tool in tools):
         return True
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return bool(lines) and lines[-1].endswith("?")
+    return any(line.endswith("?") for line in lines[-6:])
 
 
 def lines_outside_fences(text: str) -> int:
@@ -400,7 +401,8 @@ def _launch_and_wait_status(ctx: Context, project: Path, campaign: Path, wish: s
 
 
 def step_build_churn(ctx: Context) -> Dict[str, Any]:
-    project = Path(ctx.state["churn_project"])
+    # The fixture again, clean: the setup step's session may have touched it.
+    project = ctx.fixture("churn-first-build", "churn")
     campaign = ctx.work / "churn-campaign"
     ctx.state["churn_campaign"] = str(campaign)
     ctx.state["churn_launched_at"] = time.time()
