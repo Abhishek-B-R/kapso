@@ -790,8 +790,21 @@ def step_harness_improve(ctx: Context) -> Dict[str, Any]:
 
 
 def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
+    """A campaign of its own at a tiny budget, run on the installed
+    wheel with the plugin at user scope: its Claude Code sessions list
+    no plugin tool or command, its Codex sessions run (the isolation
+    lines must not break them) and carry the rules file."""
     started = time.monotonic()
-    campaign = Path(ctx.state["churn_campaign"])
+    project = Path(ctx.state["churn_project"])
+    campaign = ctx.work / "isolation-campaign"
+    if campaign.exists():
+        ctx.shell(f"kapso build --output {campaign} --stop", check=False)
+        shutil.rmtree(campaign)
+    launch = ctx.shell(
+        f"kapso build --brief kapso-brief.md --repo repo --evaluation evaluation --data data --output {campaign} "
+        "--budget-minutes 10 --budget-experiments 1 --detach", cwd=project, check=False,
+    )
+    wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 1200, every=20)
     findings = []
     # The implementation sessions' streams are `.kapso/sessions/<branch>/stream.jsonl`,
     # the ideation sessions' `.kapso/ideation/iter<n>/<host>_<model>.stream.txt`.
@@ -811,10 +824,21 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
                 })
                 break
     # A Codex session in the campaign carries the execpolicy rule in its
-    # workspace instead; the file's presence is the evidence.
+    # workspace instead; the file's presence and the session's exit are
+    # the evidence.
     rules = campaign / ".codex" / "rules" / "kapso-campaign.rules"
-    report = {"claude_sessions": findings, "codex_rules_file": rules.is_file()}
-    completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings)
+    codex_sessions = []
+    for record in sorted(campaign.rglob("session.json")):
+        data = json.loads(record.read_text(encoding="utf-8"))
+        if data.get("host") == "codex":
+            codex_sessions.append({"session": str(record.parent.relative_to(campaign)), "exits": [run.get("exit") for run in data.get("runs", [])],
+                                   "errors": [run.get("error") for run in data.get("runs", []) if run.get("error")]})
+    codex_ok = all(all(exit == 0 for exit in s["exits"]) for s in codex_sessions)
+    report = {
+        "launch": launch.stdout.strip().splitlines()[:3], "status": (status_of(campaign) or {}).get("state"),
+        "claude_sessions": findings, "codex_sessions": codex_sessions, "codex_rules_file": rules.is_file(),
+    }
+    completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings) and codex_ok and (rules.is_file() or not codex_sessions)
     return shell_step("campaign-session-isolation", completed, [ctx.artifact("isolation.json", json.dumps(report, indent=1))], (time.monotonic() - started) / 60)
 
 
