@@ -462,7 +462,11 @@ class S5:
             return shell_step(name, False, [self.ctx.artifact(f"{name}-mount.txt", mounted.stderr)], (time.monotonic() - started) / 60, ["the tmpfs could not be mounted (root on the machine is the requirement)"], kind="injection")
         log = self.out / "artifacts" / f"{name}-launch.log"
         campaign = self.launch(name, project, campaign=campaign, log=log)
-        self.wait_checkpoint(campaign, BUDGET["minutes"] * 60)
+        # Fill the disk while the writer is implementing (actively writing to
+        # the campaign dir), not at the first checkpoint: a node-0 that reaches
+        # the goal finishes before a post-checkpoint fill, and ENOSPC can only
+        # kill a writer that is still writing.
+        self.wait_phase(campaign, "implementation", BUDGET["minutes"] * 60)
         filler = mount / "filler"
         fill = subprocess.run(["dd", "if=/dev/zero", f"of={filler}", "bs=1M", f"count={INJECTIONS['tmpfs_mb'] + 8}", "status=none"], capture_output=True, text=True)
         injected_at = datetime.now(timezone.utc)
@@ -470,7 +474,7 @@ class S5:
         log_text = log.read_text(encoding="utf-8") if log.is_file() else ""
         filler.unlink(missing_ok=True)
         step = self._resume_after_writer_gone(name, project, campaign, injected_at, f"the disk has space again; continue the campaign at ../s5-{name}-disk/campaign",
-                                              f"a {INJECTIONS['tmpfs_mb']} MB tmpfs holding the campaign directory, filled after the first checkpoint; the writer dies with ENOSPC in the launch's log (kept outside the full disk; no try/except); the truth lives in the log and the receipt", started,
+                                              f"a {INJECTIONS['tmpfs_mb']} MB tmpfs holding the campaign directory, filled while the writer is implementing; the writer dies with ENOSPC in the launch's log (kept outside the full disk; no try/except); the truth lives in the log and the receipt", started,
                                               {"fill_said": fill.stderr.strip()[-200:], "enospc_in_log": bool(re.search(r"No space left on device|ENOSPC", log_text))})
         step["artifacts"].append(f"artifacts/{name}-launch.log")
         # Copy the whole campaign off the tmpfs and verify it BEFORE
