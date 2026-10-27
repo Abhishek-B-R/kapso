@@ -808,12 +808,19 @@ is now the rule above. The owner checks the decisions.
 **The round** (`scripts/redesign/plugin_proof.py`, the matrix's steps
 driven host by host as a scripted person: S2's steps without the
 simulated user and the judge; the records in the semantic shape, the
-budgets in `tests/semantic/budgets.json`, every report rendered by
-`tests/semantic/report.py`). The wheel built from the branch at
-`3e2ab47b` (sha256 `c16a36e9…`; the later commits touch the plugin, the
-examples, the scripts and the docs, which the machine reads from its
-clone); every skill file the hosts read is the branch's, installed from
-the clone as a local marketplace.
+budgets in `tests/semantic/budgets.json`, where the learn and review
+budgets allow the one offer their sessions may end on (the learn's
+serving line, a review's next step), every report rendered by
+`tests/semantic/report.py`). Two wheels: the one built from the branch
+at `3e2ab47b` (sha256 `c16a36e9…`) ran the first machine and the second
+machine's first pass; the Codex adapter's fix (`6db87600`) rebuilt it
+(sha256 `bb288573…`), and the second machine's reruns (the improve pass,
+the cold install, the share, the isolation campaign) and the development
+box's final pass ran on that one (a record's package line keeps its first
+pass's sha). The later commits touch the plugin, the examples, the
+scripts and the docs, which the hosts read from the clone; every skill
+file the hosts read is the branch's, installed from the clone as a local
+marketplace.
 
 **Two fresh machines** (`e2-standard-4`, Ubuntu 24.04, Claude Code
 2.1.311, the wheel as a uv tool, the examples' dependencies in a venv
