@@ -399,8 +399,10 @@ def step_cold_install(ctx: Context) -> Dict[str, Any]:
     if wheel.resolve() != Path("/tmp") / wheel.name:
         ctx.shell(f"sudo cp {wheel} /tmp/{wheel.name}")
     ctx.shell(f"sudo chmod 644 /tmp/{wheel.name}")
+    # From the user's own home: `kapso` reads `.env` from the working
+    # directory, and a directory the user cannot see is no place to run.
     script = (
-        "set -e; curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; "
+        "set -e; cd ~; curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; "
         f"uv tool install --python 3.12 /tmp/{wheel.name} >/dev/null 2>&1; echo kapso $(kapso --version); echo kapso-mcp $(kapso-mcp --version); "
         "echo which $(which kapso) $(which kapso-mcp)"
     )
