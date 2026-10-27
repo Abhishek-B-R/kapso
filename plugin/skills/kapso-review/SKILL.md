@@ -23,12 +23,14 @@ gates, hooks, delegates), its evaluation (score, valid, provenance), its verific
 `header`, `attempts[]`, `voided[]`, `failures[]`, `lessons[]`, `delivered`. Then the
 solution's own summary and the diff:
 
-```python
-from kapso import Solution
-solution = Solution.open("../churn-campaign")
-print(solution.explain())    # score, goal_achieved, branch, campaign, evaluator, experience, feedback
-print(solution.diff())       # the winning branch against the seed
+```bash
+cat ../churn-campaign/.kapso/solution.json      # score, goal_achieved, branch, commit, base_commit, evaluator, experience, feedback, stopped_reason
+git -C ../churn-campaign diff <base_commit> <commit> --stat   # the winning branch against the seed; drop --stat for the diff itself
 ```
+
+(`from kapso import Solution; Solution.open("../churn-campaign").explain()` says the same
+where the package is importable; an install through `uv tool` or `pipx` is not on the
+project's Python, so the files above are the form that always works.)
 
 ## 2. One message
 
@@ -57,6 +59,9 @@ In this order, under twelve lines plus the outline:
 "Is it safe to merge": answer from the verification verdicts, the integrity check
 (`rejected_candidates`), the rules in the brief and whether each held, and the diff;
 say what you could not check.
+Look too at whether the seed commit put the evaluation's `private/` labels into the
+branch's history (`git -C <campaign> log --stat -- kapso_evaluation/private`): a merge
+of the branch whole carries them into the repository, and the answer says so.
 
 ## Rules
 

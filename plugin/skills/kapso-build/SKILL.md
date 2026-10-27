@@ -94,8 +94,10 @@ kapso build --brief kapso-brief.md --repo . --evaluation evaluation --data data 
 - The handoff, in the same reply: the brief you passed, what you assumed and that
   the user's own criterion can replace it, the harness and its version when one is
   loaded, `kapso watch ../churn-campaign --follow --config kapso-config.yaml`, and
-  that `WAITING ON YOU` is a pause answered through `kapso inbox`. The run outlives
-  your tool call; do not poll it.
+  that `WAITING ON YOU` is a pause: `kapso inbox ../churn-campaign` shows the request,
+  and once what its fix line names is in place `kapso inbox reply ../churn-campaign <id>
+  "<note>" --detach` answers it (`/kapso:inbox` does both). The run outlives your
+  tool call; do not poll it.
 
 ## Rules
 

@@ -61,6 +61,8 @@ The skills are one file each under [`plugin/skills/`](https://github.com/Leeroo-
 /kapso:build get the churn model's ROC AUC above 0.85 without changing the prediction contract
 ```
 
+On Codex the same two steps are `$kapso-setup` and `$kapso-build …`. A session started before the setup sees the tools it installed after `/mcp` reconnects (Claude Code) or in a new session (Codex).
+
 Setup detects what the machine has, installs what is missing, starts the logins and shows you the links, asks only for the keys your next step needs, and ends when `kapso doctor build --json` is green: under five minutes, at most three questions. Build reads the repository in silence, hands the evaluation to `kapso-evaluation`, and sends one message: what it found with the evidence, the brief as `kapso-brief.md`, the evaluation's protocol when one was built or changed, and the one thing to confirm. On "go" it launches with `--detach` and hands you `kapso watch <campaign> --follow`. The campaign outlives the session; `WAITING ON YOU` is a pause answered through `/kapso:inbox`. See [Your first build](/docs/first-build) for what the campaign does from there.
 
 ## What a session is served
@@ -75,7 +77,7 @@ experience:
 
 That line serves every later session of the project your bank; `/kapso:learn` offers it once a campaign has been banked. It serves sessions, not builds: a build loads what its brief or `--experience` names. A listed source that does not exist leaves its tools off, named in the server's instructions with the line that makes it, and the server connects whatever is off. `kapso-mcp` reads `kapso-config.yaml` at the repository root when no `--config` is passed, and prints its version and config line on start. On Claude Code the server's state is under `/mcp` and its lines in the session's debug log; on Codex, `codex mcp list` and `~/.codex/log/`.
 
-A campaign's own sessions never get the plugin: the ideation, implementation and judge sessions Kapso starts run with it switched off, so a campaign never launches a campaign.
+A campaign's own sessions never launch a campaign. On Claude Code they run with the plugin switched off (no skill, no command, no campaign tool). Codex has no per-session switch, so there Kapso writes an execpolicy rule into each session's workspace that rejects `kapso build`, `kapso learn` and `kapso deploy`, and disables the plugin's server for the session: the skills' text may be read, the verbs are refused (verified live, the rule in a gitignored subdirectory of the clone included).
 
 ## The second engineer
 
@@ -87,7 +89,7 @@ kapso build --experience acme/kapso-bank@main --config kapso-config.yaml …   #
 kapso experience update --config kapso-config.yaml                           # them, whenever they want your newest lessons
 ```
 
-Their `session_sources` lists `acme/kapso-bank@main` beside `mine:all`, so their sessions are served it too, and `kapso experience list` shows it under the banks they read. To hand the plugin itself to everyone who opens the repository, Claude Code reads a marketplace from the project's settings:
+Their `session_sources` lists `acme/kapso-bank@main` beside `mine:all`, so their sessions are served it too (a session fetches a listed bank the first time its remote answers), and `kapso experience list` shows it under the banks they read. To hand the plugin itself to everyone who opens the repository, Claude Code reads a marketplace from the project's settings:
 
 ```json
 // .claude/settings.json

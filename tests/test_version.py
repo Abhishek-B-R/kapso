@@ -33,6 +33,9 @@ def test_the_plugin_carries_the_same_version():
         assert json.loads((root / "plugin" / manifest).read_text())["version"] == kapso.__version__, manifest
     launcher = (root / "plugin" / "scripts" / "kapso-mcp").read_text()
     assert re.search(r'^KAPSO_VERSION="([^"]+)"$', launcher, re.M).group(1) == kapso.__version__
+    # The setup skill's install line is the copy a user's machine acts on.
+    setup = (root / "plugin" / "skills" / "kapso-setup" / "SKILL.md").read_text()
+    assert set(re.findall(r"leeroo-kapso==([0-9A-Za-z.]+)", setup)) == {kapso.__version__}
 
 
 def test_the_two_commands_print_the_version(capsys):

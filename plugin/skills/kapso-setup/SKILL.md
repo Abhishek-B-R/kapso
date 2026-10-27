@@ -25,8 +25,10 @@ What you learn: the runtimes, which install method the machine has (`uv` first,
 `pipx` second, `pip` into the active environment last, never the global Python),
 whether `kapso` and `kapso-mcp` are on PATH and from one install (`kapso --version`
 and `kapso-mcp --version` agree), which CLIs exist and are logged in, which keys
-`.env` names (read the names only, with `grep -o '^[A-Z_]*='`), whether the project
-has a `kapso-config.yaml` or a harness directory.
+`.env` names (read the names only, with `grep -o '^[A-Z_]*='`; a
+`CLAUDE_CODE_OAUTH_TOKEN` there is Claude Code's login as far as Kapso's sessions
+are concerned, whatever `claude auth status` says), whether the project has a
+`kapso-config.yaml` or a harness directory.
 
 ## 2. Install what is missing
 
@@ -36,6 +38,12 @@ The package, pinned to this plugin's version:
 uv tool install "leeroo-kapso==0.8.0.dev1"      # else: pipx install "leeroo-kapso==0.8.0.dev1"; else, in the active venv: pip install "leeroo-kapso==0.8.0.dev1"
 ```
 
+- The index has no such version (a development build, until the release that
+  carries it): say so, and install the source the plugin came from, at the same
+  version: on Claude Code `uv tool install "${CLAUDE_PLUGIN_ROOT}/.."` (the
+  marketplace clone is the repository); on Codex `uv tool install "leeroo-kapso @
+  git+https://github.com/Leeroo-AI/kapso@redesign"`. Then `kapso --version` must
+  print the plugin's version.
 - Neither `uv` nor `pipx` present: install `uv` the way its site says
   (`curl -LsSf https://astral.sh/uv/install.sh | sh`), then the line above.
 - The PyPI package named `kapso` is an unrelated tool that shadows the command: if
@@ -49,9 +57,11 @@ uv tool install "leeroo-kapso==0.8.0.dev1"      # else: pipx install "leeroo-kap
 
 ## 3. Logins
 
-For each CLI that is not logged in, start the login, show the link and wait:
-`claude auth login`; `codex login` (`codex login --device-auth` on a machine without
-a browser). A code pasted back into a terminal is the user's to do; say so and wait.
+Run the doctor line of step 6 first: a CLI whose row is green needs no login (a token
+in `.env` counts). For each CLI the doctor reports as not logged in, give the user the
+command to run in their own terminal, `claude auth login` or `codex login`
+(`codex login --device-auth` on a machine without a browser), and wait for their word:
+a login started from a tool call ends with the call, and its link stops working.
 Re-check both statuses before going on.
 
 ## 4. The session's tools
@@ -107,8 +117,11 @@ own README (https://github.com/Leeroo-AI/leeroopedia-mcp).
 ## 8. Finish
 
 Three lines, then stop: what to run next on this repository (`/kapso:build <what you
-want>`), where the record will go (`<campaign>/.kapso/`), how to watch (`kapso watch
-<campaign> --follow`). Do not start a campaign.
+want>` on Claude Code, `$kapso-build <what you want>` on Codex; the tools this setup
+installed reach a session after `/mcp` reconnects on Claude Code, or in a new session
+on Codex), where the record will go (`<campaign>/.kapso/`, the campaign a sibling
+directory outside the repository), how to watch (`kapso watch <campaign> --follow`).
+Do not start a campaign.
 
 ## Rules
 

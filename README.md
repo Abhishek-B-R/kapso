@@ -86,7 +86,7 @@ codex plugin marketplace add Leeroo-AI/kapso && codex plugin add kapso@kapso    
 ```
 
 Then `/kapso:setup` installs and verifies, and `/kapso:build <what you want>`
-launches the first campaign. See [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills).
+launches the first campaign (on Codex: `$kapso-setup`, `$kapso-build <what you want>`). See [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills).
 
 **1. Prerequisites.** Kapso runs its inference through coding-agent CLIs
 (there is no direct-API fallback), so you need Node.js and both agent

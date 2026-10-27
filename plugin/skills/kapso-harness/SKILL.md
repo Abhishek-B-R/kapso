@@ -109,7 +109,10 @@ opened. Each is one edit:
 - a session improvised a procedure: a skill, or a script in one;
 - a judgment was wrong or missing: a delegate, asked by name on the page;
 - a mistake a tool call shows: a hook, denying with a reason;
-- a hook that never fired, a skill never opened: cut it.
+- a hook that never fired, a skill never opened: cut it only when the attempts show
+  its reason gone (the rule it kept no longer applies, or another component keeps
+  it); a protection that never tripped may mean the mistake never came, and one
+  run is no evidence.
 
 Propose the smallest edit in the cheapest form, with the attempt that shows the
 failure (its node and branch). On a word, apply it, bump `version` in

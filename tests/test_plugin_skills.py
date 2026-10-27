@@ -51,11 +51,24 @@ def fenced_bash_lines(text: str):
     return lines
 
 
+def inline_lines(text: str):
+    """The `kapso …` lines written inline in backticks, when they are
+    commands rather than mentions of a verb: a verb and a flag on the
+    line, no placeholder in angle brackets, no ellipsis."""
+    lines = []
+    for line in re.findall(r"`(kapso [^`]+)`", text):
+        if "--" in line and not line.split()[1].startswith("--") and "<" not in line and "…" not in line and line not in lines:
+            lines.append(line)
+    return lines
+
+
 def kapso_lines():
     found = []
     for source in [*sorted(SKILLS.rglob("SKILL.md")), *sorted(COMMANDS.glob("*.md"))] if COMMANDS.exists() else sorted(SKILLS.rglob("SKILL.md")):
-        for line in fenced_bash_lines(source.read_text(encoding="utf-8")):
-            found.append(pytest.param(source.relative_to(ROOT).as_posix(), line, id=f"{source.parent.name}: {line[:60]}"))
+        text = source.read_text(encoding="utf-8")
+        for copied, lines in ((True, fenced_bash_lines(text)), (False, inline_lines(text))):
+            for line in lines:
+                found.append(pytest.param(source.relative_to(ROOT).as_posix(), line, copied, id=f"{source.parent.name}: {line[:60]}"))
     return found
 
 
@@ -78,14 +91,17 @@ def test_a_skills_frontmatter_body_and_sidecar_meet_the_contract(skill):
         assert sidecar["policy"]["allow_implicit_invocation"] is True
 
 
-@pytest.mark.parametrize("source, line", kapso_lines())
-def test_every_kapso_line_parses_and_carries_the_projects_config(source, line):
-    """A line the agent copies must be one the CLI accepts, with
-    `--config kapso-config.yaml` wherever the verb takes a config."""
+@pytest.mark.parametrize("source, line, copied", kapso_lines())
+def test_every_kapso_line_parses_and_carries_the_projects_config(source, line, copied):
+    """A line the agent copies (a fenced one) must be one the CLI accepts,
+    with `--config kapso-config.yaml` wherever the verb takes a config; a
+    line mentioned inline must parse."""
     words = shlex.split(PLACEHOLDER.sub("x", line).replace("…", "x"))
     parser = build_parser()
     args = parser.parse_args(normalize_argv(words[1:]))
     takes_config = "config" in vars(args)
+    if not copied:
+        return
     if takes_config:
         assert args.config == "kapso-config.yaml", f"{source}: {line}"
     else:

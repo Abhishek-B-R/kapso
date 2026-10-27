@@ -30,7 +30,7 @@ campaign is `/kapso:build <what you want>`.
 .cursor-plugin/plugin.json   Cursor's manifest
 hosts/<host>/mcp.json        the MCP entry each host runs (Claude Code: the launcher below; Codex, Cursor: kapso-mcp on PATH)
 scripts/kapso-mcp            the launcher: the installed kapso-mcp, else the pinned release through uvx or pipx
-commands/                    /kapso:setup build watch inbox resume review learn deploy doctor harness experience
+commands/                    /kapso:setup build watch inbox resume review learn deploy harness experience
 skills/                      kapso, kapso-setup, kapso-build, kapso-evaluation, kapso-harness, kapso-review
 evals/                       the trigger suite
 ```

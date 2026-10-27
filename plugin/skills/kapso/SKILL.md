@@ -44,6 +44,10 @@ the end over reading the package source; a session that greps it runs out of tur
   is a pause answered through `kapso inbox`. The status file appears within seconds
   (phase `setup` first, minutes long), so do not poll the log or arm monitors unless
   asked. Never run `kapso build` without `--detach` from a tool call.
+- When the host's shell tool cannot keep a child alive past the call (a sandbox
+  that ends it) or Bash is restricted, launch through the session's
+  `kapso_build_start` tool instead; `kapso_status` and `kapso_stop` are the watch
+  and the stop the same way.
 - A run that ends with `WAITING ON YOU` has paused, not failed (exit code 0). Do not
   restart it; reply through the inbox (below).
 - A build is served exactly the experience it loads (`--experience`, the brief's
