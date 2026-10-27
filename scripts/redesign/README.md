@@ -36,6 +36,47 @@ runs and the semantic suite.
 wheel sha256, install log, run logs, deletion line). It is gitignored except
 for the files a sub-plan cites as evidence.
 
+## semantic.sh
+
+```
+scripts/redesign/semantic.sh <s1|s2|s4|s5|s6|author> <host> [--machine <id>] [--advisory "<reason>"] [-- <driver flags>]
+```
+
+One semantic test, one host, from one line (`tests/semantic/suite.json`
+is the contract; the drivers are the `s*_*.py` and `author_test.py` and
+`plugin_proof.py` beside this file). It:
+
+1. **preflights** every role's route — the judge's Vertex route
+   (`judge.py --preflight`), the host CLI's login, and the Codex key's
+   credit with one small call (statuses only, never the key);
+2. provisions a fresh machine with the test's run cap
+   (`suite.json` → `machine.max_run`, as `KAPSO_FRESH_MAX_RUN`), installs
+   the wheel built from this branch (`uv build`), and installs the
+   **fixtures' dependency venv first on PATH** — the examples'
+   `requirements.txt` (numpy, pandas, scikit-learn for the churn and
+   fraud fixtures; `duckdb==2.0.0`, `dbt-core==1.12.6`,
+   `dbt-duckdb==1.11.1` for `pipeline-dbt`), so the generator, the
+   evaluator and `predict.py` all resolve them;
+3. unpacks the test scaffold (the drivers, the suite, the fixtures under
+   `examples/`, the docs — not the product, which is the installed
+   wheel) into `~/kapso-clone`, runs the driver under an immutable run
+   id, **archives** the whole run under
+   `scripts/redesign/runs/wp9/<run_id>/` (the create/install/wheel logs,
+   the driver log, the fetched `out/` with the record, transcripts,
+   artifacts and judge directory), **verifies** the record is fetched,
+   then **deletes** the machine;
+4. **judges and reports on the development box** (its Vertex route, never
+   the machine): `judge.py --rubric <r>` for a test with a judge (s1, s2,
+   s4, author), then `--grade` where a driver scores its own metrics (s4,
+   author), then `tests/semantic/report.py` into
+   `tests/semantic/reports/<run_id>.md` with the verdict's exit status.
+
+`--advisory "<reason>"` runs the driver on the development box under a
+fresh Linux user that holds nothing of the checkout — the flow, not its
+smoothness — and marks the record; a test whose roles need Codex credit
+the fresh machine lacks runs this way until the credit exists. The judge
+always runs on the development box.
+
 Why an API key for Codex on the machine: a copied ChatGPT session is
 single-holder, and the copy that refreshes on the machine revokes the
 development box's, which runs the long campaigns. The Claude token is the

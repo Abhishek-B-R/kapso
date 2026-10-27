@@ -139,6 +139,27 @@ def test_an_advisory_record_passes_its_steps_and_is_never_a_fresh_machine_accept
     assert "Result: PASS, advisory (the development box; not a fresh-machine acceptance)" in text
 
 
+def test_every_driver_is_the_suite_test_it_claims_and_covers_its_required_steps():
+    """Each standalone driver's step names are the suite's required steps
+    for the test it writes, so a driver and the suite never drift (the
+    plugin round, S2, is a superset of its required steps; the rest match
+    exactly)."""
+    drivers = {
+        "S1": ("s1_cold_engineer", "s1_cold_engineer.py"),
+        "S4": ("s4_reading", "s4_reading.py"),
+        "S5": ("s5_injections", "s5_injections.py"),
+        "S6": ("s6_experience", "s6_experience.py"),
+        "author": ("author_test", "author_test.py"),
+    }
+    for test, (module_name, filename) in drivers.items():
+        module = _load(module_name, ROOT / "scripts" / "redesign" / filename)
+        required = SUITE["tests"][test]["required_steps"]["claude_code"]
+        assert module.STEP_NAMES == required, f"{test}: {module.STEP_NAMES} != {required}"
+        assert set(module.STEP_NAMES) <= set(SUITE["steps"])
+    # The plugin round (S2) runs a superset of S2's required steps.
+    assert set(SUITE["tests"]["S2"]["required_steps"]["claude_code"]) <= set(proof.STEP_NAMES)
+
+
 def test_the_suite_knows_every_step_the_drivers_run_and_its_entries_hold_their_shape():
     assert set(proof.STEP_NAMES) <= set(SUITE["steps"]), sorted(set(proof.STEP_NAMES) - set(SUITE["steps"]))
     for test in SUITE["tests"].values():

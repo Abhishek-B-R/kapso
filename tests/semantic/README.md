@@ -11,10 +11,21 @@ GCP machine, installs the package, runs, and deletes it.
 tests/semantic/
 ├── README.md            this contract
 ├── conftest.py          keeps pytest out
-├── personas/            one card per simulated user (below)
-├── report.py            renders one run's record as the markdown report
+├── suite.json           the one home: per test its steps, bars and judge; the knobs
+├── personas/            one card per simulated user (below), and prompt.md
+├── rubrics/             one markdown rubric per judged test (s1, s2, s4, author)
+├── report.py            renders one run's record as the markdown report, with the verdict
 └── reports/             the reports, one per run (gitignored except the ones cited in a sub-plan)
 ```
+
+The drivers live beside the other redesign tooling under
+`scripts/redesign/`: `s1_cold_engineer.py`, `s4_reading.py`,
+`s5_injections.py` (with `status_timeline.py` and `enrichment_service.py`),
+`s6_experience.py`, `author_test.py`, the persona `simulated_user.py`, the
+`judge.py`, and `plugin_proof.py` (S2). `scripts/redesign/semantic.sh`
+runs one test on one host end to end (preflight, a fresh machine, archive,
+verify, delete, judge and report on the development box); its README has
+the contract.
 
 ## Fixtures
 
@@ -33,8 +44,8 @@ Generated data is never committed.
 | `examples/churn-first-build` | tabular, evaluator present, baseline 0.797 AUC (SE 0.010) with 0.832 reachable by boosting alone | built (WP0, moved under the examples in WP1) |
 | `examples/fraud-no-evaluator` | labelled data and a protocol, no evaluator | built (WP1), not yet run |
 | `empty-wish` | a README and nothing else | the driver writes it (a directory holding one README is no example); run in WP7's round |
-| `examples/trading` | the author's fixture (the design's `trading-strategy`) | built (WP2); the interview, the probe and the improve pass run in WP7's round |
-| `examples/pipeline-dbt` | the third domain for the guide's test | WP9 |
+| `examples/harnesses/trading` | the author's fixture (the design's `trading-strategy`) | built (WP2); the interview, the probe and the improve pass run in WP7's round |
+| `examples/pipeline-dbt` | the third domain for the guide's test (dbt on DuckDB, shipped 2/13) | built (WP9); the author test's second round |
 
 The evaluator contract every fixture meets: one command from the workspace
 root; the metric on its own line as the last line, `name: value`; a
