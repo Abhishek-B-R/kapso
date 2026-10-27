@@ -586,7 +586,7 @@ def step_harness_new(ctx: Context) -> Dict[str, Any]:
     # in the README) or under the project: both are the person's.
     manifests = [
         path for path in (*project.rglob("harness.yaml"), *(ctx.work / "harnesses").rglob("harness.yaml"))
-        if "campaign" not in path.parts and (ctx.work / "harnesses").exists() or path.is_relative_to(project)
+        if "campaign" not in path.parts
     ]
     artifacts = [ctx.artifact("harness-new-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     green = False
