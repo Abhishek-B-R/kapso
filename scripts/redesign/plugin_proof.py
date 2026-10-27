@@ -177,7 +177,7 @@ class Context:
         self.state_file.write_text(json.dumps(self.state, indent=1) + "\n", encoding="utf-8")
 
     def shell(self, command: str, cwd: Optional[Path] = None, timeout: int = 1800, check: bool = True) -> subprocess.CompletedProcess:
-        run = subprocess.run(["bash", "-lc", command], capture_output=True, text=True, cwd=str(cwd or self.work), timeout=timeout)
+        run = subprocess.run(["bash", "-c", command], capture_output=True, text=True, cwd=str(cwd or self.work), timeout=timeout)
         with open(self.out / "shell.log", "a", encoding="utf-8") as log:
             log.write(f"$ {command}\n{run.stdout}{run.stderr}[exit {run.returncode}]\n")
         if check and run.returncode != 0:
@@ -372,7 +372,9 @@ def step_cold_install(ctx: Context) -> Dict[str, Any]:
     wheel = ctx.wheel
     user = "proof2"
     ctx.shell(f"id -u {user} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {user}")
-    ctx.shell(f"sudo cp {wheel} /tmp/{wheel.name} && sudo chmod 644 /tmp/{wheel.name}")
+    if wheel.resolve() != Path("/tmp") / wheel.name:
+        ctx.shell(f"sudo cp {wheel} /tmp/{wheel.name}")
+    ctx.shell(f"sudo chmod 644 /tmp/{wheel.name}")
     script = (
         "set -e; curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; "
         f"uv tool install --python 3.12 /tmp/{wheel.name} >/dev/null 2>&1; echo kapso $(kapso --version); echo kapso-mcp $(kapso-mcp --version); "
