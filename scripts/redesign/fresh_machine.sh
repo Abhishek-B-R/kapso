@@ -85,10 +85,19 @@ cmd_run() {
 }
 
 cmd_fetch() {
-  local id="$1" remote="$2" name; name="$(name_of "$id")"
+  local id="$1" remote="$2" name rel; name="$(name_of "$id")"; rel="${remote#\~/}"
   mkdir -p "$RUNS/$id/fetched"
-  gcloud compute scp --recurse "ubuntu@$name:$remote" "$RUNS/$id/fetched/" --project "$PROJECT" --zone "$ZONE" --quiet
-  echo "fetched $remote into $RUNS/$id/fetched/"
+  # One compressed stream, not a recursive scp. scp --recurse dereferences a
+  # venv's lib64 -> lib symlink (copying site-packages twice) and pays a round
+  # trip per tiny file -- an S1 run's throwaway venv alone is ~1 GB of bytecode.
+  # tar keeps symlinks and drops the reproducible bulk (venvs, caches, .pyc)
+  # the record never needs; every transcript and build artifact stays.
+  gcloud compute ssh "ubuntu@$name" --project "$PROJECT" --zone "$ZONE" --quiet \
+    --command "tar -C \"\$HOME\" -czf /tmp/fetch.tgz --exclude='*/venv' --exclude='*/.venv' --exclude='*/__pycache__' --exclude='*.pyc' --exclude='*/.cache' '$rel'"
+  gcloud compute scp "ubuntu@$name:/tmp/fetch.tgz" "$RUNS/$id/fetched.tgz" --project "$PROJECT" --zone "$ZONE" --quiet
+  tar -C "$RUNS/$id/fetched" -xzf "$RUNS/$id/fetched.tgz"
+  rm -f "$RUNS/$id/fetched.tgz"
+  echo "fetched $remote into $RUNS/$id/fetched/ (venvs, caches and bytecode excluded)"
 }
 
 cmd_delete() {
