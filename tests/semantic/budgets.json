@@ -4,6 +4,7 @@
   "setup": {"messages": 10, "questions": 3, "minutes": 5, "longest_message_lines": 40},
   "cold-install": {"minutes": 10},
   "build-churn": {"messages": 3, "questions": 2, "minutes": 5, "longest_message_lines": 24},
+  "build-pause": {"messages": 3, "questions": 2, "minutes": 5, "longest_message_lines": 24},
   "watch": {"messages": 2, "questions": 0, "minutes": 2, "longest_message_lines": 8},
   "inbox": {"messages": 3, "questions": 1, "minutes": 5, "longest_message_lines": 20},
   "review": {"messages": 2, "questions": 0, "minutes": 5, "longest_message_lines": 24},

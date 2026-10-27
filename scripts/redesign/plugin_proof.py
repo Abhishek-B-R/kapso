@@ -42,8 +42,9 @@ CHURN_WISH = (
 )
 PAUSE_WISH = (
     "get the churn model's ROC AUC above 0.85; one rule for the brief: before training, the enrichment table "
-    "must be fetched with the DATA_API_KEY from .env (ask me for it if it is missing); the campaign goes to "
-    "../churn-pause-campaign with a budget of 10 minutes and 1 experiment"
+    "must be fetched from the enrichment service with the DATA_API_KEY in .env, and a session that lacks the key "
+    "asks for it through the inbox. Launch now without asking me for the key: the campaign's own session asks "
+    "when it needs it. The campaign goes to ../churn-pause-campaign with a budget of 10 minutes and 1 experiment"
 )
 FRAUD_WISH = (
     "build a fraud scorer on data/transactions.csv that beats the rule-based one in score.py, and prove it; "
@@ -51,7 +52,7 @@ FRAUD_WISH = (
 )
 # The order the round runs in; the budgets file bounds every name.
 STEP_NAMES = [
-    "install", "setup", "cold-install", "build-churn", "watch", "triggers", "harness-export", "campaign-tools",
+    "install", "setup", "cold-install", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools",
     "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review",
     "deploy", "learn", "learn-complete", "session-brief", "experience-share", "harness-improve",
     "campaign-session-isolation", "cold-start",
@@ -290,7 +291,7 @@ def shell_step(name: str, completed: bool, artifacts: Sequence[str], minutes: fl
 def go_policy(text: str, index: int) -> Optional[str]:
     lower = text.lower()
     if "key" in lower and ("api" in lower or ".env" in lower or "token" in lower):
-        return "I have no key for that; continue without it."
+        return "Launch anyway: the campaign's own session asks through the inbox when it needs the key. Go."
     return "go"
 
 
@@ -409,14 +410,21 @@ def step_build_churn(ctx: Context) -> Dict[str, Any]:
     ctx.state["churn_launched_at"] = time.time()
     ctx.save()
     result = _launch_and_wait_status(ctx, project, campaign, CHURN_WISH, "build-churn")
-    # The injected pause, for the inbox step, launched beside it at a tiny budget.
-    pause_project = ctx.fixture("churn-first-build", "churn-pause")
-    pause = ctx.work / "churn-pause-campaign"
-    ctx.state["pause_campaign"] = str(pause)
+    return record_step("build-churn", result["turns"], result["launched"] and result["brief"], result["artifacts"])
+
+
+def step_build_pause(ctx: Context) -> Dict[str, Any]:
+    """The injected pause for the inbox step: a brief rule naming a key
+    `.env` lacks, launched beside the churn campaign at a tiny budget."""
+    project = ctx.fixture("churn-first-build", "churn-pause")
+    campaign = ctx.work / "churn-pause-campaign"
+    if campaign.exists():
+        ctx.shell(f"kapso build --output {campaign} --stop", check=False)
+        shutil.rmtree(campaign)
+    ctx.state["pause_campaign"] = str(campaign)
     ctx.save()
-    pause_result = _launch_and_wait_status(ctx, pause_project, pause, PAUSE_WISH, "build-pause")
-    notes = [f"the pause campaign launched: {pause_result['launched']} (its transcript is build-pause.jsonl, its turns are not counted here)"]
-    return record_step("build-churn", result["turns"], result["launched"] and result["brief"], result["artifacts"] + pause_result["artifacts"], notes)
+    result = _launch_and_wait_status(ctx, project, campaign, PAUSE_WISH, "build-pause")
+    return record_step("build-pause", result["turns"], result["launched"] and result["brief"], result["artifacts"])
 
 
 def step_watch(ctx: Context) -> Dict[str, Any]:
@@ -717,6 +725,7 @@ def step_cold_start(ctx: Context) -> Dict[str, Any]:
 
 STEPS: Dict[str, Callable[[Context], Dict[str, Any]]] = {
     "install": step_install, "setup": step_setup, "cold-install": step_cold_install, "build-churn": step_build_churn,
+    "build-pause": step_build_pause,
     "watch": step_watch, "triggers": step_triggers, "harness-export": step_harness_export, "campaign-tools": step_campaign_tools,
     "inbox": step_inbox, "build-fraud": step_build_fraud, "build-data-only": step_build_data_only,
     "build-empty-wish": step_build_empty_wish, "harness-new": step_harness_new, "harness-probe": step_harness_probe,
