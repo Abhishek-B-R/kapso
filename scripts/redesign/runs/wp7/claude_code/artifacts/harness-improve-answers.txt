@@ -1,0 +1,52 @@
+I read the probe run's trace and the tool calls in its implementation, verification and setup sessions. The run went well: one attempt reached Sharpe 1.97 against a target of 1.0, and verification rated it valid. The trace still shows three problems the harness can fix. Nothing has been edited yet.
+
+## What the run showed
+
+**1. The attempt wrote a notes file into the evaluator's directory, and no rule stopped it.** The implementation session (node 0, `generic_exp_0` @ 1b4a275) created `kapso_evaluation/eval_profile.md`. The verifier flagged this and let it through. Two parts of the harness allowed it:
+- The `protect-prepared` hook only blocks writes to `prepared/market-data/`, so `kapso_evaluation/` has no protection.
+- Check 3 in `verification.md` says the diff must not touch `kapso_evaluation/`. Every attempt fails that literally, because the evaluator commits its own `result.json` there. So the verifier has to judge it each time, and this time it let a new file through.
+
+**2. Both sessions wrote the same look-ahead test by hand.** The implementation and verification sessions each wrote their own Python test with the same idea: compute `signal()` on shortened histories (the first 150, 300, 500… bars) and check the values match the full run exactly. This was the strongest look-ahead evidence in the run. The `lookahead-scan` skill only searches the code text, so this test isn't in the harness.
+
+**3. The block on the held-out bars also blocked a harmless write.** The `deny-oos-read` hook stops any command containing the name of the evaluator's pointer file, `private_dir.txt`. It fired twice:
+- **Correctly:** setup and verification both tried to `cat kapso_evaluation/private_dir.txt`, and the hook stopped them.
+- **Wrongly:** the verifier's heredoc writing `verdict.json` was blocked because its summary mentioned the file by name. The verifier got through by switching to the Write tool and changing "references private_dir.txt" to "names the evaluator's pointer file". So the hook pushes the verifier to reword its evidence.
+
+**Not the harness's problem:** both `engine/repo_memory` Codex sessions crashed with `config.toml: invalid transport in mcp_servers.kapso`. That's the Codex setup on this machine, so I'd fix it there.
+
+**Left alone:** the `lookahead-auditor` reviewer was never called, which is what the rules say should happen when the scan finds nothing. One run isn't enough reason to remove it.
+
+## Proposed edits, in order
+
+| # | Fix | Type of change | Files |
+|---|---|---|---|
+| 1 | Block tool writes under `kapso_evaluation/`, as well as `prepared/market-data/`, and rename the hook `protect-pinned`. Reword check 3 to: "`evaluate.py` is unchanged and nothing under `kapso_evaluation/` is added except the `result.json` the evaluator writes". Add one line to `implementation.md`: "notes go in `changes.log`". | hook + two page lines | `hooks/protect-pinned/`, `harness.yaml`, `implementation.md`, `verification.md` |
+| 2 | Add `scripts/causality.py` to `lookahead-scan`. It loads `strategy.py`, runs `signal()` on several shortened histories of each development file, and exits 1 if any value differs. Add a line to `SKILL.md` saying when to run it. Both pages already name this skill, so no page changes. | script inside an existing skill | `skills/lookahead-scan/` |
+| 3 | Let `deny-oos-read` allow writes whose target is under `.kapso/` (verdicts, notes) but keep blocking every read. | hook narrowed | `hooks/deny-oos-read/deny_oos_read.py` |
+
+After the edits I'll change the version from 0.1.0 to 0.2.0 and run `kapso harness check ./trading`. You can't resume this campaign with the changed harness; the next campaign will use 0.2.0.
+
+Should I apply all three, or only some of them?
+I've made all three changes. `kapso harness check ./trading` passes with no failures and no warnings, and the harness is now version 0.2.0.
+
+**1. The evaluator's directory is now protected.**
+- **Hook:** `protect-prepared` is renamed `protect-pinned`. It now blocks tool writes under `kapso_evaluation/` as well as `prepared/market-data/`, and the denial message says notes go in `changes.log`. The evaluator still writes its own `result.json`, because that's a running program, not a tool call. It also no longer scans the text inside quoted heredocs. Before, a note that merely mentioned the path after a `>` could be blocked.
+- **Verification check 3:** now says `evaluate.py` and the snapshot are untouched, and nothing is added under `kapso_evaluation/` except `result.json`. Every attempt can now pass it as written.
+- **Implementation page:** one added line saying `kapso_evaluation/` is read-only and notes go in `changes.log`.
+
+**2. The causality test is now part of `lookahead-scan`.** The new `scripts/causality.py` runs `signal()` on the first 20/40/60/80/95% of each development file and checks the values match the full run. It exits 1 on any difference. `SKILL.md` tells sessions to quote its output. On the winning attempt it reports all three instruments causal (difference 0). On a test strategy that uses `shift(-1)` it flags all three and exits 1.
+
+**3. `deny-oos-read` no longer blocks harmless writes.** It now allows a Write into `.kapso/` and ignores the body of a quoted heredoc written there. It still searches the rest of the command. Two ways around it stay blocked:
+- an unquoted heredoc whose `$(cat …private_dir.txt)` would run
+- a heredoc followed by `cat private_dir.txt`
+
+I replayed every tool call from the probe's verification, implementation, setup and feedback sessions through both hooks:
+- **Still blocked, correctly:** the two `cat private_dir.txt` reads and the attempt's write of `eval_profile.md`.
+- **Now allowed:** the verifier's `verdict.json` heredoc.
+- **No other change:** the only other hits are setup's own writes to `prepared/market-data/`, and setup doesn't load `protect-pinned`.
+
+The probe checkout is as I found it. Its branch was already `generic_exp_0` before I ran anything, and nothing was stashed.
+
+Still open:
+- **Codex `repo_memory` crashes:** these come from this machine's Codex `config.toml` (`mcp_servers.kapso` transport), not the harness.
+- **Next run:** the next campaign will use 0.2.0, because a resume refuses a changed harness. A second probe run would show whether the attempts now run `causality.py` and stay out of `kapso_evaluation/`. I can set one up through the build flow if you want.

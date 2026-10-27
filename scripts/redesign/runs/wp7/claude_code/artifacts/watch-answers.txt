@@ -1,0 +1,11 @@
+**Running** (pid 4387, last heartbeat 02:28): iteration 1 started at 02:27 and is in the ideation phase.
+**Best score:** none yet, since no attempt has been evaluated.
+**Budget:** 1.0 of 60 min used (1.5 min held in reserve). No harness or experience bank is attached, so check back after the first evaluation.
+
+---
+
+The campaign is running and only just started, about 2 minutes ago (02:27 UTC). It's on iteration 1, in the ideation phase. Its last heartbeat was 7 seconds before I checked, and the process (pid 4387) is alive.
+
+There's no best score yet, because nothing has been evaluated so far.
+
+Budget: 2 of 60 minutes used, with a cap of 3 experiments.

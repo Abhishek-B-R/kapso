@@ -1,0 +1,8 @@
+Wrote /home/ubuntu/kapso-src/scripts/redesign/runs/wp7-triggers/claude-triggers-20261027T020414/triggers.json
+exit=0
+Claude Code 2.1.311: 10 of 10 cases at the threshold; mean score 1.00; $1.41; 72s
+
+| skill | kind | cases | perfect | below |
+|---|---|---|---|---|
+| holdout | holdout | 10 | 10 | - |
+/home/ubuntu/kapso-src/scripts/redesign/runs/wp7-triggers/claude-triggers-20261027T020414

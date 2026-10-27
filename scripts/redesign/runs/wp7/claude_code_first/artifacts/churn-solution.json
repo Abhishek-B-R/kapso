@@ -1,0 +1,57 @@
+{
+  "schema_version": 5,
+  "brief": {
+    "objective": "Raise the churn model's out-of-sample ROC AUC above 0.85\nwithout changing the prediction contract: predict.py keeps\nwriting id,churn_probability for every holdout id.",
+    "measured_by": "kapso_evaluation/evaluate.py, ROC AUC on the 3,000 held-out rows\n(last line `auc: X`); --fast scores are smoke checks only",
+    "baseline": "0.7974 (the shipped logistic regression, bootstrap SE 0.010)",
+    "target": "0.85",
+    "rules": [
+      "the evaluator is never modified",
+      "no fitting on the holdout rows; the labels are not in the workspace",
+      "`python predict.py --data kapso_datasets --out predictions.csv` and its\ntwo-column output stay exactly as they are"
+    ],
+    "budget": {
+      "minutes": 30.0,
+      "experiments": 3,
+      "usd": null,
+      "reserve_minutes": null
+    },
+    "harness": null,
+    "experience": []
+  },
+  "branch": "generic_exp_0",
+  "commit": "e670ca44c514316a90db8ec2ccaf51f844bdf9ed",
+  "base_commit": "4c6e96f1284a1bdd7d07341bff869e8d75738bde",
+  "score": 0.845,
+  "goal_achieved": false,
+  "stopped_reason": "budget_exhausted",
+  "stop_detail": "attempt_would_not_fit",
+  "experiments": 1,
+  "experiments_total": 1,
+  "cost_usd": 3.0937605,
+  "requests": [],
+  "feedback": "## Verdict: real progress, target missed by ~0.5 SE. One experiment's worth of budget remains \u2014 spend it on genuine CV gain, not a re-roll.\n\nHoldout **0.8450** vs baseline 0.7974 (+0.0476) and target 0.850. Gap to bar: **\u22120.0050 \u2248 0.5 bootstrap SE** (SE \u2248 0.009\u20130.010). The evaluation is fair and untampered: `evaluate.py` is byte-identical to the governed version, no holdout labels were read, `predictions.csv` is 3,000 rows of `id,churn_probability`, and the command line is unchanged. Integrity is clean.\n\n### FIRST ACTION \u2014 bank the champion\n`generic_exp_0` (commit `e670ca4`, auc 0.8450) is the champion; `main` still carries the 0.7974 baseline `predict.py`. **Branch iteration 2 from `generic_exp_0`, not from `main`.** Any regression below 0.8450 must be discarded rather than shipped.\n\n### Orphaned value found (cash these in, do not recompute)\n1. **`output_data_generic_exp_0/cv_check.py` computed `oof_h` and `oof_s` for all 10,000 rows and threw both away** \u2014 it printed AUCs only. That is the single most expensive asset the session produced and it was discarded. Iteration 2's first 3 minutes: re-run it once with `np.save` on both OOF vectors, then every subsequent blend weight, stacker, or new-member evaluation costs seconds instead of minutes.\n2. The per-stratum OOF table and iteration-curve sweep in `kapso_evaluation/eval_profile.md` are valid prepared state \u2014 **the iteration count is settled** (fold best iters [145,106,117,111,108] \u2192 135, OOF peaks exactly there; 150\u21920.8507, 250\u21920.8487, 400\u21920.8452). Do not re-tune `max_iter`; that direction is closed with evidence.\n3. No better-scoring artifact exists anywhere in the workspace. `result.json`, `predictions.csv`, and the commit message all agree on 0.8450, and the scored code is the shipped code (the 01:54 eval crashed on a nonexistent `best_iteration_`; the 01:56 re-run after the fix is the one that scored). Nothing was left unread.\n\n### Score realism \u2014 do not misread the shortfall\nThe CV\u2192holdout gap is \u22120.0099 \u2248 1 SE, fully consistent with draw noise rather than a broken design. Two conclusions follow, and the second one matters more:\n- The blend architecture is **not** the problem; don't redesign what works.\n- **Re-submitting this lineage with cosmetic variation (new seeds, 0.55/0.45 instead of 0.60/0.40, another refit) is validation-polishing with zero expected return.** A CV 0.8549 model has roughly even odds of landing under 0.850 on any single 3,000-row draw. To clear the bar reliably you need **CV \u2248 0.865+**, i.e. a real **+0.010\u20130.015 OOF**, not a favourable draw. Treat any change under +0.004 OOF as noise and do not ship on it.\n\n### Where to aim (ranked by expected return per minute)\n1. **The `not_m2m` segment \u2014 46% of rows at OOF 0.8154 vs 0.8393 for m2m.** This is the largest *globally weighted* deficit and it has an obvious cause in the code: `add_features()` builds `is_m2m`, `m2m_x_tenure`, `m2m_x_mc` and nothing else, so the 4,615 non-month-to-month rows carry **no contract interaction terms at all** in the linear branch. Add the symmetric block (one-year / two-year \u00d7 `tenure_months`, \u00d7 `monthly_charges`, \u00d7 `late_payments`, \u00d7 `usage_trend`, plus `contract`-indexed versions of `trouble` and `late_per_tenure`). Cheap, structural, and aimed at half the data.\n2. **A genuinely different combiner.** The fixed 0.60/0.40 rank blend was a defensible anti-overfit choice, but a stacked meta-learner over nested-CV OOF predictions is structurally different, not a weight tweak. With the OOF vectors saved from item 1 above this costs almost nothing to evaluate.\n3. **An untried input representation, not an untried model.** Closed by *measurement* last iteration: ExtraTrees (0.8389), MLP (0.8324), multi-config GBM bagging (0.8507) \u2014 all got \u22480 blend weight. These are strong priors, not bans: a variant that changes the *representation* fed to them (CV-fold target encoding of the 7 categoricals, degree-2 interaction expansion on the 9 numerics under L1/elastic-net) addresses the recorded cause \u2014 member correlation \u2014 and is fair game. Evidence that would reopen a tree/net member: it scores \u22650.845 standalone *and* earns non-zero weight in an OOF stack.\n4. **De-prioritize the missing-value strata** (`mc_missing` 0.7586 on 221 rows, `ut_missing` 0.7534 on 204). `eval_profile.md` ranks them first because they look worst per-stratum, but at ~4% of rows they cannot move an unweighted global AUC by more than ~0.001\u20130.002 even if fixed perfectly. This is the profile's own trap; don't walk into it.\n\n### Time allocation grade: B\u2212\nReconstructed from the session stream (implementation 01:49:47\u201302:01:19, ~11.5 min; campaign at 20/30 min):\n- **Time-to-first-strong-score: good.** 0.8450 landed at ~17 min of 30 campaign-minutes \u2014 well inside budget, on a single bold architecture swap that returned +0.0476. **That allocation was correct and is praised explicitly:** going straight from recon to the full blend, with one CV insurance point, beat any incremental ladder.\n- **Critical-path velocity: good.** One validated artifact, +0.0476, in ~11.5 min of session time.\n- **Confirmation overhead: the weak axis (~6.2 min, 54% of session).** 3.0 min re-deriving a CV number already measured during ideation; 1.7 min lost to the `best_iteration_` crash; 2.2 min on the post-hoc iteration sweep; ~1 min writing `eval_profile.md` *before* any score existed. The sweep's stratum table is reusable, so this was not pure waste \u2014 but the iteration-curve half returned \"no change needed.\"\n- **Counterfactual ledger:** ~5.2 compute-min of confirmation beyond one cheap insurance point \u2248 the symmetric non-m2m contract-interaction block plus one OOF weight re-search \u2248 +0.003\u20130.008 CV \u2248 exactly the 0.5 SE separating 0.8450 from the bar: **net-negative**. Separately, the 1.7-min crash was avoidable for ~10 seconds \u2014 PLAN.md step 1 verified the pandas-3 dtype gotcha but never checked that `best_iteration_` exists in sklearn 1.9.1 (it does not; `validation_score_` was the right source). Verify every attribute you plan to read, not just the one you were warned about.\n- **PLAN.md adherence \u2014 two instances of undeclared drift (finding).** Declared confirmation point (a), \"baseline `--fast` green pre-change,\" was **never run** and no revision was stated; an unplanned fourth confirmation (`diag.py`) was added instead, also unstated. Both were arguably fine calls \u2014 the full eval supersedes `--fast`, and `diag.py` produced the one reusable table \u2014 but silently swapping your declared confirmation set is the drift. Freeze time (25 min) was respected. Next iteration: if you drop or add a confirmation point, write the revision down as a revision.\n\n### Scoping for the remaining budget\n~8.5 usable minutes and 1 realistic experiment remain. Do **one** structural change (item 1, optionally plus item 2 off the cached OOF), screen it against the saved OOF baseline, ship only if OOF improves by >+0.004, then one full `evaluate.py` run (predict.py is only ~12 s, so the eval itself is nearly free \u2014 the cost is all in screening). Do not start a third branch you cannot validate.\n\n### Invariants (immutable, carry forward verbatim)\n- the evaluator is never modified\n- no fitting on the holdout rows; the labels are not in the workspace\n- `python predict.py --data kapso_datasets --out predictions.csv` and its two-column output stay exactly as they are",
+  "evaluator": null,
+  "harness": null,
+  "experience": [],
+  "verification": null,
+  "rejected_candidates": 0,
+  "callback_metrics": {},
+  "callback_primary_metric": null,
+  "session_failures": [
+    {
+      "label": "engine/repo_memory/1",
+      "module": "engine",
+      "host": "codex",
+      "exit": "error",
+      "error": "Codex CLI exited with code 1: Error loading config.toml: invalid transport\nin `mcp_servers.kapso`\n\n"
+    },
+    {
+      "label": "engine/repo_memory/2",
+      "module": "engine",
+      "host": "codex",
+      "exit": "error",
+      "error": "Codex CLI exited with code 1: Error loading config.toml: invalid transport\nin `mcp_servers.kapso`\n\n"
+    }
+  ]
+}

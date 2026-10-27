@@ -1,0 +1,65 @@
+{
+  "schema_version": 5,
+  "brief": {
+    "objective": "Raise the churn model's out-of-sample ROC AUC above 0.85\nwithout changing the prediction contract: predict.py keeps\nwriting id,churn_probability for every holdout id.",
+    "measured_by": "kapso_evaluation/evaluate.py, ROC AUC on the held-out rows",
+    "baseline": "0.7974 (measured on the existing and proposed evaluators)",
+    "target": "0.85",
+    "rules": [
+      "the evaluator is never modified",
+      "no fitting on the holdout rows; holdout labels may only be read by the protected evaluator",
+      "preserve python predict.py --data kapso_datasets --out predictions.csv",
+      "output exactly id,churn_probability, one finite probability in [0,1] per holdout id"
+    ],
+    "budget": {
+      "minutes": 60.0,
+      "experiments": 3,
+      "usd": null,
+      "reserve_minutes": null
+    },
+    "harness": null,
+    "experience": []
+  },
+  "branch": null,
+  "commit": null,
+  "base_commit": "0517df3e2fb3eafeab582e808ad51db5f2055ae3",
+  "score": null,
+  "goal_achieved": false,
+  "stopped_reason": "budget_exhausted",
+  "stop_detail": "finishing_cut",
+  "experiments": 1,
+  "experiments_total": 1,
+  "cost_usd": 2.8139741000000003,
+  "requests": [],
+  "feedback": null,
+  "evaluator": null,
+  "harness": null,
+  "experience": [],
+  "verification": null,
+  "rejected_candidates": 0,
+  "callback_metrics": {},
+  "callback_primary_metric": null,
+  "session_failures": [
+    {
+      "label": "engine/repo_memory/1",
+      "module": "engine",
+      "host": "codex",
+      "exit": "error",
+      "error": "Codex CLI exited with code 1: Error loading config.toml: invalid transport\nin `mcp_servers.kapso`\n\n"
+    },
+    {
+      "label": "engine/repo_memory/2",
+      "module": "engine",
+      "host": "codex",
+      "exit": "error",
+      "error": "Codex CLI exited with code 1: Error loading config.toml: invalid transport\nin `mcp_servers.kapso`\n\n"
+    },
+    {
+      "label": "generic_exp_0",
+      "module": "implementation",
+      "host": "claude_code",
+      "exit": "timeout",
+      "error": "Claude Code CLI exceeded its 421.88776248996146s deadline and was terminated"
+    }
+  ]
+}

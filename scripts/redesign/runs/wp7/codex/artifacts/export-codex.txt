@@ -1,0 +1,25 @@
+exported trading 0.1.0 for codex into /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/export-codex
+  .agents/skills/market-data/
+  .agents/skills/strategy-families/
+  .agents/skills/market-structure/
+  .agents/skills/backtesting/
+  .agents/skills/risk-limits/
+  .agents/skills/lookahead-scan/
+  .agents/skills/paper-trading/
+  .codex/agents/lookahead-auditor.toml
+  .codex/agents/risk-reviewer.toml
+  kapso-harness-trading.md
+left behind: 7 hook(s) (session-brief, deny-web-fetch, protect-prepared, deny-web, deny-snapshot, scan-writes, require-results): campaign-bound: a Stop gate or a prepared-directory deny would block an ordinary session
+left behind: the module page(s) (setup, ideation, implementation, verification, feedback, learning, deployment) and the routing per module: only a campaign routes a module's page to its sessions
+next:
+  add to AGENTS.md (never written by the export): Read kapso-harness-trading.md before any work in this domain.
+  add to ~/.codex/config.toml:
+    [agents.lookahead-auditor]
+    description = "Audits one attempt for look-ahead and leakage in signal timing, joins, resampling and data access, and reports pass, fail or inconclusive with evidence."
+    config_file = "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/export-codex/.codex/agents/lookahead-auditor.toml"
+  add to ~/.codex/config.toml:
+    [agents.risk-reviewer]
+    description = "Reads an evaluated attempt's risk line and equity curve against the task's limits and robustness expectations, for the feedback writer."
+    config_file = "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/export-codex/.codex/agents/risk-reviewer.toml"
+  codex mcp add market-data --env KAPSO_HARNESS_ROOT=/home/ubuntu/kapso/.claude/worktrees/kapso-plugin/examples/harnesses/trading -- python3 /home/ubuntu/kapso/.claude/worktrees/kapso-plugin/examples/harnesses/trading/servers/market_data.py
+  codex mcp add broker --env KAPSO_HARNESS_ROOT=/home/ubuntu/kapso/.claude/worktrees/kapso-plugin/examples/harnesses/trading -- python3 /home/ubuntu/kapso/.claude/worktrees/kapso-plugin/examples/harnesses/trading/servers/broker.py

@@ -1,0 +1,7 @@
+No open requests in `../churn-pause-campaign`—nothing is waiting on you.
+
+---
+
+Kapso reports no pending request in the churn campaigns, so I couldn’t submit a reply.
+
+The reply is: “DATA_API_KEY is in both the campaign’s and project’s `.env`. There is no enrichment service or enrichment table. You must reach 0.85 without it.”

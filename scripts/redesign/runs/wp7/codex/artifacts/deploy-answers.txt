@@ -1,0 +1,9 @@
+Deployment failed: `../churn-campaign` exhausted its budget without producing a candidate, so there is nothing to deploy.
+
+The campaign needs to produce a candidate before local deployment can proceed.
+
+---
+
+There’s no deployment to call: `kapso deploy ../churn-campaign --status` reports `has no deployment`.
+
+The recorded deployment attempt failed because the build delivered no candidate (`budget_exhausted`). No proof inputs or response exist, so I made no inference call.

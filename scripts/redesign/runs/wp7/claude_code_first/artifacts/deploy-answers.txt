@@ -1,0 +1,47 @@
+Deployment 1 of `../churn-campaign` is running on the local target and its proof call passed. There is no endpoint: the model runs as the function `main.predict` in a local worker process, and its module imports cleanly there. I left off `--config` because the project root has no `kapso-config.yaml`.
+
+**Proof call:** I sent it one customer from the holdout set, `C010001` (month-to-month contract, 9 months tenure, pays by electronic check, no autopay). It returned `churn_probability 0.984267`, the same score that customer has in the delivered `predictions.csv`, and the customer really did churn. Scoring the whole holdout set through the deployment gives back `predictions.csv` (differences only from rounding) and the same ROC AUC, 0.845.
+
+**Two things to know before you use the score:**
+- **It ranks customers rather than giving a churn rate.** `churn_probability` is where a customer falls among the scored population, so it orders customers by risk. The response's `components` field carries the raw per-model probabilities if you need something closer to a rate.
+- **It is below the campaign's own goal.** The campaign aimed for AUC above 0.85, and this solution scores 0.845. The deploy shipped it as delivered and did not try to close the gap.
+
+**Next actions for deployment 1:**
+```
+# call it from Python
+from kapso import Software; Software.open('../churn-campaign', 1).run({...customer dict...})
+
+kapso deploy ../churn-campaign --logs  --number 1
+kapso deploy ../churn-campaign --stop  --number 1
+kapso deploy ../churn-campaign --start --number 1
+```
+
+The function runs in Kapso's own Python install, so after a `kapso upgrade` you will need to reinstall the solution's requirements into it. The deployment's files are in `../churn-campaign/.kapso/deployments/1/`. The deploy took about 7.5 minutes and cost $2.08.
+
+---
+
+I called the deployment once with the same inputs its proof used, and the answer is identical to the proof's.
+
+**Answer: churn probability 0.984267 for customer C010001.**
+
+```json
+{
+  "id": "C010001",
+  "churn_probability": 0.984267,
+  "components": {
+    "hgb_probability": 0.845852,
+    "hgb_percentile": 0.986,
+    "spline_lr_probability": 0.880453,
+    "spline_lr_percentile": 0.981667
+  },
+  "model": { "built_at": "2026-10-27T02:25:06+00:00", "blend": {"hgb": 0.6, "spline_lr": 0.4}, ... }
+}
+```
+
+- **Which deployment:** #1 of `/home/ubuntu/proof/work/churn-campaign`. It's a `local` target that's running and healthy, and it has no network endpoint. You call it as the Python function `main.predict(inputs: dict)`. I didn't run `kapso deploy` again because that would have made a second deployment (#2).
+- **Inputs:** the proof's saved record for holdout customer C010001: 9 months tenure, $108.14/month, month-to-month contract, electronic check, basic plan, and so on. They're stored in `.kapso/deployments/1/workspace/kapso_deployment.json`.
+- **Check:** the result matches the saved proof output field for field (`True`). The call took about 109 ms, including loading the model.
+- **How I called it:** I ran `main.predict` directly in a new process, using the interpreter and workspace that deployment #1 records. That's the same code and model file as the engine's worker, but it didn't go through the running worker itself.
+- **The campaign scored 0.845, below its 0.85 target.** Its own summary also says the scored holdout customer C010001 really did churn.
+
+Commands for this deployment: `kapso deploy /home/ubuntu/proof/work/churn-campaign --status|--logs|--stop --number 1`.

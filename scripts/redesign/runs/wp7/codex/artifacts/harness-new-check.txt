@@ -1,0 +1,2 @@
+check ok (3 skills, 1 agents, 0 servers, 3 hooks)
+name     trading 0.1.0

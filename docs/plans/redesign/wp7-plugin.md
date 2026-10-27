@@ -930,8 +930,13 @@ minutes on the second machine and failed in the exam on a crew that
 wrote no report (the Findings; the first machine's failed in the mining
 on an unquoted scalar), so the bank holds no card from the round.
 
-**(k) Share** to a local bare remote, the second user's `experience add`
-of it: TODO-K.
+**(k) Share** to a local bare remote (`/kapso:experience share file:///tmp/bank-remote.git`:
+one message, a third of a minute, the push and the two lines a teammate
+needs); the second user, on its own install, loads the shared bank by its
+reference through `kapso-mcp` (no `add`: a bank is loaded, and loading
+fetches it) and `kapso experience list` shows it under the banks it
+reads, at the shared head. A served build at a tiny budget for the second
+user is left to WP9's round.
 
 **(l) Export** of the trading harness for both hosts: the skills, the
 delegates (Claude Code's agent files, Codex's TOML roles with the config
@@ -1046,10 +1051,16 @@ Fixed on this branch during the round:
   server that never starts whether or not the person has one; the
   isolation step runs a campaign on the fixed wheel and reads its Codex
   sessions' exits.
-- **Thirty minutes is too short a churn build for a review.** Neither
-  host's campaign scored an attempt by the budget's end on the first
-  attempt (the ideation alone takes a quarter of an hour, as WP1's proof
-  found); the round builds for sixty minutes (`0904eec6`).
+- **Thirty minutes is too short a churn build for a review, and sixty
+  is one attempt.** Neither host's campaign scored an attempt by the
+  budget's end on the first attempt; the round builds for sixty minutes
+  (`0904eec6`). The ideation session runs experiments of its own before
+  it proposes (TabPFN, blends, in a scratch directory): twenty-eight of
+  the sixty minutes on the second machine, longer on the development
+  box; the one attempt then took thirty-six minutes in all and the
+  engine stopped with twenty-one left ("would not cover an attempt").
+  The build's owner should bound the ideation's share of a budget, or
+  the handoff should say that an hour is one attempt.
 
 For later packages:
 
@@ -1121,6 +1132,16 @@ For later packages:
   naming the branch. The round's remote is made with `main` as its first
   branch, as a git host's would be; the experience package should read
   the bank's `main` explicitly and refuse a remote without it by name.
+- **An implementation session launched with a 107-second deadline.**
+  The development box's ten-minute pause campaign spent most of its
+  budget in ideation and launched node 0's implementation with 107
+  seconds, which the Claude Code CLI exceeded and the engine terminated;
+  the campaign ended with nothing, never reached the ask the round
+  injects, and cost a dollar. The engine keeps a sixty-second floor for
+  a reconstruction; a floor for a session belongs beside it: a session
+  that cannot fit is not launched, and the status says so. The round
+  gives the development box's pause campaign twenty minutes
+  (`--pause-minutes`).
 - **The fresh machine's examples' dependencies.** Ubuntu 24.04 ships no
   `python3-pyarrow`, so an apt line for the examples fails whole; the
   round makes a uv venv first on PATH. WP9's provisioning should do the

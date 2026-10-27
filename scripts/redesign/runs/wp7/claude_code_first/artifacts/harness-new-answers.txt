@@ -1,0 +1,103 @@
+I've read the repository and the authoring guide. Here's the proposal. Nothing has been written yet.
+
+## Proposed harness: `trading`
+
+**Domain:** daily systematic trading strategies. Each one is a `signal(bars)` function that sets a position per instrument from bar data. A protected evaluator scores it on a year that is kept out of the workspace, after transaction costs, and prints the risk figures (drawdown and turnover) beside the score.
+
+**Standing rules** (`instructions/guardrails.md`):
+1. A signal at bar *t* uses only bars at or before *t*, and a position decided at *t* earns from *t+1*. *(from the `strategy.py` docstring, the `shift(1)` in `evaluate.py` and the brief's rule)*
+2. The contract: `signal(bars)` returns a Series with one value per bar, each in [-1, 1]. Anything else is malformed and scores nothing. *(from `evaluate.py`, exit code 2)*
+3. Develop on the development bars only. The out-of-sample year is read by the evaluation alone, never opened, listed or summarised. *(from `generate.py`, `repo/README.md` and the brief)*
+4. Every price comes from the pinned snapshot. There are no live fetches and no edits to the bars. *(from the brief and the hashes in `MANIFEST.json`)*
+5. The evaluator is never modified. Its `--fast` score is a smoke check and is never quoted as a result. *(from the brief and the `evaluate.py` docstring)*
+6. Costs are charged on every change of position, so reducing turnover is part of the strategy. The rate is in the task statement, not in the harness. *(from `evaluate.py`)*
+
+**Candidates, each with its evidence:**
+
+| Kind | Name | Evidence |
+|---|---|---|
+| skill + script | `lookahead-check`: runs `signal` on `bars[:t]` and on the full bars at sampled *t* and fails on any difference. It also checks length and range | Rule 1 is the domain's main discipline, and the evaluator enforces length and range but cannot detect look-ahead |
+| skill + script | `dev-backtest`: the evaluator's method (shift by one bar, cost on turnover, equal-weight portfolio, Sharpe, drawdown, turnover) applied to the development bars, with the cost rate passed as an argument | `repo/README.md`: "develop on the bars you have". Without this, the only score an attempt can get is the protected one |
+| hook | `deny-web-fetch` (PreToolUse on Bash, WebFetch and WebSearch) | The brief's rule that there are no live fetches |
+| hook | `protect-bars` (denies writes under `kapso_datasets/` and `prepared/market-data/`, in both the Claude Code and Codex shapes) | The pinned snapshot and the `MANIFEST.json` hashes |
+| hook | `deny-oos-read` (denies any Read or Bash call that touches `private_dir.txt` or the directory it names) | The README says plainly that the out-of-sample bars "are not sealed by this example"; the evaluator's path file points straight at them |
+| page | `setup.md`: copy the bars to `prepared/market-data/`, record their sha256 against the manifest, and state the instruments and the date span | `MANIFEST.json` |
+| page | `implementation.md`: run `lookahead-check` and then `dev-backtest` before the evaluation, and leave `results/equity_curve.csv` and `results/trades.csv` behind | the evaluator's outputs and rules 1–2 |
+| page | `ideation.md`: the families of approaches are moving-average crosses at different speeds, time-series momentum, and volatility targeting or ensembles. Fitting parameters on the scored year is not an approach | README, "Change it" section |
+
+**No servers:** the bars are plain CSVs and the repository has no client, credential or system for a server to reach.
+
+**Not covered by the repository** (one question each after writing): verification (the checks a verifier runs and whether to add an auditor delegate), feedback (how much drawdown and turnover count against the score), learning, and deployment.
+
+**Tree:**
+```text
+trading/
+├── harness.yaml
+├── requirements.txt              numpy, pandas
+├── instructions/
+│   ├── guardrails.md
+│   ├── setup.md
+│   ├── ideation.md
+│   └── implementation.md
+├── skills/
+│   ├── lookahead-check/{SKILL.md, check.py}
+│   └── dev-backtest/{SKILL.md, backtest.py}
+└── hooks/
+    ├── deny-web-fetch/{hook.json, deny_web_fetch.py}
+    ├── protect-bars/{hook.json, protect_bars.py}
+    └── deny-oos-read/{hook.json, deny_oos_read.py}
+```
+
+The hooks would be listed on every module that runs sessions, and both skills on implementation; verification would also get `lookahead-check` once you've answered its question.
+
+**Where it goes:** the README refers to `../harnesses/trading`, so I'd write it to `/home/ubuntu/proof/work/harnesses/trading` unless you want it somewhere else.
+
+Should I write it as proposed, or change something first?
+
+---
+
+I've written the harness at `/home/ubuntu/proof/work/harnesses/trading` (version 0.1.0). `kapso harness check` passes with no failures, warnings or `needs` lines: `check ok (2 skills, 0 agents, 0 servers, 3 hooks)`.
+
+**Tested against the real repository data:**
+- **`lookahead-check`:** the shipped 20/100 cross passes. A version I made with a centred window (one that peeks at later bars) fails on all three instruments, with the exact bar where it changes.
+- **`dev-backtest`:** on the shipped strategy over 2021–2023 at a 5 basis-point cost it gives a Sharpe of 0.66, with drawdown and turnover beside it, and `--split` scores two periods separately. The real evaluator still gives 0.1384 out of sample.
+- **Hooks:**
+  - `deny-web-fetch` blocks `curl` and lets ordinary commands through.
+  - `protect-bars` blocks writes to the development bars through the Claude Code file tools, Codex patches and the shell. It lets the setup session copy the bars into `prepared/market-data/`, then protects that copy once `HASHES.txt` is written.
+  - `deny-oos-read` blocks reading the evaluator's pointer file and the directory it names, but still lets the evaluation run.
+
+**Change from the proposal:** I left out a verification page until you answer question 1. For now that module only carries the three hooks.
+
+Four parts of the build the repository says nothing about. One question each:
+
+1. **Verification:** in the trading example, the verifier runs a look-ahead scan and asks an auditor. What must hold here before a candidate counts? My draft is: `lookahead-check` passes, the diff leaves the evaluator and the bars alone, and nothing reads the out-of-sample year. Should a delegate also read the strategy for leaks the truncation test can't catch, such as a hard-coded date or a parameter fitted on all the bars?
+2. **Feedback:** the evaluator prints drawdown and turnover beside the Sharpe. Should the judge treat them as information only, or mark a candidate down past some point? I'd write the "past some point" rule as a principle; any actual number stays in the brief.
+3. **Learning:** what's worth keeping as a lesson in this domain? For example, "which family worked on trending data, and at what cost to turnover", while one dataset's best parameters would be noise.
+4. **Deployment:** does a strategy built here get deployed anywhere, such as a paper-trading account or a scheduled signal job? If not, I'll leave this module out.
+
+Once you've answered, I'll write each answer in its cheapest form and run the check again. After that I can set up a probe build on `kapso-brief.md` with `--harness ../harnesses/trading` and use its trace to improve the harness. I won't start it unless you ask.
+
+---
+
+I've added your verification checks as `instructions/verification.md`, and `kapso harness check` still passes with no failures, warnings or `needs` lines.
+
+The page tells the verifier to run the two checks itself and quote the output in its verdict. A missing piece of evidence voids the candidate rather than passing it.
+
+1. **Look-ahead scan:** the verifier runs `lookahead-check` on the attempt and quotes its `ok` line. A failure voids the candidate, whatever its score.
+2. **Backtest coverage:** the verifier runs `dev-backtest` and checks that its first and last bar match the development span the setup session recorded. A shorter window, or one that runs past it, doesn't count.
+3. **Risk line:** the verifier quotes the evaluation's `max_drawdown`, `turnover` and score lines.
+
+I made three changes to support this:
+- **No dates on the page:** "2021 to 2023" is a fact about this task, so the page says "the whole development span the setup session recorded". On this data that resolves to 2021-01-04 to 2023-12-29. The next dataset can cover different years without editing the harness.
+- **Dates in the backtest output:** `dev-backtest` now starts each line with the first and last bar it scored, e.g. `all: 2021-01-04 to 2023-12-29 days 780 sharpe 0.6572 …`. That printed span is what check 2 compares.
+- **Skills on verification:** both skills are now listed on the verification module, not just on implementation.
+
+I added no reviewer delegate, since you didn't ask for one. The version stays 0.1.0 because nothing has run on it yet.
+
+Three questions are still open:
+
+2. **Feedback:** should the judge only report drawdown and turnover, or also mark a candidate down when they get too high? Any actual limit would stay in the brief, not the harness.
+3. **Learning:** what's worth keeping as a lesson here? For example, "which family worked on trending data, and at what turnover" versus one dataset's best parameters.
+4. **Deployment:** does a strategy from this harness get deployed anywhere? If not, I'll leave this module out.
+
+After those, the harness is ready for a probe build on `kapso-brief.md` with `--harness ../harnesses/trading`, if you want one.

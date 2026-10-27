@@ -1,0 +1,62 @@
+I propose a `trading` harness for daily-bar strategy research with causal signals, pinned data, and independent verification.
+
+The repository supports these standing rules:
+
+- Use only information available at each bar; positions earn returns from the following bar (`repo/strategy.py`, `kapso-brief.md`).
+- Preserve the signal interface and position bounds defined by the strategy contract (`repo/README.md`).
+- Develop only on development data; reserve held-out bars for evaluation (`kapso-brief.md`).
+- Use the pinned snapshot and prohibit live price fetches (`kapso-brief.md`).
+- Never modify the evaluator (`kapso-brief.md`).
+- Report drawdown and turnover alongside performance; distinguish smoke checks from full evaluations (`evaluation/evaluate.py`).
+
+Proposed components:
+
+| Component | Evidence and purpose |
+|---|---|
+| Snapshot preparation skill | `README.md` describes setup pinning; `MANIFEST.json` supplies hashes to detect data changes. |
+| Leakage-check skill and script | `README.md` requires a scan before backtesting; prevents obvious future-data access. |
+| Backtest skill | Evaluator documents invocation, smoke mode, risk output, and result artifacts. |
+| Verification auditor | `README.md` explicitly calls for an auditor to review timing and validity. |
+| Snapshot and network hooks | `README.md` describes denying snapshot writes and web fetches. |
+| Result-artifact hook | `README.md` describes requiring equity and trade outputs. |
+
+No external service or credential-backed client is evidenced, so I propose no MCP server. Ideation, feedback, learning, and deployment have no specific domain procedures evidenced; those pages would remain omitted pending your input.
+
+Proposed directory:
+
+```text
+trading/
+├── harness.yaml
+├── requirements.txt
+├── instructions/
+│   ├── guardrails.md
+│   ├── setup.md
+│   ├── implementation.md
+│   └── verification.md
+├── skills/
+│   ├── prepare-snapshot/{SKILL.md,prepare.py}
+│   ├── leakage-check/{SKILL.md,scan.py}
+│   └── backtest/SKILL.md
+├── agents/
+│   └── auditor.md
+└── hooks/
+    ├── protect-snapshot/{hook.json,check.py}
+    ├── no-live-fetch/{hook.json,check.py}
+    └── require-results/{hook.json,check.py}
+```
+
+Pages will stay under forty lines. Targets, dates, costs, budgets, and dataset locations will come from the task and evaluator rather than being copied into the harness. The referenced sibling harness is absent. The authoring documentation URL also returned 404, so its schema still needs verification against the installed CLI.
+
+Confirm this proposal so I can write and validate it?
+
+The invoked [kapso-harness skill](/home/ubuntu/.codex/plugins/cache/kapso/kapso/0.8.0.dev1/skills/kapso-harness/SKILL.md) explicitly requires: “Nothing is written before the user confirms.” No files have been changed.
+
+---
+
+Created [trading/harness.yaml](trading/harness.yaml) with three skills, an auditor, and three hooks.
+
+`kapso harness check ./trading` passes with no warnings or missing requirements. Behavioral checks passed for snapshot integrity, leakage detection, hook decisions, and result validation.
+
+Optional module procedures remain omitted pending your answers. Hooks are safeguards, not a sandbox; independent review remains required.
+
+Ready for a probe build through `kapso-build`; none launched.

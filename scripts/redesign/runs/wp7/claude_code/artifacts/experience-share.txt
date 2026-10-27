@@ -1,0 +1,7 @@
+I shared your bank. `kapso experience share file:///tmp/bank-remote.git --config kapso-config.yaml` exited 0 and pushed `~/.kapso/bank.git` to the remote as a new `main` branch.
+
+- **From now on:** each `kapso learn` pushes its cards to `file:///tmp/bank-remote.git`, and `kapso experience update` pulls your team's lessons from there.
+- **The bank has 0 cards right now.** This session's `kapso` tools still serve it, so it fills in when a finished campaign is learned (`kapso learn <campaign> --detach --config kapso-config.yaml`).
+- **The remote is a local `file://` path.** Teammates can only use it if they can reach `/tmp/bank-remote.git` on this machine, and `/tmp` may be wiped on reboot. To share across machines, create a hosted repository and run `share` again with that URL.
+
+Next: `update` · `add mine` · `add leeroopedia` · `add --repo <url> --name <n> --detach` · `remove <ref>` (each with `--config kapso-config.yaml`)

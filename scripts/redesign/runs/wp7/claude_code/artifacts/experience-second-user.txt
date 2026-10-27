@@ -1,0 +1,15 @@
+kapso-mcp 0.8.0.dev1 (config: the packaged defaults)
+kapso-mcp: repo_memory: off (no .kapso/repo_memory.json under /home/proof2; a campaign builds one)
+kapso-mcp: experiment_history: off (not inside a campaign directory)
+kapso-mcp: serving research, bank, campaign for /home/proof2
+INFO:kapso.gated_mcp.server:Starting Gated MCP Server...
+INFO:kapso.gated_mcp.server:Requested gates: ['research', 'bank', 'campaign']
+INFO:kapso.gated_mcp.server:Enabled gate: research
+INFO:kapso.gated_mcp.server:Enabled gate: bank
+INFO:kapso.gated_mcp.server:Enabled gate: campaign
+INFO:kapso.gated_mcp.server:Registered 9 tools from 3 gates
+INFO:kapso.gated_mcp.server:MCP server running on stdio transport
+mine         not created: kapso experience add mine (or a first learn())
+leeroopedia  hosted                                       no key: put LEEROOPEDIA_API_KEY=... in .env
+banks you read
+  file:///tmp/bank-remote.git@HEAD   head f979f4273c0b   0 cards   /home/proof2/.kapso/experience/banks/local-tmp-bank-remote@HEAD

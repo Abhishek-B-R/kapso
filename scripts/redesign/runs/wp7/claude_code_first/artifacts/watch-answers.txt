@@ -1,0 +1,11 @@
+The campaign is **running** and healthy: PID 9578 is alive and the last heartbeat was 56s ago, inside the 60s interval. It's on iteration 1 in the ideation phase.
+There's **no best score yet**, since no attempt has been evaluated.
+**Budget:** 1 of 30 minutes used, with 1.5 minutes held in reserve and a cap of 3 experiments.
+
+---
+
+The campaign is **running and healthy**. Its last heartbeat was 19 seconds ago, and the process (pid 9578) is up.
+
+It is 2 minutes into a 30-minute budget, on iteration 1 of 3, in the ideation phase. There is no best score yet.
+
+Next: let it run. To check again later, use `kapso watch ../churn-campaign`. Results should be ready to read with `/kapso:review` in about 28 minutes.

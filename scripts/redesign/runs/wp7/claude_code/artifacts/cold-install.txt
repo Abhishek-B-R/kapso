@@ -1,0 +1,5 @@
+kapso kapso 0.8.0.dev1
+kapso-mcp kapso-mcp 0.8.0.dev1
+which /home/proof2/.local/bin/kapso /home/proof2/.local/bin/kapso-mcp
+/home/proof2/.local/share/uv/tools/leeroo-kapso/lib/python3.12/site-packages/litellm/llms/custom_httpx/async_client_cleanup.py:66: DeprecationWarning: There is no current event loop
+  loop = asyncio.get_event_loop()

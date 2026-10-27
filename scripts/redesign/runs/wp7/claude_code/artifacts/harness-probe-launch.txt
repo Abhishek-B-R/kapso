@@ -1,0 +1,7 @@
+Initialized Kapso
+Harness: trading 0.1.0 (1620afdae298) from /home/ubuntu/proof/work/trading-author/trading
+kapso build started in a session of its own (pid 24558)
+  log:     /home/ubuntu/proof/work/trading-probe.log
+  status:  /home/ubuntu/proof/work/trading-probe/.kapso/status.json
+  follow:  kapso watch /home/ubuntu/proof/work/trading-probe --follow
+  inbox:   kapso inbox /home/ubuntu/proof/work/trading-probe

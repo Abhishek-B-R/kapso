@@ -1,0 +1,51 @@
+The repo has almost nothing to build from. It holds `README.md`, which says only "Our churn modelling work will live here", and a `.env` file. There's no data, evaluator, tests or notebooks, and Kapso has no harnesses or experience sources installed. So the only criterion I can point to is the README's subject, churn prediction, and no data here can measure it yet.
+
+**Two options, I recommend A:**
+- **A. A public churn dataset.** IBM Telco Customer Churn (about 7,000 customers, published on IBM's GitHub). Kapso builds a training and prediction pipeline and proves its out-of-sample ROC AUC on that data.
+- **B. Your own churn data.** If you have a customer table with a churn label, put it in `data/`. The same plan applies, with the brief rewritten for your columns.
+
+I wrote the plan for A to `kapso-brief.md`:
+
+```
+Objective    Build a customer churn model with a reproducible training pipeline
+             (train.py -> model artifact -> predict.py scoring a CSV of customers)
+             and prove its out-of-sample ROC AUC on the IBM Telco Customer Churn data.
+Measured by  kapso_evaluation/evaluate.py, ROC AUC on a stratified 20% hold-out
+             (seed 42) kept inside the evaluation directory; last line `auc: <value>`
+Baseline     unknown (no data in the repository yet; measured with logistic regression
+             once the evaluation is built)
+Target       0.85 (published results on this data cluster around 0.83-0.85, so 0.85
+             is near the ceiling, not above it)
+Rules
+  - the evaluator and its hold-out are never modified or read by training code
+  - no fitting, tuning or feature selection on the hold-out rows
+  - predict.py takes the raw input columns; no target or post-churn fields as features
+Budget       minutes=60 experiments=10
+Harness      none (none installed)
+Experience   none (none configured)
+```
+
+**How it would be measured, once you approve:**
+1. **Data:** the Telco CSV goes into `data/`. The held-out rows and their labels go into `kapso_evaluation/private/`, which is protected from the campaign, and never into `data/`.
+2. **Split:** a 20% hold-out with the same churn rate as the full data, chosen with seed 42. Before the split I check for duplicate customer IDs and duplicate rows. The data has no dates, so it can't be split by time.
+3. **Metric:** ROC AUC of the predicted churn probability, printed as `auc: 0.xxxx` on the last line and written to `result.json`. A `--fast` mode gives a quick check whose number isn't comparable to a full run. A broken submission makes the script fail with a reason rather than score low.
+4. **Baseline:** a logistic regression, run once in a copy of the evaluation before launch.
+5. **Pass:** hold-out AUC of at least 0.85, from a pipeline that runs start to finish from the raw columns.
+
+**Reply "go" to approve A, or edit a line.** If you choose B, tell me where the data is.
+
+---
+
+Option A is approved and I'm stopping there. I haven't launched anything, downloaded anything, or built the evaluator.
+
+The only file I've written is `kapso-brief.md`, which already describes option A. The repo is otherwise as it was.
+
+When you want to continue, there are three steps:
+1. **Build the evaluation:** download the Telco CSV into `data/`, set aside the 20% hold-out in `kapso_evaluation/private/`, write `kapso_evaluation/evaluate.py`, and run the logistic-regression baseline in a copy. The baseline in the brief stays `unknown` until then.
+2. **Check the setup:** `kapso doctor build --json`
+3. **Launch, detached:**
+   ```bash
+   kapso build --brief kapso-brief.md --repo . --evaluation kapso_evaluation --data data --output ../churn-campaign --budget-minutes 60 --budget-experiments 10 --detach
+   ```
+
+There's no `kapso-config.yaml` in this folder, so none of these commands need `--config`.

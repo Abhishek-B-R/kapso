@@ -1,0 +1,33 @@
+The campaign at `../churn-pause-campaign` (goal: churn model ROC AUC above 0.85) has been paused waiting on you for 16 minutes. It has one open request. There's no `kapso-config.yaml` in this project, so I'm leaving `--config` off the commands.
+
+**#1 · `env:DATA_API_KEY`** (node 0: a HistGradientBoosting model plus the enrichment table the brief requires)
+
+- **hit:** `python predict.py --data kapso_datasets --out /tmp/p.csv` fails with `RuntimeError: DATA_API_URL is not set`. `DATA_API_KEY` is also unset, and there's no `.env` at the workspace root.
+- **tried:** It found no `.env` in the workspace or any parent folder, and neither variable is set in the environment. The repo, README, evaluator, manifest and repo memory say nothing about the enrichment service. The `.env` in this project folder holds only `CLAUDE_CODE_OAUTH_TOKEN`. This isn't a temporary failure that retrying would fix: there's no address to call.
+- **fix:** Put these two lines in a `.env` in this directory, and make sure it also reaches `/home/ubuntu/proof/work/churn-pause-campaign/sessions/generic_exp_0/.env`:
+  ```
+  DATA_API_KEY=<the enrichment service key>
+  DATA_API_URL=<the full endpoint URL that returns the table>
+  ```
+  `predict.py` currently sends a GET with both `Authorization: Bearer <key>` and `X-Api-Key: <key>` and reads the response as CSV. If the service expects something else (a POST, query parameters, another auth header, JSON or Parquet back, a join key other than `id`), say so in your note and it will adapt the fetch.
+- **next:** It will fetch the table and cache it to `.enrichment_cache.csv`, then check that the join on `id` keeps the holdout at exactly 3,000 rows in order. After that it runs `evaluate.py` once in full and reports the AUC against the 0.85 target. Without enrichment, its cross-validated estimate is already 0.8503.
+
+When the values are in place, tell me and I'll resume it with a note (never a value):
+
+```bash
+kapso inbox reply ../churn-pause-campaign 1 "DATA_API_KEY and DATA_API_URL added to .env" --detach
+```
+
+---
+
+I sent your reply, but the campaign stopped straight away without running another attempt, so it hasn't reached 0.85 yet.
+
+**The reply.** I checked that `DATA_API_KEY` is set in both `.env` files, the project's and the campaign's, without printing the value. Then I answered request #1 with `kapso inbox reply … --detach`. The note says the key is in place, there is no enrichment service or `DATA_API_URL` to document or wait for, and it must reach ROC AUC 0.85 without the enrichment table. It also tells the campaign to remove the fetch-and-join step from `predict.py`, which currently refuses to train without the service. The inbox now shows nothing waiting.
+
+**What happened next:**
+- **Stop reason:** `budget_exhausted (attempt_would_not_fit)`. About 8 of the 10 minutes had already been used, so no new attempt could fit. Over the whole campaign: 0 experiments scored, no winning result, $1.75 spent.
+- **Engine error:** one session also failed on Codex with `Error loading config.toml: invalid transport`. That's a problem with the local Codex CLI config, not with the campaign.
+
+Before the pause, the campaign measured 0.8503 out-of-fold without enrichment. That's only just over the target, and the bootstrap standard error is about 0.010, so a held-out score could easily come in below 0.85.
+
+**Next step:** fix the Codex `config.toml` and resume with more budget, using `/kapso:resume` and around 30 minutes or more. Should I diagnose the Codex config and resume it?

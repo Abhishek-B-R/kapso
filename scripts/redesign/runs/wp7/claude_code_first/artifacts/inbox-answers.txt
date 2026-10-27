@@ -1,0 +1,45 @@
+Campaign `../churn-pause-campaign` (goal: get the churn model's out-of-sample ROC AUC above 0.85) has been waiting on you for 16 minutes. It has one open request.
+
+**#1 — `env:DATA_API_KEY`**
+
+| | |
+|---|---|
+| **key** | `DATA_API_KEY`, the key for the enrichment service |
+| **hit** | Node 0's plan is a HistGradientBoosting + ExtraTrees blend trained on the existing columns joined to an enrichment table keyed on `id`. Its check found `DATA_API_KEY` unset and no `.env` file present. |
+| **tried** | It looked for `.env` in the workspace, the campaign root and `$HOME`. The only `.env` it found, at `/home/ubuntu/proof/work/churn-pause/.env`, holds just `CLAUDE_CODE_OAUTH_TOKEN`. It grepped the environment and the repo for `enrich`, `DATA_API`, `api_key` and `service`, and read the README, `predict.py` and `evaluate.py`. Nothing names the service, its URL or how to log in to it. |
+| **fix** | Add `DATA_API_KEY=<the enrichment service key>` to `.env` in `/home/ubuntu/proof/work/churn-pause-campaign/`. In your reply, describe how the service works: (1) the base URL, (2) the endpoint and how ids are sent (bulk, batched POST, per-id GET or paginated), (3) how auth works (header or query parameter), (4) the response format and the join-key field if it isn't `id`. A curl example pasted as-is would cover all of it. |
+| **next** | It will write `fetch_enrichment.py` to fetch the table once for the 13,000 train and holdout ids and save it to `kapso_datasets/enrichment.csv`. It will print a coverage and leak report, rewrite `predict.py` with the blend, re-check 5-fold CV, then run the evaluator unchanged. The existing columns alone reach about 0.844 CV, so the extra table is the only way it sees to reach 0.85. |
+
+Put the key in the `.env` yourself; it must never go in the reply. Your reply can only carry the four service details above. If no such service exists, say so in the reply and the campaign will have to reach 0.85 another way.
+
+Tell me when the key is in place and send me those details. I'll then run (this project has no `kapso-config.yaml`, so no `--config`):
+
+```bash
+kapso inbox reply ../churn-pause-campaign 1 "<note: key added to .env; service URL, endpoint, auth, format>" --detach
+```
+
+That resumes the campaign, and I'll pass you the `watch` line it prints.
+
+---
+
+I haven't replied to the campaign yet. I couldn't find DATA_API_KEY in either `.env`, so telling it the key is done would be false.
+
+**Waiting request** (`churn-pause-campaign`, "Raise the churn model's out-of-sample ROC AUC above 0.85", waiting 16m):
+
+| | |
+|---|---|
+| **key** | `env:DATA_API_KEY` |
+| **hit** | The campaign's check found `DATA_API_KEY` unset and no `.env` in the workspace. |
+| **tried** | It looked in the workspace, the campaign root and `$HOME`, plus the environment and every repo file. It found no key and no record of the enrichment service. |
+| **fix** | Put `DATA_API_KEY=<key>` in `/home/ubuntu/proof/work/churn-pause-campaign/.env`. In the reply, also give the service details: base URL, endpoint and how ids are passed, auth header format, and response format and join key. |
+| **next** | Write `fetch_enrichment.py` to download the enrichment table once and save it to disk. Then join it on `id`, use a HistGradientBoosting + ExtraTrees blend, and run the evaluator. Without enrichment the model tops out around 0.844, so the key is the only route to 0.85. |
+
+**What I checked** (variable names only, no values):
+- `/home/ubuntu/proof/work/churn-pause/.env` holds only `CLAUDE_CODE_OAUTH_TOKEN`.
+- `/home/ubuntu/proof/work/churn-pause-campaign/.env` doesn't exist. That's where the campaign is looking for the key.
+
+**To unblock it:**
+1. Add `DATA_API_KEY=...` to `/home/ubuntu/proof/work/churn-pause-campaign/.env`. If you saved it somewhere else, it may not have been written yet.
+2. Send me the service details: base URL, endpoint shape, auth header and response format. A curl example is ideal. The campaign says it can't write the fetch script without them.
+
+Once I can see the key name in that file, I'll send a note (never the key itself) through `kapso inbox reply <path> 1 "<note>" --detach`. The note will say the key is in place and include the service details.

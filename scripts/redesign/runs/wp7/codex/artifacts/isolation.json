@@ -1,0 +1,10 @@
+[
+ {
+  "session": ".kapso/sessions/generic_exp_0/stream.jsonl",
+  "plugin_tools": [],
+  "plugin_commands": [],
+  "servers": [
+   "gated-knowledge"
+  ]
+ }
+]

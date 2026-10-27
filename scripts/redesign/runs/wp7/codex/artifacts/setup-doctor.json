@@ -1,0 +1,449 @@
+{
+ "scope": "kapso doctor build",
+ "version": "0.8.0.dev1",
+ "kapso": "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/venv-wp7/bin/kapso",
+ "python": "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/venv-wp7/bin/python3",
+ "config_path": "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/venv-wp7/lib/python3.13/site-packages/kapso/config.yaml",
+ "config": {
+  "hosts": {
+   "claude_code": {
+    "model": "claude-opus-5",
+    "auth_mode": "oauth"
+   },
+   "codex": {
+    "model": "gpt-5.6-sol",
+    "effort": "xhigh"
+   }
+  },
+  "inference": {
+   "default": {
+    "cli": "codex",
+    "model": "gpt-5.6-sol",
+    "effort": "xhigh",
+    "sandbox": "read-only",
+    "timeout_seconds": 900,
+    "web_search": false,
+    "agent_specific": {}
+   },
+   "roles": {
+    "research": {
+     "web_search": true,
+     "timeout_seconds": 1800
+    },
+    "kg_rerank": {
+     "effort": "low",
+     "timeout_seconds": 300
+    },
+    "kg_navigate": {
+     "effort": "low",
+     "timeout_seconds": 300
+    },
+    "repo_memory": {},
+    "commit_message": {
+     "effort": "low",
+     "timeout_seconds": 180
+    },
+    "benchmark_utility": {
+     "effort": "low",
+     "timeout_seconds": 600
+    }
+   }
+  },
+  "preflight": {
+   "enabled": true,
+   "live_model_probe": false
+  },
+  "gates": {
+   "leeroopedia": {
+    "url": "https://mcp.leeroopedia.com/mcp?token={LEEROOPEDIA_API_KEY}",
+    "tool_timeout_seconds": 600
+   }
+  },
+  "deployment": {
+   "target": "auto",
+   "cli": null,
+   "model": null,
+   "effort": null,
+   "timeout": 1800,
+   "call_timeout": 300,
+   "script_timeout": 600,
+   "port_base": 8000,
+   "port_span": 1000
+  },
+  "harness": {
+   "store": "~/.kapso/harnesses",
+   "page_warning_lines": 40,
+   "setup_minutes": 20,
+   "verification_minutes": 10,
+   "verification_attempts": 2,
+   "server_tool_timeout_seconds": 600
+  },
+  "experience": {
+   "banks": "~/.kapso/experience/banks",
+   "indexes": "~/.kapso/experience/indexes",
+   "research_modes": [
+    "idea",
+    "implementation"
+   ],
+   "research_depth": "deep",
+   "session_sources": []
+  },
+  "search_strategy": {
+   "type": "generic",
+   "params": {
+    "host": "claude_code",
+    "ideation": {
+     "cli": null,
+     "model": null,
+     "effort": null,
+     "timeout": null,
+     "gates": [
+      "research",
+      "experiment_history",
+      "repo_memory"
+     ],
+     "web": true,
+     "candidates_per_member": 1,
+     "ensemble": null,
+     "selector": null,
+     "lens_planner": null,
+     "ensemble_time_split": null
+    },
+    "implementation": {
+     "cli": null,
+     "model": null,
+     "effort": null,
+     "timeout": null,
+     "gates": [
+      "research",
+      "repo_memory"
+     ],
+     "web": true,
+     "fallback_model": null
+    },
+    "judge": {
+     "cli": null,
+     "model": null,
+     "effort": null,
+     "timeout": null
+    },
+    "gate_failure_policy": "warn",
+    "parent_policy": "best",
+    "node_expansion_value": 1,
+    "expansion_lane_env": null,
+    "env_strip": [],
+    "session_env_defaults": {},
+    "shared_cache_dir": null,
+    "registered_evaluation_archive_glob": null,
+    "repo_memory_failure_policy": "warn",
+    "repo_memory_max_retries": 1,
+    "cost": {
+     "enabled": false,
+     "estimator": null,
+     "cap_per_candidate": null,
+     "campaign_budget": null,
+     "unit": "credits",
+     "weight": 0.0
+    }
+   }
+  },
+  "knowledge_search": {
+   "type": "kg_graph_search",
+   "preset": "DEFAULT",
+   "params": {}
+  },
+  "learner": {
+   "ingestor": {
+    "cli": "claude_code",
+    "agent_specific": {},
+    "model": "claude-opus-5-5",
+    "auth_mode": "oauth",
+    "effort": "xhigh",
+    "timeout": null,
+    "cleanup": true,
+    "cleanup_staging": false,
+    "fail_on_validation_errors": true,
+    "publish_workflows": false,
+    "github_repo_visibility": "private"
+   },
+   "merger": {
+    "cli": "claude_code",
+    "agent_specific": {},
+    "model": "claude-opus-5-5",
+    "auth_mode": "oauth",
+    "effort": "xhigh",
+    "timeout": null
+   }
+  },
+  "retry": {
+   "max_attempts": 2,
+   "initial_delay_seconds": 5,
+   "max_delay_seconds": 60,
+   "multiplier": 2,
+   "jitter": true,
+   "request_timeout_seconds": 600
+  },
+  "models": {
+   "embedding": null
+  },
+  "budget": {
+   "experiments": 10,
+   "minutes": null,
+   "usd": null,
+   "reserve_minutes": null,
+   "min_iteration_seconds": 60,
+   "min_iteration_seconds_insured": null,
+   "min_agent_timeout_seconds": 60,
+   "checkpoint_heartbeat_seconds": 60,
+   "stop_grace_seconds": 10,
+   "fidelity": {
+    "mode": "off",
+    "committed_run_fraction": 0.45,
+    "min_affordable_full_runs": 4,
+    "promotion_margin": 0.02,
+    "max_full_runs": 2,
+    "max_full_evals": 3,
+    "calibration_min_pairs": 3,
+    "endgame_validate": true,
+    "build": {
+     "fast_fraction": null
+    },
+    "eval": {
+     "fast_fraction": 0.15
+    }
+   }
+  },
+  "inbox": {
+   "enabled": true,
+   "stop_grace_seconds": 120,
+   "registry": "~/.kapso/campaigns.jsonl"
+  },
+  "evaluation_maintainer": {
+   "enabled": false,
+   "cli": null,
+   "model": null,
+   "effort": null,
+   "timeout": null,
+   "subsample_seed": 1337,
+   "calibration_fraction": 0.03,
+   "calibration_timeout_seconds": 900,
+   "fast_variant_threshold_minutes": 20,
+   "overhead_factor": 1.25,
+   "max_change_requests": 3,
+   "transition_freeze_fraction": 0.85,
+   "protected_data_paths": []
+  },
+  "learning": {
+   "trajectory_store": {
+    "local": "~/.kapso/trajectories",
+    "remote": null
+   },
+   "import_report_dir": "learning/imports",
+   "status_dir": "learning/status",
+   "harvest": {
+    "enabled": true
+   },
+   "mining": {
+    "lead": {
+     "cli": "claude_code",
+     "model": "claude-fable-5",
+     "effort": "xhigh",
+     "auth_mode": "oauth"
+    },
+    "flow_writer_model": "claude-fable-5",
+    "critic_model": "claude-fable-5",
+    "timeout_minutes": 240,
+    "repair_rounds": 1,
+    "refusal_relaunches": 1,
+    "run_root": "learning/mining"
+   },
+   "retriever": {
+    "probe_budget": 1
+   },
+   "graders": {
+    "score_band": 0.2,
+    "min_settlements": 2,
+    "calibration_min": 20,
+    "calibration_buckets": [
+     0.4,
+     0.7
+    ],
+    "gauntlet": {
+     "stability_tolerance": 0.1
+    },
+    "crew": {
+     "report_writer": {
+      "cli": "codex",
+      "model": "gpt-5.6-sol",
+      "effort": "xhigh"
+     },
+     "verifier": {
+      "cli": "claude_code",
+      "model": "claude-fable-5",
+      "effort": "xhigh",
+      "auth_mode": "oauth"
+     },
+     "assessor": {
+      "cli": "codex",
+      "model": "gpt-5.6-sol",
+      "effort": "xhigh"
+     },
+     "repair_rounds": 5,
+     "timeout_minutes": 90
+    },
+    "run_root": "learning/graders"
+   },
+   "bank": {
+    "local_path": "~/.kapso/bank.git"
+   },
+   "serving": {
+    "session_root": "~/.kapso/serving"
+   },
+   "update_crew": {
+    "default_version": "crew_v4",
+    "lead": {
+     "cli": "claude_code",
+     "model": "claude-fable-5",
+     "effort": "xhigh",
+     "auth_mode": "oauth"
+    },
+    "worker": {
+     "model": "gpt-5.6-sol",
+     "effort": "xhigh"
+    },
+    "critic": {
+     "model": "claude-fable-5"
+    },
+    "repair_rounds": 3,
+    "timeout_minutes": 360,
+    "dup_nominate_jaccard": 0.5,
+    "rewrite_rows_per_run": 4,
+    "body_floors": {
+     "rule": 35,
+     "section": 25,
+     "confidence": 8
+    },
+    "sightings_expiry_batches": 6,
+    "run_root": "learning/runs"
+   },
+   "ab": {
+    "required": false,
+    "pairs": 5
+   },
+   "codify": {
+    "min_recurrence": 2,
+    "max_iterations": 3,
+    "iteration_timeout_minutes": 60,
+    "target": "gcp_ephemeral",
+    "machine_type": "g2-standard-8",
+    "replay_max_age_days": 60,
+    "tolerance_z": 2,
+    "implementor": {
+     "cli": "codex",
+     "model": "gpt-5.6-sol",
+     "effort": "xhigh"
+    },
+    "judge": {
+     "cli": "claude_code",
+     "model": "claude-fable-5",
+     "effort": "xhigh",
+     "auth_mode": "oauth"
+    },
+    "gcp": {
+     "project": "",
+     "zone": "us-central1-a",
+     "cpu_machine_type": "e2-standard-8",
+     "accelerator": "type=nvidia-l4,count=1",
+     "image_family": "common-cu129-ubuntu-2204-nvidia-580",
+     "image_project": "deeplearning-platform-release",
+     "boot_disk_gb": "200",
+     "bootstrap": ""
+    }
+   },
+   "develop": {
+    "batch_size": 3,
+    "run_root": "learning/develop",
+    "versions_ledger": "learning/versions.yaml"
+   },
+   "behavior": {
+    "scenarios_dir": "benchmarks/relbench/data/learning_behavior",
+    "reviewer": {
+     "cli": "claude_code",
+     "model": "claude-fable-5",
+     "effort": "xhigh",
+     "auth_mode": "oauth"
+    },
+    "timeout_minutes": 60,
+    "run_root": "learning/behavior"
+   }
+  }
+ },
+ "overrides": [],
+ "ok": true,
+ "requirements": [
+  {
+   "label": "claude_code is asked for claude-opus-5",
+   "ok": true,
+   "fix": "name a model claude_code serves for search_strategy.params.ideation, search_strategy.params.implementation, search_strategy.params.judge, or the host's own in hosts.claude_code.model",
+   "origin": "search_strategy.params.ideation; search_strategy.params.implementation; search_strategy.params.judge",
+   "required": true,
+   "detail": ""
+  },
+  {
+   "label": "codex is asked for gpt-5.6-sol",
+   "ok": true,
+   "fix": "name a model codex serves for inference.roles.commit_message.model, inference.roles.repo_memory.model, or the host's own in hosts.codex.model",
+   "origin": "inference.roles.commit_message.model; inference.roles.repo_memory.model",
+   "required": true,
+   "detail": ""
+  },
+  {
+   "label": "node",
+   "ok": true,
+   "fix": "install Node.js from https://nodejs.org \u2014 the agent CLIs ship via npm",
+   "origin": "required by every claude/codex session below",
+   "required": true,
+   "detail": ""
+  },
+  {
+   "label": "claude CLI",
+   "ok": true,
+   "fix": "npm install -g @anthropic-ai/claude-code",
+   "origin": "search_strategy.params.ideation (+2 more) = claude-opus-5",
+   "required": true,
+   "detail": ""
+  },
+  {
+   "label": "claude authenticated",
+   "ok": true,
+   "fix": "claude auth login   (or set CLAUDE_CODE_OAUTH_TOKEN in .env)",
+   "origin": "search_strategy.params.ideation (+2 more) = claude-opus-5",
+   "required": true,
+   "detail": ""
+  },
+  {
+   "label": "codex CLI",
+   "ok": true,
+   "fix": "npm install -g @openai/codex",
+   "origin": "inference.roles.commit_message.model (+1 more) = gpt-5.6-sol",
+   "required": true,
+   "detail": ""
+  },
+  {
+   "label": "codex authenticated",
+   "ok": true,
+   "fix": "codex login   (or set CODEX_API_KEY in .env)",
+   "origin": "inference.roles.commit_message.model (+1 more) = gpt-5.6-sol",
+   "required": true,
+   "detail": ""
+  },
+  {
+   "label": "git",
+   "ok": true,
+   "fix": "install git: https://git-scm.com/downloads",
+   "origin": "the campaign workspace is a git repository",
+   "required": true,
+   "detail": ""
+  }
+ ]
+}

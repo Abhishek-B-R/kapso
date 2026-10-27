@@ -1,0 +1,21 @@
+**No winner was delivered.** The campaign exhausted its budget; `goal_achieved=False`. Attempt `generic_exp_0` at `07b094a70af2` has no evaluation score, so improvement over baseline and achievement of the **0.85 AUC** target remain unverified.
+
+- **Changes:** No winning diff exists. The proposal replaced logistic regression in `predict.py` with 16 averaged, three-leaf histogram gradient boosting models, native categorical handling, and single-thread execution while preserving the prediction contract. Implementation timed out.
+- **Rejected or voided:** None recorded. During exploration, the agent discarded feature engineering, monotonic constraints, and model blends; these were exploratory decisions, not judge verdicts.
+- **Risks:** No harness verification or completed judge review exists. No hook blocks were recorded. Two Codex memory sessions failed because `mcp_servers.kapso` had an invalid transport configuration.
+- **Spend:** 58.5 minutes of a 60-minute budget: 51.5 on ideation and 7 on implementation. Recorded cost **$2.814**, covering priced Claude Code work only; one run lacked a cost figure, and Codex costs were unreported. One experiment, zero rejections.
+
+**Next action:** Fix the Codex transport configuration, then resume with more budget to finish implementation and obtain a verified evaluation before considering a merge.
+
+---
+
+**No—not ready to merge. The campaign did not actually deliver an accepted winner.**
+
+- The surviving attempt is `generic_exp_0` at `07b094a`. Implementation timed out, verification is absent, and the judge was skipped because the budget expired.
+- Its committed evaluation result reports **AUC 0.8464** using the provided evaluator (**protected, unversioned**): above the brief’s 0.7974 baseline, but **0.0036 below the 0.85 target**. The campaign’s official score is null.
+- The diff replaces logistic regression with 16 shallow gradient-boosting models. It also commits predictions, experiment scripts, binary arrays, and PID files.
+- The evaluator script is unchanged, and the prediction code appears to preserve the CLI/output contract and fit only training rows. I did not independently rerun evaluation or verify historical access to holdout labels.
+- No voided attempts or integrity rejections are recorded; there is also no reviewer approval. Feature engineering, constraints, and blends were rejected during exploration.
+- Spend: **58.5 minutes, $2.814 recorded**, with incomplete cost coverage; one experiment.
+
+**Next action:** recover the `predict.py` change into a clean candidate, rerun protected evaluation and verification, and meet the target before merging.

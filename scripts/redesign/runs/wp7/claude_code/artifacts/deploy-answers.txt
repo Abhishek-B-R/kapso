@@ -1,0 +1,33 @@
+The churn campaign is now running locally as **deployment 1**, and the test call returned the expected answer.
+
+- **What runs:** a function, `main.predict`, that kapso runs in a background process on this machine. It has no URL. When it starts, it retrains the winning model on `kapso_datasets/train.csv`.
+- **Test call:** I sent it holdout customer `C010001` and it returned `churn_probability` 0.9821166666666667. The deploy agent says this matches that customer's row in the campaign's `predictions.csv`.
+- **Single-customer scoring:** the winning model ranks customers against the whole holdout batch, so it can't score one customer alone. The deploy agent fixed this by saving the holdout scores when the model starts and placing each new customer among them. It says scoring all 3000 holdout rows this way reproduces `predictions.csv` exactly (0.0 difference), so the 0.847 holdout score still applies. Values beyond that reference range get the top or bottom score. I didn't check this myself.
+- **Files:** it added `main.py`, `requirements.txt` and `kapso_deployment.json` and left `predict.py` unchanged. None of it is committed. It didn't re-run `evaluate.py` because that would overwrite the saved `result.json`.
+- **After a kapso upgrade:** the function runs on kapso's own Python (`/home/ubuntu/.local/share/uv/tools/leeroo-kapso/bin/python`). An upgrade replaces it, so you'd need to reinstall the solution's requirements there.
+
+Files:
+- Workspace: `/home/ubuntu/proof/work/churn-campaign/.kapso/deployments/1/workspace`
+- Deployment record: `/home/ubuntu/proof/work/churn-campaign/.kapso/deployments/1/deployment.json`
+
+Next actions, all for deployment 1:
+```
+from kapso import Software; Software.open('../churn-campaign', 1).run({...feature row...})   # call it from Python
+kapso deploy ../churn-campaign --logs  --number 1
+kapso deploy ../churn-campaign --stop  --number 1
+kapso deploy ../churn-campaign --start --number 1
+```
+
+---
+
+I called the deployment once with the same inputs its proof used, and it gave the same answer as the proof.
+
+**Answer:** `{"id": "C010001", "churn_probability": 0.9821166666666667}`
+
+The proof recorded `0.9821166666666667` for this customer, so the match is exact. The model puts this customer at about 98% likely to churn.
+
+- **Which deployment:** `churn-campaign` deployment **#1**. It runs locally as a function, `main.predict`, from the build that scored 0.847 ROC AUC.
+- **The inputs:** holdout row `C010001`, taken unchanged from the deployment's record. Among other fields, it's on a month-to-month contract with 9 months of tenure, $108.14 a month in charges, electronic-check payment and no autopay.
+- **How I called it:** this target has no endpoint, so I sent the inputs to the same worker the deployment runs in (`python -m kapso.deployment.worker <workspace> main predict`).
+
+I didn't run `kapso deploy` again, because #1 was already running and healthy and a new deploy would have created #2. If you want a fresh deployment anyway, run `kapso deploy ../churn-campaign --target local`. To manage this one: `kapso deploy ../churn-campaign --status`, `--logs` or `--stop --number 1`.

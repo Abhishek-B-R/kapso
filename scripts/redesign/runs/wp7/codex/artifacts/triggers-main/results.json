@@ -1,0 +1,3211 @@
+{
+ "model": "gpt-6-astra",
+ "effort": "medium",
+ "runs": 2,
+ "tag": "main",
+ "skipped": [
+  "build-e01",
+  "build-e02",
+  "harness-e01",
+  "harness-e02",
+  "kapso-e01",
+  "kapso-e02",
+  "kapso-e03",
+  "kapso-e04",
+  "review-e01",
+  "review-e02",
+  "setup-e01",
+  "setup-e02"
+ ],
+ "results": [
+  {
+   "case": "build-c01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 25.8,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-build",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-c01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 28.4,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-build",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-c02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 26.4,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-build",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-c02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 25.3,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-build",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-c03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 24.8,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-build",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-c03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 46.7,
+   "loaded": [
+    "kapso-harness",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-build",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-c04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 71.3,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-build",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-c04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 91.2,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-build",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 37.2,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 28.4,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 22.2,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 26.8,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 24.2,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 28.5,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 24.8,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 37.0,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i05",
+   "run": 1,
+   "exit": 0,
+   "seconds": 26.7,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i05",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.6,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i06",
+   "run": 1,
+   "exit": 0,
+   "seconds": 27.5,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i06",
+   "run": 2,
+   "exit": 0,
+   "seconds": 29.2,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i07",
+   "run": 1,
+   "exit": 0,
+   "seconds": 52.8,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i07",
+   "run": 2,
+   "exit": 0,
+   "seconds": 68.5,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i08",
+   "run": 1,
+   "exit": 0,
+   "seconds": 23.4,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i08",
+   "run": 2,
+   "exit": 0,
+   "seconds": 29.6,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i09",
+   "run": 1,
+   "exit": 0,
+   "seconds": 23.8,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i09",
+   "run": 2,
+   "exit": 0,
+   "seconds": 21.6,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i10",
+   "run": 1,
+   "exit": 0,
+   "seconds": 27.5,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-i10",
+   "run": 2,
+   "exit": 0,
+   "seconds": 25.7,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-n01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 14.4,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-n01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 24.5,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-n02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 24.3,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-n02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 17.2,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-n03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 17.4,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-n03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 26.2,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-n04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 15.1,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "build-n04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 20.1,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-c01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 31.7,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-harness",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-c01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 39.2,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-harness",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-c02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 17.7,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-harness",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-c02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 17.6,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-harness",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-c03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 32.3,
+   "loaded": [
+    "kapso-harness",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-harness",
+     "count": 1,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-c03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.6,
+   "loaded": [
+    "kapso-harness",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-harness",
+     "count": 1,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-c04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 39.1,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-harness",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-c04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 50.7,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-harness",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 25.0,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 28.7,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 52.0,
+   "loaded": [
+    "kapso-harness",
+    "paper-trading"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 52.7,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 31.7,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 26.5,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 27.8,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 19.2,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i05",
+   "run": 1,
+   "exit": 0,
+   "seconds": 17.9,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i05",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.6,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i06",
+   "run": 1,
+   "exit": 0,
+   "seconds": 30.0,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i06",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.6,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i07",
+   "run": 1,
+   "exit": 0,
+   "seconds": 19.7,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i07",
+   "run": 2,
+   "exit": 0,
+   "seconds": 24.6,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i08",
+   "run": 1,
+   "exit": 0,
+   "seconds": 16.9,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i08",
+   "run": 2,
+   "exit": 0,
+   "seconds": 20.1,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i09",
+   "run": 1,
+   "exit": 0,
+   "seconds": 33.8,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i09",
+   "run": 2,
+   "exit": 0,
+   "seconds": 25.0,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i10",
+   "run": 1,
+   "exit": 0,
+   "seconds": 21.3,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-i10",
+   "run": 2,
+   "exit": 0,
+   "seconds": 16.5,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-n01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 28.3,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-n01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 29.8,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-n02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 19.0,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-n02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 22.5,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-n03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 24.5,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-n03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.8,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-n04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 22.4,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "harness-n04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.9,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-c01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 28.4,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso",
+     "count": 1,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-c01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 28.3,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation",
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso",
+     "count": 1,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-c02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 24.4,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-c02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.4,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-c03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 45.6,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-c03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 42.6,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-c04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 20.9,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-c04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 25.9,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 23.8,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 22.5,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 25.7,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 27.7,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 24.5,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 24.2,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 40.9,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 29.0,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i05",
+   "run": 1,
+   "exit": 0,
+   "seconds": 296.2,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i05",
+   "run": 2,
+   "exit": 0,
+   "seconds": 56.2,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i06",
+   "run": 1,
+   "exit": 0,
+   "seconds": 19.7,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i06",
+   "run": 2,
+   "exit": 0,
+   "seconds": 18.7,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i07",
+   "run": 1,
+   "exit": 0,
+   "seconds": 31.9,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i07",
+   "run": 2,
+   "exit": 0,
+   "seconds": 33.7,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i08",
+   "run": 1,
+   "exit": 0,
+   "seconds": 23.7,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i08",
+   "run": 2,
+   "exit": 0,
+   "seconds": 22.2,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i09",
+   "run": 1,
+   "exit": 0,
+   "seconds": 36.0,
+   "loaded": [
+    "kapso",
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-i09",
+   "run": 2,
+   "exit": 0,
+   "seconds": 36.5,
+   "loaded": [
+    "kapso",
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-n01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 16.4,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-n01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 17.2,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-n02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 13.6,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-n02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 12.6,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-n03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 22.6,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-n03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 18.7,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-n04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 47.1,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "kapso-n04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 49.7,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-c01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 31.0,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-review",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-c01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 22.7,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-review",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-c02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 21.2,
+   "loaded": [
+    "kapso-review",
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-review",
+     "count": 1,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-c02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 24.5,
+   "loaded": [
+    "kapso-review",
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-review",
+     "count": 1,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-c03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 26.5,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-review",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-c03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 29.9,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-review",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-c04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 43.8,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-review",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-c04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 41.5,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-review",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 26.6,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 22.5,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 15.4,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 24.9,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 22.4,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 17.5,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 17.5,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.2,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i05",
+   "run": 1,
+   "exit": 0,
+   "seconds": 20.1,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i05",
+   "run": 2,
+   "exit": 0,
+   "seconds": 20.5,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i06",
+   "run": 1,
+   "exit": 0,
+   "seconds": 29.8,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i06",
+   "run": 2,
+   "exit": 0,
+   "seconds": 27.4,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i07",
+   "run": 1,
+   "exit": 0,
+   "seconds": 17.8,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i07",
+   "run": 2,
+   "exit": 0,
+   "seconds": 17.1,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i08",
+   "run": 1,
+   "exit": 0,
+   "seconds": 17.2,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i08",
+   "run": 2,
+   "exit": 0,
+   "seconds": 19.6,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i09",
+   "run": 1,
+   "exit": 0,
+   "seconds": 27.4,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i09",
+   "run": 2,
+   "exit": 0,
+   "seconds": 19.6,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i10",
+   "run": 1,
+   "exit": 0,
+   "seconds": 19.5,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-i10",
+   "run": 2,
+   "exit": 0,
+   "seconds": 19.0,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-n01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 77.3,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-n01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 33.8,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-n02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 17.9,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-n02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 15.9,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-n03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 14.7,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-n03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 18.1,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-n04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 21.1,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "review-n04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 23.0,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-c01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 31.1,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-setup",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-c01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 28.3,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-setup",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-c02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 30.4,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation",
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-setup",
+     "count": 1,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-c02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 29.3,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-setup",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-c03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 29.3,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-setup",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-c03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 26.7,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-setup",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-c04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 22.4,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-setup",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-c04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 14.0,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "not-kapso-setup",
+     "count": 0,
+     "passed": true
+    },
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 44.2,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 54.7,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 49.5,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 50.5,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 44.2,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 37.2,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 31.3,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 25.5,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i05",
+   "run": 1,
+   "exit": 0,
+   "seconds": 42.6,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i05",
+   "run": 2,
+   "exit": 0,
+   "seconds": 47.7,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i06",
+   "run": 1,
+   "exit": 0,
+   "seconds": 38.1,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i06",
+   "run": 2,
+   "exit": 0,
+   "seconds": 48.8,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i07",
+   "run": 1,
+   "exit": 0,
+   "seconds": 37.3,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i07",
+   "run": 2,
+   "exit": 0,
+   "seconds": 36.4,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i08",
+   "run": 1,
+   "exit": 0,
+   "seconds": 60.2,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i08",
+   "run": 2,
+   "exit": 0,
+   "seconds": 49.5,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i09",
+   "run": 1,
+   "exit": 0,
+   "seconds": 42.5,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i09",
+   "run": 2,
+   "exit": 0,
+   "seconds": 44.5,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i10",
+   "run": 1,
+   "exit": 0,
+   "seconds": 32.6,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-i10",
+   "run": 2,
+   "exit": 0,
+   "seconds": 39.4,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-n01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 18.0,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-n01",
+   "run": 2,
+   "exit": 0,
+   "seconds": 19.0,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-n02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 27.5,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-n02",
+   "run": 2,
+   "exit": 0,
+   "seconds": 29.2,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-n03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 13.7,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-n03",
+   "run": 2,
+   "exit": 0,
+   "seconds": 15.2,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-n04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 16.1,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "setup-n04",
+   "run": 2,
+   "exit": 0,
+   "seconds": 16.0,
+   "loaded": [],
+   "graders": [
+    {
+     "name": "no-kapso-skill",
+     "count": 0,
+     "passed": true
+    }
+   ],
+   "passed": true
+  }
+ ]
+}
