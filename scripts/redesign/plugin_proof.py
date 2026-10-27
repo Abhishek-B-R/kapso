@@ -415,7 +415,8 @@ def step_cold_install(ctx: Context) -> Dict[str, Any]:
     )
     run = ctx.shell(f"sudo -u {user} -H bash -lc {shlex.quote(script)}", timeout=1200, check=False)
     text = run.stdout + run.stderr
-    versions = re.findall(r"^(kapso|kapso-mcp) (\S+)", run.stdout, re.M)
+    # The lines read `kapso kapso 0.8.0.dev1`: the label, then what --version printed.
+    versions = re.findall(r"^(kapso|kapso-mcp) (?:\1 )?(\S+)$", run.stdout, re.M)
     completed = run.returncode == 0 and len({version for _, version in versions}) == 1 and len(versions) == 2
     return shell_step("cold-install", completed, [ctx.artifact("cold-install.txt", text)], (time.monotonic() - started) / 60)
 
@@ -777,12 +778,18 @@ def step_experience_share(ctx: Context) -> Dict[str, Any]:
     remote = ctx.work / "bank-remote.git"
     ctx.shell(f"rm -rf {remote} && git init -q --bare {remote}")
     turns = ctx.converse("experience-share", project, ctx.host.command("experience", f"share file://{remote}"), go_policy, max_turns=3)
-    # From the second user's own home: a directory that user cannot see
-    # is no place to run `kapso` from (its `.env` lookup starts there).
-    second = ctx.shell(f"sudo -u proof2 -H bash -lc 'cd ~; export PATH=$HOME/.local/bin:$PATH; kapso experience add file://{remote} && kapso experience list'", check=False)
+    # The second user, from its own home, loads the shared bank by its
+    # reference (a bank needs no `add`: loading fetches it into the store)
+    # through the session server, and lists what it reads.
+    second = ctx.shell(
+        f"sudo -u proof2 -H bash -lc 'cd ~; export PATH=$HOME/.local/bin:$PATH; "
+        f"timeout 120 kapso-mcp --experience file://{remote} --root ~ < /dev/null 2>&1 | head -20; kapso experience list'",
+        check=False, timeout=300,
+    )
     artifacts = [ctx.artifact("experience-share.txt", "\n".join(turn.text for turn in turns)), ctx.artifact("experience-second-user.txt", second.stdout + second.stderr)]
     shared = ctx.shell(f"git -C {remote} log --oneline -1", check=False).returncode == 0
-    return record_step("experience-share", turns, shared and second.returncode == 0, artifacts, ["the second user's served build at a tiny budget is run by hand when the window allows; recorded here as the add and the list"])
+    loaded = "banks you read" in second.stdout and "serving" in second.stdout
+    return record_step("experience-share", turns, shared and loaded, artifacts, ["the second user loads the shared bank by reference through kapso-mcp and lists it under the banks it reads; a served build at a tiny budget is left to WP9's round"])
 
 
 def step_harness_improve(ctx: Context) -> Dict[str, Any]:
@@ -836,19 +843,22 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
     # A Codex session in the campaign carries the execpolicy rule in its
     # workspace instead; the file's presence and the session's exit are
     # the evidence.
-    rules = campaign / ".codex" / "rules" / "kapso-campaign.rules"
     codex_sessions = []
     for record in sorted(campaign.rglob("session.json")):
         data = json.loads(record.read_text(encoding="utf-8"))
         if data.get("host") == "codex":
             codex_sessions.append({"session": str(record.parent.relative_to(campaign)), "exits": [run.get("exit") for run in data.get("runs", [])],
                                    "errors": [run.get("error") for run in data.get("runs", []) if run.get("error")]})
-    codex_ok = all(all(exit == 0 for exit in s["exits"]) for s in codex_sessions)
+    # A Codex session the machine's own quota refused never ran: said, not counted.
+    quota = [s for s in codex_sessions if any("Quota exceeded" in error for error in s["errors"])]
+    ran = [s for s in codex_sessions if s not in quota]
+    codex_ok = all(all(exit == 0 for exit in s["exits"]) for s in ran)
+    rules_files = [str(path.relative_to(campaign)) for path in campaign.rglob("kapso-campaign.rules")]
     report = {
         "launch": launch.stdout.strip().splitlines()[:3], "status": (status_of(campaign) or {}).get("state"),
-        "claude_sessions": findings, "codex_sessions": codex_sessions, "codex_rules_file": rules.is_file(),
+        "claude_sessions": findings, "codex_sessions": codex_sessions, "codex_quota_refused": len(quota), "codex_rules_files": rules_files,
     }
-    completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings) and codex_ok and (rules.is_file() or not codex_sessions)
+    completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings) and codex_ok and (bool(rules_files) or not ran)
     return shell_step("campaign-session-isolation", completed, [ctx.artifact("isolation.json", json.dumps(report, indent=1))], (time.monotonic() - started) / 60)
 
 
