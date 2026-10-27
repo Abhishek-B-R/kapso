@@ -19,7 +19,6 @@ inside a campaign directory: a campaign never launches a campaign.
 """
 
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -35,13 +34,13 @@ except ImportError:
     TextContent = None
 
 from kapso.execution.inbox import launch_receipt_path
+from kapso.execution.observability import OperationStatusView
 from kapso.gated_mcp.gates.base import ToolGate
 
 START_TOOL = "kapso_build_start"
 STATUS_TOOL = "kapso_status"
 STOP_TOOL = "kapso_stop"
 EXPERIMENT_HISTORY_NAME = "experiment_history.json"
-_STOPPED_PID = re.compile(r"\(pid (\d+)\)")
 _RULES = (
     "Never inside a Kapso campaign session: a campaign does not launch, read or stop a campaign. "
     "One launch per request, never a second: the campaign outlives this session and is followed "
@@ -58,6 +57,13 @@ def inside_campaign(start: Path) -> Optional[Path]:
         if (candidate / ".kapso" / EXPERIMENT_HISTORY_NAME).is_file():
             return candidate
     return None
+
+
+def _campaign_dir(cwd: Path, output: str) -> Path:
+    """The campaign directory as the verb resolves it: `~` expanded first,
+    then joined to the working directory (joining first would bury the
+    tilde)."""
+    return (cwd / Path(output).expanduser()).resolve()
 
 
 class CampaignGate(ToolGate):
@@ -77,7 +83,8 @@ class CampaignGate(ToolGate):
                     "Launch a Kapso campaign in a session of its own and return at once with its "
                     "receipt (pid, log, status path, watch line). Pass `brief` (the path of a brief "
                     "file, kapso-build's) or `goal` (one line), `repo` and `output` (an empty directory "
-                    "outside the repository). " + _RULES
+                    "outside the repository). A harness or a bank not yet in the store is fetched before "
+                    "the answer comes, which can take minutes the first time. " + _RULES
                 ),
                 inputSchema={
                     "type": "object",
@@ -129,6 +136,10 @@ class CampaignGate(ToolGate):
                     "reads or stops a campaign; run the verb from the project directory"
                 ),
             }
+            if tool_name == START_TOOL:
+                answer["accepted"] = False
+            if tool_name == STOP_TOOL:
+                answer["stopped"] = False
         elif tool_name == START_TOOL:
             answer = self._start(arguments, cwd)
         elif tool_name == STATUS_TOOL:
@@ -164,7 +175,7 @@ class CampaignGate(ToolGate):
         run = self._verb(argv, cwd)
         if run.returncode != 0:
             return {"accepted": False, "exit": run.returncode, "error": run.stderr.strip() or run.stdout.strip()}
-        campaign = (cwd / arguments["output"]).expanduser().resolve()
+        campaign = _campaign_dir(cwd, arguments["output"])
         receipt = json.loads(launch_receipt_path(campaign).read_text(encoding="utf-8"))
         return {
             "accepted": True,
@@ -185,14 +196,18 @@ class CampaignGate(ToolGate):
         return {**json.loads(run.stdout), "exit": run.returncode}
 
     def _stop(self, path: str, cwd: Path) -> Dict[str, Any]:
-        argv = ["build", "--output", path, "--stop"]
+        campaign = _campaign_dir(cwd, path)
+        status = campaign / ".kapso" / "status.json"
+        # The writer's pid is the status file's; the verb's prose is not parsed.
+        pid = OperationStatusView(status).data.get("pid") if status.is_file() else None
+        argv = ["build", "--output", str(campaign), "--stop"]
         config = self.get_param("config_path")
         if config:
             argv += ["--config", config]
         run = self._verb(argv, cwd)
         if run.returncode != 0:
             return {"stopped": False, "exit": run.returncode, "error": run.stderr.strip() or run.stdout.strip()}
-        return {"stopped": True, "pid": int(_STOPPED_PID.search(run.stdout).group(1))}
+        return {"stopped": True, "pid": pid}
 
     @staticmethod
     def _verb(argv: List[str], cwd: Path) -> subprocess.CompletedProcess:

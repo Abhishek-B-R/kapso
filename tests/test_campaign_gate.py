@@ -113,7 +113,9 @@ def test_every_tool_refuses_inside_a_campaign_directory(tmp_path, monkeypatch, k
     gate = _gate(inside)
     for tool, arguments in ((START_TOOL, {"brief": "b.md", "repo": ".", "output": "x"}), (STATUS_TOOL, {"path": "x"}), (STOP_TOOL, {"path": "x"})):
         answer = _call(gate, tool, **arguments)
-        assert answer == {"error": f"this session runs inside the campaign at {tmp_path}: a campaign never launches, reads or stops a campaign; run the verb from the project directory"}
+        expected = {"error": f"this session runs inside the campaign at {tmp_path}: a campaign never launches, reads or stops a campaign; run the verb from the project directory"}
+        expected.update({START_TOOL: {"accepted": False}, STOP_TOOL: {"stopped": False}}.get(tool, {}))
+        assert answer == expected
     assert calls == []
 
 
@@ -129,14 +131,30 @@ def test_status_returns_the_verbs_json_with_its_exit_code(tmp_path, monkeypatch)
     assert _call(_gate(tmp_path), STATUS_TOOL, path="../campaign") == {"exit": 2, "error": "kapso watch: error: unrecognized arguments"}
 
 
-def test_stop_returns_the_pid_or_the_refusal(tmp_path, monkeypatch):
+def test_stop_returns_the_writers_pid_from_the_status_or_the_refusal(tmp_path, monkeypatch):
     calls = []
-    _fake_verb(monkeypatch, calls, stdout="stopped the campaign at /c (pid 4242)\n  status:  /c/.kapso/status.json\n")
-    assert _call(_gate(tmp_path, "kapso-config.yaml"), STOP_TOOL, path="/c") == {"stopped": True, "pid": 4242}
-    assert calls[-1] == ([sys.executable, "-m", "kapso.cli", "build", "--output", "/c", "--stop", "--config", "kapso-config.yaml"], str(tmp_path))
-    _fake_verb(monkeypatch, calls, returncode=1, stderr="Error: the campaign at /c is done; nothing to stop\n")
-    assert _call(_gate(tmp_path), STOP_TOOL, path="/c") == {"stopped": False, "exit": 1, "error": "Error: the campaign at /c is done; nothing to stop"}
-    assert calls[-1][0] == [sys.executable, "-m", "kapso.cli", "build", "--output", "/c", "--stop"]
+    campaign = tmp_path / "c"
+    (campaign / ".kapso").mkdir(parents=True)
+    (campaign / ".kapso" / "status.json").write_text(json.dumps({"state": "running", "pid": 4242}))
+    _fake_verb(monkeypatch, calls, stdout=f"stopped the campaign at {campaign} (pid 4242)\n")
+    assert _call(_gate(tmp_path, "kapso-config.yaml"), STOP_TOOL, path="c") == {"stopped": True, "pid": 4242}
+    assert calls[-1] == ([sys.executable, "-m", "kapso.cli", "build", "--output", str(campaign), "--stop", "--config", "kapso-config.yaml"], str(tmp_path))
+    _fake_verb(monkeypatch, calls, returncode=1, stderr=f"Error: the campaign at {campaign} is done; nothing to stop\n")
+    assert _call(_gate(tmp_path), STOP_TOOL, path="c") == {"stopped": False, "exit": 1, "error": f"Error: the campaign at {campaign} is done; nothing to stop"}
+    assert calls[-1][0] == [sys.executable, "-m", "kapso.cli", "build", "--output", str(campaign), "--stop"]
+
+
+def test_a_tilde_output_is_under_the_home_directory_not_the_working_one(tmp_path, monkeypatch, kapso_on_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    calls = []
+    project = tmp_path / "project"
+    project.mkdir()
+    receipt = tmp_path / "campaign.launch.json"
+    _fake_verb(monkeypatch, calls, stdout="build started (pid 1)\n", before=lambda: receipt.write_text(
+        json.dumps({"pid": 1, "log": "l", "argv": [], "started_at": "t"}),
+    ))
+    answer = _call(_gate(project), START_TOOL, goal="g", repo=".", output="~/campaign")
+    assert answer["accepted"] is True and answer["campaign"] == str(tmp_path / "campaign")
 
 
 def test_the_gate_is_host_only(tmp_path, monkeypatch):
