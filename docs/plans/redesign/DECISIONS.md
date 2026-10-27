@@ -239,6 +239,41 @@ workspace) with the adapter's command lines rejects `kapso build`
 runs that case and records the refusal, deferred on Claude Code whose
 mechanism is the plugin switch. (Claude 1, Codex 22)
 
+## WP9: the semantic suite (planned, 2026-10-27)
+
+**The simulated user is the other vendor's CLI with a card.** Codex plays
+the engineer when Claude Code is the host and the reverse, prompted with
+the persona card, the fixture's README, the whole history and the host's
+message, answering one message at a time and `DONE` when satisfied. A
+scripted policy stays available (`--user scripted`) for the mechanical
+round WP7 ran. Alternative rejected: a bespoke API client for the persona,
+which would add a provider dependency the CLIs already carry.
+
+**The judge is Gemini on Vertex when reachable, else the idle vendor.**
+The design asks for a third vendor; the credit project's `gemini-4-argon`
+through the LiteLLM bridge is one, reached from the development box where
+the judge runs over fetched transcripts. When it is not reachable the
+vendor that played neither side judges, and the record names the model.
+A judge that returns malformed JSON fails the run: no retry hides a rubric
+it cannot follow.
+
+**Two of the design's fixtures are not new directories.** `trading-strategy`
+is `examples/trading` (the author's fixture since WP2); `empty-wish` is a
+README the driver writes (a directory holding one README is no example).
+`pipeline-dbt` is new, the third domain for the author test.
+
+**The learn's two fail-loud cases are fixed in this package.** S6 needs a
+learn that completes; the plugin round saw it fail twice, on a flow file's
+unquoted fragment and on a crew that wrote no report. The repair is the
+mining frame's own repair round extended to a document that does not
+parse, and one retry for a crew session, then fail loud with the name;
+`src/kapso/learning/` is edited here for those two sites only.
+
+**The provider limit is injected by a shim.** A `PATH` shim before the
+host's CLI answers the vendor's rate-limit error N times, copied from a
+real one, then execs the CLI: the adapter's handling of that error is what
+S5 tests, and a real limit cannot be scheduled.
+
 **A Codex campaign session trusts its own workspace.** The execpolicy
 rule that refuses the campaign verbs lives in the workspace's project
 layer (`.codex/rules/`), which Codex enforces for a trusted project
