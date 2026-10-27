@@ -37,7 +37,11 @@ CLAUDE_MODEL = "claude-opus-5-5"
 CODEX_MODEL = "gpt-6-astra"
 TURN_TIMEOUT = 1800
 # A turn that waits for a word without a question mark: "say go and I'll launch".
-APPROVAL_ASKED = re.compile(r"\b(say|reply|type|answer)\b[^\n]{0,30}\bgo\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b|\blet me know\b", re.I)
+APPROVAL_ASKED = re.compile(
+    r"\b(say|reply|type|answer)\b[^\n]{0,30}\bgo\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b"
+    r"|\blet me know\b|\bonce you.ve answered\b|\bafter you answer\b|\byour answers?\b",
+    re.I,
+)
 CHURN_WISH = (
     "get the churn model's ROC AUC above 0.85 without changing the prediction contract; "
     "the campaign goes to ../churn-campaign with a budget of 60 minutes and 3 experiments"
@@ -84,8 +88,9 @@ def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
     if any(tool["name"] == "AskUserQuestion" for tool in tools):
         return True
     lines = [line.strip().rstrip("*_`)\"' ") for line in text.splitlines() if line.strip()]
-    closing = "\n".join(lines[-6:])
-    return any(line.endswith("?") for line in lines[-6:]) or bool(APPROVAL_ASKED.search(closing))
+    closing = "\n".join(lines[-8:])
+    # A numbered question's line may run on past its question mark.
+    return "?" in closing or bool(APPROVAL_ASKED.search(closing))
 
 
 def lines_outside_fences(text: str) -> int:
