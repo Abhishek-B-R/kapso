@@ -3,7 +3,7 @@
 2026-10-26. Owner: the redesign's implementer, autonomously, the owner
 checking the decisions. Branch `wp7-plugin` off `redesign` at `e792fadd`.
 Size: L (one source tree for three hosts, six skills written for the
-mistakes the lab recorded, eleven commands, the launcher, the marketplace
+mistakes the lab recorded, ten commands, the launcher, the marketplace
 files, four engine seams, the evals, and a proof round on both hosts; the
 long pole of the critical path). Revised after the cross-model review
 (the Review section) and the host probes
@@ -109,11 +109,12 @@ PATH entry Codex's and Cursor's.
 
 **The manifests.** `plugin/.claude-plugin/plugin.json`: `name` `kapso`,
 `version` (the package's), `description`, `author` `{name: Leeroo}`,
-`homepage`, `repository`, `license` `Apache-2.0`, `keywords`, `skills`
-(the six directories, listed), `commands` `./commands/`, `mcpServers`
-`./hosts/claude/mcp.json`. `plugin/.codex-plugin/plugin.json`: `name`,
+`homepage`, `repository`, `license` `MIT`, `keywords`, `mcpServers`
+`./hosts/claude/mcp.json` (no `skills` or `commands` list: both proven
+hosts discover the directories by convention; corrected after the
+pull-request review, see the decisions). `plugin/.codex-plugin/plugin.json`: `name`,
 `version`, `description`, `author`, `homepage`, `repository`, `license`,
-`keywords`, `skills` `./skills/`, `mcpServers` `./hosts/codex/mcp.json`,
+`keywords`, `mcpServers` `./hosts/codex/mcp.json`,
 `interface` (`displayName` Kapso, `shortDescription`, `longDescription`,
 `developerName` Leeroo, `category` Developer tools, `capabilities`
 `[Interactive, Read, Write]`, `websiteURL`, `defaultPrompt`: three
@@ -183,8 +184,8 @@ the config is refused by name); the CLI-line test checks each line for
 it, not only that it parses. `kapso-mcp` finds the same file by the same
 rule when `--config` is absent (the host starts it without a person
 typing flags), so the server and the commands read one config. `kapso
-trace` and `kapso watch` take no config and need none (they read
-records). An explicit `--config` wins everywhere.
+trace` takes no config and needs none (it reads the record); `kapso
+watch` takes one. An explicit `--config` wins everywhere.
 
 **What a host session is served.** The host-session server (`kapso-mcp`,
 WP3's) serves the gates the directory holds (`research`, `repo_memory`,
@@ -260,7 +261,7 @@ campaign session's skills and tools.
 
 **`kapso build --output <campaign> --stop`.** Ends a running campaign:
 the process group of the pid the status file names (SIGTERM, then
-SIGKILL after `build.stop_grace_seconds`, a new key beside the other
+SIGKILL after `budget.stop_grace_seconds`, a new key beside the other
 build knobs), the status marked `failed` with the error `stopped by the
 person` and `stopped_reason: stopped`, the receipt removed; a campaign
 whose status is terminal or whose writer is gone is refused by state in
@@ -405,7 +406,7 @@ WP1's and WP3's names.
 
 - WP1: `kapso build` with `--brief`, `--detach`, the receipt it writes
   beside the log, `--resume`; `Solution.open`, `solution.explain()` and
-  `.diff()`; this package adds `--stop` and `build.stop_grace_seconds`
+  `.diff()`; this package adds `--stop` and `budget.stop_grace_seconds`
   (the same implementer).
 - WP2: `kapso harness new|check|list|add|update|remove`, the manifest's
   `listed()`, the attachments' shapes (skills, agents, servers) that
@@ -440,7 +441,7 @@ for CLI lines), `.github/workflows/tests.yml` (the paths `plugin/**`,
 `src/kapso/gated_mcp/host_session.py`, `presets.py` (`host_only`),
 `server.py` (`GATE_CLASSES`) and a new `gates/campaign_gate.py` (WP3's
 files, the same implementer), `src/kapso/config.yaml`
-(`experience.session_sources`, `build.stop_grace_seconds`), `src/kapso/cli/build.py`
+(`experience.session_sources`, `budget.stop_grace_seconds`), `src/kapso/cli/build.py`
 (`--stop`), `src/kapso/cli/learn.py` and `cli/experience.py` (`--detach`),
 `src/kapso/cli/common.py` (the detach helper takes the log's and the
 receipt's places), `src/kapso/execution/coding_agents/adapters/codex_agent.py`
@@ -513,7 +514,7 @@ is a signal to its process group; nothing inside it changes).
    unknown flag or verb fails by file and line), every command naming a
    skill that exists.
 3. **The engine seams the skills need.** `kapso build --output <path>
-   --stop` with `build.stop_grace_seconds`; `--detach` on `kapso learn
+   --stop` with `budget.stop_grace_seconds`; `--detach` on `kapso learn
    <campaign>` and `kapso experience add --repo|--research`; the detach
    helper's log and receipt places; tests: a stopped campaign (a fake
    writer process in its own session, the status marked, the receipt
@@ -624,7 +625,7 @@ is a signal to its process group; nothing inside it changes).
   | `/kapso:harness improve` on the probe campaign | (i) | deferred |
   | `/kapso:learn` on the churn campaign: the detached launch, `learning/status` reaching `mine` | (j) | deferred (hours) |
   | `/kapso:experience share` to a local bare remote; a second user's `experience add <ref>` and a served build at a tiny budget | (k) | deferred |
-  | `kapso harness export examples/harnesses/trading --format claude` into a scratch directory; a session there answering with the harness's skill; the Codex form's files | (l) | (l) the files |
+  | `kapso harness export examples/harnesses/trading --host claude_code` into a scratch directory; a session there answering with the harness's skill; the Codex form's files | (l) | (l) the files |
   | the session brief: WP3's proof bank (`a9ddad3d`) staged as `mine`, `session_sources: [mine:all]` in the project's config; the instructions' sources recognised, one bank retrieval | (m) | (m) |
   | `kapso_build_start`, `kapso_status`, `kapso_stop` from a session; a campaign session's tool list without them (the plugin installed at user scope) | (n) | (n) |
   | the trigger evals: every case; the Codex trigger runner | (o) | (o) |
@@ -646,7 +647,7 @@ is a signal to its process group; nothing inside it changes).
   plugin marketplace add` and `codex plugin add` install it on this box,
   its skills load by name, and its tools reach a `codex exec` session
   through the `codex mcp add` line the setup skill runs.
-- The six skills and eleven commands exist with the contracts above,
+- The six skills and ten commands exist with the contracts above,
   the rules kept from the design included; every CLI line in them
   parses; `skills/` is gone and the README, the docs and the installation
   page name the plugin, the plugin's lines first.
@@ -659,18 +660,24 @@ is a signal to its process group; nothing inside it changes).
   (all three kinds of test on both hosts) is met for every row both
   hosts run and named deferred for the rest.
 - A campaign session on either host, with the plugin installed at user
-  scope, lists none of the six skills and none of the campaign tools.
+  scope, lists none of the six skills and none of the campaign tools on
+  Claude Code; on Codex, which has no per-session switch, it lists none
+  of the campaign tools and refuses `kapso build`, `learn` and `deploy`
+  by the execpolicy rule the adapter writes (the skills' text may be
+  read); corrected after the pull-request review.
 - `kapso_build_start` launches a campaign from a host session,
   `kapso_status` reads it and `kapso_stop` ends it; a campaign's own
   sessions never see the gate, on either host, with the plugin installed.
-- `kapso build --stop` ends a campaign whose resume then continues;
+- `kapso build --stop` ends a campaign, its agents' own sessions
+  included, and keeps its checkpoint (the resume's continuation is
+  WP9's round to show);
   `kapso learn --detach` and `kapso experience add --detach` return at
   once with their receipts.
 - `experience.session_sources` in a project's config serves a host session the
   bank; the intro shows on connect on both hosts; a listed source that
   does not exist leaves the other gates served; an explicit `--experience`
   that does not exist stops the server with the add line.
-- `kapso harness export examples/harnesses/trading --format claude|codex`
+- `kapso harness export examples/harnesses/trading --host claude_code|codex`
   writes the files an ordinary session discovers, says what it cannot
   reproduce, refuses an overwrite; tested and used in the proof.
 - One version across the package, the manifests, the marketplace entries
@@ -693,7 +700,8 @@ is a signal to its process group; nothing inside it changes).
   more tools: Claude Code lists each skill under a 1,536-character cap and
   Codex's catalog is two per cent of the context; the descriptions
   front-load their trigger words, `claude plugin details` reports the
-  projected cost and the proof records the first turn's tokens.
+  projected cost; a first turn's token usage is not in the records (the
+  hosts' transcripts carry it per turn, unsummed).
 - **The evaluator rule's reversal** ("never write an evaluator" becomes
   "build it for one approval") changes what the agent does with a bare
   repository; the proof's step (g) runs the three branches, and the
@@ -747,7 +755,7 @@ plan as much. Every finding and what the plan now says:
 | 11 | P1: export's union semantics are unspecified | fixed: the union over modules by `Manifest.listed()` (each attachment once, first occurrence), hooks excluded, every destination checked before anything is written and the whole export refused on one collision; tested on the trading example for both hosts |
 | 12 | P1: the sidecar mirror reverses the policy | fixed: `kapso-evaluation` is `user-invocable: false` on Claude Code and `allow_implicit_invocation: true` on Codex, where no menu hiding exists; the test checks each host's file for its own field |
 | 13 | P1: learning and ingestion strand the user in foreground operations | fixed: `kapso learn <campaign> --detach` and `kapso experience add --repo|--research … --detach` through the one detach helper (a session of its own, the log beside the target, the receipt, `kapso watch learning/status` as the follow line); deploy stays foreground with the host recipe (Claude Code's Bash tool: once in the background with a log) as WP5 wrote it |
-| 14 | P1: the plugin can launch a campaign but not stop one | fixed: `kapso build --output <campaign> --stop` ends the campaign's process group (the status file's pid, SIGTERM then SIGKILL after `build.stop_grace_seconds`), marks the status `failed` with `stopped by the person`, and a later `--resume` continues from the checkpoint; the campaign gate gains `kapso_stop(path)`; a run whose heartbeat is fresh is refused by `--resume` as live, and the skill's diagnosis section says a slow run is not a dead one |
+| 14 | P1: the plugin can launch a campaign but not stop one | fixed: `kapso build --output <campaign> --stop` ends the campaign's process group (the status file's pid, SIGTERM then SIGKILL after `budget.stop_grace_seconds`), marks the status `failed` with `stopped by the person`, and a later `--resume` continues from the checkpoint; the campaign gate gains `kapso_stop(path)`; a run whose heartbeat is fresh is refused by `--resume` as live, and the skill's diagnosis section says a slow run is not a dead one |
 | 15 | P2: setup's green-doctor requirement forces infrastructure | fixed: `kapso doctor <next verb> --json` (`build` first), only required rows block; the interpreter: `uv tool install leeroo-kapso==<pin>` first, else `pipx`, else `pip` into the active environment, and `kapso --version` plus `kapso-mcp --version` must answer from the same install; the PATH refresh line per host |
 | 16 | P2: command bodies and names remain guesswork | fixed: one command template (the skill named, the arguments passed as the request, the campaign inferred from `kapso watch` with one row else asked, the exact line) with the exceptions listed; `harness improve` is the skill's interview, not a subcommand; `add|update|remove` route to the `kapso` skill; `/kapso:kapso` is what Claude Code names a plugin skill, the owner's `/kapso` is the host's own naming, recorded as a reversal |
 | 17 | P2: folding the operating skill needs a migration list | fixed: enumerated in change 2 (build intent to `kapso-build`, finished-run questions to `kapso-review`, the harness and experience wrappers, `hosts` and roles instead of `modes.<MODE>.*`, the config copy line, `python -c` replaced by `kapso doctor --show-config`, `STALLED` as the diagnosis section says, deploy's numbered lifecycle, the sidecar prompts) |
@@ -876,7 +884,8 @@ is, refuses to say so ("telling it the key is done would be false", the
 first machine); with the key written where the fix line says, the
 session replies with a note through `kapso inbox reply … --detach` and
 the campaign resumes (the second machine: two messages, one question,
-1.8 minutes). On Codex, on the development box, the pause campaign was
+1.8 minutes; the resumed campaign ran no further attempt there either,
+the reserve rule stopping it at once, `attempt_would_not_fit`). On Codex, on the development box, the pause campaign was
 given twenty minutes (its ten-minute one never reached the ask; the
 Findings): the request came twelve minutes in, the session rendered it
 with its fix line, told the key was placed replied through `kapso inbox
@@ -939,7 +948,16 @@ about, the tree), written on "go" where the README points
 (`../harnesses/trading`), `kapso harness check` green on the first
 write, every attachment tested against the data, the module questions
 numbered; the second machine's harness: `check ok (1 skills, 1 agents,
-0 servers, 4 hooks)`, two messages, one question, 3.0 minutes. **The
+0 servers, 4 hooks)`, two messages, one question, 3.0 minutes; its
+second message ended on three module questions (ideation, learning,
+deployment) that the driver of that hour did not read as questions (the
+detector learned the "once you've answered" phrase after it), so the
+module pages stayed unwritten on that machine; the Codex interview on
+the current driver closed in two messages (4.5 minutes, the second of
+21 lines): the proposal, then the harness written and `check` green,
+with the learning and deployment pages omitted and said rather than
+asked for (the skill's one question per silent module was not asked;
+the Findings). **The
 probe build** on that harness at ten minutes and one experiment ended
 `goal_achieved`. **(i) Improve** from the probe's trace: the session read
 where the attempts diverged, which hooks fired and what the engine's
@@ -976,9 +994,12 @@ answers from the `backtesting` skill.
 **(m) The session brief**: `session_sources: [mine:all]` in the
 project's config, the server's instructions naming the sources ("0
 cards measured by you, every scope, from your bank at head
-`f979f427…`, pinned for this campaign"), one bank retrieval
-(`bank_index`) and the answer quoting the instructions, on both hosts
-(one message, under half a minute each).
+`f979f427…`, pinned for this campaign"), one read of the bank's index
+(`bank_index`: 0 cards, the learn having banked none, so the read shows
+the connection and the instructions, not a served card) and the answer
+quoting the instructions, on both hosts (one message, under half a
+minute each). The intro of a host session says "pinned for this
+session" since the pull-request review.
 
 **(n) The campaign tools** from a session: `kapso_build_start` returns
 the receipt, `kapso_status` the status, `kapso_stop` ends it (one
@@ -994,7 +1015,12 @@ the exit read as a number), with the isolation lines on the adapter's
 command (the installed wheel's adapter, pinned by its test; a session's
 temporary workspace takes its rules file with it, so the step reports a
 rules file where one is found and requires the sessions to run), and the
-box's Claude session listed no plugin tool and no command.
+box's Claude session listed no plugin tool and no command. **The rules
+probe** (a step added after the pull-request review): the installed
+adapter's rules file written into a gitignored subdirectory of a
+repository, the adapter's lines on the command, and Codex rejected
+`kapso build --help` ("never inside a Kapso campaign session: a campaign
+does not launch, learn from or deploy a campaign"), a fifth of a minute.
 
 **(o) The trigger suite.** Claude Code, the second machine, 101 cases
 twice on `claude-opus-5-5` ($26.81 at list price, 20 minutes): build
@@ -1002,12 +1028,24 @@ twice on `claude-opus-5-5` ($26.81 at list price, 20 minutes): build
 20/20, no near miss invoking the skill under test; the ten held-out
 paraphrases 10/10. The three cases below: a build-and-verify ask that
 never names Kapso and gets no skill, the doctor-and-`.env` question
-answered without the skill, and one of two runs of a review-or-harness
-near miss hitting the turn cap. Codex, the development box, the
-eighty-nine implicit and near-miss cases twice on `gpt-6-astra`
-(medium): every case passed every run under the host's rule (the
-expected skill read; a near miss that read the skill under test beside
-it routed right, two of them reading it first), the held-out ten 10/10.
+answered without the skill, and nineteen runs across fifteen cases
+(eight of them review near misses) ending at the six-turn cap after the
+skill had fired. Codex, the development box, the eighty-nine implicit
+and near-miss cases twice on `gpt-6-astra` (medium), graded after the
+pull-request review on the first skill read: 87 of 89 passed every run
+(build 18/18, harness 17/18, the operating skill 17/17, review 17/18,
+setup 18/18: the bar per skill holds), and two confusion cases,
+`harness-c03` and `review-c02`, read the skill under test first, a
+cross-skill false positive each (under the earlier rule, the forbidden
+skill read beside the expected one, 89 of 89); the held-out ten 10/10.
+The acceptance's "no cross-skill false positive" holds on Claude Code
+and not on Codex; the review-versus-harness boundary of the
+descriptions is a finding. The Codex arm runs the suite's cases with
+the plugin's skills copied as the project's (the same files the
+installed plugin serves) under the development box's own profile
+(three user servers present), and skips the twelve explicit cases
+(Claude Code's command form; Codex's `$kapso-<skill>` is another
+surface, unmeasured).
 The first machine's run, under the first graders, counted the plugin's
 own commands as misses (the operating skill at seven of thirteen) and
 led to the rule that a command counts for its skill.
@@ -1024,11 +1062,9 @@ improve, the learn and its completion, the share and the cold start
 (the matrix's rows); the `uvx` and `pipx` branches of the launcher
 until the pin is on PyPI.
 
-**The reports** (`scripts/redesign/runs/wp7/<host>/report.md`): the
-second machine twenty-three of twenty-four steps, the learn's completion
-the one the learning system failed; the first machine thirteen of
-seventeen, the run that taught the driver; the development box eighteen
-of eighteen on Codex, six rows deferred to the machine by the matrix.
+**The reports** (`scripts/redesign/runs/wp7/<host>/report.md`), under
+the budgets at the rubric's caps since the pull-request review (twelve
+lines outside fences, three setup messages): TODO-TALLY.
 
 ## Findings for later packages
 
@@ -1156,6 +1192,14 @@ For later packages:
   python-dotenv's walk from the working directory (`Starting path not
   found`) before any verb ran; the round runs that user from its home.
   Rare for a person, but the CLI could say so in one line.
+- **A Codex session's config error sent the person to their own config.**
+  When the broken isolation line made Codex refuse its whole config, the
+  review and inbox sessions told the person to "fix the
+  `mcp_servers.kapso` transport entry in `config.toml`", a line the
+  adapter had written and the person could not fix. The line is fixed on
+  this branch; an error naming `mcp_servers.kapso` belongs to the engine
+  in the record, so a later session does not send the person to their
+  own config (the observability package).
 - **A repo-memory session's prompt outgrew Codex's input.** On the
   development box's churn build the second engine session on Codex
   failed with `Input exceeds the maximum length of 1048576 characters`
@@ -1181,6 +1225,62 @@ For later packages:
   that cannot fit is not launched, and the status says so. The round
   gives the development box's pause campaign twenty minutes
   (`--pause-minutes`).
+- **The hold-out's labels ride in the branch's history.** The round's own
+  review found it: the campaign's setup commit checks the evaluation's
+  `private/` into the seeded clone, so the delivered branch carries the
+  labels and a merge of the branch whole brings them into the repository.
+  The evaluation package's contract protects the evaluator from change,
+  not the labels from reading; an evaluator run where an attempt cannot
+  read them is the engine's design to make. Until then the review skill
+  looks for the labels in the history before "safe to merge" (fixed on
+  this branch), and the churn example's brief no longer claims the labels
+  are not in the workspace.
+- **The Codex trust line honours a seeded repository's own config.** The
+  adapter trusts each session's workspace so that its rules and hooks are
+  read; a repository seeded from a URL that ships `.codex/config.toml`
+  has it read by the engine's sessions from then on (servers, hooks,
+  model). Moving such a file aside for the session, or anchoring the
+  trust at a directory of engine-staged files only, is the adapter's
+  package to decide; recorded in the Risks.
+- **A detached learn's handoff names the newest status file, not its
+  own.** The learn verb returns before its child writes a status file,
+  and the handoff points at the status directory's newest file: two
+  operations started together, or an older one updating its heartbeat,
+  can mislead it. A status path allocated before the fork and handed
+  off exactly is the learning package's change; the decision to give the
+  learn no receipt stands until then.
+- **The build and review handoffs overrun the rubric's twelve lines.**
+  Under the budgets at the rubric's caps (set after the pull-request
+  review) the second machine's pause build (13 lines), fraud build (16)
+  and review (15) exceed them: the handoff list carries five items with
+  the assumptions beside the brief, and the review's six sections run
+  long. The skills' handoffs want a tighter form (the assumptions inside
+  the fenced brief, the review's outline fenced), to be shown in WP9's
+  round.
+- **The inbox proof answers the request by lifting the rule.** The
+  reply tells the campaign there is no enrichment service and to reach
+  the target without it, and the resumed campaign ran no further attempt
+  on either host (the reserve rule). The step proves the request, the
+  reply and the resume; a fixture service that answers the key, and a
+  continuation that uses it, are WP9's round.
+- **The Codex trigger arm's profile and explicit cases.** The arm runs
+  under the development box's own Codex profile (three user servers
+  present; a clean profile would need a `CODEX_HOME` with the login in
+  it, which the round does not copy) and skips the twelve explicit cases
+  (Claude Code's command form). Codex's `$kapso-<skill>` invocation is a
+  surface of its own, unmeasured.
+- **Twelve of the review's forty-eight runs ended at the turn cap.**
+  Nineteen runs across fifteen cases (eight review near misses among
+  them) hit the six-turn cap after the skill had fired; the cases pass,
+  the suite's headroom is thin for review phrasings. WP9's round may
+  raise `max_turns` for them.
+- **The interview may omit a silent module instead of asking.** The
+  Codex interview on the current driver wrote the harness with the
+  learning and deployment pages omitted and said so, where the skill
+  asks one question per module the repository is silent on; a person
+  who wanted those pages would have to ask. The skill's wording ("ask
+  one question each") competes with its "say what you left out" line;
+  WP9's round decides which the person prefers.
 - **The fresh machine's examples' dependencies.** Ubuntu 24.04 ships no
   `python3-pyarrow`, so an apt line for the examples fails whole; the
   round makes a uv venv first on PATH. WP9's provisioning should do the
@@ -1196,6 +1296,90 @@ For later packages:
   step ends its pause campaign only after the reply has resumed it. The
   operating skill says a paused campaign resumes through the inbox; a
   person who wants it gone has no verb and deletes the directory.
+
+## Pull-request review
+
+The pull request's cross-model review (`scripts/redesign/review.sh`, the
+brief in `scripts/redesign/runs/wp7-pr-review/brief.md`, Codex
+`gpt-6-astra` at xhigh and Claude `claude-opus-5`, 2026-10-27): sixty
+findings, five P1, thirty-five P2, twenty P3, each fixed on the branch
+or answered here. The engine fixes are the stop reaching every process
+under the writer, abbreviations refused at every parser, the campaign
+gate's path, pid and refusal shape, a config-listed source degrading
+instead of stopping the server and a bank fetched on first use, the
+export's TOML and preflight; the texts, the tooling and the plan follow.
+The Claude P1 (the Codex rules file's anchor) was settled by a live
+check, which the round now runs as a step.
+
+### Codex
+
+| # | finding | answer |
+|---|---|---|
+| 1 | P1: the stop leaves the campaign's agents running | fixed: the stop signals the writer and every process under it (a group through its leader, a process sharing its parent's group alone, so a foreground launch's script is never taken), SIGTERM then SIGKILL after the grace; the test runs an agent session under the writer and sees both gone. The window between the liveness check and the signal is left as is: CLAUDE.md forbids the `try/except` that would hide a pid vanishing in it, and the traceback names the pid |
+| 2 | P1: abbreviated detach flags spawn recursively | fixed: `build_parser` turns abbreviation off on the root and every subparser at every depth; `--det` and `--sto` are refused, tested |
+| 3 | P1: the evaluation procedure exposes the hold-out it claims to protect | answered and partly fixed: the engine's evaluation contract (WP1) protects the evaluator from change, not the labels from reading, and the skill says "protected", never "unreadable"; no acceptance line of this package says no attempt can reach them. Fixed here: the churn example's brief no longer claims the labels are not in the workspace, and the review skill looks for the labels in the branch's history before "safe to merge". The isolated evaluation boundary is the engine's design to make, in the Findings |
+| 4 | P1: the Codex grader cannot enforce the cross-skill bar | fixed: a refusal fails when the forbidden skill was the first read; a read after the expected skill passes and is counted (`read_after`) in the report. Regraded: 87 of 89 main cases, `harness-c03` and `review-c02` a cross-skill false positive each, holdout 10/10; the Proof run and the acceptance say that the no-false-positive line holds on Claude Code and not on Codex |
+| 5 | P2: missing configured paths or indexes kill the whole server | fixed: the parser takes `must_exist=False` for the config's sources and returns the reference for `source_exists` to judge; a missing path or index is a note, the gate off, the server up; `--experience` stays strict |
+| 6 | P2: the missing-source notes recommend commands that cannot work | fixed: `kapso experience add mine` for the mine scopes, the bank's shape for a path, and a bank reference not in the store is fetched the first time its remote answers (`git ls-remote` by exit code), with a note when it does not |
+| 7 | P2: a tilde output path loses the receipt after launching | fixed: `~` expanded before the join (`_campaign_dir`), tested |
+| 8 | P2: the Codex HTTP-server export prints invalid TOML | fixed: inline TOML tables, parsed by `tomllib` in the test |
+| 9 | P2: exported skills keep campaign-only environment assumptions | fixed in the honest form: the export prints the line that sets `KAPSO_HARNESS_ROOT` for the shell the skills run from, naming the skills that refer to it; rewriting a skill's body was rejected (the text is the harness author's) |
+| 10 | P2: collision checking can leave a partial export | fixed: anything in the way of a write refuses the whole export before any write: the destination in any form (a dangling link included) or a file where a directory on the way to it must be; tested |
+| 11 | P2: detached learn and ingest handoffs cannot identify their own run | answered: the decision to give the learn no receipt stands; the concurrent-operations limit is a finding for the learning package (a status path allocated before the fork) |
+| 12 | P2: the skills' config convention is inconsistent | fixed: the review command exempts `kapso trace` (the parser refuses `--config` there, verified); the setup skill's doctor line drops the flag when the project has no config file yet; the CLI-line test parses the inline lines too (the fenced ones must carry the config, the inline mentions must parse). The relative `kapso-config.yaml` is the skills' convention of running from the project root |
+| 13 | P2: the review skill imports a package setup does not put on the project's Python | fixed: the record and the diff from files (`solution.json`, `git diff <base_commit> <commit>`); the Python form kept as the alternative where the package is importable |
+| 14 | P2: the setup's login path is not demonstrated from a bare machine | fixed in the skill: the doctor runs first, a token in `.env` counts as the login, and the login command is handed to the person's own terminal (one started from a tool call ends with it, as the first machine showed); the bare-machine branch is WP11's gate to run |
+| 15 | P2: the build handoff tells people to list the inbox rather than answer it | fixed: the handoff names `kapso inbox <campaign>` for the request and `kapso inbox reply <campaign> <id> "<note>" --detach` once the fix line's item is in place, `/kapso:inbox` for both |
+| 16 | P2: harness improvement treats an unused safeguard as unnecessary | fixed: cut only when the attempts show its reason gone; a protection that never tripped may mean the mistake never came |
+| 17 | P2: Codex event collection and run selection weaken the trigger evidence | fixed in part: a load is a read that succeeded (an `echo` or a failed command counts for nothing) and a run that never started fails every grader, tested; the profile (the owner's) and the explicit cases (skipped by design, Codex's `$kapso-<skill>` a surface of its own) are said in the Proof run and the Findings |
+| 18 | P2: both harness interviews end unfinished | answered: the second machine's second turn asked three module questions in a phrasing the driver of that hour did not read as a question (the detector learned "once you've answered" after it); the policy holds the answers; the Codex interview rerun on the current driver closes them (the Proof run says what the Claude machine's record shows and why). The question count is per turn by the Interface's definition |
+| 19 | P2: the semantic budgets do not enforce the skills' stated limits | fixed: the rubric's caps (twelve lines outside fences, three setup messages); the overruns the second machine shows (13, 16, 15 lines) are failures in the report and a finding for the handoffs' form. The fenced-block exemption is the brief's and stays; the final message is what the person reads, the transcripts hold the rest |
+| 20 | P2: the inbox proof changes the task instead of proving recovery | answered: the step proves the request, the reply and the resume; the Proof run says neither resumed campaign ran another attempt; a fixture service and the continuation are WP9's round (the Findings) |
+| 21 | P2: empty-bank access is counted as the required card retrieval | answered: the Proof run now describes the read as the connection and the instructions over an empty bank, not a served card; a staged card is WP9's fixture |
+| 22 | P2: Codex campaign isolation is claimed more strongly than implemented or tested | fixed: the page and the acceptance state the isolation per host and name Codex's mechanism; a `codex-rules-probe` step runs the installed adapter's rules file and lines in a gitignored subdirectory of a repository and records Codex's refusal of `kapso build`; on the Codex host the isolation step requires a Codex session to have run (`all([])` no longer passes) |
+| 23 | P2: reports hide the qualifications their verdicts need | fixed: every step's notes render under the table; the deploy entry's note says it ran on the restored campaign; a record note names which steps ran on which wheel |
+| 24 | P2: public onboarding gives Codex users Claude-only commands | fixed: the README, the page and the setup skill's finish give `$kapso-setup` and `$kapso-build`, and the reconnect per host |
+| 25 | P3: several reference details are stale | fixed: `doctor` dropped from the plugin's README, ten commands and `--host` in the plan, the gate row names which tool checks PATH, `kapso-mcp --version` on the reference page |
+| 26 | P3: small CLAUDE.md violations in the diff | fixed: the tests' imports at the top; the stop's poll cadence is `budget.stop_poll_seconds` |
+
+### Claude Code
+
+| # | finding | answer |
+|---|---|---|
+| 1 | P1: the Codex isolation rule is written where Codex may not anchor its project layer, untested live | answered with a live check (2026-10-27, three cases): Codex rejected `kapso build --help` with the rules file in the session's gitignored subdirectory of a repository (the adapter's placement, the subdirectory trusted), in the subdirectory with the root trusted, and at the root; the `codex-rules-probe` step runs that case in every Codex round and records the refusal. The provenance line is corrected: WP2 verified execpolicy rules at a project root, this package the subdirectory case |
+| 2 | P2: the setup skill installs a version on no index | fixed: the skill names the fallback (the marketplace clone on Claude Code, the branch on Codex, the version checked after); the plan's sentence corrected |
+| 3 | P2: the version pin's seventh copy is held by no test | fixed: the version test reads the setup skill's install line |
+| 4 | P2: an acceptance line is false by design on Codex | fixed: reworded per host |
+| 5 | P2: a resume after a stop is claimed and never shown | fixed: the acceptance names what is shown (the processes ended, the checkpoint kept) and leaves the continuation to WP9's round; the test is renamed to what it tests |
+| 6 | P2: the report drops every step's notes and attributes every step to one wheel | fixed: step notes rendered; a record note names the steps that ran on the second wheel |
+| 7 | P2: the bank's off-note names a flag the plugin never passes | fixed: the note names `kapso experience add mine` and `session_sources` in the config |
+| 8 | P2: the campaign tools are mentioned in no skill | fixed: the operating skill says when to launch through `kapso_build_start` instead of the shell; the proof's step keeps the scripted person's words |
+| 9 | P2: the page's teammate flow does not match `source_exists` | fixed: a listed bank not in the store is fetched the first time its remote answers; the page says so |
+| 10 | P2: the page states the isolation unconditionally | fixed: per host, Codex's mechanism named |
+| 11 | P2: the plugin's README lists a command that does not exist | fixed, with the plan's two counts |
+| 12 | P2: the budgets double the documented message cap | fixed: twelve lines; the recorded overruns are failures and a finding |
+| 13 | P2: the Codex refusal rule makes a false positive unfalsifiable | fixed as Codex 4: graded on the first read, the permissive count reported beside it |
+| 14 | P2: `--stop` signals a group it never checks it owns | fixed: a writer that does not lead its group is signalled alone, with every process under it |
+| 15 | P2: the manifests drop the `skills` and `commands` keys the Interface froze | decided: discovery by convention (both proven hosts find the directories; Cursor unverified, said); the Interface corrected, the decision recorded |
+| 16 | P2: the trust line honours a seeded repository's own Codex config | recorded in the Findings and the Risks; moving such a file aside, or anchoring the trust at engine-staged files, is the adapter package's decision |
+| 17 | P3: a tilde output makes the start tool raise | fixed as Codex 7 |
+| 18 | P3: `--stop` accepts flags it ignores and loses a race into a traceback | fixed for the flags (refused by name); the race is left, as Codex 1 says |
+| 19 | P3: the stop tool scrapes the pid from prose | fixed: read from the status file |
+| 20 | P3: the in-campaign refusal lacks the tool's own key | fixed: `accepted: false`, `stopped: false` |
+| 21 | P3: the grace key's home drifted in the plan | fixed: `budget.stop_grace_seconds` in the plan and the decisions |
+| 22 | P3: two names for the terminal states | fixed: one |
+| 23 | P3: the CLI-line test covers less than claimed | fixed: the inline lines parse too; the claim narrowed to that |
+| 24 | P3: the setup runs logins before the evidence they are unnecessary | fixed: the doctor first, the token read, the sibling directory said |
+| 25 | P3: the interview's second half unanswered; the question cap cannot bind | as Codex 18; the cap counts turns that ask, by the Interface's definition |
+| 26 | P3: the Proof run undercounts the turn-cap runs | fixed: nineteen runs across fifteen cases, and a finding on the headroom |
+| 27 | P3: the first turn's tokens are promised and recorded nowhere | fixed: the promise dropped; the transcripts hold them per turn |
+| 28 | P3: the Codex trigger arm is not the clean profile the plan requires | answered in the Proof run and the Findings: the owner's profile, the cases run with the plugin's skills as the project's (the same files), the explicit cases skipped |
+| 29 | P3: three plan-versus-code inaccuracies | fixed: MIT, `kapso watch` takes a config, ten commands |
+| 30 | P3: function-local imports in the new tests | fixed |
+| 31 | P3: a host session's brief says "pinned for this campaign" | fixed: "session" for a host session |
+| 32 | P3: the labels in the delivered branch's history | fixed: the finding, and the review skill's check |
+| 33 | P3: `kapso_build_start` has no bound | answered: the tool's description says a first launch may fetch a harness or bank before answering; a bound is a later decision |
+| 34 | P3: the Proof run's (d) leaves out how both pause campaigns ended | fixed: (d) says neither resumed campaign ran another attempt; the Codex config error's advice is a finding for the observability package |
 
 ## Built
 

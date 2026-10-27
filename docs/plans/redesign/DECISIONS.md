@@ -121,7 +121,7 @@ inside a campaign is the thing these prevent.
 
 **A campaign can be stopped, and every long operation launches
 detached.** `kapso build --output <path> --stop` ends the status file's
-process group (SIGTERM, then SIGKILL after `build.stop_grace_seconds`),
+process group (SIGTERM, then SIGKILL after `budget.stop_grace_seconds`),
 marks the status failed with `stopped by the person` and removes the
 receipt; `--resume` continues from the checkpoint, which the orchestrator
 writes per iteration (it handles no signal, and needs none). `kapso learn`
@@ -189,6 +189,55 @@ machines' campaigns failed on it in the round; the adapter now names the
 command beside the switch (`mcp_servers.kapso.command="kapso-mcp"`,
 `enabled=false`), a complete definition of a server that never starts,
 whether or not the person has one.
+
+**The manifests list no skills or commands: discovery by convention.** The
+Interface froze a `skills` list and a `commands` entry in the manifests;
+the shipped manifests carry neither, and both proven hosts (Claude Code,
+Codex) discover `skills/<name>/SKILL.md` and `commands/<name>.md` from the
+plugin root. The tree test asserts the directories; a listing would be a
+second copy of them. Cursor is unverified, and said so. (pull-request
+review, Claude 15)
+
+**The stop reaches every process under the writer.** `kapso build --stop`
+signalled the status writer's process group; the coding-agent CLIs run in
+sessions of their own and survived it. The stop now reads the process
+table for everything under the writer and signals a group through its
+leader and a process that shares its parent's group alone (a foreground
+launch's script is never taken with it). The window between the liveness
+check and the signal is not caught: CLAUDE.md's no-`try/except` rule, and
+the traceback names the pid. (Codex 1, Claude 14 and 18)
+
+**The Codex trigger arm grades a refusal on the first read.** A confusion
+case fails when the forbidden skill was the first skill the session read;
+a read after the expected skill passes and is counted in the report as
+`read_after`. The earlier rule (any read beside the expected skill) made a
+false positive unfalsifiable; the first read is the routing. (Codex 4,
+Claude 13)
+
+**A config-listed bank is fetched on first use when its remote answers.**
+`experience.session_sources` names what every session is served; a bank
+reference not yet in the store is cloned the first time, after a
+`git ls-remote` by exit code, so a teammate's config works before any
+`--experience` load; a remote that does not answer is a note, the gate
+off. The parser returns a path or index reference that is not there for
+the host session to judge (`must_exist=False`); `--experience` stays
+strict. (Codex 5 and 6, Claude 9)
+
+**The semantic budgets hold the rubric's caps.** Twelve lines outside
+fences for the build and review messages and three setup messages, as the
+skills document promises, even where the round's records exceed them: a
+budget is the contract, the overrun a finding. (Codex 19, Claude 12)
+
+**A question is a turn that ends asking.** The Interface's count; a
+numbered list of questions in one turn is one question, so the interview's
+eight-question cap bounds turns, not marks. (Claude 25)
+
+**Codex's isolation is proven by a live probe step.** The rules file in a
+gitignored subdirectory of a repository (an implementation session's
+workspace) with the adapter's command lines rejects `kapso build`
+(verified three ways 2026-10-27); the round's `codex-rules-probe` step
+runs that case and records the refusal, deferred on Claude Code whose
+mechanism is the plugin switch. (Claude 1, Codex 22)
 
 **A Codex campaign session trusts its own workspace.** The execpolicy
 rule that refuses the campaign verbs lives in the workspace's project
