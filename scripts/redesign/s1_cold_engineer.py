@@ -348,7 +348,8 @@ class S1:
         if kill_after:
             wait_for(lambda: (status_of(campaign) or {}).get("phase") not in (None, "setup"), kill_after * 60, every=15)
             pid = (status_of(campaign) or {}).get("pid")
-            os.kill(int(pid), signal.SIGKILL)
+            if pid_alive(pid):
+                os.kill(int(pid), signal.SIGKILL)
             done = True
         else:
             done = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), minutes * 60 + 900, every=30)

@@ -387,7 +387,8 @@ class S5:
         pid = None
         wait_for(lambda: (pid := self._session_cli_pid(campaign)) is not None, 600, every=10)
         pid = self._session_cli_pid(campaign)
-        if pid:
+        session_killed = isinstance(pid, int) and Path(f"/proc/{pid}").exists()
+        if session_killed:
             os.kill(pid, signal.SIGKILL)
         injected_at = datetime.now(timezone.utc)
         status = self.finish(name, campaign)
@@ -395,11 +396,11 @@ class S5:
         errored = [f for f in trace.get("failures", [])]
         turn_1 = self.ask(name, project, f"what happened to the kapso campaign at ../s5-{name}?")
         diagnosis = names_class_and_fix(turn_1.text, name)
-        metrics = {"session_killed": pid is not None, "failures": len(errored), "attempts": len(trace.get("attempts", [])), "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis}
+        metrics = {"session_killed": session_killed, "failures": len(errored), "attempts": len(trace.get("attempts", [])), "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
         return self.record_injection(name, [turn_1], metrics, artifacts, ["an implementation CLI killed mid-run: the run entry ends in error, the attempt fails, the campaign goes on by itself"],
-                                     pid is not None and bool(errored) and status.get("state") in ("done", "failed") and diagnosis["names_class"] and diagnosis["names_fix"], started)
+                                     session_killed and bool(errored) and status.get("state") in ("done", "failed") and diagnosis["names_class"] and diagnosis["names_fix"], started)
 
     def _resume_after_writer_gone(self, name: str, project: Path, campaign: Path, injected_at: datetime, second_prompt: str, note: str, started: float, extra: Dict[str, Any]) -> Dict[str, Any]:
         attempts_before = len(self.trace(campaign).get("attempts", []))
@@ -424,10 +425,16 @@ class S5:
         campaign = self.launch(name, project)
         self.wait_checkpoint(campaign, BUDGET["minutes"] * 60)
         pid = (status_of(campaign) or {}).get("pid")
-        os.kill(int(pid), signal.SIGKILL)
+        # Kill the writer only if it is still running: a short campaign may have
+        # finished at the checkpoint, leaving a dead pid on which os.kill would
+        # raise. A writer already gone satisfies the injection's premise (the
+        # writer is absent) either way.
+        writer_killed = isinstance(pid, int) and Path(f"/proc/{pid}").exists()
+        if writer_killed:
+            os.kill(pid, signal.SIGKILL)
         injected_at = datetime.now(timezone.utc)
         return self._resume_after_writer_gone(name, project, campaign, injected_at, f"continue the campaign at ../s5-{name} from where it stopped",
-                                              "the writer killed with SIGKILL after the first checkpoint; the heartbeat stops at once; a reader sees DEAD as soon as the writer is gone", started, {"writer_killed": True})
+                                              "the writer killed with SIGKILL after the first checkpoint; the heartbeat stops at once; a reader sees DEAD as soon as the writer is gone", started, {"writer_killed": writer_killed})
 
     def step_full_disk(self) -> Dict[str, Any]:
         started = time.monotonic()
