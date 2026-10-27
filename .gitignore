@@ -301,3 +301,5 @@ skills-lock.json
 
 # Example builds land beside each example's repo and are never committed.
 examples/*/campaign/
+# The trigger suite's run outputs (`claude plugin eval` writes them beside the cases)
+/plugin/evals/results/
