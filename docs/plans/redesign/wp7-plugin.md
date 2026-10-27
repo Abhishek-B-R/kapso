@@ -845,6 +845,12 @@ Fixed on this branch during the round:
   harness found where the README points; a trigger run that overstays
   ending with its stream rather than the suite; the bar read per skill
   (`1829844b` to `1753bd52`).
+- **The learn command made the session wait for the learn.** Its body
+  said to offer the serving line "when it has banked its cards", and the
+  first machine's session launched the learn detached and then kept the
+  turn open for half an hour waiting to make the offer; the command and
+  the operating skill offer the line in the same reply as the launch and
+  say not to wait.
 - **Thirty minutes is too short a churn build for a review.** Neither
   host's campaign scored an attempt by the budget's end on the first
   attempt (the ideation alone takes a quarter of an hour, as WP1's proof

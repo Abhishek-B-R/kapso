@@ -191,10 +191,11 @@ kapso watch learning/status --follow --config kapso-config.yaml
   or by `kapso experience add mine`. Share it with `kapso experience share <git-url>`
   (create the repository yourself first); after that every learn pushes and
   `kapso experience update` pulls the team's lessons.
-- When the learn has banked its cards, offer the one-line edit that serves them to
-  every later session of this project: `session_sources: [mine:all]` under
-  `experience:` in `kapso-config.yaml`. That serves sessions; a build loads what its
-  brief or `--experience` names.
+- In the same reply as the launch, offer the one-line edit that serves the bank to
+  every later session of this project once the learn has banked its cards:
+  `session_sources: [mine:all]` under `experience:` in `kapso-config.yaml`. That
+  serves sessions; a build loads what its brief or `--experience` names. Do not
+  wait for the learn to end: hand off the `watch` line and stop.
 - `kapso learn dev …` are the learning system's own tools, for people working on the
   learning system, not the everyday path.
 
