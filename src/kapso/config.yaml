@@ -324,6 +324,9 @@ budget:
   # boundary checkpoints) and the observability layer's liveness signal:
   # a status file whose heartbeat is 3 intervals stale renders STALLED.
   checkpoint_heartbeat_seconds: 60
+  # `kapso build --output <campaign> --stop`: how long the campaign's
+  # processes get after SIGTERM before SIGKILL ends them.
+  stop_grace_seconds: 10
   # Budget-aware fidelity (docs/evolve/budget-aware-experimentation.mdx):
   # fast-fidelity probes under a committed full-size run, with the
   # evaluation maintainer's timing model. `off` runs every attempt at full

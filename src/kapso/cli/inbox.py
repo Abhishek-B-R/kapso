@@ -11,13 +11,14 @@ from typing import Optional
 from kapso.kapso import Kapso, DEFAULT_CONFIG_PATH
 from kapso.core.config import load_config
 from kapso.execution.inbox import (
+    launch_receipt_path,
     list_registered_campaigns,
     looks_like_a_secret,
     render_requests,
 )
 from kapso.execution.observability import OperationStatusView
 from kapso.execution.run_checkpoint import RunCheckpointStore
-from kapso.cli.common import _default_log, _detach, _inside, _print_build_summary
+from kapso.cli.common import _default_log, _detach, _inside, _print_build_summary, build_handoff
 
 NAME = "inbox"
 
@@ -163,7 +164,8 @@ def cmd_inbox_reply(
             log_path=(
                 Path(log).expanduser().resolve() if log else _default_log(campaign)
             ),
-            campaign=campaign,
+            receipt_path=launch_receipt_path(campaign),
+            handoff=build_handoff(campaign),
         )
         return
     solution = Kapso.reply(str(campaign), request_id, note, allow_secret=yes)

@@ -52,6 +52,7 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `--budget-usd` | Best-effort model-spend budget in USD | — |
 | `--budget-reserve-minutes` | Wall clock kept out of the search for finishing: the last attempt's evaluation, verification and judgment, and the delivery. Unset, it is derived from those obligations each round; see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends) | — |
 | `--resume` | Continue the campaign in `--output` from its checkpoint. The brief and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
+| `--stop` | End the campaign running in `--output`: its process group gets SIGTERM, then SIGKILL after `budget.stop_grace_seconds`; the status is marked `failed` with `stopped by the person` and `stopped_reason: stopped`, the launch receipt goes, and `--resume` continues from the checkpoint. A campaign whose status is terminal, or whose writer is gone already (dead, not running: resume it), is refused by state | off |
 | `--detach` | Start the campaign in a session of its own and return at once with its pid, the log, the status path and the `watch` command. Needs `--output`. The run outlives the shell that started it, a coding agent's tool call included | off |
 | `--log` | Where a detached run's output goes | `<output>.log`, beside the campaign directory |
 | `-a`, `--coding-agent` | The host every role without a `cli` of its own runs on, with that host's model: an entry of the config's `hosts` table (`claude_code`, `codex`, `oss_claude_code`, `vertex_claude_code`: the adapters with a staging). Recorded in the launch record and fingerprinted, so a resume runs on the launch's host. The engine's own inference sessions (the repo memory, the commit messages) follow `inference.default` instead, Codex as packaged, whatever the host; an all-Claude run sets `inference.default.cli: claude_code` in its override file | `search_strategy.params.host`, `claude_code` as packaged |
@@ -136,6 +137,7 @@ kapso experience add mine
 kapso experience add leeroopedia
 kapso experience add --repo https://github.com/org/x --name org-x
 kapso experience add --research "QLoRA memory optimizations" --name qlora
+kapso experience add --repo https://github.com/org/x --name org-x --detach   # an ingest in a session of its own; the log under experience.indexes, the status under learning.status_dir
 kapso experience list
 kapso experience share https://github.com/acme/kapso-bank.git
 kapso experience update
@@ -152,10 +154,12 @@ Learn from a finished campaign into your bank: import, mine, exam, lesson, what 
 | `campaign` | The campaign directory (the solution's trace) or a trajectory id in the store. **Required** | — |
 | `--harness` | The harness the campaign ran under (a name, a path or a git reference), when its launch record names none | the record's |
 | `--config` | Config path | packaged `config.yaml` |
+| `--detach` | Run the learn in a session of its own and return at once with its pid, the log (`<campaign>.learn.log` beside the campaign) and the watch line, `kapso watch learning/status --follow` (the newest status under `learning.status_dir` is this run's) | off |
 
 ```bash
 kapso learn ./campaign
 kapso learn ./campaign --harness ./harness
+kapso learn ./campaign --detach            # hours of crews; follow with kapso watch learning/status --follow
 ```
 
 ### kapso learn dev

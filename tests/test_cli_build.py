@@ -20,6 +20,7 @@ BUDGET_FIELDS = {"budget_minutes": "minutes", "budget_experiments": "experiments
 CONSTRUCTOR = {"config"}
 BRIEF = {"goal", "goal_file", "brief"}
 DETACH = {"detach", "log"}
+STOP = {"stop"}   # ends the campaign in --output; never a build() keyword
 
 
 def _parser_dests():
@@ -47,7 +48,7 @@ EXPERIENCE = {"experience"}   # the same: each reference loaded before build()
 
 
 def test_every_flag_of_the_parser_is_accounted_for():
-    assert _parser_dests() == FACADE_KWARGS | set(BUDGET_FIELDS) | CONSTRUCTOR | BRIEF | DETACH | HARNESS | EXPERIENCE
+    assert _parser_dests() == FACADE_KWARGS | set(BUDGET_FIELDS) | CONSTRUCTOR | BRIEF | DETACH | HARNESS | EXPERIENCE | STOP
 
 
 def test_every_flag_reaches_where_it_belongs(monkeypatch):
@@ -185,3 +186,75 @@ def test_the_briefs_experience_line_loads_when_no_flag_is_given(monkeypatch, tmp
     _, facade = _mock_facade(monkeypatch)
     _run(monkeypatch, "--brief", str(path), "--output", "out")
     assert [call.args for call in facade.load_experience.call_args_list] == [("mine",), ("leeroopedia",)]
+
+
+# ---------------------------------------------------------------- --stop
+
+WRITER = """import sys, time
+from kapso.execution.observability import BuildStatus
+status = BuildStatus(sys.argv[1], heartbeat_seconds=60)
+status.phase("ideation")
+time.sleep(60)
+"""
+
+
+def _writer(campaign):
+    """A campaign's status writer in a session of its own, as a detached
+    launch is: the status file names its pid. Beside it, an override file
+    with a one-second grace, so the stop's waits are short."""
+    import subprocess
+    import time
+    (campaign / ".kapso").mkdir(parents=True)
+    (campaign.parent / "kapso-config.yaml").write_text("budget:\n  stop_grace_seconds: 1\n")
+    status = campaign / ".kapso" / "status.json"
+    child = subprocess.Popen([sys.executable, "-c", WRITER, str(status)], start_new_session=True)
+    deadline = time.monotonic() + 20
+    while not status.is_file() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert status.is_file()
+    return child, status
+
+
+def test_stop_ends_the_campaigns_process_group_marks_the_status_and_keeps_the_checkpoint_for_a_resume(monkeypatch, tmp_path, capsys):
+    import json
+    import time
+    from kapso.execution.inbox import launch_receipt_path
+    campaign = tmp_path / "campaign"
+    child, status = _writer(campaign)
+    receipt = launch_receipt_path(campaign)
+    receipt.write_text(json.dumps({"pid": child.pid, "log": "x", "argv": [], "started_at": "t"}))
+    _run(monkeypatch, "--output", str(campaign), "--stop", "--config", str(campaign.parent / "kapso-config.yaml"))
+    out = capsys.readouterr().out
+    assert f"stopped the campaign at {campaign} (pid {child.pid})" in out
+    assert f"resume:  kapso build --output {campaign} --resume --detach" in out
+    deadline = time.monotonic() + 5
+    while child.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert child.poll() is not None and not receipt.exists()
+    data = json.loads(status.read_text())
+    assert data["state"] == "failed" and data["error"] == "stopped by the person" and data["stopped_reason"] == "stopped"
+    assert data["finished_at"]
+    # Stopped already: refused by state, nothing signalled.
+    with pytest.raises(SystemExit) as refusal:
+        _run(monkeypatch, "--output", str(campaign), "--stop", "--config", str(campaign.parent / "kapso-config.yaml"))
+    assert refusal.value.code == 1 and "is failed; nothing to stop" in capsys.readouterr().err
+
+
+def test_stop_refuses_a_dead_writer_and_names_the_resume(monkeypatch, tmp_path, capsys):
+    import json
+    campaign = tmp_path / "campaign"
+    child, status = _writer(campaign)
+    child.kill()
+    child.wait()
+    with pytest.raises(SystemExit) as refusal:
+        _run(monkeypatch, "--output", str(campaign), "--stop")
+    err = capsys.readouterr().err
+    assert refusal.value.code == 1 and f"has no live writer (pid {child.pid}): it is dead, not running" in err
+    assert f"kapso build --output {campaign} --resume --detach" in err
+    assert json.loads(status.read_text())["state"] == "running"   # untouched: a resume reads it as before
+    with pytest.raises(SystemExit) as refusal:
+        _run(monkeypatch, "--output", str(tmp_path / "nowhere"), "--stop")
+    assert refusal.value.code == 1 and "no status under" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as refusal:
+        _run(monkeypatch, "--stop")
+    assert refusal.value.code == 1 and "--stop needs --output" in capsys.readouterr().err

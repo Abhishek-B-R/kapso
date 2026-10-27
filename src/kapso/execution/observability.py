@@ -30,6 +30,7 @@ STALL_MISSED_HEARTBEATS = 3
 RECENT_RING_SIZE = 10
 
 _TERMINAL_STATES = ("done", "failed")
+TERMINAL_STATES = _TERMINAL_STATES
 
 
 def knowledge_summary(phase_telemetry: Mapping[str, Mapping[str, float]]) -> str:
@@ -207,13 +208,15 @@ def _parse_at(stamp: str) -> datetime:
     return datetime.fromisoformat(stamp)
 
 
-def mark_failed(path, error: BaseException) -> bool:
+def mark_failed(path, error: BaseException | str, **fields: Any) -> bool:
     """Publish a failure on a status file whose writer is gone: the
     strategy constructor or the orchestrator's setup raised after the
     status was born, and the object that owned the file went with the
-    exception. The file is rewritten as the writer would have written it
-    (`failed`, the error, `finished_at`); nothing is written when there
-    is no file or it is terminal already. Returns whether it wrote."""
+    exception; or a person ended the run (`kapso build --stop`, a string
+    with `stopped_reason`). The file is rewritten as the writer would
+    have written it (`failed`, the error, `finished_at`, the fields);
+    nothing is written when there is no file or it is terminal already.
+    Returns whether it wrote."""
     file = Path(path)
     if not file.is_file():
         return False
@@ -222,7 +225,8 @@ def mark_failed(path, error: BaseException) -> bool:
         return False
     data["state"] = "failed"
     data["finished_at"] = _utcnow()
-    data["error"] = f"{type(error).__name__}: {error}"
+    data["error"] = f"{type(error).__name__}: {error}" if isinstance(error, BaseException) else str(error)
+    data.update(fields)
     temporary = file.with_name(f".{file.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.replace(temporary, file)

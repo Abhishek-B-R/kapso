@@ -19,6 +19,7 @@ from kapso.experience import (
     hosted_key_present,
     probe_hosted_gate,
 )
+from kapso.cli.common import _detach, _without_detach_flags, learning_handoff
 from kapso.kapso import Kapso
 from kapso.learning.bank_remote import bank_origin, connect_bank
 from kapso.learning.update_frame import init_bank
@@ -57,10 +58,24 @@ def _add(args) -> None:
         if not args.name:
             print("Error: an index needs a name: --name <n> (`kapso experience list` shows the names taken)", file=sys.stderr)
             sys.exit(1)
+        if args.detach:
+            # Hours of ingestion: in a session of its own, the log under the
+            # indexes' home, the status under the learning status directory.
+            config = load_config(args.config)
+            indexes = Path(experience_settings(config)["indexes"]).expanduser()
+            _detach(
+                "kapso experience add", _without_detach_flags(sys.argv[1:]),
+                log_path=indexes / f"{args.name}.log", receipt_path=None,
+                handoff=learning_handoff(config["learning"]["status_dir"]),
+            )
+            return
         # The facade owns the ingestion (the preflight, the pipeline, the
         # record); it reads the config itself.
         Kapso(config=args.config).add_experience(repo=args.repo, research=args.research, name=args.name)
         return
+    if args.detach:
+        print(f"Error: --detach goes with --repo or --research (an ingest); `{args.ref}` is instant", file=sys.stderr)
+        sys.exit(1)
     settings = experience_settings(load_config(args.config))
     home = Path(settings["bank_home"]).expanduser()
     if args.ref == MINE:
@@ -166,6 +181,10 @@ Examples:
     add.add_argument("--research", type=str, default=None, help="A question to research on the web and ingest into the index --name")
     add.add_argument("--name", type=str, default=None, help="The index's name (letters, digits, dashes)")
     add.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
+    add.add_argument(
+        "--detach", action="store_true",
+        help="Run an ingest (--repo or --research) in a session of its own and return at once with its pid, log and watch line",
+    )
     listing = experience_sub.add_parser("list", help="Every source this machine has, with its state")
     listing.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
     share = experience_sub.add_parser("share", help="Attach a git remote to your bank and push it")
