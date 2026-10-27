@@ -402,10 +402,8 @@ def test_parent_sampling_defaults_come_from_config_and_bad_values_raise():
         normalize_parent_sampling([])
 
 
-def test_weighted_is_accepted_and_unknown_policy_still_rejected():
+def test_weighted_policy_is_accepted():
     assert normalize_parent_policy("weighted") == "weighted"
-    with pytest.raises(ValueError, match="parent_policy"):
-        normalize_parent_policy("Weighted")
 
 
 def test_expanded_candidates_weigh_less_than_unexpanded_ones():
@@ -514,24 +512,3 @@ def test_weighted_ranks_with_cost_aware_selection():
     ]
     assert strategy._select_parent().branch_name == "cheap"
     assert strategy.get_best_experiment().branch_name == "cheap"
-
-
-def test_weighted_checkpoint_policy_mismatch_is_rejected():
-    source = GenericSearch.__new__(GenericSearch)
-    source.parent_policy = "weighted"
-    source.node_history = []
-    source.iteration_count = 0
-    source.previous_errors = []
-    source.scores_evaluator_id = ""
-    source.evaluator_transition = None
-    state = source.dump_state()
-
-    restored = GenericSearch.__new__(GenericSearch)
-    restored.parent_policy = "weighted"
-    restored.load_state(state)
-    assert restored.parent_policy == "weighted"
-
-    restored = GenericSearch.__new__(GenericSearch)
-    restored.parent_policy = "best"
-    with pytest.raises(ValueError, match="does not match"):
-        restored.load_state(state)

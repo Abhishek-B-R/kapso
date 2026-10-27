@@ -122,9 +122,10 @@ Each node records both:
 - `parent_node_id`: the node that owns that branch, or `null` for `main`.
 
 Checkpoint state includes `parent_policy`. Resume rejects a state whose saved
-policy differs from the configured policy. The sampling settings are part of
-the mode configuration, so the campaign-level fingerprint covers them. It also rejects parent node IDs that
-do not reference an earlier node and branch/node pairs that disagree.
+policy differs from the configured policy. It also rejects parent node IDs that
+do not reference an earlier node and branch/node pairs that disagree. The
+`parent_sampling` settings are part of the mode configuration, so the campaign's
+config fingerprint covers them and a resume with different settings is refused.
 
 For compatibility, checkpoint state created before this field existed is
 interpreted as `best`, which was the historical behavior. The campaign-level
