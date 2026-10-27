@@ -235,7 +235,9 @@ class Context:
         path = self.work / target
         if path.exists():
             shutil.rmtree(path)
-        shutil.copytree(self.clone / "examples" / name, path, ignore=shutil.ignore_patterns("campaign", "__pycache__", "data", "private"))
+        # A copy as a clone would be: no generated data, no private hold-out,
+        # no evaluator result left by an earlier run on the source checkout.
+        shutil.copytree(self.clone / "examples" / name, path, ignore=shutil.ignore_patterns("campaign", "__pycache__", "data", "private", "result.json"))
         if generate:
             self.shell("python3 generate.py", cwd=path, timeout=600)
         self.seed_env(path)
