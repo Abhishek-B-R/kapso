@@ -56,12 +56,16 @@ def _complete(test, host):
     return [_step(name) for name in SUITE["tests"][test]["required_steps"][host]]
 
 
-def _judge(scores_per_pass, adjudication=None, failure=None):
+def _judge(scores_per_pass, adjudication=None, failure=None, items=("watch",)):
+    """A judge block in the per-item shape: one item (or more) per pass,
+    each pass scoring every dimension. `adjudication` resolves each item of
+    every straddling dimension."""
     dimensions = SUITE["tests"]["S2"]["judge"]["dimensions"]
+    passes = [{"items": {item: {d: {"score": score, "evidence": [{"where": "judge/x.md:L1", "quote": "q"}]} for d in dimensions} for item in items}} for score in scores_per_pass]
     judge = {"vendor": "gemini", "model": "vertex_ai/gemini-4-argon", "route": "litellm", "prompt_path": "judge/prompt.md", "raw_paths": [],
-             "passes": [{"scores": {d: {"score": score, "evidence": []} for d in dimensions}} for score in scores_per_pass]}
+             "passes": passes, "adjudication": {}}
     if adjudication is not None:
-        judge["adjudication"] = {d: {"score": adjudication, "evidence": []} for d in dimensions}
+        judge["adjudication"] = {f"{d}|{item}": {"score": adjudication, "evidence": []} for d in dimensions for item in items}
     if failure:
         judge["failure"] = failure
     return judge
@@ -126,7 +130,12 @@ def test_a_required_judge_is_present_at_the_bar_in_both_passes_and_a_straddle_is
     assert not result["passed"] and result["judge"]["dimensions"]["clear"]["straddled"]
     adjudicated = _record("S2", "claude_code", steps, judge=_judge([3, 5], adjudication=4))
     assert report.verdict(adjudicated, SUITE, tmp_path)["passed"]
-    assert "| clear | 3 | 5 | 4 | 4 | pass |" in report.render(adjudicated, SUITE, tmp_path)
+    assert "| clear | 3, 5 | 1 | 4 | pass |" in report.render(adjudicated, SUITE, tmp_path)
+    # The worst item binds: a second item failing one dimension fails the run.
+    two_items = _record("S2", "claude_code", steps, judge=_judge([5, 5], items=("watch", "review")))
+    two_items["judge"]["passes"][0]["items"]["review"]["clear"]["score"] = 2
+    two_items["judge"]["passes"][1]["items"]["review"]["clear"]["score"] = 2
+    assert not report.verdict(two_items, SUITE, tmp_path)["passed"], "a bad item is not hidden by a good one"
     assert not report.verdict(_record("S2", "claude_code", steps, judge=_judge([2, 3])), SUITE, tmp_path)["passed"]
 
 

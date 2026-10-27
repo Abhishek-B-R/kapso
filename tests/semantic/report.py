@@ -54,10 +54,12 @@ def bar_met(value, bar: dict) -> bool:
     return ("min" not in bar or value >= bar["min"]) and ("max" not in bar or value <= bar["max"])
 
 
-def judge_outcome(record: dict, spec: Optional[dict]) -> Dict[str, object]:
+def judge_outcome(record: dict, spec: Optional[dict], expected_passes: int) -> Dict[str, object]:
     """What the judge sub-record establishes: `required`, `present`,
-    `failure`, `ok`, and per dimension its final score and whether it
-    straddled the bar (its passes on both sides, the adjudication deciding)."""
+    `failure`, `ok`, and per dimension its final score — the minimum over
+    the judged items of each item's resolved score (a straddling item's
+    adjudication deciding, else the minimum over passes). The worst item
+    binds, and a straddle is resolved per item, not per dimension."""
     judge = record.get("judge")
     outcome = {"required": spec is not None, "present": bool(judge), "failure": None, "ok": spec is None, "dimensions": {}}
     if spec is None or not judge:
@@ -67,18 +69,23 @@ def judge_outcome(record: dict, spec: Optional[dict]) -> Dict[str, object]:
         return outcome
     passes = judge["passes"]
     bar = spec["bar"]
-    ok = len(passes) == 2
+    adjudication = judge.get("adjudication", {})
+    labels = sorted({label for p in passes for label in p.get("items", {})})
+    ok = len(passes) == expected_passes and bool(labels)
     for dimension in spec["dimensions"]:
-        scores = [p["scores"][dimension]["score"] for p in passes if dimension in p.get("scores", {})]
-        if len(scores) != len(passes):
-            ok = False
-            outcome["dimensions"][dimension] = {"final": None, "straddled": False}
-            continue
-        straddled = min(scores) < bar <= max(scores)
-        adjudicated = judge.get("adjudication", {}).get(dimension, {}).get("score")
-        final = adjudicated if straddled and adjudicated is not None else min(scores)
-        outcome["dimensions"][dimension] = {"final": final, "straddled": straddled}
-        ok = ok and final is not None and final >= bar
+        item_finals, any_straddle, dim_ok = [], False, bool(labels)
+        for label in labels:
+            item_scores = [p.get("items", {}).get(label, {}).get(dimension, {}).get("score") for p in passes]
+            if any(score is None for score in item_scores):
+                dim_ok = False
+                continue
+            straddled = min(item_scores) < bar <= max(item_scores)
+            any_straddle = any_straddle or straddled
+            adjudicated = adjudication.get(f"{dimension}|{label}", {}).get("score")
+            item_finals.append(adjudicated if straddled and adjudicated is not None else min(item_scores))
+        final = min(item_finals) if item_finals else None
+        outcome["dimensions"][dimension] = {"final": final, "straddled": any_straddle}
+        ok = ok and dim_ok and final is not None and final >= bar
     outcome["ok"] = ok
     return outcome
 
@@ -99,7 +106,7 @@ def verdict(record: dict, suite: dict, root: Path) -> Dict[str, object]:
     failed = [name for name, result in steps.items() if result == "fail"]
     metrics = record.get("metrics", {})
     bars = {name: bar_met(metrics.get(name), bar) for name, bar in test.get("bars", {}).items()}
-    judge = judge_outcome(record, test.get("judge"))
+    judge = judge_outcome(record, test.get("judge"), suite.get("judge", {}).get("passes", 2))
     passed = not missing_required and not deferred_required and not failed and all(bars.values()) and judge["ok"]
     advisory = record.get("advisory")
     return {
@@ -172,13 +179,17 @@ def render(record: dict, suite: dict, root: Path) -> str:
         else:
             spec = test["judge"]
             sub = record["judge"]
-            lines += [f"Judge: {sub.get('vendor')} {sub.get('model')} via {sub.get('route', '-')}, {len(sub['passes'])} pass(es), bar {spec['bar']}", "",
-                      "| dimension | pass 1 | pass 2 | adjudicated | final | verdict |", "|---|---|---|---|---|---|"]
+            lines += [f"Judge: {sub.get('vendor')} {sub.get('model')} via {sub.get('route', '-')}, {len(sub['passes'])} pass(es), bar {spec['bar']} (the worst item binds)", "",
+                      "| dimension | per-pass worst item | adjudicated items | final | verdict |", "|---|---|---|---|---|"]
             for dimension in spec["dimensions"]:
-                scores = [p.get("scores", {}).get(dimension, {}).get("score", "-") for p in sub["passes"]] + ["-"] * (2 - len(sub["passes"]))
-                adjudicated = sub.get("adjudication", {}).get(dimension, {}).get("score", "-")
+                per_pass = []
+                for p in sub["passes"]:
+                    item_scores = [item.get(dimension, {}).get("score") for item in p.get("items", {}).values()]
+                    present = [score for score in item_scores if score is not None]
+                    per_pass.append(str(min(present)) if present else "-")
+                adjudicated = sum(1 for key in sub.get("adjudication", {}) if key.startswith(dimension + "|"))
                 final = judge["dimensions"].get(dimension, {}).get("final")
-                lines.append(f"| {dimension} | {scores[0]} | {scores[1]} | {adjudicated} | {final if final is not None else '-'} | {'pass' if final is not None and final >= spec['bar'] else 'FAIL'} |")
+                lines.append(f"| {dimension} | {', '.join(per_pass)} | {adjudicated} | {final if final is not None else '-'} | {'pass' if final is not None and final >= spec['bar'] else 'FAIL'} |")
             lines.append("")
     noted = [step for step in record["steps"] if step.get("notes")]
     if noted:

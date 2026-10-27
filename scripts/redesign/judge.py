@@ -34,7 +34,10 @@ JUDGE_DIR = "judge"
 CONTRACT = (
     "Reply with exactly one JSON object and nothing else (a ```json fence around it is allowed): "
     '{"scores": {"<dimension>": {"score": <integer in [{low}, {high}]>, "evidence": [{"where": "<file>:L<line>", "quote": "<the line\'s words, verbatim>"}]}}, "notes": "<optional>"}. '
-    "One entry per dimension, every dimension of the rubric, no other. Each evidence entry names a line of the material below by its file and line label and quotes words that occur on that line."
+    "One entry per dimension, every dimension of the rubric, no other. Each dimension's evidence list "
+    "has at least one entry, and each entry names a line of the material below by its exact file and "
+    "`L<line>` label and quotes words that occur on that line. A score with an empty evidence list, or "
+    "evidence that does not quote the material, is not allowed."
 )
 FENCE = re.compile(r"^```(?:json)?\s*\n(.*?)\n```\s*$", re.S)
 
@@ -100,15 +103,22 @@ def extract_json(reply: str) -> dict:
         text = match.group(1).strip()
     if not (text.startswith("{") and text.endswith("}")):
         raise JudgeFailure("the reply is not one JSON object")
-    data = json.loads(text)
+    # Model output: a malformed object is a contract break (a judge
+    # failure), not an uncaught crash that leaves a stale block.
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise JudgeFailure(f"the reply is not valid JSON: {error}") from error
     if not isinstance(data, dict):
         raise JudgeFailure("the reply's JSON is not an object")
     return data
 
 
-def validate(data: dict, dimensions: Sequence[str], scale: Sequence[int], root: Path) -> Dict[str, Dict[str, Any]]:
+def validate(data: dict, dimensions: Sequence[str], scale: Sequence[int], root: Path, allowed: Sequence[str]) -> Dict[str, Dict[str, Any]]:
     """The scores against the rubric: exactly its dimensions, integers in
-    the scale, evidence at the lines it names."""
+    the scale, at least one evidence entry per dimension, each quoting a
+    line of one of the `allowed` material files (never another file)."""
+    allowed_set = set(allowed)
     scores = data.get("scores")
     if not isinstance(scores, dict) or set(scores) != set(dimensions):
         raise JudgeFailure(f"the dimensions are {sorted(scores) if isinstance(scores, dict) else scores!r}, not {sorted(dimensions)}")
@@ -118,13 +128,15 @@ def validate(data: dict, dimensions: Sequence[str], scale: Sequence[int], root: 
         if not isinstance(score, int) or isinstance(score, bool) or not low <= score <= high:
             raise JudgeFailure(f"{dimension}: the score {score!r} is not an integer in [{low}, {high}]")
         evidence = entry.get("evidence")
-        if not isinstance(evidence, list):
-            raise JudgeFailure(f"{dimension}: evidence is not a list")
+        if not isinstance(evidence, list) or not evidence:
+            raise JudgeFailure(f"{dimension}: evidence is empty or not a list (a score needs a quote)")
         for item in evidence:
             where, quote = (item.get("where"), item.get("quote")) if isinstance(item, dict) else (None, None)
-            if not isinstance(where, str) or not isinstance(quote, str) or ":L" not in where:
-                raise JudgeFailure(f"{dimension}: an evidence entry lacks `where` as <file>:L<line> or `quote`")
+            if not isinstance(where, str) or not isinstance(quote, str) or not quote.strip() or ":L" not in where:
+                raise JudgeFailure(f"{dimension}: an evidence entry lacks `where` as <file>:L<line> or a non-empty `quote`")
             file, _, label = where.rpartition(":L")
+            if file not in allowed_set:
+                raise JudgeFailure(f"{dimension}: {where} cites {file!r}, not the material ({sorted(allowed_set)})")
             path = root / file
             if not path.is_file() or not label.isdigit():
                 raise JudgeFailure(f"{dimension}: {where} names no line of a file under the record")
@@ -144,32 +156,56 @@ def ask(prompt: str, settings: dict) -> str:
     return response.choices[0].message.content or ""
 
 
-def judge_material(material: str, rubric_text: str, dimensions: Sequence[str], scale: Sequence[int], settings: dict, root: Path, archive: Path, label: str) -> Dict[str, Any]:
+def judge_material(material: str, rubric_text: str, dimensions: Sequence[str], scale: Sequence[int], settings: dict, root: Path, archive: Path, label: str, allowed: Sequence[str]) -> Dict[str, Any]:
     """One judging call on one piece of material: the prompt and the raw
-    reply archived, the scores validated."""
+    reply archived (before validation, so a contract break keeps its
+    evidence), the scores validated against the rubric and the material's
+    own file (never another file)."""
     contract = CONTRACT.replace("{low}", str(scale[0])).replace("{high}", str(scale[1]))
     prompt = f"{rubric_text}\n\n{contract}\n\nThe material:\n\n{material}"
     (archive / f"prompt-{label}.md").write_text(prompt, encoding="utf-8")
     reply = ask(prompt, settings)
-    raw = archive / f"raw-{label}.txt"
-    raw.write_text(reply, encoding="utf-8")
-    return validate(extract_json(reply), dimensions, scale, root)
+    (archive / f"raw-{label}.txt").write_text(reply, encoding="utf-8")
+    return validate(extract_json(reply), dimensions, scale, root, allowed)
 
 
-def aggregate(per_item: Dict[str, Dict[str, Dict[str, Any]]], dimensions: Sequence[str]) -> Dict[str, Dict[str, Any]]:
-    """The run's score per dimension: the minimum over the items judged,
-    with the worst item's evidence."""
-    scores: Dict[str, Dict[str, Any]] = {}
-    for dimension in dimensions:
-        worst = min(per_item.items(), key=lambda pair: pair[1][dimension]["score"])
-        scores[dimension] = {"score": worst[1][dimension]["score"], "evidence": worst[1][dimension]["evidence"], "worst": worst[0]}
-    return scores
+def gather_materials(record_dir: Path, record: dict, inputs: Optional[Sequence[str]], archive: Path) -> Dict[str, Dict[str, str]]:
+    """Each thing judged, as {label: {file, text}}: the named inputs, or
+    every conversation step rendered with ALL of its transcripts (the step
+    and its follow-ups, `<step>*.jsonl`), so the judge sees the whole
+    exchange. A conversation step with no transcript raises (Rule 2: a
+    broken record is not a smaller judged surface)."""
+    materials: Dict[str, Dict[str, str]] = {}
+    if inputs:
+        for name in inputs:
+            path = record_dir / name
+            if not path.is_file():
+                raise JudgeFailure(f"the input {name} does not exist under the record")
+            numbered = "\n".join(f"L{n}: {line}" for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1))
+            materials[Path(name).stem] = {"file": name, "text": f"(file {name})\n{numbered}"}
+        return materials
+    for step in record["steps"]:
+        if step.get("deferred") or step.get("kind", "conversation") != "conversation":
+            continue
+        transcripts = sorted((record_dir / "transcripts").glob(f"{step['name']}*.jsonl"))
+        if not transcripts:
+            raise JudgeFailure(f"the conversation step {step['name']} has no transcript to judge")
+        rows: List[dict] = []
+        for transcript in transcripts:
+            rows.extend(transcript_rows(transcript))
+        rendered = archive / f"{step['name']}.rendered.md"
+        rendered.write_text(render_step(step["name"], rows), encoding="utf-8")
+        file_label = f"{JUDGE_DIR}/{rendered.name}"
+        materials[step["name"]] = {"file": file_label, "text": f"(file {file_label})\n" + rendered.read_text(encoding="utf-8")}
+    return materials
 
 
 def judge_record(record_dir: Path, rubric: str, inputs: Optional[Sequence[str]], suite: dict) -> dict:
     """Judge a record in place: the conversation steps (rubric s2) or the
-    named inputs; two passes, a third on a straddle; the record's `judge`
-    block written, a failure recorded as such."""
+    named inputs; `passes` blind passes, each straddling item adjudicated;
+    the record's `judge` block written, a contract break recorded as a
+    failure (never a pass). A pending non-passing block is written first,
+    so a crash mid-judging never leaves a stale pass on disk."""
     record_path = record_dir / "record.json"
     record = json.loads(record_path.read_text(encoding="utf-8"))
     spec = suite["tests"][record["test"]]["judge"]
@@ -179,49 +215,39 @@ def judge_record(record_dir: Path, rubric: str, inputs: Optional[Sequence[str]],
     archive = record_dir / JUDGE_DIR
     archive.mkdir(exist_ok=True)
     rubric_text = (RUBRICS / f"{rubric}.md").read_text(encoding="utf-8")
-    materials: Dict[str, str] = {}
-    if inputs:
-        for name in inputs:
-            materials[Path(name).stem] = f"(file {name})\n" + "\n".join(f"L{n}: {line}" for n, line in enumerate((record_dir / name).read_text(encoding="utf-8").splitlines(), 1))
-    else:
-        for step in record["steps"]:
-            if step.get("deferred") or step.get("kind", "conversation") != "conversation":
-                continue
-            transcript = record_dir / "transcripts" / f"{step['name']}.jsonl"
-            if not transcript.is_file():
-                continue
-            rendered = archive / f"{step['name']}.rendered.md"
-            rendered.write_text(render_step(step["name"], transcript_rows(transcript)), encoding="utf-8")
-            materials[step["name"]] = f"(file {JUDGE_DIR}/{rendered.name})\n" + rendered.read_text(encoding="utf-8")
+    dimensions, scale, bar = spec["dimensions"], spec["scale"], spec["bar"]
     block: Dict[str, Any] = {"vendor": settings["vendor"], "model": settings["model"], "route": "litellm vertex_ai", "rubric": rubric,
-                             "passes": [], "adjudication": {}, "failure": None, "prompt_path": f"{JUDGE_DIR}/", "raw_paths": []}
-    bar = spec["bar"]
-    try_passes = settings["passes"]
-    for number in range(1, try_passes + 1):
-        per_item = {}
+                             "passes": [], "adjudication": {}, "failure": "judging did not complete", "prompt_path": f"{JUDGE_DIR}/", "raw_paths": []}
+
+    def persist() -> None:
+        record["judge"] = block
+        record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+    persist()
+    materials = gather_materials(record_dir, record, inputs, archive)
+    if not materials:
+        raise JudgeFailure("nothing to judge: the record has no judged material")
+    for number in range(1, settings["passes"] + 1):
+        items: Dict[str, Dict[str, Dict[str, Any]]] = {}
         for label, material in materials.items():
-            try:
-                per_item[label] = judge_material(material, rubric_text, spec["dimensions"], spec["scale"], settings, record_dir, archive, f"{label}-pass{number}")
-            except JudgeFailure as failure:
-                block["failure"] = f"pass {number}, {label}: {failure}"
-                block["raw_paths"].append(f"{JUDGE_DIR}/raw-{label}-pass{number}.txt")
-                record["judge"] = block
-                record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-                return block
             block["raw_paths"].append(f"{JUDGE_DIR}/raw-{label}-pass{number}.txt")
-        block["passes"].append({"scores": aggregate(per_item, spec["dimensions"]), "items": per_item})
-    for dimension in spec["dimensions"]:
-        scores = [p["scores"][dimension]["score"] for p in block["passes"]]
-        if min(scores) < bar <= max(scores):
-            worst = block["passes"][scores.index(min(scores))]["scores"][dimension]["worst"]
-            try:
-                third = judge_material(materials[worst], rubric_text, spec["dimensions"], spec["scale"], settings, record_dir, archive, f"{worst}-adjudication-{dimension}")
-            except JudgeFailure as failure:
-                block["failure"] = f"adjudication of {dimension} on {worst}: {failure}"
-                break
-            block["adjudication"][dimension] = {"score": third[dimension]["score"], "evidence": third[dimension]["evidence"], "item": worst}
-    record["judge"] = block
-    record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+            persist()
+            items[label] = judge_material(material["text"], rubric_text, dimensions, scale, settings, record_dir, archive, f"{label}-pass{number}", [material["file"]])
+        block["passes"].append({"items": items})
+        persist()
+    # Each straddling (dimension, item) gets an adjudicating pass; the
+    # minimum over items then binds per dimension (report.py resolves it).
+    for dimension in dimensions:
+        for label, material in materials.items():
+            scores = [block["passes"][number]["items"][label][dimension]["score"] for number in range(len(block["passes"]))]
+            if min(scores) < bar <= max(scores):
+                raw_label = f"{label}-adjudication-{dimension}"
+                block["raw_paths"].append(f"{JUDGE_DIR}/raw-{raw_label}.txt")
+                persist()
+                third = judge_material(material["text"], rubric_text, dimensions, scale, settings, record_dir, archive, raw_label, [material["file"]])
+                block["adjudication"][f"{dimension}|{label}"] = {"score": third[dimension]["score"], "evidence": third[dimension]["evidence"]}
+    block["failure"] = None
+    persist()
     return block
 
 

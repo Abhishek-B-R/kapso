@@ -2,11 +2,13 @@
 rubrics carry the design's dimensions by name (a drift check); a step is
 rendered as the user's messages and each turn's final text, on both
 hosts' real row shapes, with numbered lines; the reply must be one JSON
-object with exactly the rubric's dimensions, integer scores in the scale
-and evidence that is on the line it names, else a judge failure that
-keeps the raw reply and never passes; the run's score is the minimum over
-the items judged; two passes, a straddle adjudicated by a third; the
-preflight reads one JSON object. The model call is the one mock."""
+object with exactly the rubric's dimensions, integer scores in the scale,
+and at least one evidence entry whose quote is on the line it names in the
+material's own file, else a judge failure that keeps the raw reply and
+never passes; a conversation step is judged with all of its transcripts;
+a missing one raises; two passes, each straddling item adjudicated; the
+pending block is non-passing until the judging completes; the preflight
+reads one JSON object. The model call is the one mock."""
 
 import importlib.util
 import json
@@ -21,6 +23,7 @@ spec.loader.exec_module(judge)
 SUITE = judge.load_suite()
 FIXTURES = ROOT / "tests" / "fixtures" / "semantic_transcripts"
 DIMENSIONS = SUITE["tests"]["S2"]["judge"]["dimensions"]
+WATCH = "judge/watch.rendered.md"
 
 
 def test_the_rubrics_carry_the_designs_dimensions_by_name():
@@ -46,41 +49,36 @@ def test_the_reply_must_be_one_json_object_with_the_rubrics_dimensions_and_evide
     rendered = tmp_path / "judge" / "watch.rendered.md"
     rendered.parent.mkdir()
     rendered.write_text("L1: # step watch\nL2: \nL3: [assistant]\nL4: Running, iteration 1 in ideation; no score yet.\n")
-    good = {"scores": {d: {"score": 4, "evidence": [{"where": "judge/watch.rendered.md:L4", "quote": "no score yet"}]} for d in DIMENSIONS}}
-    assert judge.validate(judge.extract_json("```json\n" + json.dumps(good) + "\n```"), DIMENSIONS, [1, 5], tmp_path)["clear"]["score"] == 4
+    good = {"scores": {d: {"score": 4, "evidence": [{"where": f"{WATCH}:L4", "quote": "no score yet"}]} for d in DIMENSIONS}}
+    assert judge.validate(judge.extract_json("```json\n" + json.dumps(good) + "\n```"), DIMENSIONS, [1, 5], tmp_path, [WATCH])["clear"]["score"] == 4
     with pytest.raises(judge.JudgeFailure, match="not one JSON object"):
         judge.extract_json("Here are my scores: {}")
+    with pytest.raises(judge.JudgeFailure, match="not valid JSON"):
+        judge.extract_json("{not json,}")
     with pytest.raises(judge.JudgeFailure, match="the dimensions are"):
-        judge.validate({"scores": {"clear": {"score": 4, "evidence": []}}}, DIMENSIONS, [1, 5], tmp_path)
+        judge.validate({"scores": {"clear": {"score": 4, "evidence": [{"where": f"{WATCH}:L4", "quote": "no score yet"}]}}}, DIMENSIONS, [1, 5], tmp_path, [WATCH])
+    with pytest.raises(judge.JudgeFailure, match="evidence is empty"):
+        judge.validate({"scores": {d: {"score": 4, "evidence": []} for d in DIMENSIONS}}, DIMENSIONS, [1, 5], tmp_path, [WATCH])
     wrong = json.loads(json.dumps(good))
     wrong["scores"]["clear"]["score"] = 6
     with pytest.raises(judge.JudgeFailure, match=r"clear: the score 6 is not an integer in \[1, 5\]"):
-        judge.validate(wrong, DIMENSIONS, [1, 5], tmp_path)
-    wrong["scores"]["clear"]["score"] = True
-    with pytest.raises(judge.JudgeFailure, match="not an integer"):
-        judge.validate(wrong, DIMENSIONS, [1, 5], tmp_path)
-    wrong["scores"]["clear"] = {"score": 4, "evidence": [{"where": "judge/watch.rendered.md:L4", "quote": "the best score is 0.9"}]}
-    with pytest.raises(judge.JudgeFailure, match="is not on judge/watch.rendered.md:L4"):
-        judge.validate(wrong, DIMENSIONS, [1, 5], tmp_path)
-    wrong["scores"]["clear"] = {"score": 4, "evidence": [{"where": "judge/missing.md:L1", "quote": "x"}]}
-    with pytest.raises(judge.JudgeFailure, match="names no line of a file under the record"):
-        judge.validate(wrong, DIMENSIONS, [1, 5], tmp_path)
+        judge.validate(wrong, DIMENSIONS, [1, 5], tmp_path, [WATCH])
+    wrong = json.loads(json.dumps(good))
+    wrong["scores"]["clear"]["evidence"] = [{"where": f"{WATCH}:L4", "quote": "the best score is 0.9"}]
+    with pytest.raises(judge.JudgeFailure, match="is not on"):
+        judge.validate(wrong, DIMENSIONS, [1, 5], tmp_path, [WATCH])
+    wrong = json.loads(json.dumps(good))
+    wrong["scores"]["clear"]["evidence"] = [{"where": "judge/elsewhere.md:L1", "quote": "x"}]
+    with pytest.raises(judge.JudgeFailure, match="not the material"):
+        judge.validate(wrong, DIMENSIONS, [1, 5], tmp_path, [WATCH])
 
 
-def test_the_runs_score_is_the_minimum_over_the_items_with_the_worst_named():
-    per_item = {
-        "setup": {d: {"score": 5, "evidence": []} for d in DIMENSIONS},
-        "review": {**{d: {"score": 4, "evidence": []} for d in DIMENSIONS}, "clear": {"score": 2, "evidence": [{"where": "x:L1", "quote": "q"}]}},
-    }
-    scores = judge.aggregate(per_item, DIMENSIONS)
-    assert scores["clear"] == {"score": 2, "evidence": [{"where": "x:L1", "quote": "q"}], "worst": "review"}
-    assert scores["proactive"]["score"] == 4 and scores["proactive"]["worst"] == "review"
-
-
-def _record_dir(tmp_path):
+def _record_dir(tmp_path, extra_transcripts=()):
     record_dir = tmp_path / "run"
     (record_dir / "transcripts").mkdir(parents=True)
     (record_dir / "transcripts" / "watch.jsonl").write_text((FIXTURES / "claude_code-watch.jsonl").read_text())
+    for name in extra_transcripts:
+        (record_dir / "transcripts" / name).write_text((FIXTURES / "claude_code-watch.jsonl").read_text())
     (record_dir / "record.json").write_text(json.dumps({
         "test": "S2", "host": "claude_code", "steps": [{"name": "watch", "kind": "conversation", "completed": True}, {"name": "triggers", "kind": "shell", "completed": True}],
     }))
@@ -88,33 +86,45 @@ def _record_dir(tmp_path):
 
 
 def _reply(scores):
-    return json.dumps({"scores": {d: {"score": score, "evidence": [{"where": "judge/watch.rendered.md:L4", "quote": "/kapso:watch"}]} for d, score in zip(DIMENSIONS, scores)}})
+    return json.dumps({"scores": {d: {"score": score, "evidence": [{"where": f"{WATCH}:L4", "quote": "/kapso:watch"}]} for d, score in zip(DIMENSIONS, scores)}})
 
 
-def test_two_passes_judge_every_conversation_step_and_a_straddle_is_adjudicated(tmp_path, monkeypatch):
-    record_dir = _record_dir(tmp_path)
+def test_two_passes_judge_every_conversation_step_with_all_its_transcripts_and_a_straddle_is_adjudicated(tmp_path, monkeypatch):
+    record_dir = _record_dir(tmp_path, extra_transcripts=("watch-2.jsonl",))
     replies = [_reply([5, 3, 5, 5, 5]), _reply([5, 5, 5, 5, 5]), _reply([5, 4, 5, 5, 5])]
     prompts = []
     monkeypatch.setattr(judge, "ask", lambda prompt, settings: (prompts.append(prompt), replies.pop(0))[1])
     block = judge.judge_record(record_dir, "s2", None, SUITE)
     assert block["failure"] is None and len(block["passes"]) == 2
-    assert [p["scores"]["clear"]["score"] for p in block["passes"]] == [3, 5]
-    assert block["adjudication"] == {"clear": {"score": 4, "evidence": [{"where": "judge/watch.rendered.md:L4", "quote": "/kapso:watch"}], "item": "watch"}}
+    assert [p["items"]["watch"]["clear"]["score"] for p in block["passes"]] == [3, 5]
+    assert block["adjudication"] == {"clear|watch": {"score": 4, "evidence": [{"where": f"{WATCH}:L4", "quote": "/kapso:watch"}]}}
     assert len(prompts) == 3 and "five dimensions" in prompts[0].lower() and "L4: /kapso:watch ../churn-campaign" in prompts[0]
+    # The follow-up transcript was folded into the same rendered material.
+    assert "watch-2" not in block["passes"][0]["items"] and (record_dir / "judge" / "watch.rendered.md").read_text().count("/kapso:watch ../churn-campaign") == 2
     written = json.loads((record_dir / "record.json").read_text())["judge"]
-    assert written["model"] == SUITE["judge"]["model"] and (record_dir / "judge" / "raw-watch-pass1.txt").is_file() and (record_dir / "judge" / "prompt-watch-adjudication-clear.md").is_file()
+    assert written["model"] == SUITE["judge"]["model"] and (record_dir / "judge" / "raw-watch-pass1.txt").is_file()
     assert "triggers" not in written["passes"][0]["items"], "a shell step is not a conversation"
 
 
 def test_a_malformed_reply_is_a_judge_failure_with_the_raw_reply_kept_never_a_pass(tmp_path, monkeypatch):
     record_dir = _record_dir(tmp_path)
     monkeypatch.setattr(judge, "ask", lambda prompt, settings: "I would rate this 4/5 overall.")
-    block = judge.judge_record(record_dir, "s2", None, SUITE)
-    assert block["failure"] == "pass 1, watch: the reply is not one JSON object" and block["passes"] == []
+    with pytest.raises(judge.JudgeFailure, match="not one JSON object"):
+        judge.judge_record(record_dir, "s2", None, SUITE)
+    # The raw reply is kept and the on-disk record carries a non-passing
+    # pending block, never a stale pass.
     assert (record_dir / "judge" / "raw-watch-pass1.txt").read_text() == "I would rate this 4/5 overall."
-    assert json.loads((record_dir / "record.json").read_text())["judge"]["failure"].startswith("pass 1, watch")
+    assert json.loads((record_dir / "record.json").read_text())["judge"]["failure"] == "judging did not complete"
     with pytest.raises(ValueError, match="is judged by the rubric 's2', not 's4'"):
         judge.judge_record(record_dir, "s4", None, SUITE)
+
+
+def test_a_conversation_step_with_no_transcript_raises(tmp_path):
+    record_dir = tmp_path / "run"
+    (record_dir / "transcripts").mkdir(parents=True)
+    (record_dir / "record.json").write_text(json.dumps({"test": "S2", "host": "claude_code", "steps": [{"name": "watch", "kind": "conversation", "completed": True}]}))
+    with pytest.raises(judge.JudgeFailure, match="watch has no transcript"):
+        judge.gather_materials(record_dir, json.loads((record_dir / "record.json").read_text()), None, record_dir / "judge")
 
 
 def test_the_preflight_reads_one_json_object(monkeypatch):
