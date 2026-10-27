@@ -21,7 +21,7 @@ The file is about 270 lines of facts and rules, written for the mistakes agents 
 - `deploy()` is a minutes-long foreground operation on a real `Solution` (the object `build()` returned, or `Solution.open(path)`), not a campaign. See [Deploy](/docs/deploy/targets).
 - A one-file change with an obvious fix is faster by hand. The agent says which it is doing and never launches a campaign you did not ask for.
 
-The full text is in [`skills/claude-code/kapso/SKILL.md`](https://github.com/Leeroo-AI/kapso/blob/main/skills/claude-code/kapso/SKILL.md).
+The full text is in [`plugin/skills/kapso/SKILL.md`](https://github.com/Leeroo-AI/kapso/blob/main/plugin/skills/kapso/SKILL.md), one file for every host.
 
 ## Install the skill
 
@@ -31,20 +31,20 @@ The skill ships in the repository, not in the PyPI package. Clone the repository
 git clone https://github.com/Leeroo-AI/kapso
 
 # Claude Code: project or ~/.claude/skills/kapso
-mkdir -p .claude/skills && cp -r kapso/skills/claude-code/kapso .claude/skills/kapso
+mkdir -p .claude/skills && cp -r kapso/plugin/skills/kapso .claude/skills/kapso
 
 # Codex CLI: project (found walking up to the git root) or ~/.agents/skills/kapso
-mkdir -p .agents/skills && cp -r kapso/skills/codex/kapso .agents/skills/kapso
+mkdir -p .agents/skills && cp -r kapso/plugin/skills/kapso .agents/skills/kapso
 
 # OpenCode: project or ~/.config/opencode/skills/kapso
-mkdir -p .opencode/skills && cp -r kapso/skills/opencode/kapso .opencode/skills/kapso
+mkdir -p .opencode/skills && cp -r kapso/plugin/skills/kapso .opencode/skills/kapso
 ```
 
 | Agent | Folder in the repository | Where the agent looks |
 |-------|--------------------------|-----------------------|
-| Claude Code | `skills/claude-code/kapso/` | `.claude/skills/kapso` in the project, or `~/.claude/skills/kapso` |
-| Codex CLI | `skills/codex/kapso/` | `.agents/skills/kapso` in the project or any parent up to the git root, or `~/.agents/skills/kapso` |
-| OpenCode | `skills/opencode/kapso/` | `.opencode/skills/kapso` in the project, or `~/.config/opencode/skills/kapso`; OpenCode also reads the Claude Code and Codex locations |
+| Claude Code | `plugin/skills/kapso/` | `.claude/skills/kapso` in the project, or `~/.claude/skills/kapso` |
+| Codex CLI | `plugin/skills/kapso/` | `.agents/skills/kapso` in the project or any parent up to the git root, or `~/.agents/skills/kapso` |
+| OpenCode | `plugin/skills/kapso/` | `.opencode/skills/kapso` in the project, or `~/.config/opencode/skills/kapso`; OpenCode also reads the Claude Code and Codex locations |
 
 The three copies are separate files on purpose, so each can follow its agent's conventions. Today they are identical: campaigns launch, resume and reply with `--detach`, which starts the run in a session of its own on every host (the Codex copy used to need `setsid -f` where the others used `nohup`). Copy the folder written for your agent.
 

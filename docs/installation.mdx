@@ -321,9 +321,9 @@ I want to set up Kapso, the open-source software factory by Leeroo (PyPI package
 
 7. The Kapso skill. Install the skill written for you, so you operate Kapso the way its docs say:
    git clone --depth 1 https://github.com/Leeroo-AI/kapso /tmp/kapso-src
-   Claude Code:  mkdir -p .claude/skills   && cp -r /tmp/kapso-src/skills/claude-code/kapso .claude/skills/kapso
-   Codex:        mkdir -p .agents/skills   && cp -r /tmp/kapso-src/skills/codex/kapso .agents/skills/kapso
-   OpenCode:     mkdir -p .opencode/skills && cp -r /tmp/kapso-src/skills/opencode/kapso .opencode/skills/kapso
+   Claude Code:  mkdir -p .claude/skills   && cp -r /tmp/kapso-src/plugin/skills/kapso .claude/skills/kapso
+   Codex:        mkdir -p .agents/skills   && cp -r /tmp/kapso-src/plugin/skills/kapso .agents/skills/kapso
+   OpenCode:     mkdir -p .opencode/skills && cp -r /tmp/kapso-src/plugin/skills/kapso .opencode/skills/kapso
    Then load it. Ask me whether to also connect the docs: `claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp` or `codex mcp add kapso-docs --url https://docs.leeroo.com/mcp`.
 
 8. Finish with a short overview of what you can now do, and do not start a campaign until I give you a goal:

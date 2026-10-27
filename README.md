@@ -26,12 +26,13 @@
   </a>
 </p>
 
-> **If you're an AI agent looking at this repo:** start with the skill file for your agent,
-> [Claude Code](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/claude-code/kapso/SKILL.md),
-> [Codex](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/codex/kapso/SKILL.md) or
-> [OpenCode](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/opencode/kapso/SKILL.md).
-> It shows how to leverage Kapso for your use case, and it is faster than reading the source.
-> Any other agent can use the Claude Code file.
+> **If you're an AI agent looking at this repo:** start with the operating skill,
+> [plugin/skills/kapso/SKILL.md](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/plugin/skills/kapso/SKILL.md),
+> one file for every host. It shows how to leverage Kapso for your use case, and it is
+> faster than reading the source. The plugin that carries it, with the skills for
+> setting up, stating an objective, authoring a harness and reviewing a run, installs
+> in one line: `claude plugin marketplace add Leeroo-AI/kapso && claude plugin install kapso@kapso`
+> (Codex: `codex plugin marketplace add Leeroo-AI/kapso && codex plugin add kapso@kapso`).
 
 ---
 

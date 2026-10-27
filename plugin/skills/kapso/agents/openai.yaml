@@ -1,0 +1,6 @@
+interface:
+  display_name: "Kapso"
+  short_description: "Operate a Kapso campaign: launch, follow, answer, stop or resume, learn, deploy"
+  default_prompt: "Use $kapso to tell me how the campaign in this project is doing."
+policy:
+  allow_implicit_invocation: true

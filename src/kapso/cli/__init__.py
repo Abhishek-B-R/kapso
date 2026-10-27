@@ -30,11 +30,9 @@ from kapso.execution.coding_agents.factory import CodingAgentFactory
 VERB_MODULES = (build, harness, experience, learn, deploy, watch, trace, inbox, doctor)
 
 
-def main():
-    # The engine's own errors print their message alone (cli/errors.py).
-    install_error_hook()
-    CodingAgentFactory.register_quiet_exit()
-    # Main parser
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI's parser, every verb registered: what `main` parses with,
+    and what a test parses a documented line against."""
     parser = argparse.ArgumentParser(
         description="Kapso: Long-running agents that optimize AI and Data systems, and learn from every experience",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -74,12 +72,21 @@ Examples:
 
     # Subparsers for commands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    handlers = {module.NAME: module.add_parser(subparsers) for module in VERB_MODULES}
+    parser.set_defaults(handlers={module.NAME: module.add_parser(subparsers) for module in VERB_MODULES})
+    return parser
+
+
+def main():
+    # The engine's own errors print their message alone (cli/errors.py).
+    install_error_hook()
+    CodingAgentFactory.register_quiet_exit()
+    parser = build_parser()
 
     # =========================================================================
     # Parse and execute
     # =========================================================================
     args = parser.parse_args(learn.normalize_argv(sys.argv[1:]))
+    handlers = args.handlers
 
     # Handle global options
     if args.list_agents:
