@@ -2053,3 +2053,29 @@ gave a logistic baseline of 0.742 AUC that a boosting model could not beat
 working, so the label's logit gained thresholds, an interaction and a tenure
 curve: logistic 0.797, boosting with no feature work 0.832. The persona and
 the README carry the measured numbers, not round ones.
+
+## WP9 flow-review scoped decisions (2026-10-27)
+
+The post-build cross-model review (the Flow review in
+`wp9-semantic-suite.md`) raised two findings answered as bounded
+decisions rather than full rebuilds; recorded here so the owner can
+revisit them.
+
+**The second engineer's build stays driver-launched.** The review asked
+that S2's `second-engineer-build` be driven through the teammate's own
+persona and host conversation, as the first engineer is. It remains a
+driver launch under the second Linux user, now gated on a scored delivery
+served the shared bank (not merely `done` plus a substring). The served
+build proves the experience shared across users reaches a second install;
+driving the teammate through a second persona+host loop is a larger change
+left for a later pass, since the step's purpose is the bank crossing user
+boundaries, not a second interview.
+
+**S1's flow count reads a script in its final state.** A session that
+edits a script after a failed run leaves only the final text on disk, so
+`python_lines` for a task that reused one filename reads that final
+version. The count is now per task (so a filename reused across tasks is
+not conflated) and reported as the longest single flow, with the limit
+stated in the step's notes. Capturing each invocation's exact source would
+need the host to write a fresh filename per attempt, which the engineer,
+not the driver, controls.

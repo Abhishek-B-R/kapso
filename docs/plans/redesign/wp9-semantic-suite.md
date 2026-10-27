@@ -653,6 +653,36 @@ answered by this second version, each row naming where.
 | 35 | P3: size L versus M | fixed: L, MASTER's row corrected at merge |
 | 36 | P3: the knobs' home | fixed: `suite.json` |
 
+## Flow review (post-build, cross-model)
+
+After the drivers were built, a second cross-model review read the whole
+user flow and the metrics against the engine's real contracts (the brief
+in `scripts/redesign/runs/wp9-flow-review/brief.md`, Codex `gpt-6-astra`
+at xhigh and Claude `claude-opus-5`, 2026-10-27; their findings in
+`codex.md` and `claude.md` beside it). The two converged: as built, the
+suite would have crashed on the first step of several arms, recorded false
+metrics on others, and the runner would have deleted machines before
+verifying the archive. The findings are answered below, grouped by the
+commit that closed them; the two reviews overlap, so each row cites the
+substantive fix.
+
+| area | finding (both reviews) | answer | commit |
+|---|---|---|---|
+| runner | the exit status did not carry the verdict; the archive was fetched to one directory and verified in another, after the delete; the wheel path carried the build log; the scaffold omitted the plugin and `docs.json`; the drivers were not given the wheel; the preflight gated nothing; the `author` run cap used the wrong key; the advisory user could not authenticate | the report's exit is the runner's; the archive is moved under the run and the record verified before the delete; the wheel path is clean; the scaffold ships the plugin, its manifest and `docs.json`; one env holds the wheel and the fixtures' deps; the preflight makes a real call per route and the Codex credit call and stops on failure; the lowercase `author` key; the advisory user gets the wheel, the deps and a token | `e1d45ef6` |
+| judge | a top score with no evidence passed; a citation could name any file; a malformed reply left a stale block (JSON errors escaped the typed failure); follow-up turns went unjudged; a missing transcript was silently dropped; one adjudicated item could hide another's disagreement; the pass count was hard-coded | evidence is non-empty and must quote the material's own file; a pending non-passing block is written first; a conversation step is judged with all its transcripts and a missing one raises; each straddling item is adjudicated and the worst binds; the pass count reads the suite; the s2 line cap reads the step's budget | `e1d45ef6` |
+| S1 | the Codex arm recorded 0/12; comprehension had no producer and the S1 judge nothing to judge; the one-step metric accepted many errors; `wrong_calls` was ungated; prerequisites leaked between surfaces; the learn status was sought in the wrong directory; flow counts conflated a reused filename; a missing init was a silent pass | executions read both hosts; `--grade` fills comprehension_correct from the judge; the one-step metric is exactly one wrong call, gated by `wrong_calls_max`; prerequisites are snapshotted and restored per surface; the status dir is globbed from the cwd; flow counts are per task; a Codex session's coldness is reported, not passed | `851ba1d1` |
+| S4 | "what was rejected" listed the scored losers; the leak check grepped one path with `--all`; the grade ignored adjudication | a rejection is a voided entry split by reason, the losers reported apart; the leak check reads the delivered commit's ancestry by filename and the private path; the grade resolves each question as the verdict does | `6cd5d3af` |
+| S5 | the timeline measured `/proc`, not `watch`; every launch named a missing config; evaluator-crash and tampering edited the wrong tree and could not reach the engine; "handled" was a loose substring and the fix was never gated; the user-message bar was a tautology; the resumed fetch/score was not correlated; the bank compare treated a bare repo as unreadable-but-intact; the full-disk campaign was discarded before archival; the enrichment table missed the hold-out ids | the timeline samples what `watch` shows; the launch uses packaged defaults; the labels moved are the ones the evaluator reads by absolute path, the tampering edits the running session clone and the void must be the integrity one; each injection gates on the fix; the fetch and score must follow the reply; the bare bank is read with git and an unreadable comparison fails; the campaign is copied off and verified before unmount; the table covers the fixture's hold-out range | `8c80fdee` |
+| S6 | the bank home used a rejected config key; the gap dropped build-one-only intervals and was a hard bar on a noisy quantity; cited counted mere reading; the delivered score read a nonexistent field | the key is `learning.bank.local_path`; the gap uses a common horizon with behind-intervals counted, and `gap_min` is reported, not gated; cited means load-bearing; the delivered score resolves to its attempt | `be16d406` |
+| S2 / persona | the turn cap was not a failure; one card drove every step; a refused persona read as satisfied; harness-export crashed on a missing README; deploy passed when predictions differed; review/watch/criteria/session-brief/second-engineer completions were not evidence; the inbox removed the requirement; a failed launch earned completion; the evaluator contract accepted anything; host models and budgets were hard-coded | the turn cap makes a step incomplete; a per-step card answers the interview and the served build; a refused persona raises; the README is optional; deploy requires parity "same"; the completions require the real evidence (the branch named, the state reflected, no new campaign, a succeeded bank tool, a scored served build); the inbox requires a continued event; a launch must reach running with a proposal; the contract requires a finite score and rejects a malformed submission; the knobs move to `suite.json` | `2c140296` |
+
+Two findings are answered as scoped decisions rather than full rebuilds,
+recorded in `DECISIONS.md`: the second engineer's build stays
+driver-launched (now gated on a scored, served delivery) rather than
+driven through the teammate's own persona and host; and S1's flow count
+reads a script in its final state, a stated limit when one filename is
+reused within a task.
+
 ## Proof run
 
 (Filled as the runs land: the learn on WP7's archive; S1; S2; S4; S5; S6;
