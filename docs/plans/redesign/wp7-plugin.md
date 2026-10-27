@@ -844,7 +844,9 @@ doctor's required rows green; on Codex the `codex mcp add kapso --
 kapso-mcp` line lands in the user's config (the mcp list artifact).
 **(b2) The cold install** as a second user, `uv tool install` of the
 wheel, `kapso --version` and `kapso-mcp --version` from one install:
-TODO-B2.
+`kapso 0.8.0.dev1` and `kapso-mcp 0.8.0.dev1`, both from the second
+user's own `~/.local/bin`, in a fifth of a minute (the second machine,
+after the driver learned to run that user from its home).
 
 **(c) The churn build.** The session discovers the repository, hands the
 evaluator to the evaluation skill (which audits it against the contract
@@ -866,7 +868,7 @@ through the inbox gate and the campaign pauses (`done`,
 is, refuses to say so ("telling it the key is done would be false", the
 first machine); with the key written where the fix line says, the
 session replies with a note through `kapso inbox reply … --detach` and
-the campaign resumes (the second machine: TODO-INBOX-NUMBERS).
+the campaign resumes (the second machine: two messages, one question, 1.8 minutes).
 
 **(e) Review** of the finished churn campaign: one message in the
 order the skill sets (what won with its evaluation "protected,
@@ -874,15 +876,17 @@ unversioned", the diff in outline, nothing voided, the risks, the
 spend, the next action), then "is it safe to merge" answered from the
 record. The first machine's campaign delivered `generic_exp_0` at ROC
 AUC 0.8450 against the 0.85 target in its thirty minutes; the second
-machine's sixty-minute build: TODO-E. The development box's
+machine's sixty-minute build delivered `generic_exp_0` at 0.847 (two
+messages, 2.1 minutes, the second a plain "is it safe to merge"
+answered from the verdicts and the diff). The development box's
 thirty-minute build delivered nothing (ideation outran its deadline;
 the Findings), and the review said so with the record's own words.
 
 **(f) Deploy** to the local target: the session deploys, proves one
 call, scores the whole hold-out through the deployment and gets the
 delivered AUC back, explains the score, and hands back the numbered
-next actions (the first machine: two messages, 9.4 minutes; the second:
-TODO-F). The development box's deploy refused with the engine's line
+next actions (the first machine: two messages, 9.4 minutes; the second: two
+messages, 5.0 minutes). The development box's deploy refused with the engine's line
 when the campaign had delivered nothing, and ran on the sixty-minute
 build: TODO-F-CODEX.
 
@@ -893,7 +897,12 @@ messages, one question, 3.0 minutes on the first machine). The data-only
 copy: candidate criteria from the labelled data with their evidence,
 average precision recommended, one approval asked, nothing launched. The
 empty wish (a README alone): candidate criteria from nothing, one
-approval asked, nothing launched. Both hosts, both machines: TODO-G.
+approval asked, nothing launched. The second machine: the fraud build
+two messages, one question, 2.7 minutes; the data-only copy 2.8
+minutes; the empty wish 2.0 minutes, one question each. Codex: the
+fraud build 2.4 minutes, the data-only copy 1.2, the empty wish 0.9,
+each two messages and one question ("Approve the brief, or edit a
+line?" with the recommended criterion and its evidence).
 
 **(h) The harness interview** on the trading example with no harness:
 the proposal in one message within the first turn (the domain in a
@@ -905,12 +914,21 @@ write, every attachment tested against the data, the module questions
 numbered; the second machine's harness: `check ok (1 skills, 1 agents,
 0 servers, 4 hooks)`, two messages, one question, 3.0 minutes. **The
 probe build** on that harness at ten minutes and one experiment ended
-`goal_achieved`. **(i) Improve** from the probe's trace: TODO-I.
+`goal_achieved`. **(i) Improve** from the probe's trace: the session read
+where the attempts diverged, which hooks fired and what the engine's
+feedback asked for, proposed the smallest edit with the attempt that
+shows it, left the auditor alone with the reason ("one run isn't
+evidence for removing it"), told the machine's Codex failure from the
+harness's, applied the edit on "yes", bumped the version and ran
+`check` green (two messages, one question, 3.3 minutes).
 
 **(j) Learn** from the churn campaign, detached, the serving offer in
 the same reply (one message, 1.1 minutes on the second machine; the
 first machine's session waited half an hour for the banking, the
-Findings); **learn-complete**: TODO-J.
+Findings); **learn-complete**: the learn ran its mining for thirty-seven
+minutes on the second machine and failed in the exam on a crew that
+wrote no report (the Findings; the first machine's failed in the mining
+on an unquoted scalar), so the bank holds no card from the round.
 
 **(k) Share** to a local bare remote, the second user's `experience add`
 of it: TODO-K.
@@ -924,13 +942,21 @@ the same directory refused by name; a session in the exported directory
 answers from the `backtesting` skill.
 
 **(m) The session brief**: `session_sources: [mine:all]` in the
-project's config, the server's instructions naming the sources, one
-bank retrieval: TODO-M.
+project's config, the server's instructions naming the sources ("0
+cards measured by you, every scope, from your bank at head
+`f979f427…`, pinned for this campaign"), one bank retrieval
+(`bank_index`) and the answer quoting the instructions, on both hosts
+(one message, under half a minute each).
 
 **(n) The campaign tools** from a session: `kapso_build_start` returns
 the receipt, `kapso_status` the status, `kapso_stop` ends it (one
 message, under a minute, both hosts). **The campaign sessions'
-isolation**: TODO-N.
+isolation**: a ten-minute campaign on the installed wheel with the
+plugin at user scope: its ideation and implementation sessions on
+Claude Code list no plugin tool and no `kapso:` command in their init
+events; its two engine sessions on Codex were refused by the machine's
+own Codex quota (said, not counted), and the development box's final
+pass shows them running with the isolation lines (TODO-N-CODEX).
 
 **(o) The trigger suite.** Claude Code, the second machine, 101 cases
 twice on `claude-opus-5-5` ($26.81 at list price, 20 minutes): build
@@ -948,7 +974,12 @@ The first machine's run, under the first graders, counted the plugin's
 own commands as misses (the operating skill at seven of thirteen) and
 led to the rule that a command counts for its skill.
 
-**(p) Cold start.** TODO-P.
+**(p) Cold start.** The launcher's PATH branch answers `kapso-mcp
+--version` in 6.5 seconds on the machine (the package's imports, litellm
+among them, are the cost; a host waits longer than that for a server);
+`claude plugin details kapso@kapso` lists the ten commands and the six
+skills with its projected token cost (the artifact beside the record).
+The `uvx` and `pipx` branches wait for the pin on PyPI.
 
 **Deferred**, said in the records: on Codex the cold install, the
 improve, the learn and its completion, the share and the cold start
@@ -1075,6 +1106,13 @@ For later packages:
   python-dotenv's walk from the working directory (`Starting path not
   found`) before any verb ran; the round runs that user from its home.
   Rare for a person, but the CLI could say so in one line.
+- **A repo-memory session's prompt outgrew Codex's input.** On the
+  development box's churn build the second engine session on Codex
+  failed with `Input exceeds the maximum length of 1048576 characters`
+  (1,401,838 sent): the churn example is a few files and ten thousand
+  rows of data, so the session's prompt carried something the size of
+  the data. The repo-memory builder (WP6's engine sessions) should bound
+  what it quotes, and say what it left out.
 - **The fresh machine's examples' dependencies.** Ubuntu 24.04 ships no
   `python3-pyarrow`, so an apt line for the examples fails whole; the
   round makes a uv venv first on PATH. WP9's provisioning should do the

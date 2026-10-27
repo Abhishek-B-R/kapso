@@ -775,8 +775,10 @@ def step_session_brief(ctx: Context) -> Dict[str, Any]:
 
 def step_experience_share(ctx: Context) -> Dict[str, Any]:
     project = Path(ctx.state["churn_project"])
-    remote = ctx.work / "bank-remote.git"
-    ctx.shell(f"rm -rf {remote} && git init -q --bare {remote}")
+    # The bare remote where the second user can read it: the first user's
+    # home is its own.
+    remote = Path("/tmp") / "bank-remote.git"
+    ctx.shell(f"rm -rf {remote} && git init -q --bare {remote} && chmod -R a+rX {remote}")
     turns = ctx.converse("experience-share", project, ctx.host.command("experience", f"share file://{remote}"), go_policy, max_turns=3)
     # The second user, from its own home, loads the shared bank by its
     # reference (a bank needs no `add`: loading fetches it into the store)
