@@ -513,11 +513,20 @@ def step_campaign_tools(ctx: Context) -> Dict[str, Any]:
 def step_inbox(ctx: Context) -> Dict[str, Any]:
     project = ctx.work / "churn-pause"
     campaign = Path(ctx.state["pause_campaign"])
-    paused = wait_for(lambda: (status_of(campaign) or {}).get("state") == "waiting" or (campaign / ".kapso" / "inbox.jsonl").is_file(), 900, every=15)
+    paused = wait_for(lambda: (campaign / ".kapso" / "inbox.jsonl").is_file(), 900, every=15)
     notes = [f"the injected pause arrived: {paused}"]
-    turns = ctx.converse("inbox", project, ctx.host.command("inbox", "../churn-pause-campaign"), lambda text, index: "I put DATA_API_KEY in .env just now; reply that it is done." if index == 0 else None, max_turns=3)
-    if len(turns) == 1 and not turns[0].asked:
-        turns += ctx.converse("inbox-reply", project, "I put DATA_API_KEY in .env just now; reply to the request that it is done.", lambda text, index: None, max_turns=1)
+    turns = ctx.converse("inbox", project, ctx.host.command("inbox", "../churn-pause-campaign"), lambda text, index: None, max_turns=1)
+    # The person does what the request's fix line says before saying so:
+    # the key into the campaign's .env (and the project's), never the reply.
+    for env in (campaign / ".env", project / ".env"):
+        with open(env, "a", encoding="utf-8") as out:
+            out.write("DATA_API_KEY=proof-placeholder-key\n")
+    turns += ctx.converse(
+        "inbox-reply", project,
+        "DATA_API_KEY is in .env now, in the campaign's and the project's. There is no enrichment service to "
+        "document: reply to the request that the key is in place and that it must reach 0.85 without the enrichment table.",
+        lambda text, index: None, max_turns=1,
+    )
     artifacts = [ctx.artifact("inbox-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     inbox = campaign / ".kapso" / "inbox.jsonl"
     if inbox.is_file():
