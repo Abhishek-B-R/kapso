@@ -62,7 +62,7 @@ CLASSIFY = """You are grading the guess log of an author who wrote a Kapso harne
 - "domain_decision": a choice about the author's own domain (dbt), not about Kapso, that no guide could make for them.
 - "already_in_guide": the guide already states it; the author did not find it.
 
-Reply with exactly one JSON object: {{"classifications": [{{"index": <1-based int>, "class": "<one of the four>", "why": "<one sentence, quoting the guide where it bears>"}}, ...]}}, one entry per guess, in order.
+Reply with exactly one JSON object: {{"classifications": [{{"index": <1-based int>, "class": "<one of the four>", "why": "<one sentence in plain prose that cites the guide by file and section, never by pasting code, and uses no double-quote characters, so the JSON stays valid>"}}, ...]}}, one entry per guess, in order.
 
 === THE GUIDE ===
 {guide}
@@ -102,14 +102,20 @@ def guide_text(clone: Path) -> str:
     return "\n\n".join(f"=== {page} ===\n{(clone / page).read_text(encoding='utf-8')}" for page in GUIDE_PAGES)
 
 
-def classify_guesses(guesses: Sequence[Guess], guide: str, settings: dict, ask: Optional[Callable[[str, dict], str]] = None) -> List[Dict[str, Any]]:
+def classify_guesses(guesses: Sequence[Guess], guide: str, settings: dict, ask: Optional[Callable[[str, dict], str]] = None, raw_path: Optional[Path] = None) -> List[Dict[str, Any]]:
     """Each guess classified on the judge's route; the reply is one object
-    with one entry per guess, each class one of the four, or it raises."""
+    with one entry per guess, each class one of the four, or it raises. The
+    raw reply is archived (when raw_path is given) before validation, so a
+    contract break — a malformed reply — keeps its evidence, as the judge's
+    own calls do."""
     ask = ask or judge_module.ask
     if not guesses:
         return []
     rendered = "\n".join(f"{guess.index}. {guess.raw}" for guess in guesses)
     reply = ask(CLASSIFY.replace("{guide}", guide).replace("{guesses}", rendered), settings)
+    if raw_path is not None:
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        raw_path.write_text(reply, encoding="utf-8")
     data = judge_module.extract_json(reply)
     rows = data.get("classifications")
     if not isinstance(rows, list) or len(rows) != len(guesses):
@@ -212,7 +218,7 @@ def grade(record: Dict[str, Any], out: Path, clone: Path, settings: dict, ask: O
             continue
         guesses_md = out / "artifacts" / f"{step['name']}-guesses.md"
         guesses = parse_guesses(guesses_md.read_text(encoding="utf-8")) if guesses_md.is_file() else []
-        classified = classify_guesses(guesses, guide, settings, ask=ask)
+        classified = classify_guesses(guesses, guide, settings, ask=ask, raw_path=out / judge_module.JUDGE_DIR / f"classify-{step['name']}.txt")
         step["classification"] = classified
         step["metrics"]["structural_gaps"] = structural_gaps(classified)
         (out / "artifacts" / f"{step['name']}-classification.json").write_text(json.dumps(classified, indent=2), encoding="utf-8")
