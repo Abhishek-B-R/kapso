@@ -214,7 +214,11 @@ class S5:
         )
         wait_for(lambda: status_of(campaign) is not None, 300, every=5)
         timeline = self.out / "artifacts" / f"{name}-timeline.jsonl"
-        self.samplers[name] = subprocess.Popen([sys.executable, str(Path(__file__).parent / "status_timeline.py"), str(campaign), str(timeline), "--every", str(self.cadence)])
+        # Detach the sampler's stdio from this process: it outlives a step only
+        # on a crash, and if it inherited the ssh channel's pipes an orphaned
+        # sampler would hold the channel open and hang the whole run.
+        self.samplers[name] = subprocess.Popen([sys.executable, str(Path(__file__).parent / "status_timeline.py"), str(campaign), str(timeline), "--every", str(self.cadence)],
+                                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return campaign
 
     def finish(self, name: str, campaign: Path, grace: int = 900) -> Dict[str, Any]:
@@ -329,7 +333,10 @@ class S5:
         port = INJECTIONS["enrichment_port"]
         log = self.out / "artifacts" / f"{name}-service.log"
         log.unlink(missing_ok=True)
-        service = subprocess.Popen([sys.executable, str(Path(__file__).parent / "enrichment_service.py"), "--port", str(port), "--key", ENRICHMENT_KEY, "--log", str(log), "--rows", str(fixture_row_count(project))])
+        # Detached stdio (see the sampler): the service logs to --log, and an
+        # orphaned server must not hold this process's ssh channel open.
+        service = subprocess.Popen([sys.executable, str(Path(__file__).parent / "enrichment_service.py"), "--port", str(port), "--key", ENRICHMENT_KEY, "--log", str(log), "--rows", str(fixture_row_count(project))],
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         brief = project / "kapso-brief.md"
         brief.write_text(brief.read_text(encoding="utf-8").replace("Rules\n", "Rules\n  - " + PAUSE_RULE.format(port=port) + "\n"), encoding="utf-8")
         campaign = self.launch(name, project, budget={"minutes": BUDGET["minutes"], "experiments": BUDGET["experiments"]})
@@ -423,18 +430,21 @@ class S5:
         name = "killed-writer"
         project = self.project(name)
         campaign = self.launch(name, project)
-        self.wait_checkpoint(campaign, BUDGET["minutes"] * 60)
+        # Kill the writer while it is demonstrably running (the implementation
+        # phase), not at the first checkpoint: a node-0 that reaches the goal
+        # flips the campaign to done in the same instant the checkpoint lands,
+        # so a post-checkpoint kill would race the writer's own exit. The guard
+        # still covers the edge where the writer has already gone -- os.kill on
+        # a dead pid would raise, and a writer already absent satisfies the
+        # injection's premise either way.
+        self.wait_phase(campaign, "implementation", BUDGET["minutes"] * 60)
         pid = (status_of(campaign) or {}).get("pid")
-        # Kill the writer only if it is still running: a short campaign may have
-        # finished at the checkpoint, leaving a dead pid on which os.kill would
-        # raise. A writer already gone satisfies the injection's premise (the
-        # writer is absent) either way.
         writer_killed = isinstance(pid, int) and Path(f"/proc/{pid}").exists()
         if writer_killed:
             os.kill(pid, signal.SIGKILL)
         injected_at = datetime.now(timezone.utc)
         return self._resume_after_writer_gone(name, project, campaign, injected_at, f"continue the campaign at ../s5-{name} from where it stopped",
-                                              "the writer killed with SIGKILL after the first checkpoint; the heartbeat stops at once; a reader sees DEAD as soon as the writer is gone", started, {"writer_killed": writer_killed})
+                                              "the writer killed with SIGKILL during the implementation phase; the heartbeat stops at once; a reader sees DEAD as soon as the writer is gone", started, {"writer_killed": writer_killed})
 
     def step_full_disk(self) -> Dict[str, Any]:
         started = time.monotonic()
