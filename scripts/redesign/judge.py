@@ -251,27 +251,38 @@ def judge_record(record_dir: Path, rubric: str, inputs: Optional[Sequence[str]],
     return block
 
 
-def resolve(block: dict, dimensions: Sequence[str], bar: int) -> Dict[str, Optional[int]]:
-    """The final score per dimension, the one way everything reads a judge
-    block: the minimum over the judged items of each item's resolved score
-    (a straddling item's adjudication deciding, else the minimum over
-    passes). None for a dimension whose items are not all scored, so a
-    broken block never silently passes. report.py, S1 and S4 all call this."""
+def resolve_items(block: dict, dimensions: Sequence[str], bar: int) -> Dict[str, Dict[str, Optional[int]]]:
+    """Each judged item's resolved score per dimension: a straddling item's
+    adjudication deciding, else the minimum over passes; None when a pass
+    did not score it. The one way to read a block per item (S4 grades each
+    reader this way); `resolve` collapses it to the worst item."""
     passes = block.get("passes", [])
     adjudication = block.get("adjudication", {})
     labels = sorted({label for a_pass in passes for label in a_pass.get("items", {})})
-    finals: Dict[str, Optional[int]] = {}
-    for dimension in dimensions:
-        item_finals, complete = [], bool(labels)
-        for label in labels:
+    resolved: Dict[str, Dict[str, Optional[int]]] = {}
+    for label in labels:
+        resolved[label] = {}
+        for dimension in dimensions:
             scores = [a_pass.get("items", {}).get(label, {}).get(dimension, {}).get("score") for a_pass in passes]
             if any(score is None for score in scores):
-                complete = False
+                resolved[label][dimension] = None
                 continue
             straddled = min(scores) < bar <= max(scores)
             adjudicated = adjudication.get(f"{dimension}|{label}", {}).get("score")
-            item_finals.append(adjudicated if straddled and adjudicated is not None else min(scores))
-        finals[dimension] = min(item_finals) if complete and item_finals else None
+            resolved[label][dimension] = adjudicated if straddled and adjudicated is not None else min(scores)
+    return resolved
+
+
+def resolve(block: dict, dimensions: Sequence[str], bar: int) -> Dict[str, Optional[int]]:
+    """The final score per dimension: the minimum over the judged items of
+    each item's resolved score (the worst item binds). None when no item is
+    fully scored, so a broken block never silently passes. report.py and S1
+    read a block this way."""
+    items = resolve_items(block, dimensions, bar)
+    finals: Dict[str, Optional[int]] = {}
+    for dimension in dimensions:
+        values = [items[label][dimension] for label in items if items[label][dimension] is not None]
+        finals[dimension] = min(values) if values and len(values) == len(items) else None
     return finals
 
 

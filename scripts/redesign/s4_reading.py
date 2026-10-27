@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
+import judge as judge_module  # noqa: E402
 from plugin_proof import SUITE, ClaudeHost, CodexHost, record_step, shell_step  # noqa: E402
 from s1_cold_engineer import CLAUDE_COLD, CODEX_COLD, plugin_proof_rows, session_init, is_cold  # noqa: E402
 
@@ -52,31 +53,49 @@ STEP_NAMES = ["fact-sheet", "reading-claude_code", "reading-codex"]
 
 
 # ------------------------------------------------------------ the sheet
-def labels_in_history(campaign: Path) -> Optional[bool]:
-    """Whether the evaluation's private directory is in the delivered
-    branch's history (a merge of the branch whole carries the labels);
-    None when the campaign holds no repository."""
-    if not (campaign / ".git").exists():
+LABEL_GLOBS = ("*holdout_labels.csv", "*/private/*")
+
+
+def labels_in_history(campaign: Path, delivered_commit: Optional[str]) -> Optional[bool]:
+    """Whether the hold-out labels are in the DELIVERED commit's own
+    ancestry (a merge of that branch carries them into the repository):
+    searched by the label filename and the private path, not one hard-coded
+    directory, and down the delivered commit's history only, never `--all`
+    (a label on an abandoned branch is not merged). None when the campaign
+    has no repository or the delivered commit is unknown."""
+    if not (campaign / ".git").exists() or not delivered_commit:
         return None
-    run = subprocess.run(["git", "-C", str(campaign), "log", "--oneline", "--all", "--", "kapso_evaluation/private"], capture_output=True, text=True)
+    run = subprocess.run(["git", "-C", str(campaign), "log", "--oneline", delivered_commit, "--", *LABEL_GLOBS], capture_output=True, text=True)
     return run.returncode == 0 and bool(run.stdout.strip())
 
 
 def fact_sheet(trace: Dict[str, Any], labels: Optional[bool]) -> Dict[str, Any]:
-    """The six answers as the record has them, extracted mechanically."""
+    """The six answers as the record has them, extracted mechanically. A
+    rejection is an attempt the engine did not count (the trace's `voided`,
+    whose reason is a void or a "judged not valid"/"rejected:"); a scored
+    attempt that simply lost is a runner-up, reported apart, not a
+    rejection (the engine's own semantics, base.py: a rejected attempt has
+    no score)."""
     header, delivered = trace["header"], trace["delivered"]
     attempts = {attempt["branch"]: attempt for attempt in trace["attempts"]}
     winner = attempts.get(delivered.get("branch")) if delivered else None
-    rejected = [
-        {"branch": attempt["branch"], "reason": attempt.get("judge") if isinstance(attempt.get("judge"), str) else json.dumps(attempt.get("judge"))}
-        for attempt in trace["attempts"] if attempt["evaluation"].get("score") is not None and delivered and attempt["branch"] != delivered.get("branch")
+    voided = trace.get("voided") or []
+    # The trace's `voided` holds both: an integrity/harness void and a
+    # judge rejection, each with its reason. Split them, so the two
+    # questions get distinct keys.
+    voids = [entry for entry in voided if str(entry.get("reason", "")).startswith("void")]
+    rejections = [entry for entry in voided if not str(entry.get("reason", "")).startswith("void")]
+    runners_up = [
+        {"branch": attempt["branch"], "score": attempt["evaluation"].get("score")}
+        for attempt in trace["attempts"]
+        if attempt["evaluation"].get("score") is not None and delivered and attempt["branch"] != delivered.get("branch")
     ]
     cost = header["cost"]
     verification = winner.get("verification") if winner else None
     merge_facts = {
         "verification": verification if verification is not None else "no verification ran (no harness): not established by a verifier",
         "integrity": "no integrity error on the delivered attempt" if winner and not winner["evaluation"].get("integrity_error") else (winner["evaluation"].get("integrity_error") if winner else "no delivered attempt"),
-        "labels_in_history": {True: "the evaluation's private directory is in the branch's history: a merge of the branch whole carries the labels", False: "the evaluation's private directory is not in the branch's history", None: "not established: no repository"}[labels],
+        "labels_in_history": {True: "the hold-out labels are in the delivered commit's own history: a merge of the branch would carry them into the repository", False: "the hold-out labels are not in the delivered commit's history: a merge does not carry them", None: "not established: no repository or no delivered commit"}[labels],
         "files_changed": delivered.get("files_changed", []) if delivered else [],
     }
     return {
@@ -84,10 +103,11 @@ def fact_sheet(trace: Dict[str, Any], labels: Optional[bool]) -> Dict[str, Any]:
                      "score": winner["evaluation"].get("score") if winner else None, "provenance": winner["evaluation"].get("provenance") if winner else None,
                      "goal_achieved": trace.get("state")},
         "why": {"idea": winner.get("idea") if winner else None, "judge": winner.get("judge") if winner else None, "score": winner["evaluation"].get("score") if winner else None},
-        "what was voided and on what evidence": trace["voided"] or "nothing voided",
-        "what was rejected and why": rejected or f"nothing rejected (the header counts {header.get('rejected', 0)})",
+        "what was voided and on what evidence": voids or "nothing voided",
+        "what was rejected and why": rejections or f"nothing rejected (the header counts {header.get('rejected', 0)}); the scored runners-up were {runners_up or 'none'}",
         "what it cost": {"usd": cost.get("usd"), "coverage": cost.get("coverage"), "unpriced_runs": cost.get("unpriced_runs")},
         "safe to merge": merge_facts,
+        "scored_not_delivered": runners_up,
     }
 
 
@@ -123,7 +143,8 @@ class S4:
         if text.returncode != 0 or data.returncode != 0:
             return shell_step("fact-sheet", False, [self.artifact("trace.err", text.stderr + data.stderr)], (time.monotonic() - started) / 60, ["kapso trace failed"])
         trace = json.loads(data.stdout)
-        facts = fact_sheet(trace, labels_in_history(self.campaign))
+        delivered_commit = (trace.get("delivered") or {}).get("commit")
+        facts = fact_sheet(trace, labels_in_history(self.campaign, delivered_commit))
         (self.out / "judge" / "fact-sheet.md").write_text(render_sheet(facts), encoding="utf-8")
         artifacts = [self.artifact("trace.txt", text.stdout), self.artifact("trace.json", data.stdout), self.artifact("fact-sheet.json", json.dumps(facts, indent=2))]
         return shell_step("fact-sheet", True, artifacts, (time.monotonic() - started) / 60, ["the fact sheet extracted from the trace and the branch's history; checked by hand once; under judge/, never in the reader's directory"])
@@ -148,19 +169,25 @@ class S4:
 
 
 def grade(record: Dict[str, Any]) -> Dict[str, Any]:
-    """The judge's block into the record: per reader the questions right
-    in both passes (the minimum over passes), and the run's minimum."""
+    """The judge's block into the record: per reader the questions right,
+    each question RESOLVED the way the verdict resolves it (a straddle's
+    adjudication deciding, not the bare two-pass minimum), and the run's
+    minimum over readers. The same resolution the final verdict uses, so a
+    question adjudicated correct is not still counted wrong."""
     judge = record.get("judge") or {}
     if judge.get("failure") or not judge.get("passes"):
         return record
+    dimensions = [key for key, _ in QUESTIONS]
+    resolved = judge_module.resolve_items(judge, dimensions, SUITE["tests"]["S4"]["judge"]["bar"])
+    bar = SUITE["tests"]["S4"]["judge"]["bar"]
     correct: Dict[str, int] = {}
     for step in record["steps"]:
-        if step.get("kind") != "reading":
+        if step.get("kind") != "reading" or step["name"] not in resolved:
             continue
-        scores = [p["items"].get(step["name"], {}) for p in judge["passes"]]
-        if not all(scores):
+        scores = resolved[step["name"]]
+        if any(scores[key] is None for key in dimensions):
             continue
-        right = sum(1 for key, _ in QUESTIONS if min(item[key]["score"] for item in scores) >= 1)
+        right = sum(1 for key in dimensions if scores[key] >= bar)
         step["metrics"]["correct"] = right
         correct[step["name"]] = right
     if correct:
