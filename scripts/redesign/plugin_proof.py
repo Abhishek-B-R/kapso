@@ -456,19 +456,64 @@ def step_watch(ctx: Context) -> Dict[str, Any]:
     return record_step("watch", turns, completed, [ctx.artifact("watch-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))])
 
 
+CASE_NAME = re.compile(r"^(?P<skill>[a-z]+)-(?P<kind>[eicn])\d+$")
+TRIGGER_BAR = 0.9   # eighteen of twenty per skill
+
+
+def trigger_bar(out_dir: Path, host: str) -> Dict[str, Any]:
+    """The suite's verdict per skill from its result file: the share of
+    the skill's cases that passed every run, and the near misses that
+    invoked the skill under test (a cross-skill false positive)."""
+    passed: Dict[str, List[bool]] = {}
+    false_positives: List[str] = []
+    if host == "claude_code":
+        document = json.loads((out_dir / "triggers.json").read_text(encoding="utf-8"))
+        for case in document["cases"]:
+            match = CASE_NAME.match(case["name"])
+            if match is None:
+                continue
+            passed.setdefault(match.group("skill"), []).append(case["aggregates"]["score"] >= 1.0)
+            for run in case["arms"]["with"]:
+                if any(g["name"].startswith("not-") and not g["passed"] for g in run.get("graders", [])):
+                    false_positives.append(case["name"])
+    else:
+        document = json.loads((out_dir / "results.json").read_text(encoding="utf-8"))
+        by_case: Dict[str, List[Dict[str, Any]]] = {}
+        for result in document["results"]:
+            by_case.setdefault(result["case"], []).append(result)
+        for name, runs in by_case.items():
+            match = CASE_NAME.match(name)
+            if match is None:
+                continue
+            passed.setdefault(match.group("skill"), []).append(all(run["passed"] for run in runs))
+            if any(g["name"].startswith("not-") and not g["passed"] for run in runs for g in run["graders"]):
+                false_positives.append(name)
+    per_skill = {skill: f"{sum(ok)}/{len(ok)}" for skill, ok in passed.items()}
+    met = bool(passed) and all(sum(ok) >= TRIGGER_BAR * len(ok) for ok in passed.values()) and not false_positives
+    return {"per_skill": per_skill, "false_positives": sorted(set(false_positives)), "met": met}
+
+
 def step_triggers(ctx: Context) -> Dict[str, Any]:
     started = time.monotonic()
     which = "claude-triggers" if ctx.host.name == "claude_code" else "codex-triggers"
     main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main", cwd=ctx.clone, timeout=10800, check=False)
     holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1", cwd=ctx.clone, timeout=3600, check=False)
-    artifacts = []
+    artifacts, notes, verdicts = [], [], []
     for label, run in (("main", main), ("holdout", holdout)):
         out_dir = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""
         if out_dir and Path(out_dir).is_dir():
             artifacts.append(ctx.copy_artifact(Path(out_dir), f"triggers-{label}"))
+            result_file = Path(out_dir) / ("triggers.json" if ctx.host.name == "claude_code" else "results.json")
+            if result_file.is_file():
+                verdict = trigger_bar(Path(out_dir), ctx.host.name)
+                verdicts.append(verdict["met"])
+                notes.append(f"{label}: {verdict['per_skill']}; cross-skill false positives: {verdict['false_positives'] or 'none'}")
+            else:
+                verdicts.append(False)
+                notes.append(f"{label}: the suite wrote no result file (exit {run.returncode})")
         artifacts.append(ctx.artifact(f"triggers-{label}.log", run.stdout + run.stderr))
-    completed = main.returncode == 0 and holdout.returncode == 0
-    return shell_step("triggers", completed, artifacts, (time.monotonic() - started) / 60, ["the bar per skill is read off triggers-main/REPORT.md"])
+    notes.append("the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way")
+    return shell_step("triggers", bool(verdicts) and all(verdicts), artifacts, (time.monotonic() - started) / 60, notes)
 
 
 def step_harness_export(ctx: Context) -> Dict[str, Any]:
