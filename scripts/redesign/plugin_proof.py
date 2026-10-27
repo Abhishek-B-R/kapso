@@ -39,7 +39,7 @@ TURN_TIMEOUT = 1800
 # A turn that waits for a word without a question mark: "say go and I'll launch".
 APPROVAL_ASKED = re.compile(
     r"\b(say|reply|type|answer)\b[^\n]{0,30}\bgo\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b"
-    r"|\blet me know\b|\bonce you.ve answered\b|\bafter you answer\b|\byour answers?\b",
+    r"|\blet me know\b|\bonce you.ve answered\b|\bafter you answer\b|\byour answers?\b|\bif you say\b|\bsay yes\b",
     re.I,
 )
 CHURN_WISH = (
