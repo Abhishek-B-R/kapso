@@ -688,6 +688,22 @@ reused within a task.
 Each arm lands here with its run id, report and verdict. The first arm
 proved the runner end to end and drove the fixes recorded with it.
 
+### Learn validation, development box (2026-10-27)
+
+Before the hours-long S6, the learn crew was validated on a ready-made WP7b
+`churn-campaign` archive, into an isolated bank, with the `gpt-5.6-sol`
+grader crew on the device-auth Codex session. It completed (exit 0) and
+**banked 12 cards** (4 insights + 8 procedures, e.g.
+`validation-margins-debit-shared-fold-selection-optimism`), pushing a real
+commit onto the bank's founding skeleton. The whole crew ran — mine → exam →
+card-writing (~15 clusters) → critic → repair (resolved in ~2 rounds) →
+commit → push — and the critic did substantive work (demoting weak
+qualitative cards, catching same-run echoes labelled `confirm`). This
+de-risks S6's learn step and confirms the Codex graders work end to end.
+Two notes carried to findings: the learn's runtime scales with the
+archive's lesson-richness (~2.5 h for this rich campaign), and one Fable-5
+grader call was safeguard-refused once and recovered on the next session.
+
 ### S1, Claude host, fresh GCP machine — run `s1-claude-1` (2026-10-27)
 
 A real cold engineer on a fresh machine: two prerequisite campaigns built
@@ -743,6 +759,22 @@ product and the docs, not the suite:
   and voluntary diagnostics. Whether the target is the product (a more
   concise harness-load-plus-build idiom) or the metric (count statements,
   not physical lines) is left for the owner in DECISIONS.
+
+From the learn validation:
+
+- **A learn's wall-clock scales with the campaign's lesson-richness.** The
+  rich WP7b `churn-campaign` yielded ~15 lesson clusters and took ~2.5 h to
+  mine, exam, write, critique, repair and bank 12 cards. A fresh small
+  build-one campaign (what S6 learns) will be far shorter, but a learn over
+  a long real campaign is an hours-scale operation — worth a progress
+  surface a user can watch (`kapso watch learning/status`) and worth noting
+  in the product's expectations.
+- **A grader call can hit a transient Fable-5 safeguard refusal.** One
+  `claude-fable-5` crew call returned `model_refusal_no_fallback` ("safe,
+  normal conversation" false positive) and the next crew session proceeded
+  normally. Rare and self-recovering here, but a crew that depends on a
+  single refused call completing would stall — the crews already tolerate it
+  by re-running the role.
 
 ## Built
 
