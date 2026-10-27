@@ -678,6 +678,12 @@ def step_harness_probe(ctx: Context) -> Dict[str, Any]:
     campaign = ctx.work / "trading-probe"
     ctx.state["probe_campaign"] = str(campaign)
     ctx.save()
+    # The interview's session may have run the evaluator while testing the
+    # harness and left its result beside it, which a launch refuses
+    # ("remove it and launch again"); the person does.
+    leftover = project / "evaluation" / "result.json"
+    if leftover.is_file():
+        leftover.unlink()
     run = ctx.shell(
         f"kapso build --harness {harness} --brief kapso-brief.md --repo repo --evaluation evaluation --data data "
         f"--output {campaign} --budget-minutes 10 --budget-experiments 1 --detach", cwd=project, check=False,
