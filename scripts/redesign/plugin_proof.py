@@ -83,7 +83,7 @@ def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
     sentence on why it is needed)."""
     if any(tool["name"] == "AskUserQuestion" for tool in tools):
         return True
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines = [line.strip().rstrip("*_`)\"' ") for line in text.splitlines() if line.strip()]
     closing = "\n".join(lines[-6:])
     return any(line.endswith("?") for line in lines[-6:]) or bool(APPROVAL_ASKED.search(closing))
 
