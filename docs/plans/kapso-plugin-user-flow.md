@@ -66,6 +66,8 @@ The ten questions of the mental model, answered on 2026-10-12.
 
 ## 2. What the plugin ships
 
+*Superseded on 2026-10-27 by `docs/plans/redesign/wp7-plugin.md`: the tree shipped is `plugin/` with ten commands (`setup build watch inbox resume review learn deploy harness experience`), six skills and the host MCP files; `/kapso:evolve`, `research` and `bank` are WP1's `build` and WP3's `experience` now.*
+
 ```text
 plugin/
 ├── .claude-plugin/plugin.json      name kapso, version = package version

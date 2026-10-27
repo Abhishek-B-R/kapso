@@ -1,0 +1,11 @@
+Prepared [kapso-brief.md](kapso-brief.md). The data contains 20,000 transactions, 4.56% fraud, and no evaluator.
+
+I recommend maximizing **average precision** on a protected, stratified 20% hold-out, preserving the scorer’s CLI. Alternatives are ROC AUC for overall ranking or log loss for probability quality. Proposed budget: **60 minutes, 10 experiments**. Baseline remains unmeasured.
+
+**Approve this protocol and budget, or edit a line.**
+
+The [kapso-evaluation skill](/home/ubuntu/.codex/plugins/cache/kapso/kapso/0.8.0.dev1/skills/kapso-evaluation/SKILL.md) requires “the single approval before anything is measured” when neither an evaluator nor a criterion exists. That applies here; the campaign has not launched.
+
+---
+
+Selected average precision as the evaluation metric. Stopped here; nothing has been launched.

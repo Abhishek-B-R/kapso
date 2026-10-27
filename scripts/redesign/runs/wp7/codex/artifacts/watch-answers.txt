@@ -1,0 +1,11 @@
+Campaign is **running**, in ideation for iteration 1.
+No best score or branch reported yet.
+Budget: about **59 of 60 minutes remaining**.
+
+---
+
+The campaign is running in **ideation, iteration 1**, with a fresh heartbeat.
+
+No scored candidate or best branch has been reported yet.
+
+It has used about **1 of 60 minutes**, leaving roughly **59 minutes**.

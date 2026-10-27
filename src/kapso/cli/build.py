@@ -1,20 +1,26 @@
 """`kapso build`: build software that meets a brief, by experiment."""
 
 import argparse
+import os
+import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from kapso.core.config import load_config
 from kapso.kapso import Kapso
 from kapso.handles import Brief, Budget
-from kapso.execution.inbox import read_launch_record
+from kapso.execution.inbox import launch_receipt_path, read_launch_record
+from kapso.execution.observability import OperationStatusView, TERMINAL_STATES, mark_failed, pid_alive
 from kapso.experience import recorded_reference
 from kapso.harness import BUILD_MODULES, unmet_message
 from kapso.cli.common import (
     AVAILABLE_AGENTS,
     _default_log,
     _detach,
+    build_handoff,
     _inside,
     _print_build_summary,
     _without_detach_flags,
@@ -25,6 +31,13 @@ NAME = "build"
 
 def cmd_build(args) -> None:
     """Handle the build command."""
+    if args.stop:
+        beside = [flag for flag, value in (("--resume", args.resume), ("--brief", args.brief), ("--goal", args.goal), ("--goal-file", args.goal_file)) if value]
+        if beside:
+            print(f"Error: --stop stops a running campaign and takes no other flag; drop {', '.join(beside)}", file=sys.stderr)
+            sys.exit(1)
+        _stop(args)
+        return
     if args.brief:
         brief_path = Path(args.brief).expanduser()
         if not brief_path.is_file():
@@ -86,7 +99,8 @@ def cmd_build(args) -> None:
                 Path(args.log).expanduser().resolve() if args.log
                 else _default_log(campaign)
             ),
-            campaign=campaign,
+            receipt_path=launch_receipt_path(campaign),
+            handoff=build_handoff(campaign),
         )
         return
 
@@ -110,6 +124,92 @@ def cmd_build(args) -> None:
         coding_agent=args.coding_agent,
     )
     _print_build_summary(solution)
+
+
+def _stop(args) -> None:
+    """End the campaign running in --output: its process group (the
+    status file's pid, a detached launch being its own session) gets
+    SIGTERM, then SIGKILL once the grace the config gives has passed; the
+    status is marked failed with the reason and the receipt goes, so
+    `kapso watch` says what happened and `--resume` continues from the
+    checkpoint. A campaign whose status is terminal, or whose writer is
+    gone already, is refused by state: there is nothing to end."""
+    if not args.output:
+        print("Error: --stop needs --output: the campaign directory whose run ends", file=sys.stderr)
+        sys.exit(1)
+    campaign = Path(args.output).expanduser().resolve()
+    status_path = OperationStatusView.locate(campaign)
+    if status_path is None:
+        print(f"Error: no status under {campaign}: nothing is running there", file=sys.stderr)
+        sys.exit(1)
+    view = OperationStatusView(status_path)
+    if view.state in TERMINAL_STATES:
+        print(f"Error: the campaign at {campaign} is {view.state}; nothing to stop", file=sys.stderr)
+        sys.exit(1)
+    pid = view.data.get("pid")
+    if pid_alive(pid) is not True:
+        print(
+            f"Error: the campaign at {campaign} has no live writer (pid {pid}): it is dead, not running; "
+            f"`kapso build --output {campaign} --resume --detach` continues it",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    budget = load_config(args.config)["budget"]
+    grace, poll = float(budget["stop_grace_seconds"]), float(budget["stop_poll_seconds"])
+    # The campaign's processes: the writer and everything under it (the
+    # coding-agent CLIs run in sessions of their own, outside the writer's
+    # group). A group leader takes its group with it; a process sharing
+    # its parent's group (a foreground launch from a script) is signalled
+    # alone, so the stop never reaches what launched the campaign.
+    targets = [pid, *_descendants(pid)]
+    _signal(targets, signal.SIGTERM)
+    _wait_gone(targets, grace, poll)
+    if any(pid_alive(target) for target in targets):
+        _signal(targets, signal.SIGKILL)
+        # Bounded again: a process whose parent has not reaped it keeps
+        # its /proc entry a while; the run has ended all the same.
+        _wait_gone(targets, grace, poll)
+    mark_failed(status_path, "stopped by the person", stopped_reason="stopped")
+    receipt = launch_receipt_path(campaign)
+    if receipt.is_file():
+        receipt.unlink()
+    print(f"stopped the campaign at {campaign} (pid {pid})")
+    print(f"  status:  {status_path}")
+    print(f"  resume:  kapso build --output {campaign} --resume --detach")
+
+
+def _descendants(pid: int) -> List[int]:
+    """Every process under `pid`, read from the process table."""
+    table = subprocess.run(["ps", "-eo", "pid=,ppid="], capture_output=True, text=True, check=True).stdout.split()
+    children: Dict[int, List[int]] = {}
+    for child, parent in zip(table[0::2], table[1::2]):
+        children.setdefault(int(parent), []).append(int(child))
+    found: List[int] = []
+    queue = [pid]
+    while queue:
+        for child in children.get(queue.pop(), []):
+            found.append(child)
+            queue.append(child)
+    return found
+
+
+def _signal(pids: List[int], signum: int) -> None:
+    """Each live process: its whole group when it leads one, itself
+    otherwise."""
+    for target in pids:
+        if pid_alive(target) is not True:
+            continue
+        group = os.getpgid(target)
+        if group == target:
+            os.killpg(group, signum)
+        else:
+            os.kill(target, signum)
+
+
+def _wait_gone(pids: List[int], seconds: float, poll: float) -> None:
+    deadline = time.monotonic() + seconds
+    while any(pid_alive(target) for target in pids) and time.monotonic() < deadline:
+        time.sleep(poll)
 
 
 def _harness_reference(args, brief):
@@ -157,6 +257,7 @@ Examples:
   kapso build --goal "Build a web scraper for news articles" --output ./scraper
   kapso build --goal-file problem.txt --budget-experiments 20 --output ./campaign
   kapso build --output ./campaign --resume       # brief and flags from the checkpoint and the launch record
+  kapso build --output ./campaign --stop         # end a running campaign; --resume continues it later
   kapso watch ./campaign --follow                # follow a detached build
 """
     )
@@ -231,6 +332,11 @@ Examples:
     build_parser.add_argument(
         "--log", type=str, default=None,
         help="Where a detached run's output goes (default: <output>.log beside the campaign)",
+    )
+    build_parser.add_argument(
+        "--stop", action="store_true",
+        help="End the campaign running in --output (its process group), mark its status, and keep "
+             "its checkpoint for --resume",
     )
 
     build_parser.add_argument(

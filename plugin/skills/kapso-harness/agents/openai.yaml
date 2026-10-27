@@ -1,0 +1,6 @@
+interface:
+  display_name: "Kapso harness"
+  short_description: "Write a harness from the repository, or improve one from a run"
+  default_prompt: "Use $kapso-harness to write a harness for this repository's domain."
+policy:
+  allow_implicit_invocation: true

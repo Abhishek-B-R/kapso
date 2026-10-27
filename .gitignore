@@ -289,9 +289,17 @@ skills-lock.json
 # files here and symlinks .claude/skills/ at them, so ignoring only the symlink
 # directory above still leaves this one showing up in every commit.
 .agents/
+# The repository is Codex's marketplace: its one file under .agents is tracked.
+!/.agents/
+/.agents/*
+!/.agents/plugins/
+/.agents/plugins/*
+!/.agents/plugins/marketplace.json
 
 # Local records of fresh-machine runs (scripts/redesign/fresh_machine.sh)
 /scripts/redesign/runs/
 
 # Example builds land beside each example's repo and are never committed.
 examples/*/campaign/
+# The trigger suite's run outputs (`claude plugin eval` writes them beside the cases)
+/plugin/evals/results/

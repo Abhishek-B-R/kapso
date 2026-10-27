@@ -1,0 +1,29 @@
+**No winner was delivered.** The campaign exhausted its budget; `generic_exp_0` at `10074d814cfc` remains an unsuccessful, unjudged candidate.
+
+**Evaluation:** The candidate contains a full-evaluator result of **0.8447 ROC AUC**, versus the documented baseline **0.7974**: +0.0473, but **0.0053 below** the 0.85 threshold. These are supplied-evaluator, unversioned records; the trace registers no evaluator and accepts no campaign score.
+
+**Change outline:**
+- `predict.py`: replaces logistic regression with a five-family rank ensemble, including linear-leaf LightGBM and spline models.
+- Adds experiment scripts, results, predictions, and planning/evaluation notes.
+- Preserves the CLI and `id,churn_probability` output structure; evaluator code is unchanged.
+
+**Rejections:** No attempts were voided or integrity-rejected. Implementation timed out; judging and reconstruction never ran.
+
+**Risks:** No harness verification or reviewer reports exist. Hooks recorded no blocks. Output values are ranks, not calibrated probabilities. The recorded score has not been independently reproduced in this review.
+
+**Spend:** 59.8 of 60 minutes; **$3.249 recorded**, covering priced Claude Code sessions only. One run was unpriced; Codex reports no cost. One experiment, zero rejections.
+
+**Next action:** Resume with more budget to finish evaluation and verification before considering a merge.
+
+---
+
+**I would not merge it yet.** The campaign actually delivered no successful branch; `generic_exp_0` at `10074d814cfc` is an unfinished candidate.
+
+- **Evidence:** Implementation timed out; verification and judging never ran. The campaign’s official score is null.
+- **Saved result:** The branch records **0.8447 AUC** from the provided evaluator (protected, unversioned), versus baseline **0.7974**—an improvement of **0.0473**, but **0.0053 below target**. I have not independently rerun it.
+- **Changes:** Replaces logistic regression with a five-family ensemble; adds experiment scripts, binary artifacts, and generated predictions.
+- **Integrity:** Evaluator code and datasets are unchanged. No voided attempts or integrity rejections were recorded. The prediction code fits on training rows.
+- **Risks:** Outputs are batch-relative ranks rather than calibrated probabilities. LightGBM is a new dependency without an accompanying dependency manifest. No reviewer verdict establishes merge safety.
+- **Spend:** 59.8 minutes; $3.249 recorded, with incomplete cost coverage; one experiment, zero rejected.
+
+**Next action:** Validate the exact candidate commit with the full evaluator, resolve probability semantics and dependencies, and meet the target before merging.

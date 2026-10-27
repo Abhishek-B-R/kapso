@@ -1,0 +1,8 @@
+ToolSearch
+mcp__plugin_kapso_kapso__bank_index
+
+The MCP server's instructions say this session is served **0 cards measured by you, every scope, from your bank at head `f979f4273c0b`, pinned for this campaign.** That is your own bank, with no teammate banks or ingested corpora added.
+
+I couldn't read a card because the bank is empty. `bank_index` returned "The bank holds NO card yet — this is its whole answer; nothing else exists," with no insights or procedures, so there is no title to quote.
+
+To put cards in it, run `/kapso:learn` after a Kapso campaign finishes; it banks what the campaign taught. To serve this session a teammate's bank or an ingested corpus instead, use `/kapso:experience`.

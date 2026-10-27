@@ -37,6 +37,10 @@ _BUDGET_BLOCK_KEYS = {
     # Durable-clock heartbeat interval (consumed by the orchestrator, not
     # BudgetSpec): keeps elapsed_seconds fresh between boundary checkpoints.
     "checkpoint_heartbeat_seconds",
+    # How long `kapso build --stop` waits after SIGTERM before SIGKILL
+    # (consumed by the verb, not BudgetSpec).
+    "stop_grace_seconds",
+    "stop_poll_seconds",
     # Validated separately by FidelitySpec.resolve.
     "fidelity",
 }

@@ -13,6 +13,7 @@ from kapso.harness import (
     parse_reference,
     read_manifest,
 )
+from kapso.harness.export import HOSTS, export_harness
 from kapso.harness.manifest import MANIFEST_FILE, valid_name
 
 NAME = "harness"
@@ -39,13 +40,20 @@ def cmd_harness(args) -> None:
             print(f"at {after[:12]}: a tag or a commit never moves")
         else:
             print(f"now at {after[:12]} (was {before[:12]})")
-    # check, add and update: resolve (fetching when needed, and saying so),
-    # then the report; a failure exits 1, what the machine lacks never does.
+    # check, add, update and export: resolve (fetching when needed, and
+    # saying so), then the report; a failure exits 1, what the machine
+    # lacks never does. An export shows the report only when it refuses.
     fetched_before = reference.kind != "git" or store.is_fetched(reference)
     path = store.resolve(reference)
     if not fetched_before:
         print(f"fetched {path}")
     report = check_harness(path, page_warning_lines=int(settings["page_warning_lines"]))
+    if command == "export":
+        if not report.ok():
+            print(report.render())
+            sys.exit(1)
+        print(export_harness(path, args.host, Path(args.to).expanduser() if args.to else Path.cwd()).render())
+        return
     print(report.render())
     if report.manifest is not None:
         print(f"name     {report.manifest.name} {report.manifest.version}")
@@ -133,6 +141,7 @@ Examples:
   kapso harness check ./trading                   # failures, warnings, what this machine lacks
   kapso harness add acme/harnesses@v3#trading     # fetch into the store and check
   kapso harness list                              # bundled and fetched harnesses
+  kapso harness export ./trading --host codex     # its skills, delegates and servers as a session's files
   kapso build --harness ./trading --brief kapso-brief.md ...
 """,
     )
@@ -151,5 +160,13 @@ Examples:
         command.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
     listing = sub.add_parser("list", help="The bundled and fetched harnesses, with what each needs")
     listing.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
+    export = sub.add_parser(
+        "export",
+        help="Write a harness's skills, delegates and servers as the files an ordinary session of one host discovers",
+    )
+    export.add_argument("ref", type=str, help="A bundled name, a directory, or a git reference")
+    export.add_argument("--host", type=str, required=True, choices=HOSTS, help="The host whose files to write")
+    export.add_argument("--to", type=str, default=None, help="The directory to write into (default: the working directory)")
+    export.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
     new.add_argument("--config", type=str, default=None, help=argparse.SUPPRESS)
     return cmd_harness

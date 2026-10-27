@@ -1,0 +1,95 @@
+| case | runs | passed | loaded |
+|---|---|---|---|
+| build-c01 | 2 | 2/2 | kapso |
+| build-c02 | 2 | 2/2 | kapso-review |
+| build-c03 | 2 | 2/2 | kapso, kapso-harness |
+| build-c04 | 2 | 2/2 | kapso-setup |
+| build-i01 | 2 | 2/2 | kapso, kapso-build, kapso-evaluation |
+| build-i02 | 2 | 2/2 | kapso-build, kapso-evaluation |
+| build-i03 | 2 | 2/2 | kapso-build, kapso-evaluation |
+| build-i04 | 2 | 2/2 | kapso, kapso-build, kapso-evaluation |
+| build-i05 | 2 | 2/2 | kapso-build, kapso-evaluation |
+| build-i06 | 2 | 2/2 | kapso, kapso-build, kapso-evaluation |
+| build-i07 | 2 | 2/2 | kapso-build, kapso-evaluation |
+| build-i08 | 2 | 2/2 | kapso-build, kapso-evaluation |
+| build-i09 | 2 | 2/2 | kapso-build, kapso-evaluation |
+| build-i10 | 2 | 2/2 | kapso, kapso-build, kapso-evaluation |
+| build-n01 | 2 | 2/2 | (none) |
+| build-n02 | 2 | 2/2 | (none) |
+| build-n03 | 2 | 2/2 | (none) |
+| build-n04 | 2 | 2/2 | (none) |
+| harness-c01 | 2 | 2/2 | kapso-build, kapso-evaluation |
+| harness-c02 | 2 | 2/2 | kapso-review |
+| harness-c03 | 2 | 0/2 | kapso, kapso-harness |
+| harness-c04 | 2 | 2/2 | kapso-setup |
+| harness-i01 | 2 | 2/2 | kapso-harness |
+| harness-i02 | 2 | 2/2 | kapso-harness, paper-trading |
+| harness-i03 | 2 | 2/2 | kapso-harness |
+| harness-i04 | 2 | 2/2 | kapso-harness |
+| harness-i05 | 2 | 2/2 | kapso-harness |
+| harness-i06 | 2 | 2/2 | kapso-harness |
+| harness-i07 | 2 | 2/2 | kapso-harness |
+| harness-i08 | 2 | 2/2 | kapso-harness |
+| harness-i09 | 2 | 2/2 | kapso-harness |
+| harness-i10 | 2 | 2/2 | kapso-harness |
+| harness-n01 | 2 | 2/2 | (none) |
+| harness-n02 | 2 | 2/2 | (none) |
+| harness-n03 | 2 | 2/2 | (none) |
+| harness-n04 | 2 | 2/2 | (none) |
+| kapso-c01 | 2 | 0/2 | kapso, kapso-build, kapso-evaluation |
+| kapso-c02 | 2 | 2/2 | kapso-review |
+| kapso-c03 | 2 | 2/2 | kapso-setup |
+| kapso-c04 | 2 | 2/2 | kapso-harness |
+| kapso-i01 | 2 | 2/2 | kapso |
+| kapso-i02 | 2 | 2/2 | kapso |
+| kapso-i03 | 2 | 2/2 | kapso |
+| kapso-i04 | 2 | 2/2 | kapso |
+| kapso-i05 | 2 | 2/2 | kapso |
+| kapso-i06 | 2 | 2/2 | kapso |
+| kapso-i07 | 2 | 2/2 | kapso |
+| kapso-i08 | 2 | 2/2 | kapso |
+| kapso-i09 | 2 | 2/2 | kapso, kapso-setup |
+| kapso-n01 | 2 | 2/2 | (none) |
+| kapso-n02 | 2 | 2/2 | (none) |
+| kapso-n03 | 2 | 2/2 | (none) |
+| kapso-n04 | 2 | 2/2 | (none) |
+| review-c01 | 2 | 2/2 | kapso |
+| review-c02 | 2 | 0/2 | kapso-harness, kapso-review |
+| review-c03 | 2 | 2/2 | kapso-build, kapso-evaluation |
+| review-c04 | 2 | 2/2 | kapso-setup |
+| review-i01 | 2 | 2/2 | kapso-review |
+| review-i02 | 2 | 2/2 | kapso-review |
+| review-i03 | 2 | 2/2 | kapso-review |
+| review-i04 | 2 | 2/2 | kapso-review |
+| review-i05 | 2 | 2/2 | kapso-review |
+| review-i06 | 2 | 2/2 | kapso-review |
+| review-i07 | 2 | 2/2 | kapso-review |
+| review-i08 | 2 | 2/2 | kapso-review |
+| review-i09 | 2 | 2/2 | kapso-review |
+| review-i10 | 2 | 2/2 | kapso-review |
+| review-n01 | 2 | 2/2 | (none) |
+| review-n02 | 2 | 2/2 | (none) |
+| review-n03 | 2 | 2/2 | (none) |
+| review-n04 | 2 | 2/2 | (none) |
+| setup-c01 | 2 | 2/2 | kapso |
+| setup-c02 | 2 | 1/2 | kapso-build, kapso-evaluation, kapso-setup |
+| setup-c03 | 2 | 2/2 | kapso-harness |
+| setup-c04 | 2 | 2/2 | kapso-review |
+| setup-i01 | 2 | 2/2 | kapso-setup |
+| setup-i02 | 2 | 2/2 | kapso-setup |
+| setup-i03 | 2 | 2/2 | kapso-setup |
+| setup-i04 | 2 | 2/2 | kapso-setup |
+| setup-i05 | 2 | 2/2 | kapso-setup |
+| setup-i06 | 2 | 2/2 | kapso-setup |
+| setup-i07 | 2 | 2/2 | kapso-setup |
+| setup-i08 | 2 | 2/2 | kapso-setup |
+| setup-i09 | 2 | 2/2 | kapso-setup |
+| setup-i10 | 2 | 2/2 | kapso-setup |
+| setup-n01 | 2 | 2/2 | (none) |
+| setup-n02 | 2 | 2/2 | (none) |
+| setup-n03 | 2 | 2/2 | (none) |
+| setup-n04 | 2 | 2/2 | (none) |
+
+85 of 89 cases passed every run; 12 explicit case(s) skipped (Codex's explicit form is `$kapso-<skill>`).
+exit=1
+/home/ubuntu/kapso/.claude/worktrees/kapso-plugin/scripts/redesign/runs/wp7-triggers/codex-triggers-20261027T023639

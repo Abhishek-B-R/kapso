@@ -4,6 +4,7 @@ path and the watch line — the handoff every host (and the skill) needs,
 in one flag instead of a nohup/setsid recipe per host."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any, Dict, List
 import pytest
 
 import kapso.cli.common as cli_common
+import kapso.cli.experience as experience_cli
 from kapso.cli import main
 from kapso.execution.inbox import LAUNCH_SCHEMA_VERSION, inbox_path, load_requests, write_launch_record
 from kapso.execution.observability import BuildStatus
@@ -131,9 +133,8 @@ def test_reply_detach_refuses_a_live_campaign(tmp_path, monkeypatch, popen, caps
 def test_build_detach_validates_the_harness_before_it_forks(tmp_path, monkeypatch, popen, capsys):
     """A missing prerequisite of the build's own modules stops the parent
     with the message, and no child is started to die in its log."""
-    import shutil as _shutil
     harness = tmp_path / "harness"
-    _shutil.copytree(Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading", harness)
+    shutil.copytree(Path(__file__).resolve().parent.parent / "examples" / "harnesses" / "trading", harness)
     manifest = harness / "harness.yaml"
     # No requirements file: that check asks python3 in a subprocess, and
     # this test's Popen stub stands in for every process.
@@ -194,4 +195,36 @@ def test_build_detach_loads_the_experience_before_it_forks(tmp_path, monkeypatch
     })
     with pytest.raises(ExperienceReferenceError):
         _run(monkeypatch, "build", "--output", "resumed", "--resume", "--detach")
+    assert len(popen) == 1
+
+
+def test_learn_detach_runs_the_crews_in_a_session_of_their_own(tmp_path, monkeypatch, popen, capsys):
+    """Hours of crews: the same helper, the log beside the campaign, the
+    handoff naming the learning status directory; no receipt (nothing
+    reads one there)."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "campaign").mkdir()
+    _run(monkeypatch, "learn", "./campaign", "--harness", "./h", "--detach")
+    [call] = popen
+    assert call.argv == [sys.executable, "-m", "kapso.cli", "learn", "./campaign", "--harness", "./h"]
+    assert call.kwargs["start_new_session"] is True
+    assert Path(call.kwargs["stdout"].name) == tmp_path / "campaign.learn.log"
+    out = capsys.readouterr().out
+    assert "kapso learn started in a session of its own (pid 4242)" in out
+    assert "follow:  kapso watch learning/status --follow" in out
+    assert not list(tmp_path.glob("*.launch.json"))
+
+
+def test_experience_add_detach_runs_an_ingest_in_a_session_of_its_own(tmp_path, monkeypatch, popen, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(experience_cli, "experience_settings", lambda config: {"indexes": str(tmp_path / "indexes")})
+    _run(monkeypatch, "experience", "add", "--repo", "https://github.com/org/x", "--name", "org-x", "--detach")
+    [call] = popen
+    assert call.argv == [sys.executable, "-m", "kapso.cli", "experience", "add", "--repo", "https://github.com/org/x", "--name", "org-x"]
+    assert Path(call.kwargs["stdout"].name) == tmp_path / "indexes" / "org-x.log"
+    assert "follow:  kapso watch learning/status --follow" in capsys.readouterr().out
+    # An instant add has nothing to detach.
+    with pytest.raises(SystemExit) as refusal:
+        _run(monkeypatch, "experience", "add", "mine", "--detach")
+    assert refusal.value.code == 1 and "--detach goes with --repo or --research" in capsys.readouterr().err
     assert len(popen) == 1

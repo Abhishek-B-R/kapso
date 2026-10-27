@@ -151,10 +151,11 @@ A campaign session has its gate configuration built per session, with the campai
 | `research` | The `codex` CLI is on PATH | — |
 | `repo_memory` | The repository holds `.kapso/repo_memory.json`, which a campaign builds | The git top level of the working directory |
 | `experiment_history` | The working directory is inside a campaign directory | The nearest ancestor with `.kapso/experiment_history.json`; `models.embedding` from the config adds semantic search |
-| `bank` | `--experience` loads a bank (`mine`, `mine:all`, a bank path or git reference) | One pinned clone per loaded bank, the serving record, the pull log and the intro staged under `learning.serving.session_root`, one directory per server process, removed when the server exits; the coordinate is the harness `--harness` names, `none` without one; the intro is the server's instructions, so the session names its sources on connect |
-| `idea`, `code` | `--experience` loads an index by name | The index's record |
+| `campaign` | Always | The campaign verbs as tools: `kapso_build_start` (a detached launch, its receipt returned), `kapso_status` (`kapso watch --json`), `kapso_stop`; `kapso_build_start` refused without `kapso` on PATH, all three refused inside a campaign directory; never served to a campaign's own sessions |
+| `bank` | `--experience`, or the config's `experience.session_sources` when the flag is absent, loads a bank (`mine`, `mine:all`, a bank path or git reference) | One pinned clone per loaded bank, the serving record, the pull log and the intro staged under `learning.serving.session_root`, one directory per server process, removed when the server exits; the coordinate is the harness `--harness` names, `none` without one; the intro is the server's instructions, so the session names its sources on connect |
+| `idea`, `code` | `--experience`, or the config's list, loads an index by name | The index's record |
 
-Every gate left out is named on stderr with its reason, so `claude mcp list` or the host's log says what the session can and cannot reach. The `kg` gate (which carries the write tools) and the `inbox` gate (a session asking a person) are never served to a host. Leeroopedia is a hosted server, not a bundled gate: add it to the host as an HTTP MCP server at the address in the config's `gates:` block, with your key on the URL.
+Every gate left out is named on stderr and in the server's instructions with its reason, so `claude mcp list`, the host's log or the session itself says what it can and cannot reach; the server connects whatever is off. A listed source that does not exist leaves its gate off with the line that makes it. The `kg` gate (which carries the write tools) and the `inbox` gate (a session asking a person) are never served to a host. Leeroopedia is a hosted server, not a bundled gate: add it to the host as an HTTP MCP server at the address in the config's `gates:` block, with your key on the URL.
 
 ```bash
 kapso-mcp --help

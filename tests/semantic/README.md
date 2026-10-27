@@ -55,6 +55,21 @@ with the card and the fixture's README, driving the host CLI turn by turn.
 A run record is JSON: `test` (S1 to S6), `host`, `machine`, `package`
 (version and wheel sha256), `started`, `finished`, `steps` (each with
 `name`, `messages`, `questions`, `minutes`, `longest_message_lines`,
-`completed`, `artifacts`), `judge` (dimension to score), `transcripts`
-(paths). `report.py` renders it against the budgets in
-`docs/plans/kapso-plugin-skills.md` and writes pass or fail per step.
+`completed`, `artifacts` as paths relative to the record's directory, or
+`deferred` with the reason), `judge` (dimension to score), `notes`,
+`transcripts` (paths). `report.py` renders it against `budgets.json`, the
+limits from `docs/plans/kapso-plugin-skills.md` one entry per step, and
+writes pass or fail per step: a step the budgets do not know fails, a
+missing artifact fails, a deferred step is reported and not counted.
+
+The counting rules: a message is one assistant turn; a question is a
+turn that ends asking; rounds are messages; minutes exclude the wait for
+the person's answer; `longest_message_lines` counts lines outside fenced
+blocks, so a brief is exempt; link clicks and evidence are judged by
+hand and said so in the record's notes; transcripts are kept whole.
+
+The plugin round (`docs/plans/redesign/wp7-plugin.md`, test
+`S2-mechanical`: S2's steps without the simulated user and the judge) is
+driven by `scripts/redesign/plugin_proof.py`, one host per run, and its
+record lives under `scripts/redesign/runs/wp7/<host>/record.json` with
+`report.md` beside it.

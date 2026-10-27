@@ -8,6 +8,10 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/tests.yml'
   push:
@@ -15,6 +19,10 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/tests.yml'
 
@@ -53,7 +61,7 @@ jobs:
         with:
           node-version: '22'
       - name: Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.310
 
       - name: Unit tests
         env:

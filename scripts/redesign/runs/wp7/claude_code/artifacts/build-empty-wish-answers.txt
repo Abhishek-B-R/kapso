@@ -1,0 +1,49 @@
+This directory doesn't have enough to build on yet. It holds `README.md` ("Our churn modelling work will live here."), a `.env` with only the Claude token, and nothing else. There's no data, evaluator, code, `kapso-config.yaml`, harness or experience source. The README says the domain is churn. The only churn data and evaluator nearby are in the separate sibling project `../churn`:
+- `data/train.csv` has 10,000 labelled rows.
+- `data/holdout.csv` has 3,000 rows, with their labels kept apart in `private/holdout_labels.csv`.
+- `evaluation/evaluate.py` scores ROC AUC.
+- The logistic regression shipped there scores 0.797 on those rows.
+
+There were three options; I recommend **A**:
+- **A. Build a churn model here and score it with `../churn`'s data and evaluator.** It's measurable right away, and the evaluator meets the contract: the holdout labels sit outside `--data` and are reached through `private_dir.txt`.
+- **B. Same model, on your own churn data.** You'd drop a CSV with a label column into `data/`, and I'd build `kapso_evaluation/evaluate.py` from it with a seeded holdout. Nothing can be measured until that data is here.
+- **C. Something other than churn.** That needs a one-line wish from you, since nothing here points elsewhere.
+
+I've written the brief for A as `kapso-brief.md`:
+
+```
+Objective    Build a churn model in this repository from scratch: a predict.py
+             that trains on train.csv and writes id,churn_probability for
+             every holdout id, with out-of-sample ROC AUC above 0.85.
+Measured by  ../churn/evaluation/evaluate.py (copied and protected), ROC AUC
+             on the 3,000 held-out rows; labels stay in ../churn/private
+Baseline     unknown here (no model yet); reference 0.797 for the sibling
+             project's logistic regression on the same rows
+Target       0.85
+Rules
+  - the evaluator is never modified
+  - no fitting on the holdout rows; the labels are not in the workspace
+Budget       minutes=60 experiments=3
+Harness      none
+Experience   none
+```
+
+The 0.85 target is tight. A recorded run in `../churn` reached 0.8474 on these rows in 45 minutes, which is why I gave it 60.
+
+**Approve A by saying go, or edit a line, or reply B with the path to your own data.** On go, I'll run `kapso doctor build` and launch it in the background, writing to an empty `../empty-campaign`.
+
+---
+
+I've recorded option A in `kapso-brief.md` as written and stopped there: no launch and no doctor check.
+
+When you want to start it, run these from `/home/ubuntu/proof/work/empty`:
+
+```bash
+kapso doctor build --json
+kapso build --brief kapso-brief.md --repo . --evaluation ../churn/evaluation --data ../churn/data --output ../empty-campaign --budget-minutes 60 --budget-experiments 3 --detach
+kapso watch ../empty-campaign --follow
+```
+
+- There's no `kapso-config.yaml` here, so the commands have no `--config` flag.
+- Kapso copies and protects the evaluator. The holdout labels stay in `../churn/private`, outside the data the campaign can read.
+- If the campaign shows `WAITING ON YOU`, it has paused for an answer from you, which you give through `kapso inbox`.

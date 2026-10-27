@@ -26,7 +26,7 @@ ID = "id"
 
 
 def build_pipeline(features: pd.DataFrame) -> Pipeline:
-    categorical = [c for c in features.columns if features[c].dtype == object or features[c].dtype == bool]
+    categorical = [c for c in features.columns if pd.api.types.is_string_dtype(features[c]) or pd.api.types.is_bool_dtype(features[c])]
     numeric = [c for c in features.columns if c not in categorical]
     preparation = ColumnTransformer([
         ("numeric", Pipeline([

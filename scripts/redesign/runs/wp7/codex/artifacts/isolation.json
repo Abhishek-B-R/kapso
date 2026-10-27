@@ -1,0 +1,36 @@
+{
+ "launch": [
+  "Initialized Kapso",
+  "kapso build started in a session of its own (pid 1520076)",
+  "  log:     /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/isolation-campaign.log"
+ ],
+ "status": "done",
+ "claude_sessions": [
+  {
+   "session": ".kapso/ideation/iter1/claude_code_claude-opus-5.stream.txt",
+   "plugin_tools": [],
+   "plugin_commands": [],
+   "servers": [
+    "gated-knowledge"
+   ]
+  }
+ ],
+ "codex_sessions": [
+  {
+   "session": ".kapso/sessions/engine/repo_memory/1",
+   "exits": [
+    "success"
+   ],
+   "errors": []
+  },
+  {
+   "session": ".kapso/sessions/engine/repo_memory/2",
+   "exits": [
+    "success"
+   ],
+   "errors": []
+  }
+ ],
+ "codex_quota_refused": 0,
+ "codex_rules_files": []
+}

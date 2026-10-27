@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "kapso": {
+      "command": "kapso-mcp",
+      "args": [],
+      "default_tools_approval_mode": "approve",
+      "startup_timeout_sec": 60
+    }
+  }
+}

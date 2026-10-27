@@ -1,0 +1,6 @@
+interface:
+  display_name: "Kapso setup"
+  short_description: "Install Kapso, run the logins, verify with kapso doctor"
+  default_prompt: "Use $kapso-setup to set Kapso up on this machine and check it is ready."
+policy:
+  allow_implicit_invocation: true

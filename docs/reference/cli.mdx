@@ -52,6 +52,7 @@ Runs an experiment campaign that meets a brief and returns the solution; writes 
 | `--budget-usd` | Best-effort model-spend budget in USD | — |
 | `--budget-reserve-minutes` | Wall clock kept out of the search for finishing: the last attempt's evaluation, verification and judgment, and the delivery. Unset, it is derived from those obligations each round; see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends) | — |
 | `--resume` | Continue the campaign in `--output` from its checkpoint. The brief and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
+| `--stop` | End the campaign running in `--output`: its process group gets SIGTERM, then SIGKILL after `budget.stop_grace_seconds`; the status is marked `failed` with `stopped by the person` and `stopped_reason: stopped`, the launch receipt goes, and `--resume` continues from the checkpoint. A campaign whose status is terminal, or whose writer is gone already (dead, not running: resume it), is refused by state | off |
 | `--detach` | Start the campaign in a session of its own and return at once with its pid, the log, the status path and the `watch` command. Needs `--output`. The run outlives the shell that started it, a coding agent's tool call included | off |
 | `--log` | Where a detached run's output goes | `<output>.log`, beside the campaign directory |
 | `-a`, `--coding-agent` | The host every role without a `cli` of its own runs on, with that host's model: an entry of the config's `hosts` table (`claude_code`, `codex`, `oss_claude_code`, `vertex_claude_code`: the adapters with a staging). Recorded in the launch record and fingerprinted, so a resume runs on the launch's host. The engine's own inference sessions (the repo memory, the commit messages) follow `inference.default` instead, Codex as packaged, whatever the host; an all-Claude run sets `inference.default.cli: claude_code` in its override file | `search_strategy.params.host`, `claude_code` as packaged |
@@ -82,6 +83,7 @@ Author, check and fetch harnesses, the domain layer a build loads: one directory
 | `update` | Re-fetch a branch or `HEAD` reference; a tag or a commit never moves |
 | `remove` | Delete one fetched clone, every harness in it; a directory is refused |
 | `list` | The bundled and fetched harnesses, each `ready`, with what it needs, or failing check |
+| `export` | Write a harness's skills, delegates and servers as the files an ordinary session of one host discovers; hooks and the module pages stay behind |
 
 A reference is a bundled name (`trading`), a directory (`./trading`), a git URL (`git+https://github.com/acme/harnesses@v3#trading`) or GitHub shorthand (`acme/harnesses@v3#trading`). Every subcommand but `new` takes `--config` for the config whose `harness.store` is the store.
 
@@ -117,6 +119,21 @@ kapso harness remove acme/harnesses@v3#trading
 kapso harness list
 ```
 
+### kapso harness export
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `ref` | A bundled name, a directory, or a git reference. **Required** | — |
+| `--host` | The host whose files to write: `claude_code` or `codex`. **Required** | — |
+| `--to` | The directory to write into | the working directory |
+
+```bash
+kapso harness export ./trading --host claude_code
+kapso harness export acme/harnesses@v3#trading --host codex --to ~/work/strategies
+```
+
+The union of the harness's modules, each attachment once: for Claude Code `.claude/skills/<name>/`, `.claude/agents/<name>.md` and `.mcp.json` (`${PLUGIN_ROOT}` expanded to the harness's directory, `KAPSO_HARNESS_ROOT` in each server's environment); for Codex `.agents/skills/<name>/`, `.codex/agents/<name>.toml` with the `[agents.<name>]` lines to add to `~/.codex/config.toml` printed, and one `codex mcp add` line per server printed. The standing rules travel as `kapso-harness-<name>.md`, with the line that includes it from `CLAUDE.md` or `AGENTS.md` printed; the export never writes those files. Hooks stay behind (campaign-bound: a Stop gate or a prepared-directory deny would block an ordinary session), as do the module pages and the routing per module, and the output says so. Every destination is checked first; one that exists refuses the whole export by name. A harness that fails `check` is refused with the report.
+
 ## kapso experience
 
 What a build is served that was measured before: your own bank (the one `learn()` writes), the hosted Leeroopedia gate, a bank you read, a corpus ingested under a name. A build loads sources at the call (`--experience mine,leeroopedia`, the brief's `Experience` line, `load_experience()`); this verb makes what must exist first, lists what exists, and shares your bank.
@@ -136,6 +153,7 @@ kapso experience add mine
 kapso experience add leeroopedia
 kapso experience add --repo https://github.com/org/x --name org-x
 kapso experience add --research "QLoRA memory optimizations" --name qlora
+kapso experience add --repo https://github.com/org/x --name org-x --detach   # an ingest in a session of its own; the log under experience.indexes, the status under learning.status_dir
 kapso experience list
 kapso experience share https://github.com/acme/kapso-bank.git
 kapso experience update
@@ -152,10 +170,12 @@ Learn from a finished campaign into your bank: import, mine, exam, lesson, what 
 | `campaign` | The campaign directory (the solution's trace) or a trajectory id in the store. **Required** | — |
 | `--harness` | The harness the campaign ran under (a name, a path or a git reference), when its launch record names none | the record's |
 | `--config` | Config path | packaged `config.yaml` |
+| `--detach` | Run the learn in a session of its own and return at once with its pid, the log (`<campaign>.learn.log` beside the campaign) and the watch line, `kapso watch learning/status --follow` (the newest status under `learning.status_dir` is this run's) | off |
 
 ```bash
 kapso learn ./campaign
 kapso learn ./campaign --harness ./harness
+kapso learn ./campaign --detach            # hours of crews; follow with kapso watch learning/status --follow
 ```
 
 ### kapso learn dev
@@ -424,22 +444,24 @@ See [How do I check my setup?](/docs/installation#how-do-i-check-my-setup) for t
 
 ## kapso-mcp
 
-A stdio MCP server for the coding-agent session you work in: the gates Kapso's own sessions get, configured from where the session runs. Not a `kapso` subcommand but a second executable, so a host can name it in a static MCP file.
+A stdio MCP server for the coding-agent session you work in: the gates Kapso's own sessions get, configured from where the session runs, and the campaign verbs as tools. Not a `kapso` subcommand but a second executable, so a host can name it in a static MCP file; [the plugin](/docs/coding-agent-skills) names it for Claude Code.
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--experience` | Comma-separated sources to serve, in the forms `kapso experience list` shows (`mine`, `mine:all`, a bank path or git reference, an index name); a bank mounts the `bank` gate, an index the `idea` and `code` gates | nothing loaded: no bank, no index |
+| `--experience` | Comma-separated sources to serve, in the forms `kapso experience list` shows (`mine`, `mine:all`, a bank path or git reference, an index name); a bank mounts the `bank` gate, an index the `idea` and `code` gates. Explicit, so strict: a source that does not exist refuses; an empty string loads nothing | the config's `experience.session_sources` (empty as packaged); a listed source that does not exist leaves its gate off, named in the instructions |
 | `--harness` | The harness the session works under (a name, a path or a git reference): its name is the coordinate `mine` serves cards by | `none` |
-| `--config` | Config whose experience, bank and embedding settings apply | packaged `config.yaml` |
+| `--config` | Config whose experience, bank and embedding settings apply, and the one the campaign tools pass to the verbs | `kapso-config.yaml` at the repository root when there is one, else the packaged `config.yaml` |
 | `--root` | The directory the session works in | the current directory |
 
-`research`, `repo_memory` and `experiment_history` ride by what the directory holds; a gate that cannot be served is named on stderr with its reason. The intro naming the loaded sources is the server's instructions, so the session sees what it is served on connect.
+The `campaign` gate always rides: `kapso_build_start` launches a campaign detached and returns its receipt, `kapso_status` reads one as `kapso watch --json` prints it, `kapso_stop` ends one; the tools refuse without `kapso` on PATH and inside a campaign directory, and a campaign's own sessions never get them. `research`, `repo_memory` and `experiment_history` ride by what the directory holds. The server prints its version and config line on start, names every gate left off on stderr and in its instructions with the reason, and connects whatever is off; the intro naming the loaded sources opens those instructions, so the session sees what it is served on connect.
 
 ```bash
 claude mcp add kapso -- kapso-mcp --experience mine
 codex mcp add kapso -- kapso-mcp --experience mine
 kapso-mcp --harness ./harness --experience mine,org-x --config kapso-config.yaml
 ```
+
+`kapso-mcp --version` prints the version it serves, as `kapso --version` does; the setup skill reads both to tell one install from two.
 
 A gate that cannot be served is named on stderr with its reason; see [Use the gates from your own coding agent](/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).
 

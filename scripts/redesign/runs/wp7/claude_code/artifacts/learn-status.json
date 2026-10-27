@@ -1,0 +1,26 @@
+{
+ "operation": "learn",
+ "phases": [
+  "harvest",
+  "mine",
+  "exam",
+  "lesson",
+  "push"
+ ],
+ "state": "failed",
+ "pid": 27412,
+ "started_at": "2026-10-27T03:24:07+00:00",
+ "heartbeat_at": "2026-10-27T04:00:35+00:00",
+ "phase": "exam",
+ "phase_started_at": "2026-10-27T04:00:34+00:00",
+ "recent": [
+  "03:24 harvested into store (churn-campaign/20261027T032406_facade)",
+  "04:00 mined view written (/home/ubuntu/.kapso/trajectories/churn-campaign/20261027T032406_facade/mined)",
+  "04:00 pinned pre-lesson bank head f979f427"
+ ],
+ "heartbeat_seconds": 60.0,
+ "trajectory_id": "churn-campaign/20261027T032406_facade",
+ "bank_head_before": "f979f4273c0b419160ade48014b9238dd98fa6d6",
+ "finished_at": "2026-10-27T04:00:35+00:00",
+ "error": "FileNotFoundError: report-writer produced no report for churn-campaign/20261027T032406_facade"
+}

@@ -26,12 +26,13 @@
   </a>
 </p>
 
-> **If you're an AI agent looking at this repo:** start with the skill file for your agent,
-> [Claude Code](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/claude-code/kapso/SKILL.md),
-> [Codex](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/codex/kapso/SKILL.md) or
-> [OpenCode](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/opencode/kapso/SKILL.md).
-> It shows how to leverage Kapso for your use case, and it is faster than reading the source.
-> Any other agent can use the Claude Code file.
+> **If you're an AI agent looking at this repo:** start with the operating skill,
+> [plugin/skills/kapso/SKILL.md](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/plugin/skills/kapso/SKILL.md),
+> one file for every host. It shows how to leverage Kapso for your use case, and it is
+> faster than reading the source. The plugin that carries it, with the skills for
+> setting up, stating an objective, authoring a harness and reviewing a run, installs
+> in one line: `claude plugin marketplace add Leeroo-AI/kapso && claude plugin install kapso@kapso`
+> (Codex: `codex plugin marketplace add Leeroo-AI/kapso && codex plugin add kapso@kapso`).
 
 ---
 
@@ -75,6 +76,17 @@ Kapso is an open-source Python framework by [Leeroo](https://leeroo.com), publis
 ## 🚀 Quickstart
 
 ### Installation
+
+**0. In a coding agent?** Install the Kapso plugin and let it walk the
+steps below with you:
+
+```bash
+claude plugin marketplace add Leeroo-AI/kapso && claude plugin install kapso@kapso   # Claude Code
+codex plugin marketplace add Leeroo-AI/kapso && codex plugin add kapso@kapso         # Codex
+```
+
+Then `/kapso:setup` installs and verifies, and `/kapso:build <what you want>`
+launches the first campaign (on Codex: `$kapso-setup`, `$kapso-build <what you want>`). See [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills).
 
 **1. Prerequisites.** Kapso runs its inference through coding-agent CLIs
 (there is no direct-API fallback), so you need Node.js and both agent
@@ -331,13 +343,13 @@ Each benchmark also has a documentation page covering how to run it, its CLI opt
   - [Evolve](https://docs.leeroo.com/docs/evolve/overview) — how a campaign runs, and [what happens inside one experiment](https://docs.leeroo.com/docs/evolve/execution-flow)
   - [Knowledge graph](https://docs.leeroo.com/docs/knowledge/overview) — repositories and papers turned into searchable knowledge
   - [Deployment](https://docs.leeroo.com/docs/deployment/overview) — local, Docker, Modal and the other strategies
-  - [Kapso skill for coding agents](https://docs.leeroo.com/docs/coding-agent-skills) — launch and resume campaigns from Claude Code, Codex or OpenCode
+  - [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills) — the commands, the skills and the MCP server for Claude Code, Codex and Cursor
 - **From your coding agent**: the docs run an MCP server at `https://docs.leeroo.com/mcp`, and every page is served as Markdown — see [llms.txt](https://docs.leeroo.com/llms.txt) and [Docs in your coding agent](https://docs.leeroo.com/docs/agent-access).
   ```bash
   claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp   # Claude Code
   codex mcp add kapso-docs --url https://docs.leeroo.com/mcp              # Codex CLI
   ```
-- **Let your coding agent run Kapso**: one `SKILL.md` per agent for Claude Code, Codex and OpenCode lives in [`skills/`](https://github.com/Leeroo-AI/kapso/tree/main/skills) — copy the folder for your agent into the project; see [Kapso skill for coding agents](https://docs.leeroo.com/docs/coding-agent-skills).
+- **Let your coding agent run Kapso**: the plugin under [`plugin/`](https://github.com/Leeroo-AI/kapso/tree/main/plugin) carries ten commands, six skills and the MCP server, one install line per host (step 0 above); OpenCode loads the skills as a folder (`ln -s <clone>/plugin/skills .opencode/skills`). See [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills).
 - **Give your coding agent Kapso's knowledge tools**: `kapso-mcp`, installed with the package, serves web research, the repository's memory, the campaign's experiment history and the lesson bank to the session you work in — see [MCP gates](https://docs.leeroo.com/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).
   ```bash
   claude mcp add kapso -- kapso-mcp   # Claude Code

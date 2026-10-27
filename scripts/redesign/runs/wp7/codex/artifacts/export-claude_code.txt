@@ -1,0 +1,16 @@
+exported trading 0.1.0 for claude_code into /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/export-claude_code
+  .claude/skills/market-data/
+  .claude/skills/strategy-families/
+  .claude/skills/market-structure/
+  .claude/skills/backtesting/
+  .claude/skills/risk-limits/
+  .claude/skills/lookahead-scan/
+  .claude/skills/paper-trading/
+  .claude/agents/lookahead-auditor.md
+  .claude/agents/risk-reviewer.md
+  .mcp.json
+  kapso-harness-trading.md
+left behind: 7 hook(s) (session-brief, deny-web-fetch, protect-prepared, deny-web, deny-snapshot, scan-writes, require-results): campaign-bound: a Stop gate or a prepared-directory deny would block an ordinary session
+left behind: the module page(s) (setup, ideation, implementation, verification, feedback, learning, deployment) and the routing per module: only a campaign routes a module's page to its sessions
+next:
+  add to CLAUDE.md (never written by the export): @kapso-harness-trading.md

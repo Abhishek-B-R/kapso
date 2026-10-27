@@ -1,0 +1,16 @@
+| case | runs | passed | loaded |
+|---|---|---|---|
+| holdout-01 | 1 | 1/1 | kapso-setup |
+| holdout-02 | 1 | 1/1 | kapso-setup |
+| holdout-03 | 1 | 1/1 | kapso-build, kapso-evaluation |
+| holdout-04 | 1 | 1/1 | kapso-build, kapso-evaluation |
+| holdout-05 | 1 | 1/1 | kapso-harness |
+| holdout-06 | 1 | 1/1 | kapso-harness |
+| holdout-07 | 1 | 1/1 | kapso-review |
+| holdout-08 | 1 | 1/1 | kapso-review |
+| holdout-09 | 1 | 1/1 | kapso |
+| holdout-10 | 1 | 1/1 | kapso |
+
+10 of 10 cases passed every run; 0 explicit case(s) skipped (Codex's explicit form is `$kapso-<skill>`).
+exit=0
+/home/ubuntu/kapso/.claude/worktrees/kapso-plugin/scripts/redesign/runs/wp7-triggers/codex-triggers-20261027T032205

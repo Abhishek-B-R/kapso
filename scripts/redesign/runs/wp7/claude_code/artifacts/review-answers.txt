@@ -1,0 +1,52 @@
+The run missed its target by 0.003. I've read the trace, the judge's feedback and the diff; here is the summary.
+
+**What won.** `generic_exp_0 @ 422343788df2` scored **AUC 0.8470** on the provided evaluation (protected, no registered version). The baseline was 0.7974, so that's +0.050. The target was 0.85, so it **missed by 0.003**, and `goal_achieved` is False.
+
+**What changed.** The logistic regression in `predict.py` was replaced by a very small gradient-boosted tree model with only three leaves per tree. It is blended 85/15 by rank with a spline logistic regression. The idea is to model exactly one interaction (`contract × tenure`) and the curved per-feature shapes. The input/output contract in `predict.py` is unchanged and the evaluator is byte-identical to `main`. The rest of the diff is notes and run output: `PLAN.md`, `changes.log`, `kapso_evaluation/eval_profile.md`, `result.json`, `predictions.csv` and `output_data_generic_exp_0/`, which includes a stray `.pid` file.
+
+**Voided or rejected.** None. There was one experiment and nothing failed verification, but no harness verification ran at all. Both `engine/repo_memory` Codex sessions crashed at startup with `invalid transport in mcp_servers.kapso` in `config.toml`, so no repo memory was built.
+
+**Risks.**
+- **Cross-validation over-promised.** CV gave 0.8587 but the holdout gave 0.8470. The judge thinks part of that is from picking settings over about 40 configs on the same training rows. It says to expect holdout ≈ CV − 0.010, and not to ship anything whose CV is below 0.865.
+- **Holdout labels were in the workspace.** `kapso_evaluation/private/holdout_labels.csv` was physically present. The record says it was never opened, but nothing technical blocked access: no hooks were staged.
+- **Score is within noise of the target.** The 0.003 miss is well inside the holdout's bootstrap standard error of 0.010.
+
+**Spend.** 36.2 of 60 minutes and **$4.00**, which covers the Claude Code sessions only (the two Codex sessions report no cost). One experiment was run and none were rejected. It stopped because the remaining 20.7 minutes wouldn't fit another attempt like the first one.
+
+**Next:** don't merge this as the result. First fix the Codex `mcp_servers.kapso` transport entry in `config.toml`. Then resume with more budget so the judge's iteration-2 plan can run (a new interaction-aware spline model, an untried neural/kernel model family, and stacking): `kapso build --output ../churn-campaign --resume --budget-minutes 120 --detach`.
+
+```
+generic_exp_0 vs main (e2dcf232db06)
+├─ predict.py            ← the change: 3-leaf trees + spline logistic regression, rank-blended 0.85/0.15
+├─ predictions.csv       ← generated output (committed)
+├─ PLAN.md, changes.log  ← notes
+├─ kapso_evaluation/
+│   ├─ eval_profile.md   ← new notes file (evaluate.py unchanged)
+│   └─ result.json       ← auc 0.8470, 3000 rows
+└─ output_data_generic_exp_0/  cv_confirm.py, cv_report.txt, cv_confirm.pid
+```
+
+---
+
+**Not as it stands.** The model change is clean and you can cherry-pick it, but don't merge the branch whole. It missed the target, nobody verified it independently, and its history contains the holdout labels.
+
+**What won:** `generic_exp_0` @ `422343788df2`. It scored 0.847 holdout ROC AUC on `kapso_evaluation/evaluate.py`; the record lists that evaluator as "provided", meaning it came with the repo, unversioned, and no evaluator was registered. The shipped baseline scores 0.797, so that's +0.050. The target was 0.85, which it **missed by 0.003**. The campaign's own judge said "MISS… Do not consolidate."
+
+**What changed:** only the model inside `predict.py`. The logistic regression is replaced by a very shallow gradient-boosted tree model (3 leaves, depth 2), blended 85/15 on ranks with a spline logistic regression. Its cross-validation on train scored 0.859, but the holdout came in 0.012 lower. The command-line arguments and the `id,churn_probability` output are unchanged.
+
+**The rules in the brief:**
+- **Evaluator never modified: held.** `evaluate.py` is byte-identical to the base, and the record marks the integrity check "provided; intact" with no rejected candidates.
+- **No fitting on holdout rows: held as far as I can see.** `predict.py` reads only `train.csv` and `holdout.csv`, and fits on train labels only.
+- **"Labels are not in the workspace": broken, but by Kapso's setup, not the agent.** Kapso's own setup commit `b0e0cc9` checked `kapso_evaluation/private/holdout_labels.csv` into git, so it's in the delivered branch's history. Merging the branch whole would bring the labels into your repo. The agents noticed the file and say they never opened it. Searching the session logs, I found the file mentioned only in notes the agents wrote, never read by a command.
+
+**What I couldn't check:**
+- No independent reviewer checked the work (no harness was configured).
+- No hooks were set up, so nothing could have blocked a bad action.
+- Two Codex sessions failed at startup on an invalid `mcp_servers.kapso` setting in Codex's `config.toml`.
+- I didn't re-run the evaluator myself.
+
+**Spend:** 36.2 of 60 minutes, $4.00 (Claude Code sessions only; Codex reports no cost), 1 experiment of the 3 allowed. It stopped because the 20.7 minutes left wouldn't fit another attempt.
+
+**Also in the diff:** scratch files you probably don't want merged: `predictions.csv` (3,000 rows), `result.json`, `cv_confirm.pid`, `PLAN.md`, `changes.log`, the `output_data_generic_exp_0/` folder, and an `eval_profile.md` written into `kapso_evaluation/`.
+
+**Next action:** to keep the gain, take only `predict.py` from `422343788df2`. To clear 0.85, resume with more budget instead: `kapso build --output ../churn-campaign --resume --budget-minutes 120 --detach --config kapso-config.yaml`. Before resuming, fix the labels setup so the file isn't committed.

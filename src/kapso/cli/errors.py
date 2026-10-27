@@ -19,6 +19,7 @@ from kapso.experience.reference import ExperienceReferenceError
 from kapso.experience.sources import ExperienceError
 from kapso.gated_mcp.presets import GateCapabilityError
 from kapso.handles import BriefError, SolutionError
+from kapso.harness.export import HarnessExportError
 from kapso.harness.load import HarnessError
 from kapso.harness.manifest import ManifestError
 from kapso.harness.reference import HarnessReferenceError
@@ -28,6 +29,7 @@ ENGINE_ERRORS = (
     SolutionError,
     ConfigError,
     HarnessError,
+    HarnessExportError,
     HarnessReferenceError,
     ManifestError,
     ExperienceError,

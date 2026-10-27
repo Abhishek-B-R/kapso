@@ -295,7 +295,18 @@ The benchmark harnesses live in the source checkout under `benchmarks/` and each
 
 ## Set up through your coding agent
 
-Paste this into Claude Code, Codex or OpenCode and it walks the steps above with you, hands you the sign-in links, asks for the keys instead of hunting for them, and verifies with `kapso doctor`:
+With [the Kapso plugin](/docs/coding-agent-skills) installed, one command walks the steps above with you: it detects what the machine has, installs what is missing, hands you the sign-in links, asks for the keys instead of hunting for them, and verifies with `kapso doctor`:
+
+```bash
+claude plugin marketplace add Leeroo-AI/kapso && claude plugin install kapso@kapso   # Claude Code
+codex plugin marketplace add Leeroo-AI/kapso && codex plugin add kapso@kapso         # Codex
+```
+
+```text
+/kapso:setup
+```
+
+In a session without the plugin (OpenCode, or an agent you cannot install it in), paste this instead; it is the same procedure as a prompt:
 
 ```text
 I want to set up Kapso, the open-source software factory by Leeroo (PyPI package leeroo-kapso, docs at https://docs.leeroo.com), on this machine so you can run it from this session. Explain the commands you plan to run, then run them. Do nothing beyond these steps, and never print a key or token.
@@ -321,9 +332,9 @@ I want to set up Kapso, the open-source software factory by Leeroo (PyPI package
 
 7. The Kapso skill. Install the skill written for you, so you operate Kapso the way its docs say:
    git clone --depth 1 https://github.com/Leeroo-AI/kapso /tmp/kapso-src
-   Claude Code:  mkdir -p .claude/skills   && cp -r /tmp/kapso-src/skills/claude-code/kapso .claude/skills/kapso
-   Codex:        mkdir -p .agents/skills   && cp -r /tmp/kapso-src/skills/codex/kapso .agents/skills/kapso
-   OpenCode:     mkdir -p .opencode/skills && cp -r /tmp/kapso-src/skills/opencode/kapso .opencode/skills/kapso
+   Claude Code:  mkdir -p .claude/skills   && cp -r /tmp/kapso-src/plugin/skills/kapso .claude/skills/kapso
+   Codex:        mkdir -p .agents/skills   && cp -r /tmp/kapso-src/plugin/skills/kapso .agents/skills/kapso
+   OpenCode:     mkdir -p .opencode/skills && cp -r /tmp/kapso-src/plugin/skills/kapso .opencode/skills/kapso
    Then load it. Ask me whether to also connect the docs: `claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp` or `codex mcp add kapso-docs --url https://docs.leeroo.com/mcp`.
 
 8. Finish with a short overview of what you can now do, and do not start a campaign until I give you a goal:
@@ -332,7 +343,7 @@ I want to set up Kapso, the open-source software factory by Leeroo (PyPI package
    - bank what it taught: Kapso().learn("../<campaign>"); ship the winner: kapso deploy ../<campaign> --target local
 ```
 
-The last step installs the [Kapso skill](/docs/coding-agent-skills), which has the agent run `kapso doctor` first, name the right package, and launch campaigns in the background with the handoff you need.
+The last step installs the operating skill, one of the six [the plugin](/docs/coding-agent-skills) carries, which has the agent run `kapso doctor` first, name the right package, and launch campaigns in the background with the handoff you need.
 
 ## Related
 
@@ -343,11 +354,11 @@ The last step installs the [Kapso skill](/docs/coding-agent-skills), which has t
   <Card title="CLI reference" icon="terminal" href="/docs/reference/cli">
     Commands, modes and flags
   </Card>
-  <Card title="Kapso skill for coding agents" icon="wand-magic-sparkles" href="/docs/coding-agent-skills">
+  <Card title="The Kapso plugin" icon="wand-magic-sparkles" href="/docs/coding-agent-skills">
     Let your coding agent run Kapso correctly
   </Card>
 </CardGroup>
 
-Related pages: [Your first build](/docs/first-build) · [CLI reference](/docs/reference/cli) · [Kapso skill for coding agents](/docs/coding-agent-skills) · [What is Kapso](/docs)
+Related pages: [Your first build](/docs/first-build) · [CLI reference](/docs/reference/cli) · [The Kapso plugin](/docs/coding-agent-skills) · [What is Kapso](/docs)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

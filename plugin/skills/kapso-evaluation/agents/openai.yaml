@@ -1,0 +1,6 @@
+interface:
+  display_name: "Kapso evaluation"
+  short_description: "The evaluation a build protects: audited or built, with one approval (called by kapso-build)"
+  default_prompt: "Called by $kapso-build: audit or build the evaluation for this repository and get it approved."
+policy:
+  allow_implicit_invocation: true

@@ -26,6 +26,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from kapso.execution.inbox import new_requests_for_session
@@ -117,6 +118,19 @@ def mcp_config_overrides(mcp_servers: Dict[str, Any]) -> List[str]:
 
 def _is_reference(value: Any) -> bool:
     return isinstance(value, str) and bool(re.fullmatch(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}", value))
+
+
+# The campaign verbs refused inside a campaign session, as an execpolicy
+# rule of the workspace's project layer (wp7-plugin.md): Codex has no
+# per-session switch for an installed plugin's skills, so the rule stands
+# where the skills would act. The layer is enforced for a trusted project,
+# which the exec command declares for the workspace alone.
+CAMPAIGN_RULES_FILE = Path(".codex") / "rules" / "kapso-campaign.rules"
+CAMPAIGN_RULES = "".join(
+    f'prefix_rule(pattern = ["kapso", "{verb}"], decision = "forbidden", '
+    'justification = "never inside a Kapso campaign session: a campaign does not launch, learn from or deploy a campaign")\n'
+    for verb in ("build", "learn", "deploy")
+)
 
 
 def agent_role_overrides(agents: Dict[str, Dict[str, str]]) -> List[str]:
@@ -259,6 +273,9 @@ class CodexCodingAgent(CodingAgentInterface):
 
     def initialize(self, workspace: str) -> None:
         self._workspace = workspace
+        rules = Path(workspace) / CAMPAIGN_RULES_FILE
+        rules.parent.mkdir(parents=True, exist_ok=True)
+        rules.write_text(CAMPAIGN_RULES, encoding="utf-8")
 
     def generate_code(
         self,
@@ -318,6 +335,16 @@ class CodexCodingAgent(CodingAgentInterface):
             cmd.extend(["-c", f'model_reasoning_effort="{self._effort}"'])
         cmd.extend(self._mcp_overrides)
         cmd.extend(self._agent_overrides)
+        # The person's own kapso-mcp (`codex mcp add kapso -- kapso-mcp`)
+        # off, and the workspace trusted so its rules file is enforced:
+        # no campaign tools inside a campaign. The server is defined whole
+        # on the command line: an `enabled` key alone makes a server with
+        # no transport, and Codex refuses the entire config for it
+        # (verified 2026-10-27: every Codex session of a campaign failed on
+        # a box whose config had no such server).
+        cmd.extend(["-c", 'mcp_servers.kapso.command="kapso-mcp"'])
+        cmd.extend(["-c", "mcp_servers.kapso.enabled=false"])
+        cmd.extend(["-c", f'projects.{json.dumps(self._workspace)}.trust_level="trusted"'])
         if self._hooks_trust_bypass:
             cmd.append("--dangerously-bypass-hook-trust")
         for directory in self._add_dirs:

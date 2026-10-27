@@ -21,6 +21,7 @@ from dotenv import find_dotenv, load_dotenv
 # README tells users to create next to their project was never read.
 load_dotenv(find_dotenv(usecwd=True))
 
+from kapso import __version__
 from kapso.cli import build, deploy, doctor, experience, harness, inbox, learn, trace, watch
 from kapso.cli.common import list_agents
 from kapso.cli.errors import install_error_hook
@@ -30,11 +31,9 @@ from kapso.execution.coding_agents.factory import CodingAgentFactory
 VERB_MODULES = (build, harness, experience, learn, deploy, watch, trace, inbox, doctor)
 
 
-def main():
-    # The engine's own errors print their message alone (cli/errors.py).
-    install_error_hook()
-    CodingAgentFactory.register_quiet_exit()
-    # Main parser
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI's parser, every verb registered: what `main` parses with,
+    and what a test parses a documented line against."""
     parser = argparse.ArgumentParser(
         description="Kapso: Long-running agents that optimize AI and Data systems, and learn from every experience",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -71,15 +70,37 @@ Examples:
         action="store_true",
         help="List available coding agents"
     )
+    parser.add_argument("--version", action="version", version=f"kapso {__version__}")
 
     # Subparsers for commands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    handlers = {module.NAME: module.add_parser(subparsers) for module in VERB_MODULES}
+    parser.set_defaults(handlers={module.NAME: module.add_parser(subparsers) for module in VERB_MODULES})
+    _refuse_abbreviations(parser)
+    return parser
+
+
+def _refuse_abbreviations(parser: argparse.ArgumentParser) -> None:
+    """Every parser, at every depth, refuses a shortened flag: `--det` is
+    not `--detach` (a detached child keeps its parent's command line, and
+    a shortened flag the parent did not strip would detach it again)."""
+    parser.allow_abbrev = False
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                _refuse_abbreviations(child)
+
+
+def main():
+    # The engine's own errors print their message alone (cli/errors.py).
+    install_error_hook()
+    CodingAgentFactory.register_quiet_exit()
+    parser = build_parser()
 
     # =========================================================================
     # Parse and execute
     # =========================================================================
     args = parser.parse_args(learn.normalize_argv(sys.argv[1:]))
+    handlers = args.handlers
 
     # Handle global options
     if args.list_agents:

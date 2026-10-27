@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCOPE = ("src", "tests", "skills", "examples", "benchmarks", "moltbook_bot", "docs", "README.md", "docs.json")
+SCOPE = ("src", "tests", "plugin", "examples", "benchmarks", "moltbook_bot", "docs", "README.md", "docs.json")
 SUFFIXES = {".py", ".md", ".mdx", ".yaml", ".yml", ".json", ".toml", ".txt", ".sh"}
 PROSE_SUFFIXES = SUFFIXES - {".py"}
 EXCLUDED_PARTS = ("__pycache__", ".kapso", "plans", "research")
@@ -68,6 +68,10 @@ RETIRED = re.compile(
     r"|--mode\b"
     r"| -m [A-Z][A-Z_]*\b"
     r"|mode=[\"'](?:GENERIC|MINIMAL)"
+    # The plugin package (wp7-plugin.md): the shipped skill's stale forms
+    # that survived the config package, a modes path and a bare version claim.
+    r"|modes\.<MODE>"
+    r"|Everything below is \d"
     r"|^\s*(?:feedback_generator|coding_agent):\s*$"
     r"|strategies\.yaml"
     r"|additional_context"

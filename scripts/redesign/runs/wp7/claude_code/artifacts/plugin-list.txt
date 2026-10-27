@@ -1,0 +1,8 @@
+Installed plugins:
+
+  ❯ kapso@kapso
+    Version: 0.8.0.dev1
+    Read from: /home/ubuntu/kapso-src/plugin
+    Scope: user
+    Status: ✔ enabled
+

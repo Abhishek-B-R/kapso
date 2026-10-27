@@ -1,0 +1,334 @@
+{
+  "test": "S2-mechanical",
+  "host": "codex",
+  "machine": "dev-box",
+  "package": {
+    "version": "0.8.0.dev1",
+    "wheel_sha256": "c16a36e94479eabe691953f4ff86b7c822bae41701c602afac19cefa73f3c74e"
+  },
+  "started": "2026-10-27T01:12:12+00:00",
+  "finished": "2026-10-27T07:41:52+00:00",
+  "steps": [
+    {
+      "name": "install",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 0.2,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/install-probe.txt"
+      ],
+      "notes": [
+        "Codex: the plugin's skills load by name; its MCP tools reach a session through the `codex mcp add` line the setup skill runs"
+      ]
+    },
+    {
+      "name": "setup",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 1.3,
+      "longest_message_lines": 4,
+      "completed": true,
+      "artifacts": [
+        "artifacts/setup-doctor.json",
+        "artifacts/codex-mcp-list.txt"
+      ],
+      "notes": [
+        "link clicks: judged by hand from the transcript (the logins were present, so none were needed)",
+        "the `codex mcp add kapso -- kapso-mcp` line's effect is the mcp list artifact"
+      ]
+    },
+    {
+      "name": "cold-install",
+      "deferred": "one machine: the cold wheel install is the fresh machine's step"
+    },
+    {
+      "name": "harness-export",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 0.2,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/export-claude_code.txt",
+        "artifacts/export-claude_code-files.txt",
+        "artifacts/export-codex.txt",
+        "artifacts/export-codex-files.txt",
+        "artifacts/export-refusal.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "campaign-tools",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 0.8,
+      "longest_message_lines": 3,
+      "completed": true,
+      "artifacts": [
+        "artifacts/campaign-tools.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "build-fraud",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 2.4,
+      "longest_message_lines": 7,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-fraud-brief.md",
+        "artifacts/build-fraud-status.json",
+        "artifacts/fraud-evaluators.txt"
+      ],
+      "notes": [
+        "evaluator files written by the session: ['evaluation/evaluate.py']"
+      ]
+    },
+    {
+      "name": "learn",
+      "deferred": "hours on the development box; the Claude Code half runs it"
+    },
+    {
+      "name": "learn-complete",
+      "deferred": "hours on the development box; the Claude Code half runs it"
+    },
+    {
+      "name": "session-brief",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 0.3,
+      "longest_message_lines": 5,
+      "completed": true,
+      "artifacts": [
+        "artifacts/session-brief.txt"
+      ],
+      "notes": [
+        "the sources recognised in the instructions: judged by hand from the answer"
+      ]
+    },
+    {
+      "name": "experience-share",
+      "deferred": "deferred on Codex by the matrix"
+    },
+    {
+      "name": "harness-improve",
+      "deferred": "deferred on Codex by the matrix"
+    },
+    {
+      "name": "cold-start",
+      "deferred": "the launcher is Claude Code's path; Codex runs kapso-mcp from PATH"
+    },
+    {
+      "name": "triggers",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 47.9,
+      "longest_message_lines": 0,
+      "completed": false,
+      "artifacts": [
+        "artifacts/triggers-main",
+        "artifacts/triggers-main.log",
+        "artifacts/triggers-holdout",
+        "artifacts/triggers-holdout.log"
+      ],
+      "notes": [
+        "main: {'build': '18/18', 'harness': '17/18', 'kapso': '17/17', 'review': '17/18', 'setup': '18/18'}; cross-skill false positives: ['harness-c03', 'review-c02']",
+        "holdout: {'holdout': '10/10'}; cross-skill false positives: none",
+        "the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way",
+        "verdict recomputed from the artifacts after the bar's rule read the held-out cases as their own group"
+      ]
+    },
+    {
+      "name": "build-data-only",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 1.2,
+      "longest_message_lines": 4,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-data-only-answers.txt"
+      ],
+      "notes": [
+        "candidate criteria judged by hand from the answers artifact"
+      ]
+    },
+    {
+      "name": "build-empty-wish",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 0.9,
+      "longest_message_lines": 7,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-empty-wish-answers.txt"
+      ],
+      "notes": [
+        "candidate criteria judged by hand from the answers artifact"
+      ]
+    },
+    {
+      "name": "build-churn",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 1.2,
+      "longest_message_lines": 7,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-churn-brief.md",
+        "artifacts/build-churn-status.json"
+      ],
+      "notes": []
+    },
+    {
+      "name": "watch",
+      "messages": 2,
+      "questions": 0,
+      "minutes": 0.7,
+      "longest_message_lines": 3,
+      "completed": true,
+      "artifacts": [
+        "artifacts/watch-answers.txt"
+      ],
+      "notes": []
+    },
+    {
+      "name": "review",
+      "messages": 2,
+      "questions": 0,
+      "minutes": 1.4,
+      "longest_message_lines": 10,
+      "completed": true,
+      "artifacts": [
+        "artifacts/review-answers.txt",
+        "artifacts/churn-solution.json"
+      ],
+      "notes": [
+        "the churn campaign ended: done"
+      ]
+    },
+    {
+      "name": "build-pause",
+      "messages": 1,
+      "questions": 0,
+      "minutes": 0.8,
+      "longest_message_lines": 4,
+      "completed": true,
+      "artifacts": [
+        "artifacts/build-pause-brief.md",
+        "artifacts/build-pause-status.json"
+      ],
+      "notes": []
+    },
+    {
+      "name": "inbox",
+      "messages": 2,
+      "questions": 0,
+      "minutes": 0.8,
+      "longest_message_lines": 5,
+      "completed": true,
+      "artifacts": [
+        "artifacts/inbox-answers.txt",
+        "artifacts/inbox.jsonl"
+      ],
+      "notes": [
+        "the injected pause arrived: True"
+      ]
+    },
+    {
+      "name": "deploy",
+      "messages": 2,
+      "questions": 0,
+      "minutes": 8.8,
+      "longest_message_lines": 3,
+      "completed": true,
+      "artifacts": [
+        "artifacts/deploy-answers.txt"
+      ],
+      "notes": [
+        "the campaign deployed is the second machine's delivered churn campaign (generic_exp_0 at 0.847), restored under this box's work directory by restore_campaign.py with its old home rewritten and its deployment removed: the box's own sixty-minute build delivered nothing (see build-churn and review)"
+      ]
+    },
+    {
+      "name": "campaign-session-isolation",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 9.8,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/isolation.json"
+      ],
+      "notes": []
+    },
+    {
+      "name": "harness-new",
+      "messages": 2,
+      "questions": 1,
+      "minutes": 4.5,
+      "longest_message_lines": 21,
+      "completed": true,
+      "artifacts": [
+        "artifacts/harness-new-answers.txt",
+        "artifacts/harness-new-check.txt",
+        "artifacts/harness-new-tree.txt"
+      ],
+      "notes": [
+        "compared with the shipped harness by hand from harness-new-tree.txt"
+      ]
+    },
+    {
+      "name": "codex-rules-probe",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 0.2,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/codex-rules-probe.txt"
+      ],
+      "notes": [
+        "the session's cwd is a gitignored subdirectory of a repository, as an implementation session's is; the rules file sits in it"
+      ]
+    },
+    {
+      "name": "harness-probe",
+      "messages": 0,
+      "questions": 0,
+      "minutes": 8.8,
+      "longest_message_lines": 0,
+      "completed": true,
+      "artifacts": [
+        "artifacts/harness-probe-launch.txt",
+        "artifacts/harness-probe-status.json"
+      ],
+      "notes": []
+    }
+  ],
+  "notes": [
+    "wheels: the campaign steps run from 04:15 UTC on (build-churn, build-pause, watch, inbox, harness-new, harness-probe, review, deploy, campaign-session-isolation, codex-rules-probe) ran on the second wheel bb288573\u2026 (rebuilt after the Codex adapter's fix, 6db87600); the other steps on the first c16a36e9\u2026 (built at 3e2ab47b), the package line's",
+    "the trigger step's verdict was recomputed after the pull-request review under the first-read rule (87 of 89 main cases; two cross-skill false positives named in its notes)"
+  ],
+  "transcripts": [
+    "transcripts/build-churn.jsonl",
+    "transcripts/build-data-only.jsonl",
+    "transcripts/build-empty-wish.jsonl",
+    "transcripts/build-fraud.jsonl",
+    "transcripts/build-pause.jsonl",
+    "transcripts/campaign-tools.jsonl",
+    "transcripts/deploy-2.jsonl",
+    "transcripts/deploy.jsonl",
+    "transcripts/harness-new.jsonl",
+    "transcripts/inbox-reply.jsonl",
+    "transcripts/inbox.jsonl",
+    "transcripts/install.jsonl",
+    "transcripts/review-2.jsonl",
+    "transcripts/review.jsonl",
+    "transcripts/session-brief.jsonl",
+    "transcripts/setup.jsonl",
+    "transcripts/watch-2.jsonl",
+    "transcripts/watch.jsonl"
+  ]
+}

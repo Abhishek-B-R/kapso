@@ -53,6 +53,7 @@ def test_every_subcommand_and_flag_is_accounted_for():
         "update": {"ref", "config"},
         "remove": {"ref", "config"},
         "list": {"config"},
+        "export": {"ref", "host", "to", "config"},
     }
 
 

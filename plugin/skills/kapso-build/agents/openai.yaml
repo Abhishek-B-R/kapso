@@ -1,0 +1,6 @@
+interface:
+  display_name: "Kapso build"
+  short_description: "State the objective and its evaluation, then launch the campaign"
+  default_prompt: "Use $kapso-build to build and verify what I want in this repository."
+policy:
+  allow_implicit_invocation: true

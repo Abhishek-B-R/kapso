@@ -90,7 +90,7 @@ def test_an_empty_directory_gets_research_only_and_says_why(tmp_path, codex_on_p
     root = tmp_path / "project"
     root.mkdir()
     gates = _prepare(tmp_path, root)
-    assert gates.enabled == ["research"] and gates.env == {}
+    assert gates.enabled == ["research", "campaign"] and gates.env == {}
     assert [note.split(":")[0] for note in gates.notes] == [
         "repo_memory", "experiment_history", "bank",
     ]
@@ -183,7 +183,7 @@ def test_the_harness_is_the_coordinate_and_the_intro_is_the_servers_instructions
 def test_the_bank_stays_off_while_no_bank_is_loaded(tmp_path, codex_on_path):
     seed_bank_home(tmp_path, {"a-card": card_text("a-card")})
     off = _prepare(tmp_path, tmp_path, requested=["bank"])
-    assert off.enabled == [] and off.notes == ["bank: off (no bank loaded; kapso-mcp --experience mine)"]
+    assert off.enabled == [] and off.notes == ["bank: off (no bank loaded: `kapso experience add mine` makes yours; `session_sources: [mine:all]` under `experience` in kapso-config.yaml serves it here)"]
     assert not (tmp_path / "sessions").exists()
 
 
@@ -199,8 +199,8 @@ def test_an_index_adds_the_search_gates(tmp_path, codex_on_path):
     assert set(gates.env) == {"KG_INDEX_PATH", "KAPSO_SERVING_INTRO"}
     without = _prepare(tmp_path, tmp_path, requested=list(INDEX_GATES))
     assert without.enabled == [] and without.notes == [
-        "idea: off (no index loaded; kapso-mcp --experience <name>)",
-        "code: off (no index loaded; kapso-mcp --experience <name>)",
+        "idea: off (no index loaded: `kapso experience add --repo <url> --name <name>` makes one; `session_sources` serves it here)",
+        "code: off (no index loaded: `kapso experience add --repo <url> --name <name>` makes one; `session_sources` serves it here)",
     ]
 
 
@@ -256,7 +256,7 @@ def test_main_takes_the_harness_for_its_name(tmp_path, monkeypatch, capsys):
     assert captured["session_dir"].parent == Path(experience_settings(load_config())["session_root"]).expanduser()
 
 
-async def _no_server():
+async def _no_server(**kwargs):
     return None
 
 
@@ -278,7 +278,7 @@ def test_the_bundled_server_serves_the_staged_intro_as_its_instructions(tmp_path
             return lambda fn: fn
 
     monkeypatch.setattr(server_module, "Server", FakeServer)
-    monkeypatch.setattr(server_module, "_resolve_configuration", lambda: {})
+    monkeypatch.setattr(server_module, "_resolve_configuration", lambda gate_params=None: {})
     monkeypatch.setenv("KAPSO_SERVING_INTRO", str(intro))
     server_module.create_gated_mcp_server()
     assert built == {"name": "gated-knowledge", "instructions": intro.read_text()}
@@ -287,12 +287,12 @@ def test_the_bundled_server_serves_the_staged_intro_as_its_instructions(tmp_path
     assert built["instructions"] is None
 
 
-def test_main_serves_what_it_can_and_exits_when_nothing_is_left(tmp_path, monkeypatch, capsys):
+def test_main_serves_what_it_can_and_connects_with_every_other_gate_off(tmp_path, monkeypatch, capsys):
     served = {}
 
-    async def fake_server():
+    async def fake_server(**kwargs):
         served.update(gates=os.environ["MCP_ENABLED_GATES"],
-                      policy=os.environ["MCP_GATE_FAILURE_POLICY"])
+                      policy=os.environ["MCP_GATE_FAILURE_POLICY"], **kwargs)
 
     monkeypatch.setattr(host_module, "run_server", fake_server)
     monkeypatch.setattr(host_module.shutil, "which", lambda name: "/usr/bin/codex")
@@ -301,12 +301,63 @@ def test_main_serves_what_it_can_and_exits_when_nothing_is_left(tmp_path, monkey
         monkeypatch.delenv(name, raising=False)
 
     host_module.main([])
-    assert served == {"gates": "research", "policy": "error"}
+    assert served["gates"] == "research,campaign" and served["policy"] == "error"
+    assert served["gate_params"] == {"campaign": {"config_path": None, "cwd": str(tmp_path)}}
+    assert served["instructions"].startswith(f"## Kapso tools in this session (kapso-mcp {host_module.__version__})\n- on: research, campaign\n")
+    assert "- bank: off (no bank loaded: `kapso experience add mine` makes yours" in served["instructions"]
     err = capsys.readouterr().err
-    assert "kapso-mcp: serving research for" in err and "bank: off" in err
+    assert err.startswith(f"kapso-mcp {host_module.__version__} (config: the packaged defaults)\n")
+    assert "kapso-mcp: serving research, campaign for" in err and "bank: off" in err
 
+    # No codex, no bank, no repository: the server still connects, with
+    # the campaign tools and every reason in its brief.
     monkeypatch.setattr(host_module.shutil, "which", lambda name: None)
-    with pytest.raises(SystemExit) as stop:
-        host_module.main([])
-    assert stop.value.code == 1
-    assert "nothing to serve here" in capsys.readouterr().err
+    host_module.main([])
+    assert served["gates"] == "campaign"
+    assert "- research: off (the codex CLI is not on PATH)" in served["instructions"]
+
+
+def test_the_config_lists_what_a_session_is_served_and_a_missing_source_is_a_note(tmp_path):
+    settings = _settings(tmp_path)
+    index = _index(tmp_path, "org-x")
+    settings["session_sources"] = ["mine", "org-x"]
+    sources, notes = host_module.config_sources(settings)
+    assert [source.reference for source in sources] == [index.reference]
+    assert notes == [
+        "mine: not found, so its gate is off (`kapso experience add mine` makes it, as a first learn does); it is listed under experience.session_sources",
+    ]
+    settings["session_sources"] = "mine"
+    with pytest.raises(ExperienceError, match="experience.session_sources must be a list of references"):
+        host_module.config_sources(settings)
+    settings["session_sources"] = ["mine", 3]
+    with pytest.raises(ExperienceError, match="must be a list"):
+        host_module.config_sources(settings)
+
+
+def test_main_reads_the_projects_config_and_its_sources_unless_experience_is_passed(tmp_path, monkeypatch, capsys):
+    settings = _settings(tmp_path)
+    _index(tmp_path, "org-x")
+    (tmp_path / "kapso-config.yaml").write_text(
+        f"experience:\n  banks: {settings['banks']}\n  indexes: {settings['indexes']}\n  session_sources: [org-x, mine]\n"
+        f"learning:\n  bank:\n    local_path: {settings['bank_home']}\n",
+        encoding="utf-8",
+    )
+    captured = {}
+    monkeypatch.setattr(
+        host_module, "prepare_host_gates",
+        lambda **kwargs: captured.update(kwargs) or host_module.HostGates(enabled=["campaign"], env={}),
+    )
+    monkeypatch.setattr(host_module, "run_server", _no_server)
+    monkeypatch.chdir(tmp_path)
+
+    host_module.main([])
+    assert [source.reference for source in captured["sources"]] == ["org-x"]
+    assert captured["requested"] == [*DEFAULT_GATES, *INDEX_GATES]
+    err = capsys.readouterr().err
+    assert err.startswith(f"kapso-mcp {host_module.__version__} (config: {tmp_path / 'kapso-config.yaml'})\n")
+    assert "kapso-mcp: mine: not found, so its gate is off" in err
+
+    # Explicit, so the list is replaced: an empty string loads nothing.
+    host_module.main(["--experience", ""])
+    assert captured["sources"] == [] and captured["requested"] == list(DEFAULT_GATES)
+    assert "not found" not in capsys.readouterr().err

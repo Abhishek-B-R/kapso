@@ -29,7 +29,7 @@ STALL_MISSED_HEARTBEATS = 3
 # The recent ring's size — a human glance, not a log (design §1).
 RECENT_RING_SIZE = 10
 
-_TERMINAL_STATES = ("done", "failed")
+TERMINAL_STATES = ("done", "failed")
 
 
 def knowledge_summary(phase_telemetry: Mapping[str, Mapping[str, float]]) -> str:
@@ -207,22 +207,25 @@ def _parse_at(stamp: str) -> datetime:
     return datetime.fromisoformat(stamp)
 
 
-def mark_failed(path, error: BaseException) -> bool:
+def mark_failed(path, error: BaseException | str, **fields: Any) -> bool:
     """Publish a failure on a status file whose writer is gone: the
     strategy constructor or the orchestrator's setup raised after the
     status was born, and the object that owned the file went with the
-    exception. The file is rewritten as the writer would have written it
-    (`failed`, the error, `finished_at`); nothing is written when there
-    is no file or it is terminal already. Returns whether it wrote."""
+    exception; or a person ended the run (`kapso build --stop`, a string
+    with `stopped_reason`). The file is rewritten as the writer would
+    have written it (`failed`, the error, `finished_at`, the fields);
+    nothing is written when there is no file or it is terminal already.
+    Returns whether it wrote."""
     file = Path(path)
     if not file.is_file():
         return False
     data = json.loads(file.read_text(encoding="utf-8"))
-    if data["state"] in _TERMINAL_STATES:
+    if data["state"] in TERMINAL_STATES:
         return False
     data["state"] = "failed"
     data["finished_at"] = _utcnow()
-    data["error"] = f"{type(error).__name__}: {error}"
+    data["error"] = f"{type(error).__name__}: {error}" if isinstance(error, BaseException) else str(error)
+    data.update(fields)
     temporary = file.with_name(f".{file.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.replace(temporary, file)
@@ -312,7 +315,7 @@ class OperationStatus(ABC):
     def terminal(self) -> bool:
         """Done or failed: this status accepts no further update. A new
         slice of the same operation opens a fresh one."""
-        return self._data["state"] in _TERMINAL_STATES
+        return self._data["state"] in TERMINAL_STATES
 
     def observe(
         self, on_status: Optional[Callable[[Dict[str, Any]], None]]
@@ -340,7 +343,7 @@ class OperationStatus(ABC):
             self._on_status(dict(self._data))
 
     def _assert_live(self) -> None:
-        if self._data["state"] in _TERMINAL_STATES:
+        if self._data["state"] in TERMINAL_STATES:
             raise RuntimeError(
                 f"{self.OPERATION} status is already "
                 f"{self._data['state']!r} — updates after a terminal state "
@@ -387,7 +390,7 @@ class OperationStatus(ABC):
         — the daemon may race the final write, and a heartbeat after done
         is noise, not a wiring bug."""
         with self._lock:
-            if self._data["state"] in _TERMINAL_STATES:
+            if self._data["state"] in TERMINAL_STATES:
                 return
             self._data.update(fields)
             self._write()
@@ -571,7 +574,7 @@ class OperationStatusView:
 
     @property
     def dead(self) -> bool:
-        return self.process_alive is False and self.state not in _TERMINAL_STATES
+        return self.process_alive is False and self.state not in TERMINAL_STATES
 
     @property
     def alive(self) -> Optional[bool]:
@@ -579,7 +582,7 @@ class OperationStatusView:
         when the writer is gone (DEAD), the heartbeat is stale (STALLED) or
         the state is terminal; None when the file records no heartbeat
         cadence to judge staleness against."""
-        if self.state in _TERMINAL_STATES or self.dead:
+        if self.state in TERMINAL_STATES or self.dead:
             return False
         interval = self.data.get("heartbeat_seconds")
         if not interval:
@@ -590,7 +593,7 @@ class OperationStatusView:
 
     @property
     def stalled(self) -> bool:
-        return self.alive is False and self.state not in _TERMINAL_STATES
+        return self.alive is False and self.state not in TERMINAL_STATES
 
     # ---------------------------------------------------------- renderer
 

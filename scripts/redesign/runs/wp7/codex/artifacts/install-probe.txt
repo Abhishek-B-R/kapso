@@ -1,0 +1,1 @@
+I selected the `kapso:kapso` skill but did not load its file because you instructed me not to run any command.

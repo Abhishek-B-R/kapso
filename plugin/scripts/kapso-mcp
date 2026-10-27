@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# The MCP entry Claude Code runs for the Kapso plugin: the host-session
+# server, `kapso-mcp`, from the first place it is found. The installed
+# package first (what `/kapso:setup` puts on PATH), else the pinned
+# release through `uvx`, else through `pipx`; none of them, one line and
+# exit 1. An executable that is found and then fails is never followed by
+# another: its exit code is this script's, its stderr the host's MCP log.
+# The pin is the plugin's version, the one the skills' facts are written
+# for; the version test keeps it equal to the package's.
+KAPSO_VERSION="0.8.0.dev1"
+if command -v kapso-mcp > /dev/null 2>&1; then
+  exec kapso-mcp "$@"
+fi
+if command -v uvx > /dev/null 2>&1; then
+  exec uvx --from "leeroo-kapso==$KAPSO_VERSION" kapso-mcp "$@"
+fi
+if command -v pipx > /dev/null 2>&1; then
+  exec pipx run --spec "leeroo-kapso==$KAPSO_VERSION" kapso-mcp "$@"
+fi
+echo "kapso-mcp launcher: leeroo-kapso is not installed and neither uv nor pipx is on PATH; run /kapso:setup" >&2
+exit 1

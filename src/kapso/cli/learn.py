@@ -13,6 +13,7 @@ from typing import List
 
 import yaml
 
+from kapso.cli.common import _detach, _without_detach_flags, learning_handoff
 from kapso.kapso import DEFAULT_CONFIG_PATH, Kapso
 from kapso.core.config import load_config
 from kapso.learning.corpus_import import import_archive, import_subset
@@ -46,6 +47,16 @@ def cmd_learn(args) -> None:
     """Handle the learn command: the campaign form, or the development
     regime's tools under `dev`."""
     if args.learn_command == CAMPAIGN:
+        if args.detach:
+            # Hours of crews: in a session of its own, the log beside the
+            # campaign, the status under the learning status directory.
+            campaign = Path(args.campaign).expanduser().resolve()
+            _detach(
+                "kapso learn", _without_detach_flags(sys.argv[1:]),
+                log_path=campaign.with_name(campaign.name + ".learn.log"), receipt_path=None,
+                handoff=learning_handoff(load_config(args.config)["learning"]["status_dir"]),
+            )
+            return
         kapso = Kapso(config=args.config)
         if args.harness:
             kapso.load_harness(args.harness)
@@ -248,6 +259,7 @@ def add_parser(subparsers):
 Examples:
   kapso learn ./campaign                                     # import -> mine -> exam -> lesson, into your bank
   kapso learn ./campaign --harness ./harness                 # the harness the campaign ran under, when its record has none
+  kapso learn ./campaign --detach                            # hours of crews in a session of its own; kapso watch learning/status --follow
   kapso learn dev import --subset docs/plans/learning/d1-subset.yaml
   kapso learn dev import --archive gs://bucket/runs/rel-hm--user-churn/20260731T092629_lane-a2.tgz
 """
@@ -260,6 +272,10 @@ Examples:
     campaign.add_argument("campaign", type=str, help="The campaign directory (the solution's trace) or a store trajectory id")
     campaign.add_argument("--harness", type=str, default=None, help="The harness the campaign ran under (a name, a path or a git reference), when its record names none")
     campaign.add_argument("--config", type=str, default=None, help="Config path (default: packaged config.yaml)")
+    campaign.add_argument(
+        "--detach", action="store_true",
+        help="Run the learn in a session of its own and return at once with its pid, log and watch line",
+    )
 
     dev = learn_sub.add_parser(DEV, help="The learning system's own tools: the development regime")
     dev_sub = dev.add_subparsers(dest="dev_command", required=True)

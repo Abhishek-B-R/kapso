@@ -49,7 +49,7 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 - [Install Kapso and verify your setup with kapso doctor](https://docs.leeroo.com/docs/installation) — `docs/installation.mdx`
 - [Your first Kapso build in ten minutes](https://docs.leeroo.com/docs/first-build) — `docs/first-build.mdx`
 - [Docs in your coding agent](https://docs.leeroo.com/docs/agent-access) — `docs/agent-access.mdx`
-- [Kapso skill for coding agents](https://docs.leeroo.com/docs/coding-agent-skills) — `docs/coding-agent-skills.mdx`
+- [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills) — `docs/coding-agent-skills.mdx`
 
 **Build**
 

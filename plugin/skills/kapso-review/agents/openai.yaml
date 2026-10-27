@@ -1,0 +1,6 @@
+interface:
+  display_name: "Kapso review"
+  short_description: "Read a finished run: what won, the evidence, what was voided, the next action"
+  default_prompt: "Use $kapso-review to tell me what the finished campaign did and whether it is safe to merge."
+policy:
+  allow_implicit_invocation: true

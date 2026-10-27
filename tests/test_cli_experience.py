@@ -41,7 +41,7 @@ def _subparsers():
 
 def test_every_subcommand_and_flag_is_accounted_for():
     assert _subparsers() == {
-        "add": {"ref", "repo", "research", "name", "config"},
+        "add": {"ref", "repo", "research", "name", "config", "detach"},
         "list": {"config"},
         "share": {"url", "config"},
         "update": {"ref", "config"},

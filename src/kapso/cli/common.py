@@ -9,7 +9,7 @@ import sys
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.inbox import launch_receipt_path
@@ -61,18 +61,26 @@ def _default_log(campaign: Path) -> Path:
 
 
 
-def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) -> None:
+def _detach(
+    label: str, argv: Sequence[str], *, log_path: Path, receipt_path: Optional[Path], handoff: Sequence[str],
+) -> None:
     """Run this very command again in a session of its own, its output in
     a log file, and return at once with what the person needs to follow
-    it. A session of its own (`start_new_session`) is what outlives the
-    shell call that launched it: a coding agent's tool call ends a plain
-    background child when it returns, and the campaign with it (Codex,
-    verified 2026-09-07); every host and the skill used to reinvent the
-    nohup/setsid dance for this one flag."""
+    it: the pid, the log, and the `handoff` lines the verb gives (where
+    the status is, the watch line). A session of its own
+    (`start_new_session`) is what outlives the shell call that launched
+    it: a coding agent's tool call ends a plain background child when it
+    returns, and the campaign with it (Codex, verified 2026-09-07); every
+    host and the skill used to reinvent the nohup/setsid dance for this
+    one flag. A build writes a receipt beside its log, which `kapso
+    watch` reads before the status exists; a learn or an ingest writes
+    none (their status is born within seconds under the learning status
+    directory, and nothing reads a receipt there)."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     # The receipt lies beside the campaign: its directory exists before the
     # child does, so a launch under a parent not yet made still gets one.
-    launch_receipt_path(campaign).parent.mkdir(parents=True, exist_ok=True)
+    if receipt_path is not None:
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
     # The child is meant to outlive this process, so the Popen object is let
     # go while it runs; Python would otherwise print "subprocess N is still
     # running" at the end of a successful launch.
@@ -88,17 +96,36 @@ def _detach(label: str, argv: Sequence[str], *, log_path: Path, campaign: Path) 
         )
         pid = child.pid
         del child
-    launch_receipt_path(campaign).write_text(json.dumps({
-        "pid": pid,
-        "log": str(log_path),
-        "argv": list(argv),
-        "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-    }, indent=2) + "\n", encoding="utf-8")
+    if receipt_path is not None:
+        receipt_path.write_text(json.dumps({
+            "pid": pid,
+            "log": str(log_path),
+            "argv": list(argv),
+            "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }, indent=2) + "\n", encoding="utf-8")
     print(f"{label} started in a session of its own (pid {pid})")
     print(f"  log:     {log_path}")
-    print(f"  status:  {campaign / '.kapso' / 'status.json'}")
-    print(f"  follow:  kapso watch {campaign} --follow")
-    print(f"  inbox:   kapso inbox {campaign}")
+    for line in handoff:
+        print(f"  {line}")
+
+
+def build_handoff(campaign: Path) -> List[str]:
+    """What a person needs after a detached build: the status, the watch
+    line, the inbox."""
+    return [
+        f"status:  {campaign / '.kapso' / 'status.json'}",
+        f"follow:  kapso watch {campaign} --follow",
+        f"inbox:   kapso inbox {campaign}",
+    ]
+
+
+def learning_handoff(status_dir: str) -> List[str]:
+    """What a person needs after a detached learn or ingest: the status
+    directory, whose newest file `kapso watch` follows."""
+    return [
+        f"status:  {status_dir}/ (the newest file is this run's)",
+        f"follow:  kapso watch {status_dir} --follow",
+    ]
 
 
 def _print_build_summary(solution) -> None:

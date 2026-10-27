@@ -372,8 +372,8 @@ class _Stager:
                 env[HARNESS_ROOT_VARIABLE] = str(self.harness.path)
                 if self.host == CODEX_HOST:
                     # Forwarded by name; the codex adapter writes env_vars.
-                    references = [v[2:-1] for v in env.values() if _is_reference(v)]
-                    env = {k: v for k, v in env.items() if not _is_reference(v)}
+                    references = [v[2:-1] for v in env.values() if is_reference(v)]
+                    env = {k: v for k, v in env.items() if not is_reference(v)}
                     if references:
                         entry["env_vars"] = references
                 entry["env"] = env
@@ -500,7 +500,7 @@ def _http_timeout_ms(harness: Harness) -> int:
     return int(harness.settings["server_tool_timeout_seconds"]) * 1000
 
 
-def _is_reference(value: Any) -> bool:
+def is_reference(value: Any) -> bool:
     return isinstance(value, str) and value.startswith("${") and value.endswith("}") and len(value) > 3
 
 

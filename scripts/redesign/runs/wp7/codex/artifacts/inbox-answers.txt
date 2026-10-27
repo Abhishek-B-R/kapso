@@ -1,0 +1,16 @@
+Campaign is **waiting on request #1**: missing `DATA_API_KEY`. No training has run.
+
+To unblock it:
+
+- Add `DATA_API_KEY` to `.env` in the directory you run Kapso from; don’t paste the key here.
+- Provide the enrichment service URL, endpoint, auth scheme, and how its rows join to `id`, including holdout coverage.
+
+If no enrichment service exists, explicitly authorize proceeding with base features alone. The campaign can then resume through `kapso inbox reply` with `--detach`.
+
+---
+
+Replied and resumed the campaign: the key is in both `.env` files, no enrichment service exists, and it must reach 0.85 ROC AUC without the enrichment table.
+
+Follow with `kapso watch ../churn-pause-campaign --follow`.
+
+Used the [Kapso skill](/home/ubuntu/.codex/plugins/cache/kapso/kapso/0.8.0.dev1/skills/kapso/SKILL.md).

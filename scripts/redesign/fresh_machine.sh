@@ -5,6 +5,7 @@
 #   scripts/redesign/fresh_machine.sh create  <run-id>
 #   scripts/redesign/fresh_machine.sh install <run-id> <wheel-path>
 #   scripts/redesign/fresh_machine.sh run     <run-id> "<command>"
+#   scripts/redesign/fresh_machine.sh fetch   <run-id> <remote-path>     # into runs/<run-id>/fetched/
 #   scripts/redesign/fresh_machine.sh delete  <run-id>
 #   scripts/redesign/fresh_machine.sh status
 #
@@ -17,7 +18,7 @@ ZONE="${KAPSO_FRESH_ZONE:-us-central1-a}"
 MACHINE_TYPE="e2-standard-4"
 IMAGE_FAMILY="ubuntu-2404-lts-amd64"
 IMAGE_PROJECT="ubuntu-os-cloud"
-MAX_RUN="4h"
+MAX_RUN="${KAPSO_FRESH_MAX_RUN:-4h}"   # a longer round sets it (the plugin round: 5h)
 HOURLY_USD="0.134"
 LABEL="purpose=kapso-fresh"
 CLAUDE_SECRET="${KAPSO_FRESH_CLAUDE_SECRET:-claude-oauth-token-3}"   # the token rule's answer, when another login has the headroom
@@ -83,6 +84,13 @@ cmd_run() {
   echo "log: $log"
 }
 
+cmd_fetch() {
+  local id="$1" remote="$2" name; name="$(name_of "$id")"
+  mkdir -p "$RUNS/$id/fetched"
+  gcloud compute scp --recurse "ubuntu@$name:$remote" "$RUNS/$id/fetched/" --project "$PROJECT" --zone "$ZONE" --quiet
+  echo "fetched $remote into $RUNS/$id/fetched/"
+}
+
 cmd_delete() {
   local id="$1" name; name="$(name_of "$id")"
   if gcloud compute instances describe "$name" --project "$PROJECT" --zone "$ZONE" >/dev/null 2>&1; then
@@ -90,7 +98,7 @@ cmd_delete() {
   fi
   local left; left="$(gcloud compute instances list --project "$PROJECT" --filter="name=$name" --format='value(name)')"
   if [ -n "$left" ]; then echo "STILL PRESENT: $left" >&2; exit 1; fi
-  local disks; disks="$(gcloud compute disks list --project "$PROJECT" --filter="name~^$name" --format='value(name)')"
+  local disks; disks="$(gcloud compute disks list --project "$PROJECT" --filter="name~^$name\$" --format='value(name)')"
   if [ -n "$disks" ]; then echo "leftover disks: $disks" >&2; exit 1; fi
   if [ -f "$RUNS/$id/created_at" ]; then
     local start now hours cost
@@ -112,6 +120,7 @@ case "${1:-}" in
   create)  [ $# -eq 2 ] || usage; cmd_create "$2" ;;
   install) [ $# -eq 3 ] || usage; cmd_install "$2" "$3" ;;
   run)     [ $# -eq 3 ] || usage; cmd_run "$2" "$3" ;;
+  fetch)   [ $# -eq 3 ] || usage; cmd_fetch "$2" "$3" ;;
   delete)  [ $# -eq 2 ] || usage; cmd_delete "$2" ;;
   status)  cmd_status ;;
   *) usage ;;

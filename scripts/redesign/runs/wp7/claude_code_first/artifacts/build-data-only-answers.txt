@@ -1,0 +1,55 @@
+Here's what's in the repo: `data/transactions.csv` has 20,000 labelled transactions, 4.56% of them fraud (per `MANIFEST.json`). `repo/score.py` is three hand-written rules. There was no evaluator and no train/test split, so I built one, and the shipped rules score **0.0939 PR-AUC** on it. No harness, experience sources or `kapso-config.yaml` exist.
+
+**The evaluation I built (please approve)**: `build/kapso_evaluation/evaluate.py`
+
+1. **Data:** `data/transactions.csv` split 80/20, stratified on `fraud` with seed 7 (`build/scripts/split.py`). The 16,000 training rows (730 frauds) go to `build/data/`. The 4,000 hold-out rows (182 frauds) and their labels stay in `build/kapso_evaluation/private/holdout.csv`. The rows are synthetic and independent, with no time order or customer grouping to leak through. No hold-out row has the same features as a training row.
+2. **How it runs:** it calls `score.py --data <hold-out without labels> --out` under the existing contract.
+3. **Metric:** average precision (PR-AUC), printed last as `pr_auc: <value>`. It also prints `beats_rules: True` when a 95% paired bootstrap (1,000 resamples, seed 7) says the candidate beats the shipped rules.
+4. **Checks I ran:** repeat runs give the same score, and a full run takes about 10 seconds. `--fast` uses 1,000 rows and is marked as not comparable with a full score. A scorer that crashes or returns wrong columns, wrong ids or non-finite values exits 1 with the reason.
+5. **Pass:** `pr_auc` ≥ 0.52 with `beats_rules: True`.
+
+This is the same protocol and an identical hold-out file to the evaluator in the sibling `../fraud` directory, re-derived here rather than linked. For the target: the formula that generated the data, without its noise, scores 0.573, so about 0.57 is the ceiling.
+
+`kapso-brief.md`:
+```
+Objective    Make the fraud scorer in repo/score.py better: replace the three
+             hand-written rules with a scorer that ranks fraud far better on
+             unseen transactions, keeping the contract: score.py takes --data
+             and --out and writes id,fraud_probability for every row, in input order.
+Measured by  kapso_evaluation/evaluate.py, run from the workspace root: calls
+             score.py on a private 20 percent hold-out (stratified on fraud,
+             seed 7, 4,000 rows, 182 frauds), prints precision-recall AUC
+             (average precision) as the last line "pr_auc: <value>", and
+             "beats_rules: True" when the 95 percent paired bootstrap of the
+             difference against the shipped rules lies above zero.
+Baseline     0.0939 (the shipped three rules, on the hold-out)
+Target       pr_auc of at least 0.52 with beats_rules: True (the generator's own
+             noise-free logit scores 0.573 on this hold-out, so that is roughly the ceiling)
+Rules
+  - fit only on kapso_datasets/transactions.csv, the 80 percent split
+  - the hold-out is never fitted on, read, or inspected
+  - every transaction gets a score; none is dropped
+  - the evaluator is never modified
+Budget       minutes=60 experiments=10
+```
+
+**Approve this or edit a line, then say "go".** On "go" I'll launch the campaign detached, writing to `../fraud-data-campaign`.
+
+---
+
+Got it, nothing is launched. I didn't list numbered choices, so I'm reading "the first one" as approving the evaluation and brief as written. Tell me if you meant something else.
+
+Everything is ready on disk:
+- `kapso-brief.md`: the brief above.
+- `build/kapso_evaluation/`: the evaluator (`evaluate.py`) and the hold-out (`private/holdout.csv`). It has no `result.json`, so it can be passed to a launch as is.
+- `build/data/transactions.csv`: the 80% training split.
+- `build/scripts/split.py`: rebuilds the split exactly.
+
+When you want to launch, the command is:
+
+```bash
+kapso doctor build --json
+kapso build --brief kapso-brief.md --repo repo --evaluation build/kapso_evaluation --data build/data --output ../fraud-data-campaign --budget-minutes 60 --budget-experiments 10 --detach
+```
+
+Then follow it with `kapso watch ../fraud-data-campaign --follow`.
