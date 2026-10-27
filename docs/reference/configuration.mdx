@@ -183,6 +183,11 @@ search_strategy:
     gate_failure_policy: warn
     ideation_gates: [research, experiment_history, repo_memory, leeroopedia]
     implementation_gates: [research, repo_memory, leeroopedia]
+    parent_policy: best
+    parent_sampling:
+      temperature: 1.0
+      offspring_penalty: 1.0
+      seed: 0
     cost:
       enabled: false
       estimator: null
@@ -201,6 +206,10 @@ search_strategy:
 | `params.gate_failure_policy` | What to do when an MCP gate is unavailable. `warn` continues |
 | `params.ideation_gates` | MCP tools offered while designing a candidate |
 | `params.implementation_gates` | MCP tools offered while implementing it |
+| `params.parent_policy` | Which branch each iteration builds on: `best` (default), `baseline` or `weighted`. See [Parent selection](/docs/evolve/parent-selection) |
+| `params.parent_sampling.temperature` | Positive; lower approaches `best`, higher approaches uniform. Used by `weighted`; default `1.0` |
+| `params.parent_sampling.offspring_penalty` | Non-negative; down-weights parents that already have children. Used by `weighted`; default `1.0` |
+| `params.parent_sampling.seed` | Integer seed of the `weighted` sampler; default `0` |
 | `params.cost.enabled` | Enable platform-cost estimation, admission checks, and selection; default `false` |
 | `params.cost.estimator` | Module-qualified caller-owned estimator; required when enabled |
 | `params.cost.cap_per_candidate` | Maximum estimate accepted for one candidate, in `unit`; `null` is unlimited |
