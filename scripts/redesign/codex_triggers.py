@@ -8,7 +8,16 @@ invocation injects); the cases' Skill graders applied to what was
 loaded. Explicit cases are Claude Code's `/kapso:<cmd>` and are skipped:
 Codex's explicit form is `$kapso-<skill>`, proven in the host facts.
 
+A Codex session loads a skill by reading its file, and reads several as
+references (the build skill sends it to the evaluation skill, the
+harness skill to the operating one), so a near miss that read the skill
+under test beside the expected one routed right: its refusal grader
+passes when the expected skill was loaded too, and the report names the
+first skill read, the routing decision as Claude Code's Skill tool shows
+it. A case with no expected skill stays strict.
+
     scripts/redesign/plugin_round.sh codex-triggers [--tag main] [--case 'build-*'] [--runs 2] [-j 4]
+    python3 scripts/redesign/codex_triggers.py --regrade <out-dir>    # the rule again over a run's results
 
 A stream or rollout line of a shape this module does not know raises:
 the fixture tests/fixtures/codex_trigger_events.jsonl pins the shapes.
@@ -96,11 +105,18 @@ def thread_id(stream: Iterable[str]) -> str:
 def grade(graders: Sequence[Dict[str, Any]], loaded: Sequence[str]) -> List[Dict[str, Any]]:
     """Each Skill grader over the loaded skills, as `claude plugin eval`
     applies it to the Skill tool's JSON input: the count of loads whose
-    `{"skill": "<name>"}` matches `input_match`, between min and max."""
+    `{"skill": "<name>"}` matches `input_match`, between min and max. A
+    refusal (max 0) passes when the expected skill was loaded as well:
+    Codex reads skills as references."""
+    counts = {grader["name"]: sum(1 for name in loaded if re.search(grader["input_match"], json.dumps({"skill": name}))) for grader in graders}
+    expected_loaded = any(counts[g["name"]] >= g["min"] for g in graders if g["max"] != 0)
     results = []
     for grader in graders:
-        count = sum(1 for name in loaded if re.search(grader["input_match"], json.dumps({"skill": name})))
-        passed = count >= grader["min"] and (grader["max"] is None or count <= grader["max"])
+        count = counts[grader["name"]]
+        if grader["max"] == 0:
+            passed = count == 0 or expected_loaded
+        else:
+            passed = count >= grader["min"] and (grader["max"] is None or count <= grader["max"])
         results.append({"name": grader["name"], "count": count, "passed": passed})
     return results
 
@@ -148,17 +164,33 @@ def report(results: List[Dict[str, Any]], skipped: List[str]) -> str:
     by_case: Dict[str, List[Dict[str, Any]]] = {}
     for result in results:
         by_case.setdefault(result["case"], []).append(result)
-    lines = ["| case | runs | passed | loaded |", "|---|---|---|---|"]
+    lines = ["| case | runs | passed | first read | loaded |", "|---|---|---|---|---|"]
     failed = 0
     for name, runs in by_case.items():
         passed = sum(1 for r in runs if r["passed"])
         failed += passed < len(runs)
         loaded = sorted({skill for r in runs for skill in r["loaded"]})
-        lines.append(f"| {name} | {len(runs)} | {passed}/{len(runs)} | {', '.join(loaded) or '(none)'} |")
+        first = sorted({r["loaded"][0] for r in runs if r["loaded"]})
+        lines.append(f"| {name} | {len(runs)} | {passed}/{len(runs)} | {', '.join(first) or '(none)'} | {', '.join(loaded) or '(none)'} |")
     lines.append("")
     lines.append(f"{len(by_case) - failed} of {len(by_case)} cases passed every run; "
                  f"{len(skipped)} explicit case(s) skipped (Codex's explicit form is `$kapso-<skill>`).")
     return "\n".join(lines)
+
+
+def regrade(out: Path) -> int:
+    """The rule again over a run's results: the loads are the evidence,
+    the graders and the verdicts are rewritten in place, the report too."""
+    document = json.loads((out / "results.json").read_text(encoding="utf-8"))
+    graders = {case["name"]: case["graders"] for case in cases(tag=document["tag"])}
+    for result in document["results"]:
+        result["graders"] = grade(graders[result["case"]], result["loaded"])
+        result["passed"] = all(g["passed"] for g in result["graders"])
+    (out / "results.json").write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
+    text = report(document["results"], document["skipped"])
+    (out / "REPORT.md").write_text(text + "\n", encoding="utf-8")
+    print(text)
+    return 0 if all(r["passed"] for r in document["results"]) else 1
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -170,8 +202,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--effort", default="medium")
     parser.add_argument("--timeout", type=int, default=600, help="seconds per run; a run that overstays ends with exit 124 and counts as it stands")
     parser.add_argument("-j", "--jobs", type=int, default=2)
-    parser.add_argument("--out", required=True)
+    parser.add_argument("--out", default=None)
+    parser.add_argument("--regrade", default=None, help="a run's output directory: grade its results again, run nothing")
     args = parser.parse_args(argv)
+    if args.regrade:
+        return regrade(Path(args.regrade))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     selected = cases(tag=args.tag, pattern=args.case)

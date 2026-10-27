@@ -55,7 +55,10 @@ def test_the_cases_are_read_as_the_host_reads_them_and_graded_on_the_loads():
     assert codex_triggers.grade(confusion["graders"], ["kapso"]) == [
         {"name": "not-kapso-build", "count": 0, "passed": True}, {"name": "skill-fired", "count": 1, "passed": True},
     ]
-    assert [g["passed"] for g in codex_triggers.grade(confusion["graders"], ["kapso-build", "kapso"])] == [False, True]
+    # Codex reads skills as references: the skill under test beside the
+    # expected one routed right; alone, it did not.
+    assert [g["passed"] for g in codex_triggers.grade(confusion["graders"], ["kapso-build", "kapso"])] == [True, True]
+    assert [g["passed"] for g in codex_triggers.grade(confusion["graders"], ["kapso-build"])] == [False, False]
     none = found["build-n01"]
     assert [g["passed"] for g in codex_triggers.grade(none["graders"], [])] == [True]
     assert [g["passed"] for g in codex_triggers.grade(none["graders"], ["kapso-review"])] == [False]

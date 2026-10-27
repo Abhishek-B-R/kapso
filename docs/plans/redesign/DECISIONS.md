@@ -210,9 +210,14 @@ through its command), and a near miss refuses the skill and the commands
 that are its alone (`harness` hands over to two skills and is refused
 for neither); the Codex runner
 skips the explicit cases (Codex's explicit form is `$kapso-<skill>`,
-proven in the host facts) and reads a skill load from the stream's
-command that read the `SKILL.md` or the rollout's `<skill>` message,
-pinned by a captured fixture.
+proven in the host facts), reads a skill load from the stream's command
+that read the `SKILL.md` or the rollout's `<skill>` message, pinned by a
+captured fixture, and passes a near miss's refusal when the expected
+skill was loaded as well: a Codex session reads skills as references
+(the build skill sends it to the evaluation skill, the harness skill to
+the operating one), so reading the skill under test beside the expected
+one is routing by reading, not a misroute; the report names the first
+skill read, and a case with no expected skill stays strict.
 
 **The round's learn runs on another model when the token's window is
 spent.** The fresh machine's Claude token had no weekly window left for
