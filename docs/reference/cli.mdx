@@ -83,6 +83,7 @@ Author, check and fetch harnesses, the domain layer a build loads: one directory
 | `update` | Re-fetch a branch or `HEAD` reference; a tag or a commit never moves |
 | `remove` | Delete one fetched clone, every harness in it; a directory is refused |
 | `list` | The bundled and fetched harnesses, each `ready`, with what it needs, or failing check |
+| `export` | Write a harness's skills, delegates and servers as the files an ordinary session of one host discovers; hooks and the module pages stay behind |
 
 A reference is a bundled name (`trading`), a directory (`./trading`), a git URL (`git+https://github.com/acme/harnesses@v3#trading`) or GitHub shorthand (`acme/harnesses@v3#trading`). Every subcommand but `new` takes `--config` for the config whose `harness.store` is the store.
 
@@ -117,6 +118,21 @@ kapso harness remove acme/harnesses@v3#trading
 ```bash
 kapso harness list
 ```
+
+### kapso harness export
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `ref` | A bundled name, a directory, or a git reference. **Required** | — |
+| `--host` | The host whose files to write: `claude_code` or `codex`. **Required** | — |
+| `--to` | The directory to write into | the working directory |
+
+```bash
+kapso harness export ./trading --host claude_code
+kapso harness export acme/harnesses@v3#trading --host codex --to ~/work/strategies
+```
+
+The union of the harness's modules, each attachment once: for Claude Code `.claude/skills/<name>/`, `.claude/agents/<name>.md` and `.mcp.json` (`${PLUGIN_ROOT}` expanded to the harness's directory, `KAPSO_HARNESS_ROOT` in each server's environment); for Codex `.agents/skills/<name>/`, `.codex/agents/<name>.toml` with the `[agents.<name>]` lines to add to `~/.codex/config.toml` printed, and one `codex mcp add` line per server printed. The standing rules travel as `kapso-harness-<name>.md`, with the line that includes it from `CLAUDE.md` or `AGENTS.md` printed; the export never writes those files. Hooks stay behind (campaign-bound: a Stop gate or a prepared-directory deny would block an ordinary session), as do the module pages and the routing per module, and the output says so. Every destination is checked first; one that exists refuses the whole export by name. A harness that fails `check` is refused with the report.
 
 ## kapso experience
 

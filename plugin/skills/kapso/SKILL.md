@@ -235,10 +235,13 @@ kapso harness check ./trading --config kapso-config.yaml            # failures, 
 kapso harness add acme/trading-harness@v1 --config kapso-config.yaml
 kapso harness update acme/trading-harness@v1 --config kapso-config.yaml
 kapso harness remove acme/trading-harness@v1 --config kapso-config.yaml
+kapso harness export ./trading --host claude_code --to . --config kapso-config.yaml    # or --host codex: its skills, delegates and servers as this session's files
 ```
 
 `check` passing means the harness is well formed; a `needs …` line is this
-machine's, not the harness's.
+machine's, not the harness's. `export` writes the files an ordinary session
+discovers and prints the include line for `CLAUDE.md` or `AGENTS.md`; hooks and
+the module pages stay behind, and an existing destination refuses it by name.
 
 ## Review: what a finished run did
 
