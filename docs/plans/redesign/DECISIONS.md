@@ -2138,3 +2138,24 @@ Options for the owner:
 
 Until the owner chooses, the author arm's `structural_gaps_round2` bar reads
 FAIL honestly, but as a harness-wiring gap, not a guide-quality verdict.
+
+## WP9 S5 injection campaigns use an unreachable target — RESOLVED (2026-10-27)
+
+The earlier "S5 campaign longevity" open question is resolved in code, per the
+owner's "do the best long-term fix". The live S5 arms showed the injection
+steps racing the campaign's own completion: the shared churn-first-build task
+meets its 0.85 goal in node 0 and stops in ~10 minutes, so an injection fired
+after that (a rate limit, an evaluator crash) lands on a finished campaign and
+never stages. The cold engineer itself diagnosed this on evaluator-crash ("the
+labels moved 16 s after the campaign finished; raise the target so it keeps
+going").
+
+Fix: S5's `project()` stamps an unreachable target (0.99, well above the task's
+ROC-AUC ceiling) into its brief copy, and the S5 build budget restores
+`experiments: 3`. The campaign then uses its whole budget across several nodes,
+so every injection acts on a live campaign — node 1's session call trips the
+rate-limit shim, node 1's evaluation crashes on the moved labels, and the
+killed-writer/full-disk injections (already moved to the implementation phase)
+have a solid window. This is model-independent, where a "harder task" would be
+fragile across models. The S5 arm is correspondingly longer (several nodes per
+step), which is the right trade for reliable staging.

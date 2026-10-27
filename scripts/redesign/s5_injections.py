@@ -193,7 +193,17 @@ class S5:
 
     # -- machinery --
     def project(self, name: str) -> Path:
-        return self.ctx.fixture("churn-first-build", f"s5-{name}-project")
+        project = self.ctx.fixture("churn-first-build", f"s5-{name}-project")
+        # An unreachable target, so the campaign keeps working instead of
+        # meeting a 0.85 goal in its first node and stopping. Every injection
+        # here (a killed writer, an evaluator crash, a rate limit, a full disk)
+        # can only be exercised against a campaign that is still running; with
+        # the shipped 0.85 goal the churn task is solved in node 0 and the
+        # injection races the campaign's own completion (and loses). The task's
+        # ROC-AUC ceiling is well under 0.99, so the run uses its whole budget.
+        brief = project / "kapso-brief.md"
+        brief.write_text(brief.read_text(encoding="utf-8").replace("0.85", "0.99"), encoding="utf-8")
+        return project
 
     def launch(self, name: str, project: Path, extra_env: str = "", budget: Optional[Dict[str, int]] = None, campaign: Optional[Path] = None, log: Optional[Path] = None) -> Path:
         """The campaign launched as the operating skill launches it (the WP7
