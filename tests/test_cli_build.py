@@ -5,13 +5,17 @@ facade fails here; a brief file arrives as a `Brief`; a resume without a
 brief passes none; and the errors a person can hit say what to do."""
 
 import argparse
+import json
+import subprocess
 import sys
+import time
 from unittest.mock import Mock
 
 import pytest
 
 import kapso.cli.build as build_cli
-from kapso.cli import main
+from kapso.cli import build_parser, main
+from kapso.execution.inbox import launch_receipt_path
 from kapso.handles import Brief, Budget
 
 FACADE_KWARGS = {"evaluation", "data", "repo", "output", "resume", "coding_agent"}
@@ -190,37 +194,43 @@ def test_the_briefs_experience_line_loads_when_no_flag_is_given(monkeypatch, tmp
 
 # ---------------------------------------------------------------- --stop
 
-WRITER = """import sys, time
+WRITER = """import subprocess, sys, time
 from kapso.execution.observability import BuildStatus
 status = BuildStatus(sys.argv[1], heartbeat_seconds=60)
 status.phase("ideation")
+agent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
+open(sys.argv[2], "w").write(str(agent.pid))
 time.sleep(60)
 """
 
 
 def _writer(campaign):
     """A campaign's status writer in a session of its own, as a detached
-    launch is: the status file names its pid. Beside it, an override file
-    with a one-second grace, so the stop's waits are short."""
-    import subprocess
-    import time
+    launch is, with a coding-agent session under it in a session of its
+    own, as the adapters start them: the status file names the writer's
+    pid, a file beside it the agent's. Beside the campaign, an override
+    file with a one-second grace, so the stop's waits are short."""
     (campaign / ".kapso").mkdir(parents=True)
     (campaign.parent / "kapso-config.yaml").write_text("budget:\n  stop_grace_seconds: 1\n")
     status = campaign / ".kapso" / "status.json"
-    child = subprocess.Popen([sys.executable, "-c", WRITER, str(status)], start_new_session=True)
+    agent_pid = campaign / ".kapso" / "agent.pid"
+    child = subprocess.Popen([sys.executable, "-c", WRITER, str(status), str(agent_pid)], start_new_session=True)
     deadline = time.monotonic() + 20
-    while not status.is_file() and time.monotonic() < deadline:
+    while not (status.is_file() and agent_pid.is_file()) and time.monotonic() < deadline:
         time.sleep(0.1)
-    assert status.is_file()
+    assert status.is_file() and agent_pid.is_file()
     return child, status
 
 
-def test_stop_ends_the_campaigns_process_group_marks_the_status_and_keeps_the_checkpoint_for_a_resume(monkeypatch, tmp_path, capsys):
-    import json
-    import time
-    from kapso.execution.inbox import launch_receipt_path
+def _alive(pid: int) -> bool:
+    return subprocess.run(["ps", "-p", str(pid), "-o", "pid="], capture_output=True, text=True).stdout.strip() != ""
+
+
+def test_stop_ends_the_writer_and_the_agent_session_under_it_and_marks_the_status(monkeypatch, tmp_path, capsys):
     campaign = tmp_path / "campaign"
     child, status = _writer(campaign)
+    agent = int((campaign / ".kapso" / "agent.pid").read_text())
+    assert _alive(agent)
     receipt = launch_receipt_path(campaign)
     receipt.write_text(json.dumps({"pid": child.pid, "log": "x", "argv": [], "started_at": "t"}))
     _run(monkeypatch, "--output", str(campaign), "--stop", "--config", str(campaign.parent / "kapso-config.yaml"))
@@ -231,6 +241,10 @@ def test_stop_ends_the_campaigns_process_group_marks_the_status_and_keeps_the_ch
     while child.poll() is None and time.monotonic() < deadline:
         time.sleep(0.1)
     assert child.poll() is not None and not receipt.exists()
+    deadline = time.monotonic() + 5
+    while _alive(agent) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not _alive(agent), "the agent's own session outlived the stop"
     data = json.loads(status.read_text())
     assert data["state"] == "failed" and data["error"] == "stopped by the person" and data["stopped_reason"] == "stopped"
     assert data["finished_at"]
@@ -240,8 +254,21 @@ def test_stop_ends_the_campaigns_process_group_marks_the_status_and_keeps_the_ch
     assert refusal.value.code == 1 and "is failed; nothing to stop" in capsys.readouterr().err
 
 
+def test_stop_refuses_other_flags_beside_it(monkeypatch, tmp_path, capsys):
+    with pytest.raises(SystemExit) as refusal:
+        _run(monkeypatch, "--output", str(tmp_path / "campaign"), "--stop", "--resume")
+    assert refusal.value.code == 1 and "takes no other flag; drop --resume" in capsys.readouterr().err
+
+
+def test_every_parser_refuses_an_abbreviated_flag():
+    parser = build_parser()
+    for argv in (["experience", "add", "--repo", "u", "--name", "n", "--det"], ["build", "--output", "x", "--sto"]):
+        with pytest.raises(SystemExit) as refusal:
+            parser.parse_args(argv)
+        assert refusal.value.code == 2
+
+
 def test_stop_refuses_a_dead_writer_and_names_the_resume(monkeypatch, tmp_path, capsys):
-    import json
     campaign = tmp_path / "campaign"
     child, status = _writer(campaign)
     child.kill()

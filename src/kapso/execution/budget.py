@@ -40,6 +40,7 @@ _BUDGET_BLOCK_KEYS = {
     # How long `kapso build --stop` waits after SIGTERM before SIGKILL
     # (consumed by the verb, not BudgetSpec).
     "stop_grace_seconds",
+    "stop_poll_seconds",
     # Validated separately by FidelitySpec.resolve.
     "fidelity",
 }

@@ -333,6 +333,8 @@ budget:
   # `kapso build --output <campaign> --stop`: how long the campaign's
   # processes get after SIGTERM before SIGKILL ends them.
   stop_grace_seconds: 10
+  # How often the stop looks whether they are gone, while it waits.
+  stop_poll_seconds: 0.1
   # Budget-aware fidelity (docs/evolve/budget-aware-experimentation.mdx):
   # fast-fidelity probes under a committed full-size run, with the
   # evaluation maintainer's timing model. `off` runs every attempt at full

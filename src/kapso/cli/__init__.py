@@ -75,7 +75,19 @@ Examples:
     # Subparsers for commands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     parser.set_defaults(handlers={module.NAME: module.add_parser(subparsers) for module in VERB_MODULES})
+    _refuse_abbreviations(parser)
     return parser
+
+
+def _refuse_abbreviations(parser: argparse.ArgumentParser) -> None:
+    """Every parser, at every depth, refuses a shortened flag: `--det` is
+    not `--detach` (a detached child keeps its parent's command line, and
+    a shortened flag the parent did not strip would detach it again)."""
+    parser.allow_abbrev = False
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                _refuse_abbreviations(child)
 
 
 def main():

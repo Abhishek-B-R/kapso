@@ -3,10 +3,11 @@
 import argparse
 import os
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from kapso.core.config import load_config
 from kapso.kapso import Kapso
@@ -31,6 +32,10 @@ NAME = "build"
 def cmd_build(args) -> None:
     """Handle the build command."""
     if args.stop:
+        beside = [flag for flag, value in (("--resume", args.resume), ("--brief", args.brief), ("--goal", args.goal), ("--goal-file", args.goal_file)) if value]
+        if beside:
+            print(f"Error: --stop stops a running campaign and takes no other flag; drop {', '.join(beside)}", file=sys.stderr)
+            sys.exit(1)
         _stop(args)
         return
     if args.brief:
@@ -149,15 +154,21 @@ def _stop(args) -> None:
             file=sys.stderr,
         )
         sys.exit(1)
-    grace = float(load_config(args.config)["budget"]["stop_grace_seconds"])
-    group = os.getpgid(pid)
-    os.killpg(group, signal.SIGTERM)
-    _wait_gone(pid, grace)
-    if pid_alive(pid):
-        os.killpg(group, signal.SIGKILL)
+    budget = load_config(args.config)["budget"]
+    grace, poll = float(budget["stop_grace_seconds"]), float(budget["stop_poll_seconds"])
+    # The campaign's processes: the writer and everything under it (the
+    # coding-agent CLIs run in sessions of their own, outside the writer's
+    # group). A group leader takes its group with it; a process sharing
+    # its parent's group (a foreground launch from a script) is signalled
+    # alone, so the stop never reaches what launched the campaign.
+    targets = [pid, *_descendants(pid)]
+    _signal(targets, signal.SIGTERM)
+    _wait_gone(targets, grace, poll)
+    if any(pid_alive(target) for target in targets):
+        _signal(targets, signal.SIGKILL)
         # Bounded again: a process whose parent has not reaped it keeps
         # its /proc entry a while; the run has ended all the same.
-        _wait_gone(pid, grace)
+        _wait_gone(targets, grace, poll)
     mark_failed(status_path, "stopped by the person", stopped_reason="stopped")
     receipt = launch_receipt_path(campaign)
     if receipt.is_file():
@@ -167,10 +178,38 @@ def _stop(args) -> None:
     print(f"  resume:  kapso build --output {campaign} --resume --detach")
 
 
-def _wait_gone(pid: int, seconds: float) -> None:
+def _descendants(pid: int) -> List[int]:
+    """Every process under `pid`, read from the process table."""
+    table = subprocess.run(["ps", "-eo", "pid=,ppid="], capture_output=True, text=True, check=True).stdout.split()
+    children: Dict[int, List[int]] = {}
+    for child, parent in zip(table[0::2], table[1::2]):
+        children.setdefault(int(parent), []).append(int(child))
+    found: List[int] = []
+    queue = [pid]
+    while queue:
+        for child in children.get(queue.pop(), []):
+            found.append(child)
+            queue.append(child)
+    return found
+
+
+def _signal(pids: List[int], signum: int) -> None:
+    """Each live process: its whole group when it leads one, itself
+    otherwise."""
+    for target in pids:
+        if pid_alive(target) is not True:
+            continue
+        group = os.getpgid(target)
+        if group == target:
+            os.killpg(group, signum)
+        else:
+            os.kill(target, signum)
+
+
+def _wait_gone(pids: List[int], seconds: float, poll: float) -> None:
     deadline = time.monotonic() + seconds
-    while pid_alive(pid) and time.monotonic() < deadline:
-        time.sleep(0.1)
+    while any(pid_alive(target) for target in pids) and time.monotonic() < deadline:
+        time.sleep(poll)
 
 
 def _harness_reference(args, brief):
