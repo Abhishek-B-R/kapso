@@ -351,7 +351,9 @@ def test_the_adapters_carry_the_staged_keys(harness, tmp_path, monkeypatch):
         agent_type="claude_code", model="m", debug_model="m",
         agent_specific=claude.merged_agent_specific({"allowed_tools": ["Read", *claude.allowed_tools]}),
     ))._build_command("m")
-    assert command[command.index("--settings") + 1] == claude.agent_specific["settings_path"]
+    settings = json.loads(command[command.index("--settings") + 1])
+    assert settings["hooks"] == json.loads(Path(claude.agent_specific["settings_path"]).read_text())["hooks"]
+    assert settings["enabledPlugins"] == {"kapso@kapso": False}
     assert command[command.index("--agents") + 1] == claude.agent_specific["agents_path"]
     assert "mcp__market-data" in command[command.index("--allowedTools") + 1]
 

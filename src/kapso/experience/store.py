@@ -156,6 +156,9 @@ class ExperienceStore:
     def index_dir(self, name: str) -> Path:
         return self.indexes_root / name
 
+    def has_index(self, name: str) -> bool:
+        return (self.index_dir(name) / INDEX_RECORD).is_file()
+
     def index_record(self, name: str) -> IndexRecord:
         file = self.index_dir(name) / INDEX_RECORD
         if not file.is_file():

@@ -180,6 +180,20 @@ verified) and the six descriptions say "never inside a Kapso campaign
 session". The proof lists a campaign session's skills and tools on both
 hosts.
 
+**A Codex campaign session trusts its own workspace.** The execpolicy
+rule that refuses the campaign verbs lives in the workspace's project
+layer (`.codex/rules/`), which Codex enforces for a trusted project
+only; the adapter declares the trust on the command line
+(`projects."<workspace>".trust_level="trusted"`), touching nothing under
+`~/.codex`. The sessions already run with full-access sandboxing, so
+the trust changes nothing else of the engine's; a seeded repository's
+own `.codex/config.toml`, if it ships one, is read by its sessions from
+now on. The campaign gate's refusal is by campaign directory, not by
+session workspace: its three tools refuse whenever the server's working
+directory lies inside a campaign (the `.kapso/experiment_history.json`
+mark the host session already uses), so a person inspecting a finished
+campaign from inside it runs the verbs in the shell.
+
 **A session-built evaluator keeps its hold-out inside the evaluation
 directory.** The one thing the product promise rests on: labels left
 under `--data` are copied to `kapso_datasets/` and reachable by every

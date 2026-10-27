@@ -70,6 +70,9 @@ class GateDefinition:
     # set — but preflight must not report them as missing user setup: they
     # are not the user's to provide.
     injected_env: List[str] = field(default_factory=list)
+    # Served to a host session by `kapso-mcp` alone: get_mcp_config refuses
+    # it for a campaign session (a campaign never launches a campaign).
+    host_only: bool = False
 
 
 _GATE_PROMPTS = "execution/search_strategies/generic/prompts/gates"
@@ -244,6 +247,15 @@ GATES: Dict[str, GateDefinition] = {
         default_params={},
         required_env=["KAPSO_INBOX_PATH", "KAPSO_SESSION_ID", "KAPSO_NODE_ID"],
         injected_env=["KAPSO_INBOX_PATH", "KAPSO_SESSION_ID", "KAPSO_NODE_ID"],
+    ),
+    # The campaign verbs as a host session's tools (wp7-plugin.md): a
+    # launch detached, a status read, a stop. Host-only; the server's
+    # working directory and config path reach the gate as its params,
+    # never through the environment.
+    "campaign": GateDefinition(
+        tools=["kapso_build_start", "kapso_status", "kapso_stop"],
+        default_params={},
+        host_only=True,
     ),
     # Leeroopedia's hosted MCP server: sessions connect over HTTP with the
     # user's key — nothing runs locally, nothing to install.
@@ -559,6 +571,12 @@ def get_mcp_config(
         policy=gate_failure_policy,
         env=effective_env,
     )
+    host_only = [name for name in resolution.requested_gates if GATES[name].host_only]
+    if host_only:
+        raise ValueError(
+            f"host-only gate(s) {', '.join(host_only)}: kapso-mcp serves them to a host session; "
+            "a campaign session never gets them"
+        )
     enabled_gates = list(resolution.enabled_gates)
 
     # Resolve project root

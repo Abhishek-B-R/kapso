@@ -193,14 +193,35 @@ def hosted_key_missing() -> str:
     )
 
 
-def require_bank(home: Path, raw: str) -> None:
+def is_bank(home: Path) -> bool:
     """A bank home is a git repository (bare or not) whose main branch
     holds the founding skeleton: index.md, insights/, procedures/."""
     listing = subprocess.run(
         ["git", "-C", str(home), "ls-tree", "--name-only", "main"], capture_output=True, text=True,
     )
-    names = set(listing.stdout.split()) if listing.returncode == 0 else set()
-    if listing.returncode != 0 or not {"index.md", "insights", "procedures"} <= names:
+    return listing.returncode == 0 and {"index.md", "insights", "procedures"} <= set(listing.stdout.split())
+
+
+def source_exists(reference: ExperienceReference, *, settings: Dict[str, Any], dotenv_path: Optional[str] = None) -> bool:
+    """Whether `resolve_source` would find the source: your bank made, a
+    bank you read fetched, the hosted key present, an index ingested. A
+    host session asks before loading what the config lists, so a missing
+    source leaves its gate off instead of stopping the server."""
+    store = ExperienceStore(settings["banks"], settings["indexes"])
+    if reference.kind == MINE:
+        return is_bank(Path(settings["bank_home"]).expanduser())
+    if reference.kind == "path":
+        return is_bank(reference.path)
+    if reference.kind == "git":
+        return store.is_fetched(reference) and is_bank(store.clone_dir(reference))
+    if reference.kind == "hosted":
+        return hosted_key_present(dotenv_path)
+    return store.has_index(reference.name)
+
+
+def require_bank(home: Path, raw: str) -> None:
+    """`is_bank`, or the refusal naming what a bank is."""
+    if not is_bank(home):
         raise ExperienceError(
             f"{raw} ({home}) is not a bank: a bank is a git repository whose main branch holds index.md, "
             "insights/ and procedures/ (`kapso experience add mine` makes one; a bank you read is one somebody's learn() wrote)"

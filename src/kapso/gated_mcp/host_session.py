@@ -17,8 +17,13 @@
 # repository's own memory when a campaign has built one, the experiment
 # history when the session runs inside a campaign directory. What rides by
 # what is loaded (docs/plans/redesign/wp3-experience.md): the bank gate over
-# every loaded bank, the search gates over a loaded index. Each gate left
-# out is named on stderr with the reason; stdout is the MCP transport.
+# every loaded bank, the search gates over a loaded index. What rides always
+# (wp7-plugin.md): the campaign gate, the verbs as this session's tools.
+# `--experience` absent, the project's config lists the sources
+# (`experience.session_sources`); the config is `--config`, else the
+# project root's `kapso-config.yaml`. Each gate left out is named on
+# stderr and in the server's instructions with the reason; the server
+# connects whatever is off; stdout is the MCP transport.
 
 import argparse
 import asyncio
@@ -31,13 +36,15 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from kapso import __version__
+from kapso.cli.errors import install_error_hook
 from kapso.core.config import load_config
-from kapso.experience.sources import experience_settings
+from kapso.experience.sources import ExperienceError, experience_settings
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.experience.reference import parse_experience_reference
-from kapso.experience.sources import ExperienceSource, resolve_source
+from kapso.experience.sources import ExperienceSource, resolve_source, source_exists
 from kapso.gated_mcp.presets import GATES
 from kapso.gated_mcp.server import run_server
 from kapso.harness import load_harness
@@ -45,11 +52,15 @@ from kapso.learning.serving_launch import plan_serving, stage_serving, task_coor
 
 # The gates a host session gets without being asked. `idea` and `code`
 # join when an index is loaded; `kg` carries the write tools and `inbox` is
-# campaign-only, so neither is ever a host default.
-DEFAULT_GATES = ("research", "repo_memory", "experiment_history", "bank")
+# campaign-only, so neither is ever a host default; `campaign` needs
+# nothing and always rides.
+DEFAULT_GATES = ("research", "repo_memory", "experiment_history", "bank", "campaign")
 INDEX_GATES = ("idea", "code")
 EXPERIMENT_HISTORY_NAME = "experiment_history.json"
 LOAD_HINT = "kapso-mcp --experience"
+# The project's config, read when `--config` is absent: the one file the
+# verbs take as `--config kapso-config.yaml`.
+PROJECT_CONFIG = "kapso-config.yaml"
 # The label the host session's pull events carry: the session is the
 # engineer's own, not one of a campaign's.
 HOST_SESSION = "host"
@@ -94,6 +105,57 @@ def load_sources(text: Optional[str], settings: Dict[str, Any]) -> List[Experien
         reference = parse_experience_reference(raw, indexes_root=Path(settings["indexes"]))
         sources.append(resolve_source(reference, settings=settings))
     return sources
+
+
+def config_sources(settings: Dict[str, Any]) -> Tuple[List[ExperienceSource], List[str]]:
+    """What `experience.session_sources` lists: each source that exists,
+    resolved as `build` resolves it, and one note per source that does
+    not (its gate stays off, the line that makes it named), never a stop.
+    A wrong type is refused; a reference outside the grammar raises as
+    the parser does."""
+    listed = settings["session_sources"]
+    if not isinstance(listed, list) or not all(isinstance(item, str) for item in listed):
+        raise ExperienceError(
+            "experience.session_sources must be a list of references (mine, mine:all, leeroopedia, "
+            f"a bank path or git reference, an index name), not {listed!r}"
+        )
+    sources: List[ExperienceSource] = []
+    notes: List[str] = []
+    for raw in listed:
+        reference = parse_experience_reference(raw, indexes_root=Path(settings["indexes"]))
+        if source_exists(reference, settings=settings):
+            sources.append(resolve_source(reference, settings=settings))
+        else:
+            notes.append(f"{raw}: not found, so its gate is off ({_makes_it(reference)}); it is listed under experience.session_sources")
+    return sources, notes
+
+
+def _makes_it(reference) -> str:
+    if reference.kind == "hosted":
+        return "LEEROOPEDIA_API_KEY in .env serves it"
+    if reference.kind == "index":
+        return f"`kapso experience add --repo <url> --name {reference.name}` makes it"
+    return f"`kapso experience add {reference.raw}` makes it"
+
+
+def project_config(root: Path) -> Optional[str]:
+    """The project's `kapso-config.yaml` at the repository root `root` is
+    inside (else `root` itself), when there is one."""
+    candidate = repository_root(root) / PROJECT_CONFIG
+    return str(candidate) if candidate.is_file() else None
+
+
+def session_brief(enabled: Sequence[str], notes: Sequence[str], intro_path: Optional[str]) -> str:
+    """The server's instructions, shown on connect: the staged intro (what
+    the session is served, measured before) when one exists, then the
+    gates on and each one off with its reason."""
+    lines: List[str] = []
+    if intro_path:
+        lines += [Path(intro_path).read_text(encoding="utf-8").rstrip(), ""]
+    lines.append(f"## Kapso tools in this session (kapso-mcp {__version__})")
+    lines.append(f"- on: {', '.join(enabled)}")
+    lines += [f"- {note}" for note in notes]
+    return "\n".join(lines) + "\n"
 
 
 def prepare_host_gates(
@@ -230,11 +292,22 @@ def remove_session_dir(session_dir: Path) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
+    # The engine's own errors print their message alone (cli/errors.py):
+    # a bad reference, a wrong `session_sources`, a missing `--experience`
+    # source are one stderr line and exit 1.
+    install_error_hook()
     args = _parse_args(argv)
-    config = load_config(args.config)
-    settings = experience_settings(config)
     root = Path(args.root).expanduser().resolve() if args.root else Path.cwd()
-    sources = load_sources(args.experience, settings)
+    config_path = args.config or project_config(root)
+    print(f"kapso-mcp {__version__} (config: {config_path or 'the packaged defaults'})", file=sys.stderr)
+    config = load_config(config_path)
+    settings = experience_settings(config)
+    if args.experience is None:
+        sources, source_notes = config_sources(settings)
+    else:
+        # Explicit, so strict: a missing source refuses, as a build is
+        # refused; an empty string loads nothing.
+        sources, source_notes = load_sources(args.experience, settings), []
     harness_name = None
     if args.harness:
         # Loaded for its name alone: the coordinate the bank serves by.
@@ -263,26 +336,25 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         probe_budget=settings["probe_budget"],
         harness_name=harness_name,
     )
-    for note in gates.notes:
+    notes = [*source_notes, *gates.notes]
+    for note in notes:
         print(f"kapso-mcp: {note}", file=sys.stderr)
-    if not gates.enabled:
-        print(
-            "kapso-mcp: nothing to serve here — every requested gate is off "
-            "for the reasons above",
-            file=sys.stderr,
-        )
-        sys.exit(1)
     print(
         f"kapso-mcp: serving {', '.join(gates.enabled)} for {root}",
         file=sys.stderr,
     )
     # The bundled server reads its configuration from the environment
     # (env is the transport across the process boundary, as for campaign
-    # sessions). Availability was decided above, so any miss is a bug.
+    # sessions); the campaign gate's working directory and config path
+    # are its params, and the brief is the server's instructions.
+    # Availability was decided above, so any miss is a bug.
     os.environ.update(gates.env)
     os.environ["MCP_ENABLED_GATES"] = ",".join(gates.enabled)
     os.environ["MCP_GATE_FAILURE_POLICY"] = "error"
-    asyncio.run(run_server())
+    asyncio.run(run_server(
+        gate_params={"campaign": {"config_path": config_path, "cwd": str(root)}},
+        instructions=session_brief(gates.enabled, notes, gates.env.get("KAPSO_SERVING_INTRO")),
+    ))
 
 
 if __name__ == "__main__":

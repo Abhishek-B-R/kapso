@@ -84,6 +84,13 @@ def _tool_result_text(raw: Any) -> str:
     return str(raw) if raw else ""
 
 
+# The installed Kapso plugin, `<plugin>@<marketplace>`, switched off in
+# every campaign session's settings (wp7-plugin.md): a user-scope plugin's
+# skills ride into every `claude -p` session, and a campaign never
+# launches a campaign. Verified to hide the skills on Claude Code 2.1.
+PLUGIN_ID = "kapso@kapso"
+
+
 class ClaudeCodeCodingAgent(CodingAgentInterface):
     """
     Claude Code-based coding agent.
@@ -1291,9 +1298,12 @@ class ClaudeCodeCodingAgent(CodingAgentInterface):
             cmd.extend(["--mcp-config", str(self._mcp_config_path)])
         if self._strict_mcp_config:
             cmd.append("--strict-mcp-config")
-        # The harness's hooks and delegates for this session.
-        if self._settings_path:
-            cmd.extend(["--settings", str(self._settings_path)])
+        # The session's settings, one JSON argument: the harness's hooks
+        # (staged per session) and the installed plugin switched off.
+        settings = json.loads(Path(self._settings_path).read_text(encoding="utf-8")) if self._settings_path else {}
+        settings["enabledPlugins"] = {PLUGIN_ID: False}
+        cmd.extend(["--settings", json.dumps(settings)])
+        # The harness's delegates for this session.
         if self._agents_path:
             cmd.extend(["--agents", str(self._agents_path)])
 

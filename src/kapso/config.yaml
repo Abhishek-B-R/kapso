@@ -138,6 +138,12 @@ experience:
   # deep); the findings are ingested as they come.
   research_modes: [idea, implementation]
   research_depth: deep
+  # What a host session (`kapso-mcp`, the plugin's server) is served when
+  # `--experience` is absent: references in the grammar `kapso experience
+  # list` shows (mine, mine:all, a bank path or git reference, an index
+  # name). A listed source that does not exist leaves its gate off, named
+  # in the server's instructions; `kapso learn` offers `[mine:all]`.
+  session_sources: []
 
 # =============================================================================
 # The build's search: the generic strategy and its parameters. Three roles
