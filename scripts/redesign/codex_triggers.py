@@ -127,14 +127,16 @@ def run_case(case: Dict[str, Any], run: int, out: Path, model: str, effort: str,
     stream_file = out / "streams" / f"{case['name']}-{run}.jsonl"
     stream_file.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
+    # The deadline is the `timeout` command's, so a run that overstays ends
+    # with exit 124 and its stream so far, and the suite goes on.
     with open(stream_file, "w", encoding="utf-8") as stream, open(stream_file.with_suffix(".err"), "w", encoding="utf-8") as err:
         completed = subprocess.run(
-            ["codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "-C", str(project),
+            ["timeout", str(timeout), "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "-C", str(project),
              "-m", model, "-c", f'model_reasoning_effort="{effort}"', case["prompt"]],
-            stdout=stream, stderr=err, text=True, timeout=timeout, cwd=str(project),
+            stdout=stream, stderr=err, text=True, cwd=str(project),
         )
     lines = stream_file.read_text(encoding="utf-8").splitlines()
-    loaded = loaded_skills(lines, rollout_lines(thread_id(lines)))
+    loaded = loaded_skills(lines, rollout_lines(thread_id(lines))) if any('"thread.started"' in line for line in lines) else []
     graders = grade(case["graders"], loaded)
     return {
         "case": case["name"], "run": run, "exit": completed.returncode, "seconds": round(time.monotonic() - started, 1),
@@ -166,7 +168,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--runs", type=int, default=2)
     parser.add_argument("--model", default="gpt-6-astra")
     parser.add_argument("--effort", default="medium")
-    parser.add_argument("--timeout", type=int, default=300, help="seconds per run")
+    parser.add_argument("--timeout", type=int, default=600, help="seconds per run; a run that overstays ends with exit 124 and counts as it stands")
     parser.add_argument("-j", "--jobs", type=int, default=2)
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)

@@ -27,12 +27,14 @@ case "$HOST" in
     if [ "${1:-}" = "--tag" ]; then TAG="$2"; shift 2; fi
     claude plugin eval plugin --ablation none --trust-plugin --json "$OUT/triggers.json" --threshold 1.0 \
       --no-publish --output-dir "$OUT/results" -j 4 --tag "$TAG" "$@" 2> "$OUT/stderr.log"
-    echo "exit=$?" | tee "$OUT/exit.txt"
+    STATUS=$?
+    echo "exit=$STATUS" | tee "$OUT/exit.txt"
     python3 scripts/redesign/trigger_report.py "$OUT/triggers.json" | tee "$OUT/REPORT.md"
     ;;
   codex-triggers)
     PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" python3 scripts/redesign/codex_triggers.py --out "$OUT" "$@" | tee "$OUT/REPORT.md"
-    echo "exit=$?" | tee "$OUT/exit.txt"
+    STATUS=${PIPESTATUS[0]}
+    echo "exit=$STATUS" | tee "$OUT/exit.txt"
     ;;
   *)
     echo "unknown host $HOST: claude-triggers or codex-triggers" >&2
@@ -40,3 +42,4 @@ case "$HOST" in
     ;;
 esac
 echo "$OUT"
+exit "$STATUS"
