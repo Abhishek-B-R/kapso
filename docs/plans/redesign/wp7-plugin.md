@@ -802,3 +802,26 @@ and the sidecars), 3 (narrowed on Codex by a host fact), 6 (twice: WP3's
 explicit loading, the brief as the server's instructions), 7 (the tools
 land last in this package). Decision 9 was drift in the first plan and
 is now the rule above. The owner checks the decisions.
+
+## Built
+
+Branch `wp7-plugin` off `redesign` at `e792fadd`, the commits below, each
+with its tests and the gate green (the last full gate before the round:
+1,832 passed, 27 skipped, 2 deselected after change 6; green again after
+change 8; the docs coverage check 44 commands and methods, the snippet
+check 6 quoted files, `mint validate` and `mint broken-links` passing).
+
+| Commit | What landed |
+|---|---|
+| `dc196dfe`, `b39c44b5`, `2ab71462` | the sub-plan and its planned decisions; its two revisions after the cross-model review (Codex 27, Claude Code 29 findings) and the host probes |
+| `4fe4d651` | the plugin's tree, the three manifests, the host MCP files, the launcher with its pin, the marketplace files, the version pinned across them, the validator in the suite (change 1) |
+| `097dcec6`, `d5362e6d` | `kapso build --stop` with `budget.stop_grace_seconds`; `--detach` on `kapso learn` and on an ingest through the one detach helper (change 3) |
+| `5c04471a` | the operating skill folded into `plugin/skills/kapso`, migrated to the redesign's verbs with the diagnosis section; `build_parser()`; the CLI-line test; the retired-name check reading `plugin/`; `skills/` deleted (change 2) |
+| `32692ea8` | `kapso-setup`, `kapso-build`, `kapso-evaluation` and the `/kapso:setup`, `/kapso:build` commands (changes 4 and 5) |
+| `00000058` | `kapso-review` and the operating commands `watch`, `inbox`, `resume`, `learn`, `deploy`, `experience` (change 6) |
+| `fbb02541` | `kapso-harness`, `/kapso:harness`, `kapso harness export` with its tests on the trading example (change 7) |
+| `e53d0863` | the `campaign` gate, `experience.session_sources`, `kapso-mcp`'s config rule, version line, brief and always-connect, the plugin kept out of campaign sessions on both hosts (change 8) |
+| `0f323983` | the trigger suite under `plugin/evals/` and its two runners (change 9) |
+| `a27a88e5` | the plugin page, the README's step 0, the installation page's `/kapso:setup`, the reference lines, the superseded notes, the validator's CLI pinned (change 10) |
+| `1f952164`, `3e2ab47b` | the round's driver, budgets and report; `kapso --version` and `kapso-mcp --version` (change 11) |
+| `1829844b` to `2a486161` | the round's findings as they landed: the driver's fixes (the wheel copy, the question among the closing lines, the second user's home, the pause as its own step, the token in each fixture's `.env`, an approval without a question mark), the churn example on pandas 3, the evaluation skill's churn note, the decisions of the build |

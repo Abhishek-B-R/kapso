@@ -75,11 +75,22 @@ def test_each_entry_skill_has_its_twenty_cases_and_the_near_misses_refuse_the_ri
     assert sum(count for (skill, kind), count in kinds.items() if kind == "holdout") == 10
 
 
-def test_the_skill_patterns_tell_the_six_apart():
+def test_the_skill_patterns_tell_the_six_apart_and_count_a_skills_commands():
+    """A session that invokes `/kapso:watch` for "how is it going" has
+    routed the request to the operating skill: a command counts as its
+    skill firing, and a near miss refuses the commands that are the
+    skill's alone (`harness` hands over to two skills and is refused for
+    neither)."""
     cases = _cases()
     pattern = cases["kapso-i01"][2]["skill-fired"]["input_match"]
     assert _fires(pattern, "kapso") and not any(_fires(pattern, other) for other in SKILLS - {"kapso"})
+    assert all(_fires(pattern, command) for command in ("watch", "inbox", "resume", "learn", "deploy", "experience", "harness"))
+    assert not _fires(pattern, "build") and not _fires(pattern, "review") and not _fires(pattern, "setup")
     pattern = cases["build-i01"][2]["skill-fired"]["input_match"]
-    assert _fires(pattern, "kapso-build") and not _fires(pattern, "kapso") and not _fires(pattern, "kapso-evaluation")
+    assert _fires(pattern, "kapso-build") and _fires(pattern, "build") and not _fires(pattern, "kapso") and not _fires(pattern, "kapso-evaluation")
+    refusal = cases["review-c01"][2]["not-kapso-review"]["input_match"]
+    assert _fires(refusal, "kapso-review") and _fires(refusal, "review") and not _fires(refusal, "kapso") and not _fires(refusal, "watch")
+    refusal = cases["harness-c01"][2]["not-kapso-harness"]["input_match"]
+    assert _fires(refusal, "kapso-harness") and not _fires(refusal, "harness")
     explicit = cases["setup-e01"][2]["skill-fired"]["input_match"]
     assert _fires(explicit, "setup") and _fires(explicit, "kapso-setup") and not _fires(explicit, "kapso-build")

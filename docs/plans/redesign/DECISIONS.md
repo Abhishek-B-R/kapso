@@ -202,9 +202,13 @@ beside the manifests' and the launcher's.
 **The trigger suite's pins.** Every case runs on `claude-opus-5-5`, the
 model a Max session runs by default, twice, with six turns, three
 minutes and the read-only tools (`Read`, `Glob`, `Grep`, `Skill`), so a
-run is the routing decision and little else; an explicit command's
-grader accepts the command (`kapso:build`) or the skill it hands over to
-(`kapso-build`), since either is the plugin firing; the Codex runner
+run is the routing decision and little else; a command that hands over
+to a skill counts as that skill firing, in every case (the round showed
+Claude Code answering "how is the campaign doing" by invoking
+`/kapso:watch`, the plugin routing the request to the operating skill
+through its command), and a near miss refuses the skill and the commands
+that are its alone (`harness` hands over to two skills and is refused
+for neither); the Codex runner
 skips the explicit cases (Codex's explicit form is `$kapso-<skill>`,
 proven in the host facts) and reads a skill load from the stream's
 command that read the `SKILL.md` or the rollout's `<skill>` message,

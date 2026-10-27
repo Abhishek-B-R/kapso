@@ -1,5 +1,5 @@
 ---
 type: tool_used
 tool: Skill
-input_match: '"skill"\s*:\s*"(?:[\w-]+:)?kapso-setup"'
+input_match: '"skill"\s*:\s*"(?:kapso:)?(?:kapso-setup|setup)"'
 ---
