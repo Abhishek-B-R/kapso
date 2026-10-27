@@ -274,6 +274,60 @@ host's CLI answers the vendor's rate-limit error N times, copied from a
 real one, then execs the CLI: the adapter's handling of that error is what
 S5 tests, and a real limit cannot be scheduled.
 
+**The record's second shape and the suite's one home (after the plan
+review).** The round's record carried conversation counts only; the suite's
+tests need attempts, injections, builds and readings, metric bars, a
+two-pass judge and pins. `tests/semantic/suite.json` holds every knob and
+bar (the sampling cadence stays the engine config's, read through
+`load_config`), `report.py` computes the verdict the runner's exit status
+carries, `budgets.json` is folded in and deleted, and WP7's three records
+are re-derived into the shape (Rule 7). An arm that ran on the development
+box is `advisory` in its record and cannot be a fresh-machine acceptance.
+
+**The judge is a standalone two-pass over fetched records, with no
+fallback vendor.** The reviewers showed the "idle vendor" does not exist
+once Claude Code and Codex have played host and user. The judge runs on
+the development box (Gemini on Vertex through LiteLLM, preflighted before
+any machine run) over the rendered conversation per step, two blind passes
+with a third adjudicating a straddle, the minimum over steps binding;
+without the route the run is unjudged, the hard metrics stand and the
+judged acceptance is blocked. Alternative rejected: a same-vendor judge
+marked as a weakness, which would grade a vendor's own flow.
+
+**The persona is offered every host turn and keeps its whole reply.** The
+round's loop ended when a turn did not ask; a persona must be able to
+challenge an answer. `DONE` alone ends a step; a turn cap is an explicit
+incomplete; a persona-side CLI failure raises rather than reading as a
+satisfied user. The driver's out-of-band acts (the key written before the
+person says so; the harness's module answers as the trading author's
+knowledge) are named in the record as interventions. A planted wrong fact
+in the task view tells a persona that reads from one that nods.
+
+**The Codex credit on the fresh machine is the owner's action, and every
+Codex arm waits for it.** The key refuses a response with
+`credit_balance_exhausted` (2026-10-27). Until credit exists, Codex arms
+run on the development box under the owner's login and are advisory; the
+fresh-machine arms that need Codex are incomplete, with the reason. No
+model is swapped to make a run pass: the grader roles stay on Codex.
+
+**S4 reads S5's tampering campaign; S6's learn runs on the development
+box.** A reading on a campaign without a void or a rejection answers two
+questions vacuously, so the tampering injection's campaign (a void with
+hash evidence, a rejection, a partial cost) is the one read. S6's learn
+needs the grader roles (Codex), so it runs on the development box over
+the fetched campaign and its bank reaches the machine as a bare remote the
+second build loads by reference: the second engineer's own path.
+
+**S1's harness task uses a path, said as a deviation.** The design says "by
+name"; the bundled directory holds no harness until WP8, so the task names
+the trading harness at `./harness` and the record says so.
+
+**The bounded exception to "a fix in its package".** A sentence in a merged
+package's skill, command, trigger case or page that the suite shows wrong
+may be fixed here when one sentence settles it; engine code never. The
+review found the earlier wording ("a line") contradicting the ownership
+list.
+
 **A Codex campaign session trusts its own workspace.** The execpolicy
 rule that refuses the campaign verbs lives in the workspace's project
 layer (`.codex/rules/`), which Codex enforces for a trusted project

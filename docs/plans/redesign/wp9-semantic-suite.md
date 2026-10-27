@@ -1,262 +1,672 @@
 # WP9: the semantic suite
 
-2026-10-27. Owner: the redesign's author. Branch `wp9-semantic-suite`
-off `redesign` after WP7's merge (5cca2905). Size: L, spread over the
-packages it reads: the suite is a release gate, not a per-commit check,
-and every run costs hours and model spend.
+2026-10-27, second version after the sub-plan's review (the first version
+is `e20e7395`). Owner: the redesign's author. Branch `wp9-semantic-suite`
+off `redesign` after WP7's merge (5cca2905). Size: L (MASTER's table said
+M, spread; the row is corrected at merge): the suite is a release gate,
+not a per-commit check, and every run costs hours and model spend.
 
 ## Scope
 
 The semantic production tests of `docs/plans/semantic-production-tests.md`
-made runnable and run once each: a simulated user from a persona card
-driving the host turn by turn (the other vendor's CLI playing the
-engineer), a judge from a third vendor grading transcripts and artifacts
-against the rubrics, S1 (the cold engineer on the Python and CLI flow,
-with its baseline on the released package), S2 proper (the plugin round
-with the simulated user and the judge, both hosts), S4 (the trace read
-without the agent, judged), S5 (five scripted injections), S6 (two builds,
-the second served the first's lessons), and S3's third part, the author
-test on a third domain (`pipeline-dbt`); one runner per test over the
-fresh machine; one report per run. The learn's two fail-loud cases the
-plugin round found (an unquoted scalar in a flow file; a crew that wrote
-no report) are fixed first, since S6 needs a learn that completes.
+made runnable, each with a gate the report computes, and run once each
+where the machine's credentials allow: a simulated user from a persona
+card driving the host turn by turn (the other vendor's CLI playing the
+engineer, every host turn offered to it), a judge from a third vendor
+grading rendered conversations and artifacts in two blind passes, S1 (the
+cold engineer on the Python and CLI flow, with a retrospective baseline on
+the released package), S2 proper (the plugin round with the persona and
+the judge, both hosts, the second engineer's served build included), S4
+(the trace read without the agent on a campaign that holds a void and a
+rejection, judged against a hidden fact sheet), S5 (six injections with a
+host session in the loop: a provider limit, an evaluator crash, a missing
+key answered by a local service, a killed session and a killed writer, a
+full disk, an evaluator tampered with), S6 (two seeded builds, the second
+served the first's lessons, on a sampled timeline), and the author test's
+second round on the `pipeline-dbt` fixture; one runner per test over the
+fresh machine; one report per run under an immutable id. The learn's two
+fail-loud cases the plugin round found are repaired as far as CLAUDE.md
+allows (change 1, built), and the learn's real blocker on the fresh
+machine is named: its grader roles run on Codex, and the machine's Codex
+key has no credit.
+
+**What WP7 deferred here**, each answered: the command-to-skill handover
+read as the procedure (S2 measures it from the session's skill events);
+the handoffs' tighter form (measured again under the twelve-line caps; a
+finding for the skills, not rewritten here); the interview's silent
+modules (the persona asks for the pages; measured); the inbox fixture
+service and the continuation that uses it (S5's missing-key injection);
+the review near misses' turn cap (the cases' `max_turns` raised to eight,
+a knob in `plugin/evals`, allowed by the bounded exception below); the
+second engineer's served build (S2's ninth step, a build at a tiny budget
+on the teammate's own install); a staged card for the session brief (the
+brief step runs after S6's learn has banked one, the bank served by
+reference); the stop-then-resume continuation (S5's killed-writer case);
+the machine's examples dependencies (the installer's venv).
 
 **Not in scope.** S3's non-regression and abstraction parts (the harness
 ports, WP8, parked until the owner says go). The release gate's full run
-from the wheel to be released (WP11). The docs' pages for the suite
-beyond `tests/semantic/README.md` (WP10). A skill, page or verb the suite
-finds wanting is a finding here and a fix in its package (MASTER: "anything
-that fails there reopens its package"), except where one line settles it
-and the package is merged, which this package does and says.
+from the wheel to be released (WP11). The docs' pages for the suite beyond
+`tests/semantic/README.md` and the authoring guide's fixes the author test
+demands (both WP10 slices this package owns, named below). A skill, page
+or verb the suite finds wanting is a finding here and a fix in its
+package (MASTER: "anything that fails there reopens its package"), with
+one bounded exception: a sentence in `plugin/skills/*/SKILL.md`,
+`plugin/commands/*.md`, `plugin/evals/**` or `docs/**.mdx` that the suite
+shows wrong, when one sentence settles it and the package is merged; never
+engine code.
+
+**The owner's action this package needs.** The fresh machine's Codex API
+key (`openai-api-key` in Secret Manager) answers the models listing and
+refuses a response with `credit_balance_exhausted` (probed 2026-10-27
+08:18 UTC). Every Codex role on a fresh machine waits for credit on that
+key or a second key: S1's Codex engineer, S2's Codex host and the persona
+when Claude Code hosts, S4's Codex reader, the author test's Codex author,
+and the learn's grader roles (`graders.crew.report_writer` and `assessor`
+run on Codex). Until then those arms run on the development box under the
+owner's own Codex login, as WP7's Codex half did by the owner's decision,
+and are marked **advisory** in every record and report: the design forbids
+the development box for smoothness numbers, and an advisory arm proves
+the flow, not its smoothness. The fresh-machine arms that need Codex are
+reported incomplete, with this reason, until the credit exists.
 
 ## Interface
 
 **Exposed.**
 
-- `tests/semantic/personas/<name>.yaml`, a card with `name`, `role`,
-  `expertise`, `knows`, `wants`, `patience`, `answers`, `pushes_back_when`
-  (the README's contract); three cards: `ml-engineer` (exists),
-  `data-engineer` (the dbt fixture's owner, for S1's second persona and
-  the author test's reader), `second-engineer` (the teammate of S2's last
-  step, terse, no context).
-- `scripts/redesign/simulated_user.py`: `next_message(card, task, history,
-  host_message, vendor) -> Optional[str]`: the persona's next message
-  from the other vendor's CLI (`codex exec` when the host is Claude Code,
-  `claude -p` when the host is Codex), or `None` when the persona is done
-  (it says `DONE` alone). The prompt carries the card, the fixture's
-  README, the whole history and the host's message; the reply is one
-  message in the persona's voice. The transcript records both sides and
-  the vendor's own session id.
-- `scripts/redesign/judge.py`: `judge(rubric, transcript_paths,
-  artifact_paths, vendor) -> dict`: dimension or question to `{score,
-  evidence}` as JSON the judge must return whole (malformed JSON raises:
-  no retry hides a judge that cannot follow the rubric); the rubrics as
-  files under `tests/semantic/rubrics/` (`s2.md` five dimensions 1 to 5,
-  `s4.md` six questions right or wrong with the answer, `s1.md` three
-  questions). The vendor: Gemini (`gemini-4-argon` on Vertex through the
-  LiteLLM bridge the campaign adapter uses) when the credit project is
-  reachable, else the vendor that did not play either side; the record
-  says which.
-- `scripts/redesign/plugin_proof.py` gains `--user scripted|persona:<card>`
-  (the scripted policies, as in WP7's round, or the persona for every
-  answer) and `--judge <vendor>`; the record gains `user` and `judge`
-  (`model`, scores) and keeps every other field. The test name becomes
-  `S2` for a persona run, `S2-mechanical` for a scripted one.
-- `scripts/redesign/s1_cold_engineer.py`: six tasks, each in Python then
-  on the command line, each a fresh host session with the public docs
-  (the clone's `docs/`) and the churn fixture and nothing else; per
-  attempt `first_try` (the task's success predicate), `wrong_calls` (tool
-  calls that errored before success), `minutes_to_launch`,
-  `error_led_to_fix` (an errored call followed by the fixing call within
-  one step); then the comprehension questions, graded by the judge
-  against the record's own facts. `--package released` runs it on the
-  released wheel and its docs, the baseline.
-- `scripts/redesign/s4_reading.py`: a reader (each vendor) given `kapso
-  trace`'s text and the campaign directory answers the six questions;
-  the judge grades against the record (`solution.json`, the trace's
-  JSON); per reader the six verdicts.
-- `scripts/redesign/s5_injections.py`: five injections on the churn
-  fixture, each a step with its own `inject` and `expect`: `provider-limit`
-  (a `PATH` shim before the host CLI that answers the vendor's rate-limit
-  error N times then execs the real CLI), `evaluator-crash` (WP6's),
-  `missing-key` (the pause of S2), `killed-session` (WP6's), `full-disk` (a
-  small tmpfs mounted at the campaign directory, root on the machine).
-  Per injection: the state within one heartbeat, the inbox request's
-  text (a variable or path, never a value), the diagnosis's class and fix,
-  the resume's flag, the bank before and after; the user messages counted.
-- `scripts/redesign/s6_experience.py`: two builds of the churn fixture at
-  the same small budget, a learn between them, the second with `mine`;
-  the anytime score per checkpoint from both status histories, the cards
-  served and the ones an attempt used from the trace, the review's naming
-  of them; the gap per checkpoint.
-- `scripts/redesign/author_test.py`: a model author (each host) with the
-  authoring guide, the design and the trading example writes a harness for
-  `examples/pipeline-dbt`, logging every guess as a line; `kapso harness
-  check`; the judge against the guide's rules; the guesses listed.
-- `scripts/redesign/semantic.sh <s1|s2|s4|s5|s6|author> <host> [--machine
-  <id>]`: provisions the machine (or reuses one), installs the wheel built
-  from the branch, runs the test, fetches the record, judges on the
-  development box, renders the report under `tests/semantic/reports/`,
-  deletes the machine; the Codex half of S2 runs on the development box
-  when the machine's Codex key is over quota, said in the record.
-- `examples/pipeline-dbt`: a small dbt project on DuckDB (three sources,
-  five models, tests, a seeded generator), with an evaluator (the share
-  of tests passing on a fresh build plus a freshness check, one number)
-  and a brief; the third domain for the author test.
-- `tests/semantic/reports/<date>-<test>-<host>.md`, one per run, the ones
-  cited here committed.
+- `tests/semantic/suite.json`, the one home of the suite's knobs and
+  bars, read by every driver and by the renderer, echoed into each record:
+  per test its `required_steps`, per step its budgets (`messages`,
+  `questions`, `minutes`, `longest_message_lines`) and its metric bars
+  (`first_try_min`, `wrong_calls_max`, `gap_min`, `structural_guesses_max`,
+  `user_messages_max`), the judge's dimensions with their bar, the models
+  and efforts of the user and the judge, the per-step turn cap, the
+  persona's patience rule, the shim's count, the tmpfs size, the fixture
+  manifests' expected hashes. The sampling cadence of a timeline is the
+  engine config's `budget.checkpoint_heartbeat_seconds`, read through
+  `load_config`, never copied. `budgets.json` folds into it and is deleted
+  (Rule 7); `test_the_budgets_cover_every_step_of_the_round` becomes the
+  check that every driver's step names are in `suite.json`.
+- **The record, second shape** (`tests/semantic/README.md`): `test`, `host`,
+  `machine`, `advisory` (true when an arm ran on the development box, with
+  the reason), `run_id` (`<test>-<host>-<UTC stamp>`, immutable: a rerun
+  is a new record, never a replacement), `pins` (`wheel_sha256`,
+  `source_rev`, `plugin_rev`, `docs_rev`, `cli_versions`,
+  `fixture_manifest_sha256`, `suite_sha256`, `config_sha256`), `user`
+  (`kind` scripted or persona, `card`, `card_sha256`, `vendor`, `model`,
+  `effort`, `prompt_sha256`, `interventions`: the driver's out-of-band
+  acts named per step), `steps` each with `name`, `kind` (`conversation`,
+  `attempt`, `injection`, `build`, `reading`, `shell`), the conversation
+  counts for a conversation, a `metrics` mapping for the others,
+  `completed`, `artifacts`, `notes`, or `deferred` with the reason,
+  `judge` (`vendor`, `model`, `route`, `passes`: two, each `scores`
+  mapping a dimension to `{score, evidence: [{where, quote}]}`,
+  `adjudication` when a dimension straddles the bar, `prompt_path`,
+  `raw_paths`), `verdict` (computed by the renderer, below), `notes`,
+  `transcripts`. WP7's three records are re-derived into this shape by a
+  one-time script (`kind: conversation` on every step, `user: scripted`),
+  their reports re-rendered; Rule 7 allows it, the Proof run of WP7 keeps
+  its numbers.
+- **The verdict** `report.py` computes and the runner's exit status
+  carries: every `required_step` of the test present and `completed`
+  (a deferred required step fails the run; `all([])` cannot pass because
+  a test's required steps are never empty), every budget met, every
+  metric bar met, the judge present where the test requires one with both
+  passes' scores at or above the bar (a straddling dimension adjudicated
+  by a third pass, else failed), no judge failure (a malformed reply is a
+  judge failure, reported as such, never a pass), and the arm not
+  advisory for a fresh-machine acceptance. The report renders each kind's
+  table, the judge's two passes with their evidence, the pins, the
+  interventions, the advisory flag first.
+- `tests/semantic/personas/<name>.yaml`: `ml-engineer` (exists),
+  `trading-author` (the harness interview's persona: knows the six module
+  answers of the trading repository the scripted policy held), `second-
+  engineer` (the teammate: terse, no context, wants a build served the
+  shared bank), `data-engineer` (the author test's reader of the dbt
+  fixture, not an S1 arm). A card carries `name`, `role`, `expertise`,
+  `knows`, `wants`, `patience`, `answers`, `pushes_back_when`, and
+  `planted` (one fact the card knows that the task view states wrongly,
+  for the pushback check below).
+- `scripts/redesign/simulated_user.py`: `next_message(card, task_dir,
+  intent, history, host_message, vendor, settings) -> Reply`, the
+  persona's next message from the other vendor's CLI (`codex exec` when
+  the host is Claude Code, `claude -p` when the host is Codex; the vendor
+  and model from `suite.json`), with `Reply(text, done, session, seconds)`:
+  `done` only when the reply is `DONE` alone on its own; a non-zero exit,
+  a timeout or an empty reply raises (a quota-refused persona is never a
+  satisfied user). The prompt carries the card, the task view's README
+  (never the example's), the step's intent, the whole history and the
+  host's message, nothing clipped; the persona is told how many questions
+  it has been asked against its `patience`, and is terse by the card's
+  rule after it. The persona gets no tool, no hidden host reasoning, no
+  expected answer. The prompt template's sha256 is recorded.
+- `plugin_proof.py --user scripted|persona:<card>`: every completed host
+  turn is offered to the persona (the loop no longer ends when a turn
+  does not ask); the step ends on `DONE`, on the step's turn cap (an
+  explicit `incomplete: turn cap` in the step, never a pass), or on the
+  driver's own completion predicate; satisfaction (`DONE`) and completion
+  (the predicate) are recorded apart. Per step the persona is given the
+  step's intent; the driver keeps its out-of-band acts and names them in
+  `user.interventions`: the key written where the request's fix line says
+  before the person says so (inbox), the fixture written (the criteria
+  steps), the harness's module answers as the `trading-author` card's
+  knowledge (harness new), "do not launch" as the criteria personas' wants.
+  The pushback check: the churn task view states the baseline as 0.90
+  where the card knows about 0.80; the proposal's baseline line is
+  expected to carry the wrong figure and the persona to correct it; a
+  persona that does not push back makes the arm advisory for the
+  `not annoying` and `engaging` dimensions, said in the record.
+- `scripts/redesign/judge.py`, a standalone pass on the development box
+  over a fetched record directory: `judge <record-dir> --rubric <name>`
+  renders each conversation step as the user's messages and each turn's
+  final text (what the rubric grades; the streams are never fed whole),
+  one model call per step, two blind passes, the step's dimension score
+  the call's, the run's dimension score the minimum over steps (the worst
+  step binds), a third pass adjudicating a straddling dimension; the
+  reply must be exactly one JSON object (a code fence around it allowed)
+  with exactly the rubric's dimensions, integer scores in 1 to 5, and
+  evidence entries `{where: <transcript or artifact path>:<line>, quote}`
+  whose quote occurs at that location; anything else is a judge failure
+  with the raw reply kept. The vendor: Gemini `gemini-4-argon` on Vertex
+  in the credit project through LiteLLM, preflighted with one small call
+  before any machine run; there is no idle vendor when Claude Code and
+  Codex have played host and user, so without the route the run is
+  reported **unjudged**, the hard metrics stand and the judged bar is
+  "not established": acceptance blocked, never a weaker judge. The
+  rubrics as files under `tests/semantic/rubrics/`: `s2.md` (the design's
+  five dimensions, verbatim), `s4.md` (six questions: Q1, Q3, Q4, Q5
+  scored against the fact sheet's extracted facts; Q2 and Q6 on two tests,
+  every cited fact checks out against the record and the conclusion names
+  its evidence), `s1.md` (the comprehension key per verb and the three
+  design judgments). A drift test pins the rubrics to the design's words.
+- `scripts/redesign/s1_cold_engineer.py` and its task table:
 
-**Consumed.** `scripts/redesign/fresh_machine.sh` (WP0, extended in WP7);
-`plugin_proof.py`'s hosts, steps and record shape (WP7); `kapso trace
---json`, `kapso watch --json`, the status history (WP6); `kapso learn`,
-`load_experience`, the bank's serving and the pull log (WP3); the
-examples and their generators (WP1, WP10); `Solution.open` (WP1); the
-LiteLLM bridge (WP4's hosts table) for the judge; the authoring guide
-(WP2).
+  | task | starts from | the counted call | success evidence |
+  |---|---|---|---|
+  | 1 build with an evaluator | the churn task view (`repo/`, a task README with no Kapso line and no recorded result, the evaluator) | the first execution of `kapso build` / `Kapso.build` | a launch receipt and a status `running`, or a `Solution` returned |
+  | 2 build without one | the fraud task view | the same | the same, the evaluation built and approved in the exchange |
+  | 3 load a harness and build | the churn task view with `harness/` (the trading example's harness copied in; the bundled directory holds no harness until WP8, so the task says "the harness at ./harness", a deviation from "by name", said) | `kapso build --harness ./harness` / `load_harness` | the status header names the harness |
+  | 4 deploy the result | the arm's prerequisite campaign, delivered (built once per arm by the driver, sixty minutes, before the tasks) | `kapso deploy` / `deploy` | a deployment directory with a proved call |
+  | 5 learn from it | the same campaign | `kapso learn` / `learn` | the learn launched (a status file) |
+  | 6 resume a killed run | a second prerequisite campaign the driver kills at the writer five minutes in | `kapso build --resume` / `build(resume=True)` | the status `running` again with the checkpoint's attempts kept |
+
+  Per task and surface: `first_try` (the counted call's first execution
+  succeeds: exit 0 and the evidence), `wrong_calls` (errored executions of
+  the counted verb before success; `--help`, `doctor`, reads and searches
+  never count), `minutes_to_launch` (from the session's first event to
+  the evidence), `error_led_to_fix` (an errored execution followed by the
+  next execution of the same verb succeeding), the tool results and exit
+  statuses kept. The counts the design names are metrics: the Python flow
+  of the six tasks in at most twelve lines, the CLI flow in at most six
+  commands (counted from the sessions' executions). The sandbox: a
+  plugin-free, server-free host session with no web (proved from the
+  session's init event as the isolation step proves it), over a directory
+  holding the task view and `docs/` as an allow-listed snapshot (the
+  public pages, no `docs/plans`, no `docs/research`); the wheel installed
+  into a venv that is the Python the engineer's sessions use, its import
+  and the CLI's provenance verified. `--package released`: the released
+  wheel 0.7.10 by sha256 and the released docs from the tag's checkout,
+  the tasks' goals version-neutral; a verb 0.7.10 lacks is "unsupported",
+  counted in the denominator as a miss and said; labelled a retrospective
+  baseline, not MASTER's pre-WP1 one.
+- `scripts/redesign/s4_reading.py`: a reader (each vendor; Codex advisory
+  or blocked as above) given `kapso trace`'s text and the campaign
+  directory answers the six questions; the campaign is S5's tampering
+  injection's (a void with its hash evidence, a rejection, a partial cost
+  coverage), so Q3 and Q4 are not vacuous; the fact sheet is extracted by
+  the driver from `solution.json`, the attempts' verdicts, the evaluator
+  outputs, the sessions' records, the delivered commit's history (the
+  labels check) and the cost's coverage, checked by hand once, kept out of
+  the reader's directory, and handed to the judge with `s4.md`. "Not
+  established" is a correct answer where the record does not settle it.
+  The human reading the design names is a milestone of WP11's release
+  checkpoint with the owner.
+- `scripts/redesign/s5_injections.py`, six injections on the churn fixture
+  with the operating skill on Claude Code in the loop and a scripted user
+  (two turns at most: "what happened?" and the fix the skill names), each
+  with `inject`, `expect` and the user-message window (from the first
+  presentation of the failure to the verified recovery):
+  - `provider-limit`: a `PATH` shim before `claude` that passes every
+    invocation through except a session turn (`-p` with the stream
+    format; `--version`, `auth status` and `doctor`'s calls untouched),
+    keeps its count in a file, arms after the status reaches
+    `implementation` (a phase barrier the driver watches), and replays a
+    recorded real limit N times (stdout, stderr, exit status and the
+    stream event copied from a captured 429 of the Claude Code CLI), then
+    execs the CLI. Handled means: the run entry says `error` with the
+    limit's text, the attempt fails, the campaign goes on or stops
+    truthfully, `watch` and `trace` show the class, the skill names it
+    and the fix (wait for the window; resume). The engine has no
+    rate-limit path of its own: this proves the adapter's handling of
+    that failure, not a real limit or a backoff; said in the record.
+  - `evaluator-crash`: after attempt one completes, the driver flips a
+    marker the evaluator script reads to crash on every invocation; the
+    engine's own evaluation of attempt two meets it (the implementer's
+    too, which is the point: WP6's one-shot crash was absorbed by the
+    implementer and never reached the engine). Expect: the attempt's
+    `evaluation.output` carries the crash, the judge's rejection names it,
+    the status is truthful, the skill names the evaluator and the fix.
+  - `missing-key`: a local service on the machine (`enrichment_service.py`,
+    an HTTP server on 127.0.0.1 that answers 401 without
+    `Authorization: Bearer <DATA_API_KEY>` and the enrichment table with
+    it, logging every request); the task's brief requires the table from
+    that service before training; `.env` lacks the key; the session asks
+    through the inbox; the driver writes the key, the user says so, the
+    reply resumes the campaign with forty minutes and two experiments
+    left, and the resumed attempt fetches the table (the service's log
+    shows the authorised fetch) and scores. The request names the
+    variable, never a value. The task's requirement is never lifted.
+  - `killed-session`: an implementation CLI killed mid-run (WP6's case:
+    the run entry ends `error`, the attempt fails, the campaign continues
+    to its next attempt, automatic recovery, no user needed) and,
+    separately, `killed-writer`: the campaign's writer killed with
+    SIGKILL after the first checkpoint; `watch` reports DEAD after the
+    config's three missed heartbeats, the skill names "dead, not running"
+    and the one-flag resume, the resume continues from the checkpoint
+    (the attempts kept, the next number continues).
+  - `full-disk`: a 64 MB tmpfs mounted at the campaign directory before
+    the launch (the campaign initialises in it), filled by the driver
+    after the first checkpoint; the status writer's next write fails with
+    ENOSPC and, with no `try/except`, the writer dies with the errno in
+    the launch's log (the parent directory, outside the tmpfs); `watch`
+    reports DEAD within three heartbeats with the log's last line; the
+    user frees the filler and resumes with one flag; the checkpoint from
+    before the fill is intact. Where the truth lives when the campaign
+    directory is full is the log and the receipt; an engine change (the
+    writer surviving ENOSPC) is a finding for the observability package.
+  - `tampering`: the driver edits the evaluator inside attempt one's
+    workspace while the status shows implementation; the engine's
+    integrity check voids the attempt with the hash evidence; the trace
+    shows it; this campaign is S4's. The hold-out's readability (WP7's
+    finding) is stated as the current limit: a read is not prevented, an
+    edit is voided.
+  With a seeded bank loaded (one card, S6's or a fixture bank), the bank's
+  commit before and after each injection is compared: nothing banked is
+  lost.
+- `scripts/redesign/status_timeline.py`: samples `kapso watch <campaign>
+  --json` every `budget.checkpoint_heartbeat_seconds` into
+  `timeline.jsonl` (timestamp, state, phase, iteration, best); the common
+  elapsed-budget grid for S6 and the "truthful within one heartbeat"
+  evidence for S5 (the stored state against the observed liveness, both
+  sampled).
+- `scripts/redesign/s6_experience.py`: two builds of the churn fixture at
+  sixty minutes and three experiments (a tiny budget delivers nothing:
+  WP1, WP4, WP6 and WP7 delivered 0.845, 0.847, 0.851 and nothing twice at
+  that budget; the spread is recorded with the result), from the same
+  seed repository, data, evaluator, config, models and machine type;
+  build one with an isolated bank home; the learn of build one must
+  complete through mining, the exam and the update crew's commit, banking
+  at least one card in a scope the second build is served (`mine:all`),
+  pinned by its head; build two served `mine:all` on that head; the
+  timelines sampled; the anytime series (the incumbent's score at each
+  grid point, missing until the first score) and the gap per point; the
+  trace's cards `read`, `load_bearing` and the lessons' `read_by`; the
+  review names them. The bar is the design's (a non-negative gap at every
+  checkpoint and cited lessons), reported as an observed pair with the
+  spread beside it; both builds must have at least one scored
+  observation, else the pair is "no observation"; a rerun is a second
+  record, both reported, never a choice. The learn's grader roles need
+  Codex: the learn runs on the development box over the fetched campaign
+  (advisory for smoothness, exact for its product: the bank's commit), and
+  the bank reaches the machine for build two as a bare remote the second
+  build loads by reference (the second engineer's own path).
+- `scripts/redesign/author_test.py`: WP2's author test again (2026-10-25:
+  66 and 65 guesses, the guide revised the same day), now on a runnable
+  fixture, a different one, so the counts are not comparable and are
+  recorded beside WP2's as a second round. A model author (Claude Code;
+  Codex advisory or blocked) with `docs/harnesses/write.mdx`,
+  `docs/harnesses/index.mdx`, `docs/reference/harness.mdx`,
+  `docs/harnesses/example-trading.mdx` and `examples/harnesses/trading`
+  writes a harness for `examples/pipeline-dbt`, logging every guess as a
+  line (the grammar: `GUESS: <what> | <where it looked> | <what it chose>`);
+  the author may not run `check` (WP2's rule); the driver runs `check`; the
+  judge classifies each guess as a structural gap (a field, file, key,
+  convention or host behaviour the engine or `check` would reject if
+  guessed wrong), a contradiction in the guide, a domain decision, or a
+  thing the guide already says, and reviews the harness against the
+  guide's rules. Two rounds per author: the structural gaps and
+  contradictions of round one are fixed in the guide (this package owns
+  those pages for that), and a fresh author runs round two. The bar is
+  zero structural gaps in round two.
+- `scripts/redesign/semantic.sh <s1|s2|s4|s5|s6|author> <host> [--machine
+  <id>] [--advisory]`: preflights every role's route (the host CLI's
+  login, the persona's vendor, the judge's route, the Codex key's credit
+  with one small call), provisions the machine with the test's
+  `KAPSO_FRESH_MAX_RUN`, installs the wheel built from the branch and the
+  fixtures' dependency venv first on PATH (numpy, pandas, scikit-learn,
+  duckdb, dbt-core, dbt-duckdb at the examples' pins), records the CLI
+  versions, runs the test under an immutable run id, archives (below),
+  verifies the archive is fetched, deletes the machine, judges on the
+  development box, renders the report under `tests/semantic/reports/`;
+  `--advisory` runs on the development box under a fresh Linux user with
+  nothing of the checkout and marks the record.
+- **The archive** per run under `scripts/redesign/runs/wp9/<run_id>/`: the
+  record, both sides' raw transcripts, the tool results, the pins, the
+  effective config, the fixture manifests, the role prompts and settings,
+  the injection timestamps, the checkpoints, the campaign directories as
+  one archive each, the delivered commit's history, the deployment proofs,
+  the learn's mining, exam and update outputs, the bank heads, the serving
+  records and pull logs, the judge's prompt, raw replies and extracted
+  facts, the verdict; failed runs kept; the report cites the run id.
+- `examples/pipeline-dbt`: built (change 9): three seeded exports with
+  their defects, a dbt project on DuckDB, an evaluator that builds the
+  project with its own profile into a DuckDB file under the protected
+  directory and runs thirteen assertions with DuckDB directly (the
+  project's own tests are the engineer's), the metric as the last line,
+  `result.json` in the engine's shape, exit 2 with dbt's last lines when
+  the project does not build, exit 3 without a project, `--fast` the
+  staging layer alone and marked, four seconds a cycle, the shipped
+  project 2 of 13 (0.1538), `baseline.json`, `run.py`, the versions
+  pinned, a contract test that skips without `dbt` on PATH.
+
+**Consumed.** `scripts/redesign/fresh_machine.sh` and the installer (WP0,
+extended in WP7); `plugin_proof.py`'s hosts, steps and policies (WP7);
+`kapso trace --json`, `kapso watch --json`, the receipt, the status
+writer's three-heartbeat rule (WP6); `kapso learn`, the bank's serving, the
+pull log, the share and the load by reference (WP3); the examples and
+their generators (WP1, WP10); `Solution.open`, the facade's `on_status`
+(WP1); `load_config` for `budget.checkpoint_heartbeat_seconds` (WP4); the
+authoring guide (WP2); LiteLLM for the judge's route.
 
 ## Ownership
 
-Edits: `tests/semantic/` (the README, the personas, the rubrics, the
-reports it cites, `report.py` for the new fields, `budgets.json` for S1,
-S4, S5, S6 and the author test's steps), `scripts/redesign/` (the new
-drivers, `plugin_proof.py`, `semantic.sh`, `README.md`),
-`examples/pipeline-dbt/` (new), `examples/README.md` (the row),
-`src/kapso/learning/mining.py` and the exam's crew runner (the two
-fail-loud cases, with their tests), `docs/plans/redesign/` (this file,
-DECISIONS, MASTER's row).
+Edits: `tests/semantic/` (the README, `suite.json`, the personas, the
+rubrics, the reports it cites, `report.py`, the re-derivation of WP7's
+records), `scripts/redesign/` (the new drivers, `plugin_proof.py`,
+`semantic.sh`, the installer's venv, `README.md`), `examples/pipeline-dbt/`
+(built) and `examples/README.md` (its row), `src/kapso/learning/mining.py`,
+`src/kapso/learning/crews/mining/mined_format.md` and
+`src/kapso/learning/graders/frame.py` (change 1, built), the authoring
+guide pages `docs/harnesses/write.mdx`, `docs/harnesses/index.mdx`,
+`docs/reference/harness.mdx` (the author test's fixes, WP10's slice),
+`docs/plans/redesign/` (this file, DECISIONS, MASTER's row), and under the
+bounded exception of the Scope, a sentence in `plugin/skills/*/SKILL.md`,
+`plugin/commands/*.md`, `plugin/evals/**`, `docs/**.mdx`.
 
-Reads, never edits: `src/kapso/**` beyond the two learning files (the
-packages' owners; a finding here, a fix there), `plugin/**` (WP7; the same
-rule), `examples/churn-first-build`, `examples/fraud-no-evaluator`,
-`examples/trading` (the fixtures as they are; a generator fix is WP10's).
+Reads, never edits: every other file under `src/kapso/**` (a finding
+here, a fix there), `examples/churn-first-build`, `examples/fraud-no-
+evaluator`, `examples/trading` (the fixtures as they are; a generator fix
+is WP10's).
 
 ## Changes
 
-1. **The learn completes on the two cases the round found.**
-   `src/kapso/learning/mining.py`: the mining prompt's evidence grammar
-   quotes a reference whole when its fragment holds a colon, and the
-   validator hands a document that does not parse back to the crew as a
-   finding for the repair round that already exists for a missing key
-   (one more pass, then fail loud with the file named). The exam's crew
-   runner: a crew session that ends without its file gets the one retry
-   the build's sessions have, then fails loud naming the crew and the
-   file. Tests: a flow file with the unquoted fragment is repaired and
-   mined; a crew's missing report retried once; the second miss raises
-   with the name.
-2. **The persona driver.** `scripts/redesign/simulated_user.py` and the
-   two new cards. Tests: the prompt carries the card, the README, the
-   whole history (never clipped) and the host's message; `DONE` alone is
-   the end; the reply's first line is the message; the vendor's CLI call
-   is the other vendor's, by host.
-3. **The plugin round with the persona and the judge.** `plugin_proof.py
-   --user persona:<card> --judge <vendor>`; the scripted policies kept
-   behind `--user scripted`; the transcript with both sides; `report.py`
-   renders `user` and the judge's table (it already renders `judge`).
-   Tests: the policy adapter answers from the persona and records the
-   user's text; the record's new fields.
-4. **The judge.** `scripts/redesign/judge.py`, the three rubrics, the
-   vendor choice. Tests: the rubric's rendering, the JSON contract
-   (malformed raises), the evidence quotes must occur in the transcripts
-   (a quote that is not there fails the judge, not the test).
-5. **S1.** `s1_cold_engineer.py`, its six task predicates, `--package
-   released`. Tests: each predicate on a fixture transcript (a launched
-   campaign's receipt; a deploy's call; a resume's second entry), the
-   wrong-call count, the one-step rule.
-6. **S4.** `s4_reading.py` and `s4.md`. Tests: the six answers extracted
-   from a record (what won, the voided attempts, the cost) so the judge
-   grades against facts, not its own reading.
-7. **S5.** `s5_injections.py`, the shim, the tmpfs mount, the five
-   `expect`s. Tests: the shim counts and execs; each `expect` on a fixture
-   status history and inbox; the user-message count.
-8. **S6.** `s6_experience.py`. Tests: the anytime series from two status
-   histories, the gap, the served and used cards from a trace, the
-   review's naming.
-9. **The dbt fixture.** `examples/pipeline-dbt` with its generator,
-   evaluator and brief; the examples' README row; the fixture's evaluator
-   contract test (the one every fixture meets).
-10. **The author test.** `author_test.py`, the guess log's grammar, the
-    judge's rules. Tests: the log's parsing; the rules' rendering.
-11. **The runner and the suite's README.** `semantic.sh`, the README's
-    table and the runs' layout, `scripts/redesign/README.md`.
-12. **The runs.** S1 (both packages, both hosts), S2 proper (both hosts),
-    S4 (both readers), S5, S6, the author test (both hosts), each archived
-    and recorded below with its report cited; the findings for the
-    packages listed; MASTER's row.
+1. **The learn completes on the two cases the plugin round found**
+   (built: `d47187a2`). The mined-view validator names a frontmatter line
+   whose unquoted reference carries a colon in its fragment as a finding
+   for the repair round, and the crew's format document says to quote it;
+   the general case (any document that does not parse) is not
+   implementable without the `try/except` CLAUDE.md forbids, so the next
+   unparsable shape still ends a learn, with the file and the line named
+   and the mined view regenerable. The exam frame's role runner already
+   retried a session once; it now fails loud with what each session said,
+   which hid the round's real cause: the grader roles run on Codex and the
+   machine's Codex key has no credit. Tests on both. The acceptance is a
+   measured learn: WP7's archived churn campaign mined and examined to at
+   least one banked card, on the development box (the Codex credit), and
+   on the machine when the credit exists.
+2. **The suite's one home and the record's second shape.** `suite.json`;
+   `report.py` for the kinds, the metric bars, the judge's two passes, the
+   pins, the advisory flag and the verdict; `budgets.json` deleted; the
+   WP7 records re-derived and re-rendered. Tests: the verdict's every
+   clause on built records (a deferred required step fails; a judge
+   failure fails; an unjudged run where a judge is required fails; an
+   advisory arm cannot be a fresh-machine acceptance); every driver's step
+   names in `suite.json`; the knobs read from one place.
+3. **The persona driver.** `simulated_user.py`, the three new cards, the
+   prompt template with its sha256. Tests: the prompt carries the card,
+   the task view's README, the whole history and the host's message, never
+   clipped (Rule 6); `DONE` alone is `done`, `DONE` inside a sentence is
+   not; a non-zero exit, a timeout and an empty reply raise; the patience
+   count reaches the prompt; the vendor is the other one, by host.
+4. **The plugin round with the persona.** `plugin_proof.py --user`, the
+   loop offering every turn, the turn cap as an explicit incomplete, the
+   interventions recorded, the per-step intents, the pushback check, the
+   second engineer's served build as the ninth step, `learn` and
+   `harness improve` and `experience share` no longer deferred on Codex
+   (advisory there until the credit), the fraud evaluator contract-tested
+   (the fixture contract test run on the session's evaluator), the deploy
+   step's parity check (the deployed call's answer against the evaluated
+   solution's on a sample), the harness interview's silent modules
+   resolved (the persona asks or the pages are written). Tests: the policy
+   adapter from real archived transcripts (WP7's), the predicates on real
+   artifacts, the interventions' shape.
+5. **The judge.** `judge.py`, the three rubrics, the route's preflight, the
+   JSON contract, the quote-at-location rule, two passes and adjudication,
+   the unjudged outcome. Tests: the rubrics are the design's words (drift);
+   the contract (a malformed reply, a wrong dimension set, a score out of
+   range, a quote not at its location each a judge failure with the raw
+   reply kept); the rendering of a step from a real archived transcript;
+   the aggregation (the minimum binds; straddling adjudicated).
+6. **S1.** `s1_cold_engineer.py`, the task table, the sandbox's proof, the
+   predicates, the counts, `--package released`. Tests: each predicate on
+   archived shapes (a receipt, a deployment, a resumed status), the
+   `wrong_calls` rule on a real stream with a `--help` and an error, the
+   one-step rule, the line and command counts.
+7. **S4.** `s4_reading.py`, `s4.md`, the fact sheet's extraction. Tests:
+   the extraction on WP7's archived campaign and on a campaign with a void
+   (a built record), the "not established" answer.
+8. **S5.** `s5_injections.py`, the shim, the service, the tmpfs mount, the
+   six `expect`s, `status_timeline.py`. Tests: the shim passes through and
+   counts (a real local subprocess), the service's 401 and 200, each
+   `expect` on a built status history and inbox, the user-message window,
+   the bank compare.
+9. **S6.** `s6_experience.py`. Tests: the anytime series and the gap from
+   two timelines on a common grid, missing observations, the served and
+   used cards from a real trace, the review's naming.
+10. **The dbt fixture** (built: `2c19d9d9`, `83fdc7f1`).
+11. **The author test.** `author_test.py`, the guess grammar, the
+    classification rubric, the two-round flow, the guide's fixes. Tests:
+    the log's parsing, the classification's shape, the rubric's drift.
+12. **The runner, the installer's venv, the archive, the README.**
+13. **The runs.** The learn on WP7's archive (change 1's acceptance); S2
+    proper advisory on the development box for both hosts and on the fresh
+    machine for Claude Code with the persona on Codex only when the credit
+    exists; S1 on the fresh machine for Claude Code (two packages), the
+    Codex arm when the credit exists; S5 on the fresh machine; S6 with its
+    learn on the development box; S4 on S5's tampering campaign; the author
+    test, two rounds; each archived and recorded below with its report
+    cited; the findings for the packages; MASTER's row.
 
 ## Tests
 
-- Syntactic: `tests/test_simulated_user.py`, `tests/test_judge.py`,
-  `tests/test_s1_cold_engineer.py`, `tests/test_s4_reading.py`,
-  `tests/test_s5_injections.py`, `tests/test_s6_experience.py`,
-  `tests/test_author_test.py`, `tests/test_pipeline_dbt_fixture.py`,
-  `tests/test_learning_repair.py` (the two fail-loud cases), the semantic
-  report's new fields in `tests/test_semantic_report.py`. Every provider
-  boundary mocked; every test asserts the shape a driver produces or a
-  fail-loud path.
-- Proof run: each test's run on the fresh machine (the development box
-  for the Codex half of S2 when the machine's key is over quota, said),
-  from the wheel built from the branch, archived one file per run under
-  `scripts/redesign/runs/wp9/<test>-<host>/`, its report under
-  `tests/semantic/reports/`.
+- Syntactic: `tests/test_learning_repairs.py` (built), `tests/test_
+  examples_pipeline_dbt.py` (built), `tests/test_semantic_suite.py` (the
+  suite's one home, the verdict, the re-derivation), `tests/test_simulated_
+  user.py`, `tests/test_judge.py`, `tests/test_s1_cold_engineer.py`,
+  `tests/test_s4_reading.py`, `tests/test_s5_injections.py`, `tests/test_
+  s6_experience.py`, `tests/test_author_test.py`, `tests/test_semantic_
+  report.py` extended. The fixtures the predicates run on are archived
+  WP6 and WP7 transcripts and records, not hand-written shapes. Every
+  provider boundary mocked; every test asserts a shape a driver produces,
+  a fail-loud path, or a contract the design pins; a test that only
+  passes a mock through is not written.
+- Proof run: each test's run as change 13 says, archived under its run id,
+  its report under `tests/semantic/reports/`.
 - Semantic hooks: this package is the hooks. The numbers recorded in the
-  Proof run section: S1's twelve attempts per package and host, S2's
-  budgets and five scores per host, S4's twelve verdicts, S5's five
-  classes with their message counts, S6's gap per checkpoint, the author
-  test's guesses.
+  Proof run section: S1's twelve attempts per package and host with the
+  two counts, S2's budgets and the five scores per host with the
+  advisory flag, S4's twelve verdicts, S5's six classes with their
+  message counts, S6's gap per grid point with the spread, the author
+  test's two rounds' counts beside WP2's.
+
+## Hours and spend
+
+| test | machine hours | `KAPSO_FRESH_MAX_RUN` | model spend (Claude, recorded) | Codex | development box |
+|---|---|---|---|---|---|
+| the learn on WP7's archive | none | | the mining lead on opus (`--learn-model`, the Fable window) | the graders | yes, advisory for smoothness |
+| S1, one package, Claude Code | two prerequisite builds of an hour, twelve attempts, about four hours | 6h | about $20 | blocked | the Codex arm, advisory |
+| S2, Claude Code host | about three and a half hours | 6h | about $30 with the persona | the persona: blocked | both arms, advisory |
+| S4 | the readings, under an hour, on S5's machine | | about $5 | the reader: blocked | |
+| S5 | six injections, about four hours | 6h | about $25 | | |
+| S6 | two builds of an hour and the bank's transfer, about three hours | 6h | about $20 | the learn's graders | the learn |
+| the author test | two rounds, about an hour | 3h | about $10 | the author: blocked | |
+
+The Claude token's weekly windows are read before each run (the token
+rule): the Fable window is spent until 2026-10-30 14:00 UTC, so the
+learning crews run on opus by `--learn-model`, said in each record. Codex
+dollars on the development box are the owner's ChatGPT plan, not metered;
+on the machine the key's credit, when it exists.
 
 ## Acceptance
 
-- The learn completes on the churn campaign from the plugin round's
-  archive (the flow file with the colon, the crew's missing report) with
-  the two repairs, each pinned by a test.
-- S1: at least nine of the twelve attempts succeed first try on the
-  branch's package and docs; every error message leads to its fix in one
-  step; the comprehension correct on every verb; no judge finding of a
-  surprising name. The baseline on the released package recorded beside
-  it, whatever it reads.
-- S2: every budget of `tests/semantic/budgets.json` met and every step
-  complete on both hosts with the persona; every dimension at 4 or
-  above; a dimension under 4 named with the judge's evidence.
-- S4: the six questions answered correctly from the record alone by both
-  readers.
-- S5: each of the five classes handled with at most two user messages;
-  the state truthful within one heartbeat; no value in a request.
-- S6: the second build's anytime score at or above the first's at every
-  checkpoint; the served cards and the used ones in the trace; the review
-  names them.
-- The author test: `check` green; zero structural guesses after the
-  guide's fixes, each guess a sentence added to the guide.
-- `semantic.sh` runs each test from one line, deletes its machine, and
-  leaves a report; the reports cited here are committed.
-- The gate is green; the docs checks pass; MASTER's row written.
+- The learn of WP7's archived churn campaign completes through mining,
+  the exam and the update crew's commit, banking at least one card (on the
+  development box; on the machine when the credit exists), and the two
+  repairs are pinned by tests.
+- S1 on the branch's package, Claude Code, fresh machine: at least nine
+  of the twelve attempts succeed first try; every error leads to its fix
+  in one step; the comprehension key correct on every verb; the Python
+  flow in twelve lines, the CLI flow in six commands; no judge finding of
+  a surprising name. The retrospective baseline on 0.7.10 recorded beside
+  it with its unsupported verbs said.
+- S2 with the persona: every budget and every required step on both
+  hosts; every dimension at 4 or above in both passes, straddles
+  adjudicated; the second engineer's served build scored; the deployed
+  call's parity; the fresh-machine arm for Claude Code when the persona's
+  Codex credit exists, the advisory arms otherwise, each marked.
+- S4: the six questions answered correctly by both readers from the
+  record alone, on a campaign with a void and a rejection.
+- S5: each of the six classes handled with at most two user messages;
+  the stored state and the observed liveness truthful within one
+  heartbeat on the sampled timeline; no value in a request; the resumed
+  campaign continues from its checkpoint; nothing banked lost.
+- S6: the pair reported on the common grid with the spread; the served
+  cards read and cited in the trace and named by the review; the gap
+  non-negative at every point where both observed, or the pair reported
+  as the design's bar unmet with the numbers.
+- The author test's second round: `check` green, zero structural gaps,
+  the guide's fixes committed; both rounds' counts recorded beside WP2's.
+- `semantic.sh` runs each test from one line, preflights the routes,
+  archives and verifies before deleting, renders a report with the
+  verdict the runner's exit status carries; the reports cited here are
+  committed under immutable ids.
+- The gate is green; the docs checks pass; MASTER's row written, its
+  size corrected.
 
 ## Risks
 
-- **Spend and hours.** S2 proper is three hours of machine time per
-  host; S6 is two builds and a learn; S1 is twelve sessions per package
-  and host. The suite runs once here and once as WP11's gate; nothing of
-  it is in the per-commit gate.
-- **The persona's variance.** Two runs of the same persona differ; the
-  bar is per run and the transcript is kept whole; a failure is re-run
-  once with the same card, both runs recorded.
-- **The judge's vendor.** Gemini on Vertex needs the credit project from
-  the development box, where the judge runs over fetched transcripts; if
-  it is unreachable the judge is the vendor that played neither side,
-  and the record says so.
-- **The learn's repairs may not be small.** If the two cases grow beyond
-  the mining frame's repair round and one retry, S6 is reported blocked
-  with the finding and the fix goes to the learning package's own
-  pull request.
-- **The provider-limit injection is a shim**, not the vendor's own limit:
-  it exercises the adapter's handling of the error text the vendor
-  returns, which the shim copies from a real one; said in the record.
-- **The machine's Codex key quota** (WP7's risk, met) moves S2's Codex
-  half to the development box, said in the record.
-- **A full disk on the machine** is a tmpfs at the campaign directory,
-  root on the machine; the engine's own status writer must survive the
-  write failure to say so, which is the test.
+- **The Codex credit is the owner's.** Every Codex role on a fresh machine
+  waits for it; the advisory arms on the development box prove the flow,
+  not its smoothness, and are marked so in the records. S2 proper on the
+  fresh machine cannot complete for either host until then.
+- **The persona's variance and its blind spots.** A model user is never
+  bored and says "go" too readily; the pushback check planted in the task
+  view tells a persona that reads from one that nods, and the arm is
+  advisory for two dimensions when it nods. Two runs differ; a rerun is a
+  second record, both reported.
+- **The judge's route.** Gemini on Vertex from the development box; its
+  preflight runs before any machine; without it the run is unjudged and
+  acceptance blocked, never a same-vendor judge.
+- **The learn's residual case.** An unparsable shape other than the
+  colon's still ends a learn, with the file and line named; the mined
+  view is regenerable. The general repair needs `try/except`.
+- **S6 at one pair.** The gap at sixty minutes is dominated by whether an
+  attempt landed; the result is an observed pair with the spread, and the
+  claim it supports is that the served cards were read and cited.
+- **The injections' fidelity.** The provider limit is a replayed failure,
+  not a limit; the full disk kills the writer by design (no `try/except`),
+  and the truth lives in the log and the receipt; said in the records.
+- **Hours against the machine's lifetime.** Each test's `KAPSO_FRESH_
+  MAX_RUN` is set above its hours; the archive is verified fetched
+  before the deletion.
+- **The token windows.** The Fable window is spent until 2026-10-30; the
+  crews run on opus by the recorded accommodation; a window reached
+  mid-run ends the run as a recorded failure, rerun after the reset.
 
 ## Review
 
-(The cross-model review of this sub-plan: its findings and their
-answers; the owner's standing go.)
+The sub-plan's cross-model review (`scripts/redesign/review.sh`, the brief
+in `scripts/redesign/runs/wp9-plan-review/brief.md`, Codex `gpt-6-astra`
+at xhigh and Claude `claude-opus-5`, 2026-10-27): sixty-three findings,
+answered by this second version, each row naming where.
+
+### Codex
+
+| # | finding | answer |
+|---|---|---|
+| 1 | P1: the report is not a semantic gate | fixed: `suite.json` names each test's required steps and bars; the verdict (Interface) requires them, the judge's bar, no deferral of a required step, no judge failure; the runner's exit carries it |
+| 2 | P1: replacing answer policies does not complete S2 | fixed: change 4 lists the nine steps' artifact-backed predicates, the deferrals lifted (advisory on Codex until the credit), the second engineer's served build, the deploy parity check, the fraud evaluator's contract test, the silent modules resolved |
+| 3 | P1: the conversation can stop before the persona participates; first-line replies clip | fixed: every host turn is offered; `DONE` alone ends; the whole reply is the message (Rule 6); the turn cap is an explicit incomplete; satisfaction and completion recorded apart |
+| 4 | P2: the persona needs a behavioural and reproducibility contract | fixed: the prompt's inputs and exclusions, the mechanical patience count, the pins in `user` and `pins`, the interventions named, a rerun as a second record never a selection, the pushback check |
+| 5 | P1: the fallback vendor does not exist | fixed: the route preflighted before any machine; without it the run is unjudged and acceptance blocked; the provider and the route recorded apart |
+| 6 | P2: valid JSON and real quotations are insufficient | fixed: exact dimensions, integer range, evidence at a location, judge failure kept apart from product failure, the raw reply kept, neither a pass; the rubrics the design's words, drift-tested |
+| 7 | P1: S1's six tasks lack executable prerequisites | fixed: the task table with its prerequisite campaigns built by the driver per arm; the harness task on a path with the deviation said (the bundled directory is empty until WP8) |
+| 8 | P1: a fresh session is not a cold sandbox | fixed: plugin-free, server-free, no web, proved from the init event; the docs snapshot allow-listed; the task view without Kapso lines; the wheel in the engineer's own venv, import and CLI verified |
+| 9 | P2: the released baseline needs an immutable definition | fixed: 0.7.10 by sha256 and the tag's docs; version-neutral goals; unsupported verbs counted and said; labelled retrospective |
+| 10 | P1: "first try" and the brevity tests undefined | fixed: the counted call, `wrong_calls` on the counted verb only, the one-step rule, the launch timestamp, the two counts as metrics, the three design judgments in `s1.md` |
+| 11 | P1: S4's answer key is partly circular | fixed: the fact sheet extracted from the record's files and checked once, hidden from the readers; S5's tampering campaign with a void and a rejection; "not established" allowed; the human reading a WP11 milestone |
+| 12 | P1: the provider-limit shim's injection point unspecified | fixed: the shim passes everything but a session turn through, arms after a phase barrier, replays a captured real failure (stdout, stderr, exit, event), and what "handled" means is written; a fault injection, said |
+| 13 | P1: evaluator crash and killed session repeat WP6's gap | fixed: the crash on every invocation from attempt two so the engine's evaluation meets it; the killed implementation CLI (automatic recovery) and the killed writer (the user's one-flag resume from the checkpoint) as two cases |
+| 14 | P1: the missing-key recovery lifts the task | fixed: the local enrichment service with the key, the requirement kept, forty minutes and two experiments reserved, the resumed attempt's authorised fetch in the service's log |
+| 15 | P1: the full disk kills what the test reads | fixed: the tmpfs mounted before the launch and filled after a checkpoint; the truth in the log and the receipt; `watch` DEAD within three heartbeats; free and resume; the writer surviving ENOSPC routed to the observability package |
+| 16 | P2: message counts and preservation can pass vacuously | fixed: the user-message window defined; the classes with no request named; a seeded bank compared by commit; the tampering case added with the hold-out limit stated |
+| 17 | P1: S6's measurement unspecified | fixed: `status_timeline.py` at the config's cadence, a common grid, the incumbent, missing observations, scored observations required, the pins, the pair reported with the spread |
+| 18 | P1: a learn between them does not guarantee experience | fixed: the learn through mining, exam and the update commit, at least one card in a served scope, the head pinned, read and load-bearing in the trace, named by the review, the same seed for both builds |
+| 19 | P1: the learning repair misdescribed and beyond its files | fixed: change 1 describes what was built, its residual, the crew document in Ownership, and the real cause (the Codex credit) |
+| 20 | P2: the dbt evaluator contract unfinished | fixed in the build: thirteen assertions in the protected evaluator, one formula, exits 2 and 3 with reasons, `--fast` marked, four seconds, `run.py`, the pins, the manifest and the baseline |
+| 21 | P1: the guide's repair required but not owned | fixed: the three authoring pages owned for the author test's fixes; the test named as WP2's second round |
+| 22 | P2: zero self-reported guesses is not completeness | fixed: the structural gap defined against a domain decision, the judge classifies, two rounds, the author may not run `check`, the counts recorded beside WP2's |
+| 23 | P1: the development-box exception defeats the isolation | fixed: the preflight of every route; the advisory flag on every development-box arm; fresh-machine arms needing Codex reported incomplete until the credit; the owner's action named |
+| 24 | P2: the schedule is not budgeted | fixed: the Hours and spend table with `KAPSO_FRESH_MAX_RUN` per test, the venv, the CLI versions recorded, a fresh user per advisory run |
+| 25 | P2: a record file cannot reproduce the judgment | fixed: the archive list, immutable run ids, failed runs kept, the fetch verified before deletion |
+| 26 | P2: configuration ownership and meaningful tests | fixed: `suite.json` the one home (the cadence from the engine config); the tests named by what they pin, the mock-only ones not written |
+| 27 | P3: the run matrix and cadence implicit | fixed: change 13 and the Hours table name the runs; the cadence after a skill, page, help or public-doc change stays the design's and is restated in the README; the human S4 reading a WP11 milestone; S6 without WP8 as the churn pair |
+
+### Claude Code
+
+| # | finding | answer |
+|---|---|---|
+| 1 | P1: the second fail-loud case is not fixed; the real cause is the Codex quota | fixed in the plan: change 1 names the cause and what was built; the acceptance is a measured learn banking a card; the grader roles' models stay the owner's (no swap) |
+| 2 | P1: the evaluator crash reuses WP6's wrong shape | fixed: the crash on every invocation from attempt two; the expect on the attempt's evaluation output and the rejection |
+| 3 | P1: S5's acceptance needs a host in the loop | fixed: the operating skill on Claude Code with a scripted user of at most two turns; a user message is one user turn |
+| 4 | P1: the persona cannot carry three steps | fixed: per-step intents and interventions; the `trading-author` card holds the module answers; the inbox act stays the driver's and is named; the criteria personas want no launch |
+| 5 | P1: the example README leaks the answers | fixed: the task view without Kapso lines or recorded results for S1 and the persona; the example README stays for readers |
+| 6 | P1: S1's tasks 4 to 6 need campaigns | fixed: the prerequisite campaigns per arm in the task table and the hours |
+| 7 | P1: the Codex quota contaminates every arm | fixed: the owner's action; advisory arms marked; fresh-machine arms incomplete until the credit |
+| 8 | P1: WP7's nine deferrals | fixed: the "what WP7 deferred here" list in the Scope |
+| 9 | P1: the record shape does not fit the new tests | fixed: the second shape with `kind` and `metrics`, the judge sub-record, `suite.json`, the verdict computed, WP7's records re-derived |
+| 10 | P1: the author test's bar and definition | fixed: WP2's second round, the structural gap defined, two rounds, the author may not run `check`, the counts not comparable and said |
+| 11 | P2: S4 needs a void and a rejection | fixed: S5's tampering campaign |
+| 12 | P2: Q2 and Q6 have no ground truth | fixed: scored on every cited fact checking out and the conclusion naming its evidence |
+| 13 | P2: `first_try` undefined | fixed: the counted call and the rules |
+| 14 | P2: the sandbox not enforced | fixed: proved from the init event, no web, the snapshot |
+| 15 | P2: the released docs are not in this tree | fixed: the tag's checkout, pinned |
+| 16 | P2: the comprehension key and the counts | fixed: in `s1.md` and the metrics |
+| 17 | P2: no status history | fixed: the sampled timeline at the config's cadence |
+| 18 | P2: S6 at one pair | fixed: sixty minutes, the spread recorded, the learn's output requirements, the claim stated |
+| 19 | P2: the shim and the preflight | fixed: pass-through of everything but a session turn; "handled" defined |
+| 20 | P2: the full disk kills the writer | fixed: the truth in the log and the receipt; the tmpfs filled after a checkpoint; the engine change routed |
+| 21 | P2: the judge on the machine | fixed: a standalone pass on the development box over the fetched record; one JSON object, a fence allowed |
+| 22 | P2: the judge's input | fixed: the rendered conversation per step, one call per step, the minimum binds |
+| 23 | P2: the fallback vendor | fixed: unjudged with the hard metrics standing, acceptance blocked |
+| 24 | P2: a single judge pass | fixed: two blind passes, a third adjudicating a straddle |
+| 25 | P2: `None` hides a user-side failure; the pins | fixed: a failure raises; `done` only on `DONE` alone; the pins in `user` and `pins` |
+| 26 | P2: the persona never bored, says go | fixed: the planted pushback check; the arm advisory for two dimensions when it nods |
+| 27 | P2: the mining repair's general form | fixed: said as built, with the residual |
+| 28 | P2: the installer lacks the fixtures' dependencies | fixed: the venv first on PATH at the examples' pins |
+| 29 | P2: hours, dollars, the machine's lifetime | fixed: the Hours and spend table |
+| 30 | P2: which tests earn their place | fixed: the Tests section names them; the fixtures from archived transcripts; the step names checked against `suite.json` |
+| 31 | P2: scope versus ownership | fixed: the exception bounded to a sentence in the named files, never engine code |
+| 32 | P2: the judge's prompt and raw reply | fixed: in the archive |
+| 33 | P3: the README parameter | fixed: `task_dir`, the task view's README read from it |
+| 34 | P3: the data-engineer card's role | fixed: the author test's reader, not an S1 arm |
+| 35 | P3: size L versus M | fixed: L, MASTER's row corrected at merge |
+| 36 | P3: the knobs' home | fixed: `suite.json` |
+
+## Proof run
+
+(Filled as the runs land: the learn on WP7's archive; S1; S2; S4; S5; S6;
+the author test; each with its run id and report.)
+
+## Findings for later packages
+
+(Filled as the runs land.)
+
+## Built
+
+| commit | what |
+|---|---|
+| `e20e7395` | the sub-plan's first version and its planned decisions |
+| `d47187a2` | change 1: the learn completes on the two cases the round found (the colon fragment as a finding; the role runner fails loud with what each session said) |
+| `70398ae5` | the suite README's fixture table |
+| `2c19d9d9`, `83fdc7f1` | change 9: the pipeline example on dbt and DuckDB, its evaluator, brief, README, baseline, runner and contract test |
