@@ -32,12 +32,15 @@ the row count) in four seconds on the development box, 2026-10-27.
 ## Run it
 
 ```bash
-pip install numpy pandas duckdb dbt-core dbt-duckdb   # the generator, the evaluator, the project
+pip install numpy pandas "duckdb==2.0.0" "dbt-core==1.12.6" "dbt-duckdb==1.11.1"   # the generator, the evaluator, the project; the versions the baseline was measured on
 python generate.py        # the exports under data/, seeded
 kapso doctor build
 kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
 kapso watch campaign --follow
 ```
+
+`python run.py` is the same build from Python, into the same `campaign/`
+directory: run one or the other.
 
 `--data data` lands the exports under `kapso_datasets/` in the workspace; the
 evaluator passes that directory to dbt as `data_dir`. To work on the project
