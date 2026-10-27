@@ -60,6 +60,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
 import status_timeline  # noqa: E402
 from plugin_proof import SUITE, ClaudeHost, Context, UserMode, record_step, shell_step, status_of, wait_for  # noqa: E402
+from status_timeline import heartbeat_seconds  # noqa: E402
 
 BUDGET = SUITE["builds"]["s5"]
 INJECTIONS = SUITE["injections"]
@@ -115,25 +116,6 @@ PAUSE_RULE = (
     "before training, the enrichment table must be fetched from http://127.0.0.1:{port}/table with the DATA_API_KEY in .env as the bearer token "
     "(Authorization: Bearer <DATA_API_KEY>); a session that lacks the key asks for it through the inbox and does not train without the table"
 )
-
-
-# ----------------------------------------------------------- the engine
-def installed_python() -> Path:
-    """The interpreter of the installed package (a uv tool's, a venv's, a
-    conda env's): the `kapso` script's shebang; the config's values are
-    read from it so the cadence is the engine's own."""
-    kapso = shutil.which("kapso")
-    if not kapso:
-        raise RuntimeError("kapso is not on PATH")
-    first = Path(kapso).resolve().read_text(encoding="utf-8", errors="replace").splitlines()[0]
-    if not first.startswith("#!"):
-        raise RuntimeError(f"{kapso} has no shebang to read the interpreter from")
-    return Path(first[2:].split()[0])
-
-
-def heartbeat_seconds() -> float:
-    run = subprocess.run([str(installed_python()), "-c", "from kapso.core.config import load_config; print(load_config()['budget']['checkpoint_heartbeat_seconds'])"], capture_output=True, text=True, check=True)
-    return float(run.stdout.strip())
 
 
 # -------------------------------------------------------------- readings

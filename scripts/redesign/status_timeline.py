@@ -10,6 +10,8 @@ state was truthful and S6 can read both builds on one elapsed grid.
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -17,6 +19,26 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 TERMINAL = ("done", "failed")
+
+
+def installed_python() -> Path:
+    """The interpreter of the installed package (a uv tool's, a venv's, a
+    conda env's): the `kapso` script's shebang, so the config read below is
+    the engine's own."""
+    kapso = shutil.which("kapso")
+    if not kapso:
+        raise RuntimeError("kapso is not on PATH")
+    first = Path(kapso).resolve().read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    if not first.startswith("#!"):
+        raise RuntimeError(f"{kapso} has no shebang to read the interpreter from")
+    return Path(first[2:].split()[0])
+
+
+def heartbeat_seconds() -> float:
+    """The engine config's `budget.checkpoint_heartbeat_seconds`, read from
+    the installed package: the one cadence the sampler and the grids use."""
+    run = subprocess.run([str(installed_python()), "-c", "from kapso.core.config import load_config; print(load_config()['budget']['checkpoint_heartbeat_seconds'])"], capture_output=True, text=True, check=True)
+    return float(run.stdout.strip())
 
 
 def sample(campaign: Path) -> Dict[str, Any]:

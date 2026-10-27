@@ -36,7 +36,7 @@
       "judge": null
     },
     "S6": {
-      "required_steps": {"claude_code": ["build-one", "learn", "build-two", "comparison"], "codex": ["build-one", "learn", "build-two", "comparison"]},
+      "required_steps": {"claude_code": ["build-one", "learn-build-one", "build-two", "comparison"], "codex": ["build-one", "learn-build-one", "build-two", "comparison"]},
       "bars": {"gap_min": {"min": 0.0}, "lessons_cited": {"min": 1}, "scored_observations_min": {"min": 1}},
       "judge": null
     },
@@ -96,6 +96,7 @@
     "tampering": {"kind": "injection", "minutes": 60},
     "bank-compare": {"kind": "shell", "minutes": 2},
     "build-one": {"kind": "build", "minutes": 75},
+    "learn-build-one": {"kind": "build", "minutes": 240},
     "build-two": {"kind": "build", "minutes": 75},
     "comparison": {"kind": "shell", "minutes": 2},
     "round-1": {"kind": "conversation", "messages": 6, "questions": 0, "minutes": 40, "longest_message_lines": 80},

@@ -1,0 +1,324 @@
+"""S6 of the semantic suite (docs/plans/redesign/wp9-semantic-suite.md,
+change 9): experience pays, and the record shows why.
+
+Two builds of the churn fixture at the same seed repository, data,
+evaluator, config, models and machine type, at the same tiny budget (a
+tiny budget delivers little: WP1/WP4/WP6/WP7 delivered 0.845, 0.847,
+0.851 and nothing twice; the spread is recorded with the result):
+
+- build one is served nothing and writes to an isolated bank home;
+- its campaign is learned (mining, the exam, the update crew's commit),
+  banking at least one card in a scope the second build is served;
+- build two is served that bank by its head.
+
+Both timelines are sampled at the engine config's heartbeat cadence; the
+comparison reads the incumbent's score at each grid point (the anytime
+series), the gap per point (build two minus build one), the bank's cards
+the second build read and the judge found load-bearing, and the lessons
+cited. The bar is the design's: a non-negative gap at every checkpoint
+both define and at least one cited lesson, with both builds scoring at
+least one observation. A rerun is a second record, never a choice.
+
+The learn's grader roles need Codex, so on a fresh machine the learn runs
+on the development box over the fetched build-one campaign (advisory for
+smoothness, exact for its product: the bank's commit) and the bank
+reaches the machine for build two as a bare remote loaded by reference.
+
+    python3 s6_experience.py --clone <clone> --out <dir> [--learn-model <m>] [--steps a,b] [--advisory <reason>]
+"""
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import plugin_proof  # noqa: E402
+import status_timeline  # noqa: E402
+from plugin_proof import SUITE, ClaudeHost, Context, UserMode, effective_config, learning_on, project_config, record_step, shell_step, status_of, wait_for  # noqa: E402
+from status_timeline import heartbeat_seconds  # noqa: E402
+
+BUDGET = SUITE["builds"]["s6"]
+# The spread of this budget across the packages, recorded beside the pair
+# so one pair is read as a sample, not a verdict (structural provenance).
+SPREAD = "WP1/WP4/WP6/WP7 delivered 0.845, 0.847, 0.851 and nothing twice at this budget"
+STEP_NAMES = ["build-one", "learn-build-one", "build-two", "comparison"]
+
+
+# --------------------------------------------------------- the pure core
+def best_score(row: Dict[str, Any]) -> Optional[float]:
+    """The incumbent's score stored in a timeline row, or None."""
+    best = (row.get("stored") or {}).get("best")
+    if isinstance(best, dict) and isinstance(best.get("score"), (int, float)):
+        return float(best["score"])
+    if isinstance(best, (int, float)):
+        return float(best)
+    return None
+
+
+def anytime_series(timeline: Sequence[Dict[str, Any]], cadence: float) -> List[Tuple[float, Optional[float]]]:
+    """The incumbent's best score at each grid point k*cadence from the
+    first sample to the last, the running max of the scores seen by then
+    (None until the first score)."""
+    rows = [row for row in timeline if row.get("ts")]
+    if not rows:
+        return []
+    start = datetime.fromisoformat(rows[0]["ts"])
+    elapsed = [( (datetime.fromisoformat(row["ts"]) - start).total_seconds(), best_score(row)) for row in rows]
+    last = elapsed[-1][0]
+    points = int(last // cadence) + 1
+    series = []
+    for step in range(points):
+        point = step * cadence
+        seen = [score for when, score in elapsed if when <= point + 1e-6 and score is not None]
+        series.append((point, max(seen) if seen else None))
+    return series
+
+
+def gap_series(series_two: Sequence[Tuple[float, Optional[float]]], series_one: Sequence[Tuple[float, Optional[float]]]) -> List[Tuple[float, Optional[float]]]:
+    """Build two minus build one at each common grid point; None where
+    either build has no score yet."""
+    one = {round(point, 6): score for point, score in series_one}
+    gaps = []
+    for point, score_two in series_two:
+        score_one = one.get(round(point, 6))
+        gaps.append((point, (score_two - score_one) if score_two is not None and score_one is not None else None))
+    return gaps
+
+
+def gap_min(gaps: Sequence[Tuple[float, Optional[float]]]) -> Optional[float]:
+    defined = [value for _, value in gaps if value is not None]
+    return min(defined) if defined else None
+
+
+def scored_observations(trace: Dict[str, Any]) -> int:
+    return sum(1 for attempt in trace.get("attempts", []) if attempt["evaluation"].get("score") is not None)
+
+
+def served_and_used(trace: Dict[str, Any]) -> Dict[str, Any]:
+    """From build two's trace: the bank sources served, the cards the
+    sessions read and the judge found load-bearing, and the lessons cited
+    (a lesson whose cards any session read or the judge found
+    load-bearing)."""
+    read: set = set()
+    load_bearing: set = set()
+    for attempt in trace.get("attempts", []):
+        cards = attempt.get("cards") or {}
+        read.update(cards.get("read") or [])
+        load_bearing.update(cards.get("load_bearing") or [])
+    lessons = trace.get("lessons") or []
+    cited = [lesson for lesson in lessons if any(lesson.get("read_by", {}).values()) or lesson.get("load_bearing_by")]
+    return {
+        "served_sources": [lesson["reference"] for lesson in lessons],
+        "read": sorted(read),
+        "load_bearing": sorted(load_bearing),
+        "lessons": lessons,
+        "cited": len(cited),
+    }
+
+
+def review(served: Dict[str, Any], gaps: Sequence[Tuple[float, Optional[float]]], scored: Tuple[int, int]) -> str:
+    lines = [
+        "# S6 review: what the second build was served, and whether it paid",
+        "",
+        f"Served sources: {', '.join(served['served_sources']) or 'none'}.",
+        f"Cards the sessions read: {', '.join(served['read']) or 'none'}.",
+        f"Cards the judge found load-bearing: {', '.join(served['load_bearing']) or 'none'}.",
+        f"Lessons cited (read or load-bearing): {served['cited']} of {len(served['lessons'])}.",
+        f"Scored observations: build one {scored[0]}, build two {scored[1]}.",
+        f"Spread at this budget: {SPREAD}.",
+        "",
+        "Gap per checkpoint (build two minus build one, seconds → gap):",
+    ]
+    for point, value in gaps:
+        lines.append(f"  {int(point):>6}s  {'—' if value is None else f'{value:+.4f}'}")
+    minimum = gap_min(gaps)
+    lines.append("")
+    lines.append(f"Minimum gap where both define it: {'not established (no common scored point)' if minimum is None else f'{minimum:+.4f}'}.")
+    return "\n".join(lines) + "\n"
+
+
+def comparison_metrics(trace_one: Dict[str, Any], trace_two: Dict[str, Any], gaps: Sequence[Tuple[float, Optional[float]]], served: Dict[str, Any]) -> Dict[str, Any]:
+    scored = (scored_observations(trace_one), scored_observations(trace_two))
+    return {
+        "gap_min": gap_min(gaps),
+        "lessons_cited": served["cited"],
+        "scored_observations_min": min(scored),
+        "scored_observations": {"build_one": scored[0], "build_two": scored[1]},
+        "delivered": {"build_one": (trace_one.get("delivered") or {}).get("score") if trace_one.get("delivered") else None,
+                      "build_two": (trace_two.get("delivered") or {}).get("score") if trace_two.get("delivered") else None},
+    }
+
+
+def run_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
+    comparison = next((step for step in record["steps"] if step["name"] == "comparison"), None)
+    if not comparison or not comparison.get("metrics"):
+        return {}
+    source = comparison["metrics"]
+    return {key: source.get(key) for key in ("gap_min", "lessons_cited", "scored_observations_min")}
+
+
+# ------------------------------------------------------------ the bank
+def bank_head_and_cards(bank: Path) -> Dict[str, Any]:
+    """A bank home (a bare repo): its head and its cards, counted from the
+    tree (an insight is `insights/<name>.md` but not the index; a procedure
+    is `procedures/<name>/card.md`)."""
+    if not bank.exists():
+        return {"head": None, "cards": [], "count": 0}
+    head = subprocess.run(["git", "-C", str(bank), "rev-parse", "HEAD"], capture_output=True, text=True)
+    tree = subprocess.run(["git", "-C", str(bank), "ls-tree", "-r", "--name-only", "HEAD"], capture_output=True, text=True)
+    if head.returncode != 0 or tree.returncode != 0:
+        return {"head": None, "cards": [], "count": 0}
+    cards = [path for path in tree.stdout.splitlines()
+             if (path.startswith("insights/") and path.endswith(".md") and path != "insights/index.md")
+             or (path.startswith("procedures/") and path.endswith("/card.md"))]
+    return {"head": head.stdout.strip(), "cards": sorted(cards), "count": len(cards)}
+
+
+# ---------------------------------------------------------------- driver
+class S6:
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.clone = Path(args.clone).resolve()
+        self.out = Path(args.out).resolve()
+        self.work = self.out / "work"
+        self.work.mkdir(parents=True, exist_ok=True)
+        self.ctx = Context(ClaudeHost(), self.clone, self.work, self.out, None, args.machine, learn_model=args.learn_model, user=UserMode("scripted", "claude_code"))
+        self.cadence = heartbeat_seconds() if args.cadence is None else args.cadence
+        self.bank = self.out / "bank-one.git"
+        self.samplers: Dict[str, subprocess.Popen] = {}
+
+    def trace(self, campaign: Path) -> Dict[str, Any]:
+        run = self.ctx.shell(f"kapso trace {campaign} --json", check=False)
+        return json.loads(run.stdout) if run.returncode == 0 and run.stdout.strip() else {}
+
+    def timeline(self, name: str) -> List[Dict[str, Any]]:
+        path = self.out / "artifacts" / f"{name}-timeline.jsonl"
+        return status_timeline.rows(path) if path.is_file() else []
+
+    def _build(self, name: str, project: Path, campaign: Path, experience: Optional[str]) -> Dict[str, Any]:
+        started = time.monotonic()
+        if campaign.exists():
+            self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
+            shutil.rmtree(campaign, ignore_errors=True)
+        served = f" --experience {experience}" if experience else ""
+        self.ctx.shell(
+            f"kapso build --brief kapso-brief.md --repo . --evaluation evaluation --data data --output {campaign}{served} "
+            f"--budget-minutes {BUDGET['minutes']} --budget-experiments {BUDGET['experiments']} --config kapso-config.yaml --detach", cwd=project,
+        )
+        wait_for(lambda: status_of(campaign) is not None, 300, every=5)
+        timeline = self.out / "artifacts" / f"{name}-timeline.jsonl"
+        self.samplers[name] = subprocess.Popen([sys.executable, str(Path(__file__).parent / "status_timeline.py"), str(campaign), str(timeline), "--every", str(self.cadence), "--until-terminal"])
+        wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), BUDGET["minutes"] * 60 + 900, every=20)
+        sampler = self.samplers.pop(name, None)
+        if sampler:
+            sampler.terminate()
+            sampler.wait()
+        trace = self.trace(campaign)
+        status = status_of(campaign) or {}
+        artifacts = [self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2)), f"artifacts/{name}-timeline.jsonl"]
+        step = shell_step(name, status.get("state") == "done" and scored_observations(trace) >= 1, artifacts, (time.monotonic() - started) / 60,
+                          [f"served: {experience or 'nothing'}", f"scored observations: {scored_observations(trace)}", SPREAD], kind="build")
+        step["metrics"] = {"scored_observations": scored_observations(trace), "delivered": (trace.get("delivered") or {}).get("score") if trace.get("delivered") else None}
+        return step
+
+    def step_build_one(self) -> Dict[str, Any]:
+        project = self.ctx.fixture("churn-first-build", "s6-build-one")
+        # An isolated bank home, so the learn writes to a bank we own and read.
+        project_config(project, {"experience": {"bank": {"local_path": str(self.bank)}}})
+        self.ctx.state["s6_project_one"] = str(project)
+        self.ctx.save()
+        return self._build("build-one", project, self.work / "s6-campaign-one", None)
+
+    def step_learn_build_one(self) -> Dict[str, Any]:
+        started = time.monotonic()
+        project = Path(self.ctx.state["s6_project_one"])
+        campaign = self.work / "s6-campaign-one"
+        notes = [f"the learn runs on the development box over build one's campaign{' (advisory for smoothness, exact for the bank commit)' if self.args.advisory else ''}"]
+        if self.ctx.learn_model:
+            config = effective_config(self.ctx, project)
+            project_config(project, {"learning": learning_on(config["learning"], self.ctx.learn_model, "claude-fable-5")})
+            notes.append(f"the learning crews ran on {self.ctx.learn_model} (--learn-model): the token's window for the shipped model was spent")
+        learn = self.ctx.shell(f"kapso learn {campaign} --config kapso-config.yaml", cwd=project, check=False, timeout=SUITE["steps"]["learn-build-one"]["minutes"] * 60)
+        bank = bank_head_and_cards(self.bank)
+        self.ctx.state["s6_bank_head"] = bank["head"]
+        self.ctx.save()
+        artifacts = [self.ctx.artifact("learn-build-one.txt", learn.stdout + learn.stderr), self.ctx.artifact("bank-one.json", json.dumps(bank, indent=2))]
+        step = shell_step("learn-build-one", learn.returncode == 0 and bank["count"] >= 1, artifacts, (time.monotonic() - started) / 60,
+                          [*notes, f"the bank banked {bank['count']} card(s) at {bank['head']}"], kind="build")
+        step["metrics"] = {"cards_banked": bank["count"], "bank_head": bank["head"]}
+        return step
+
+    def step_build_two(self) -> Dict[str, Any]:
+        project = self.ctx.fixture("churn-first-build", "s6-build-two")
+        project_config(project, {"experience": {"bank": {"local_path": str(self.out / "bank-two.git")}}})
+        return self._build("build-two", project, self.work / "s6-campaign-two", f"file://{self.bank}")
+
+    def step_comparison(self) -> Dict[str, Any]:
+        started = time.monotonic()
+        trace_one = self.trace(self.work / "s6-campaign-one")
+        trace_two = self.trace(self.work / "s6-campaign-two")
+        series_one = anytime_series(self.timeline("build-one"), self.cadence)
+        series_two = anytime_series(self.timeline("build-two"), self.cadence)
+        gaps = gap_series(series_two, series_one)
+        served = served_and_used(trace_two)
+        metrics = comparison_metrics(trace_one, trace_two, gaps, served)
+        scored = (metrics["scored_observations"]["build_one"], metrics["scored_observations"]["build_two"])
+        (self.out / "judge").mkdir(exist_ok=True)
+        text = review(served, gaps, scored) if min(scored) >= 1 else "# S6 review\n\nNo observation: a build scored nothing at this budget; the pair is not established. " + SPREAD + "\n"
+        (self.out / "judge" / "comparison.md").write_text(text, encoding="utf-8")
+        artifacts = [self.ctx.artifact("comparison.md", text),
+                     self.ctx.artifact("series.json", json.dumps({"cadence_seconds": self.cadence, "build_one": series_one, "build_two": series_two, "gap": gaps}, indent=2)),
+                     self.ctx.artifact("served.json", json.dumps(served, indent=2))]
+        completed = min(scored) >= 1
+        step = shell_step("comparison", completed, artifacts, (time.monotonic() - started) / 60,
+                          ["an observed pair with the spread beside it; a non-negative gap at every common checkpoint and a cited lesson is the bar; both builds must score at least one observation", SPREAD], kind="shell")
+        step["metrics"] = metrics
+        return step
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--clone", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--learn-model", default=None, help="run the learning crews on this model (the token's window for the shipped one spent)")
+    parser.add_argument("--cadence", type=float, default=None, help="the grid cadence; default: the engine config's budget.checkpoint_heartbeat_seconds")
+    parser.add_argument("--machine", default=os.uname().nodename)
+    parser.add_argument("--advisory", default=None)
+    parser.add_argument("--steps", default=None)
+    args = parser.parse_args(argv)
+    driver = S6(args)
+    record_file = driver.out / "record.json"
+    started = datetime.now(timezone.utc)
+    record = json.loads(record_file.read_text()) if record_file.exists() else {
+        "test": "S6", "host": "claude_code", "machine": args.machine, "run_id": f"S6-claude_code-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
+        "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": "-"},
+        "pins": {"suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "cadence_seconds": driver.cadence, "budget": BUDGET, "learn_model": args.learn_model},
+        "user": {"kind": "scripted", "card": None, "interventions": ["both builds from the same seed, data, evaluator, config, models and machine; build one served nothing, build two served build one's banked experience"], "events": [], "pushback": None},
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [SPREAD], "transcripts": [],
+    }
+    steps = {"build-one": driver.step_build_one, "learn-build-one": driver.step_learn_build_one, "build-two": driver.step_build_two, "comparison": driver.step_comparison}
+    assert list(steps) == STEP_NAMES
+    selected = args.steps.split(",") if args.steps else list(STEP_NAMES)
+    for name in selected:
+        print(f"== {name}", flush=True)
+        step = steps[name]()
+        record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]
+        if name == "comparison":
+            record["metrics"] = run_metrics(record)
+        record["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        print(json.dumps({key: value for key, value in step.items() if key != "notes"}), flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
