@@ -40,7 +40,7 @@ TURN_TIMEOUT = 1800
 APPROVAL_ASKED = re.compile(r"\b(say|reply|type|answer)\b[^\n]{0,30}\bgo\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b|\blet me know\b", re.I)
 CHURN_WISH = (
     "get the churn model's ROC AUC above 0.85 without changing the prediction contract; "
-    "the campaign goes to ../churn-campaign with a budget of 30 minutes and 3 experiments"
+    "the campaign goes to ../churn-campaign with a budget of 60 minutes and 3 experiments"
 )
 PAUSE_WISH = (
     "get the churn model's ROC AUC above 0.85; one rule for the brief: before training, the enrichment table "
@@ -626,7 +626,7 @@ def step_harness_probe(ctx: Context) -> Dict[str, Any]:
 
 def step_review(ctx: Context) -> Dict[str, Any]:
     project, campaign = Path(ctx.state["churn_project"]), Path(ctx.state["churn_campaign"])
-    finished = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 2700, every=20)
+    finished = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 4500, every=20)
     turns = ctx.converse("review", project, ctx.host.command("review", "../churn-campaign"), lambda text, index: "is it safe to merge?" if index == 0 else None, max_turns=2)
     if len(turns) == 1:
         turns += ctx.converse("review-2", project, "is the branch the campaign delivered in ../churn-campaign safe to merge?", lambda text, index: None, max_turns=1)
