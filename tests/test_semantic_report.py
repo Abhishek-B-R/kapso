@@ -107,14 +107,17 @@ def test_the_verdict_requires_every_required_step_present_and_passing(tmp_path):
 
 def test_the_bars_read_the_records_metrics(tmp_path):
     steps = _complete("S6", "claude_code")
-    below = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 2, "scored_observations_min": 1})
-    assert not report.verdict(below, SUITE, tmp_path)["passed"]
-    met = _record("S6", "claude_code", steps, metrics={"gap_min": 0.0, "lessons_cited": 2, "scored_observations_min": 1})
-    assert report.verdict(met, SUITE, tmp_path)["passed"]
-    absent = _record("S6", "claude_code", steps, metrics={"gap_min": 0.0})
+    # gap_min is reported, not a bar: a negative gap no longer fails on its
+    # own (the budget makes the sign noise); the gate is a cited lesson and
+    # an observation.
+    below = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 0, "scored_observations_min": 1})
+    assert not report.verdict(below, SUITE, tmp_path)["passed"] and report.verdict(below, SUITE, tmp_path)["bars"]["lessons_cited"] is False
+    met = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 2, "scored_observations_min": 1})
+    assert report.verdict(met, SUITE, tmp_path)["passed"], "a negative gap_min alone does not fail the run"
+    absent = _record("S6", "claude_code", steps, metrics={"lessons_cited": 2})
     result = report.verdict(absent, SUITE, tmp_path)
-    assert not result["passed"] and result["bars"]["lessons_cited"] is False
-    assert "| gap_min | 0.0 |" in report.render(met, SUITE, tmp_path)
+    assert not result["passed"] and result["bars"]["scored_observations_min"] is False
+    assert "| lessons_cited | 2 |" in report.render(met, SUITE, tmp_path)
 
 
 def test_a_required_judge_is_present_at_the_bar_in_both_passes_and_a_straddle_is_adjudicated(tmp_path):

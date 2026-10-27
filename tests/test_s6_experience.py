@@ -40,42 +40,48 @@ def test_the_gap_is_build_two_minus_build_one_per_common_point():
     assert abs(gaps[1][1] - 0.03) < 1e-9 and abs(gaps[2][1] - 0.06) < 1e-9
     assert s6.gap_min(gaps) is not None and abs(s6.gap_min(gaps) - 0.03) < 1e-9
     assert s6.gap_min([(0.0, None)]) is None
-    # A point build one has not reached is not a gap (build two is ahead on the grid).
+    # The common horizon: build two ran one point further, so that point is
+    # not compared; and build two running behind build one is counted.
     ahead = s6.gap_series([(0.0, 0.8), (60.0, 0.9)], [(0.0, 0.7)])
-    assert abs(ahead[0][1] - 0.1) < 1e-9 and ahead[1] == (60.0, None)
+    assert len(ahead) == 1 and abs(ahead[0][1] - 0.1) < 1e-9
+    behind = s6.gap_series([(0.0, None), (60.0, 0.9)], [(0.0, 0.7), (60.0, 0.8)])
+    assert behind[0] == (0.0, None) and s6.behind_points([(0.0, None), (60.0, 0.9)], [(0.0, 0.7), (60.0, 0.8)]) == 1
 
 
-def test_served_and_used_reads_the_cards_and_lessons_from_a_trace():
+def test_served_and_used_counts_load_bearing_as_cited_not_mere_reading():
     empty = s6.served_and_used(TRACE)
     assert empty["read"] == [] and empty["load_bearing"] == [] and empty["cited"] == 0, "the cold churn trace served nothing"
     served = {
         "lessons": [
             {"reference": "mine:all", "read_by": {"generic_exp_0": ["card-a"]}, "load_bearing_by": {"1": ["card-a"]}},
-            {"reference": "leeroopedia", "read_by": {}, "load_bearing_by": {}},
+            {"reference": "leeroopedia", "read_by": {"generic_exp_0": ["card-c"]}, "load_bearing_by": {}},
         ],
         "attempts": [{"cards": {"read": ["card-a", "card-b"], "load_bearing": ["card-a"]}},
                      {"cards": {"read": ["card-b"], "load_bearing": []}}],
     }
     used = s6.served_and_used(served)
     assert used["read"] == ["card-a", "card-b"] and used["load_bearing"] == ["card-a"]
-    assert used["cited"] == 1 and used["served_sources"] == ["mine:all", "leeroopedia"]
+    # Only the load-bearing lesson is cited; the read-only one is reported apart.
+    assert used["cited"] == 1 and used["read_not_load_bearing"] == 1 and used["served_sources"] == ["mine:all", "leeroopedia"]
 
 
-def test_the_run_metrics_aggregate_the_comparison_and_no_observation_is_honest():
-    trace_one = {"attempts": [{"evaluation": {"score": 0.80}}], "delivered": {"score": 0.80}}
-    trace_two = {"attempts": [{"evaluation": {"score": 0.86}}, {"evaluation": {"score": None}}], "delivered": {"score": 0.86}}
+def test_the_run_metrics_aggregate_the_comparison_and_delivered_is_resolved_to_its_attempt():
+    trace_one = {"attempts": [{"branch": "b1", "evaluation": {"score": 0.80}}], "delivered": {"branch": "b1", "commit": "abc"}}
+    trace_two = {"attempts": [{"branch": "b2", "evaluation": {"score": 0.86}}, {"branch": "b3", "evaluation": {"score": None}}], "delivered": {"branch": "b2", "commit": "def"}}
     gaps = [(0.0, None), (60.0, 0.04), (120.0, 0.06)]
-    served = s6.served_and_used({"lessons": [{"reference": "mine:all", "read_by": {"s": ["c"]}, "load_bearing_by": {}}], "attempts": [{"cards": {"read": ["c"], "load_bearing": []}}]})
-    metrics = s6.comparison_metrics(trace_one, trace_two, gaps, served)
-    assert metrics["gap_min"] == 0.04 and metrics["lessons_cited"] == 1 and metrics["scored_observations_min"] == 1
+    served = s6.served_and_used({"lessons": [{"reference": "mine:all", "read_by": {"s": ["c"]}, "load_bearing_by": {"1": ["c"]}}], "attempts": [{"cards": {"read": ["c"], "load_bearing": ["c"]}}]})
+    metrics = s6.comparison_metrics(trace_one, trace_two, gaps, served, behind=2)
+    assert metrics["gap_min"] == 0.04 and metrics["lessons_cited"] == 1 and metrics["scored_observations_min"] == 1 and metrics["behind_points"] == 2
+    # The delivered score is resolved from the delivered branch's attempt, not a `score` field.
+    assert metrics["delivered"] == {"build_one": 0.80, "build_two": 0.86}
     record = {"steps": [{"name": "comparison", "metrics": metrics}], "metrics": {}}
     assert s6.run_metrics(record) == {"gap_min": 0.04, "lessons_cited": 1, "scored_observations_min": 1}
-    # A build that scored nothing: the minimum is zero, the pair not established.
-    none_two = {"attempts": [{"evaluation": {"score": None}}], "delivered": None}
+    none_two = {"attempts": [{"branch": "b", "evaluation": {"score": None}}], "delivered": None}
     assert s6.comparison_metrics(trace_one, none_two, gaps, served)["scored_observations_min"] == 0
 
 
 def test_the_steps_and_bars_match_the_suite():
     assert s6.STEP_NAMES == s6.SUITE["tests"]["S6"]["required_steps"]["claude_code"]
-    assert set(s6.SUITE["tests"]["S6"]["bars"]) == {"gap_min", "lessons_cited", "scored_observations_min"}
+    # gap_min is reported, not a hard bar (the budget makes its sign noise); the gate is use and an observation.
+    assert set(s6.SUITE["tests"]["S6"]["bars"]) == {"lessons_cited", "scored_observations_min"}
     assert s6.SUITE["steps"]["learn-build-one"]["kind"] == "build"

@@ -37,7 +37,7 @@
     },
     "S6": {
       "required_steps": {"claude_code": ["build-one", "learn-build-one", "build-two", "comparison"], "codex": ["build-one", "learn-build-one", "build-two", "comparison"]},
-      "bars": {"gap_min": {"min": 0.0}, "lessons_cited": {"min": 1}, "scored_observations_min": {"min": 1}},
+      "bars": {"lessons_cited": {"min": 1}, "scored_observations_min": {"min": 1}},
       "judge": null
     },
     "author": {

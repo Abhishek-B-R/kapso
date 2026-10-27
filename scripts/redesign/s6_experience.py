@@ -84,14 +84,26 @@ def anytime_series(timeline: Sequence[Dict[str, Any]], cadence: float) -> List[T
 
 
 def gap_series(series_two: Sequence[Tuple[float, Optional[float]]], series_one: Sequence[Tuple[float, Optional[float]]]) -> List[Tuple[float, Optional[float]]]:
-    """Build two minus build one at each common grid point; None where
-    either build has no score yet."""
+    """Build two minus build one over the COMMON budget horizon (the grid
+    both builds reached), each build's incumbent carried forward by the
+    anytime series. None where either build has no score yet at that
+    point — a behind-interval, counted separately, never silently dropped
+    into a happy minimum."""
     one = {round(point, 6): score for point, score in series_one}
+    horizon = min(len(series_two), len(series_one))
     gaps = []
-    for point, score_two in series_two:
+    for point, score_two in series_two[:horizon]:
         score_one = one.get(round(point, 6))
         gaps.append((point, (score_two - score_one) if score_two is not None and score_one is not None else None))
     return gaps
+
+
+def behind_points(series_two: Sequence[Tuple[float, Optional[float]]], series_one: Sequence[Tuple[float, Optional[float]]]) -> int:
+    """Points on the common horizon where build one has a score and build
+    two does not: experience arriving late, which the gap must not hide."""
+    one = {round(point, 6): score for point, score in series_one}
+    horizon = min(len(series_two), len(series_one))
+    return sum(1 for point, score_two in series_two[:horizon] if score_two is None and one.get(round(point, 6)) is not None)
 
 
 def gap_min(gaps: Sequence[Tuple[float, Optional[float]]]) -> Optional[float]:
@@ -115,13 +127,17 @@ def served_and_used(trace: Dict[str, Any]) -> Dict[str, Any]:
         read.update(cards.get("read") or [])
         load_bearing.update(cards.get("load_bearing") or [])
     lessons = trace.get("lessons") or []
-    cited = [lesson for lesson in lessons if any(lesson.get("read_by", {}).values()) or lesson.get("load_bearing_by")]
+    # A cited lesson is one the judge found LOAD-BEARING in an attempt
+    # (actual use), not one merely read; reading alone does not pay.
+    cited = [lesson for lesson in lessons if lesson.get("load_bearing_by")]
+    read_only = [lesson for lesson in lessons if any(lesson.get("read_by", {}).values()) and not lesson.get("load_bearing_by")]
     return {
         "served_sources": [lesson["reference"] for lesson in lessons],
         "read": sorted(read),
         "load_bearing": sorted(load_bearing),
         "lessons": lessons,
         "cited": len(cited),
+        "read_not_load_bearing": len(read_only),
     }
 
 
@@ -146,15 +162,26 @@ def review(served: Dict[str, Any], gaps: Sequence[Tuple[float, Optional[float]]]
     return "\n".join(lines) + "\n"
 
 
-def comparison_metrics(trace_one: Dict[str, Any], trace_two: Dict[str, Any], gaps: Sequence[Tuple[float, Optional[float]]], served: Dict[str, Any]) -> Dict[str, Any]:
+def delivered_score(trace: Dict[str, Any]) -> Optional[float]:
+    """The delivered branch's score, resolved to its attempt's evaluation
+    (the `delivered` object holds a branch and a commit, no score)."""
+    delivered = trace.get("delivered") or {}
+    branch = delivered.get("branch")
+    for attempt in trace.get("attempts", []):
+        if attempt.get("branch") == branch:
+            return attempt["evaluation"].get("score")
+    return None
+
+
+def comparison_metrics(trace_one: Dict[str, Any], trace_two: Dict[str, Any], gaps: Sequence[Tuple[float, Optional[float]]], served: Dict[str, Any], behind: int = 0) -> Dict[str, Any]:
     scored = (scored_observations(trace_one), scored_observations(trace_two))
     return {
         "gap_min": gap_min(gaps),
+        "behind_points": behind,
         "lessons_cited": served["cited"],
         "scored_observations_min": min(scored),
         "scored_observations": {"build_one": scored[0], "build_two": scored[1]},
-        "delivered": {"build_one": (trace_one.get("delivered") or {}).get("score") if trace_one.get("delivered") else None,
-                      "build_two": (trace_two.get("delivered") or {}).get("score") if trace_two.get("delivered") else None},
+        "delivered": {"build_one": delivered_score(trace_one), "build_two": delivered_score(trace_two)},
     }
 
 
@@ -233,7 +260,7 @@ class S6:
     def step_build_one(self) -> Dict[str, Any]:
         project = self.ctx.fixture("churn-first-build", "s6-build-one")
         # An isolated bank home, so the learn writes to a bank we own and read.
-        project_config(project, {"experience": {"bank": {"local_path": str(self.bank)}}})
+        project_config(project, {"learning": {"bank": {"local_path": str(self.bank)}}})
         self.ctx.state["s6_project_one"] = str(project)
         self.ctx.save()
         return self._build("build-one", project, self.work / "s6-campaign-one", None)
@@ -259,7 +286,7 @@ class S6:
 
     def step_build_two(self) -> Dict[str, Any]:
         project = self.ctx.fixture("churn-first-build", "s6-build-two")
-        project_config(project, {"experience": {"bank": {"local_path": str(self.out / "bank-two.git")}}})
+        project_config(project, {"learning": {"bank": {"local_path": str(self.out / "bank-two.git")}}})
         return self._build("build-two", project, self.work / "s6-campaign-two", f"file://{self.bank}")
 
     def step_comparison(self) -> Dict[str, Any]:
@@ -270,7 +297,7 @@ class S6:
         series_two = anytime_series(self.timeline("build-two"), self.cadence)
         gaps = gap_series(series_two, series_one)
         served = served_and_used(trace_two)
-        metrics = comparison_metrics(trace_one, trace_two, gaps, served)
+        metrics = comparison_metrics(trace_one, trace_two, gaps, served, behind=behind_points(series_two, series_one))
         scored = (metrics["scored_observations"]["build_one"], metrics["scored_observations"]["build_two"])
         (self.out / "judge").mkdir(exist_ok=True)
         text = review(served, gaps, scored) if min(scored) >= 1 else "# S6 review\n\nNo observation: a build scored nothing at this budget; the pair is not established. " + SPREAD + "\n"
