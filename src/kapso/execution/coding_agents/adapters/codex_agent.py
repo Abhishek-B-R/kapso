@@ -337,7 +337,12 @@ class CodexCodingAgent(CodingAgentInterface):
         cmd.extend(self._agent_overrides)
         # The person's own kapso-mcp (`codex mcp add kapso -- kapso-mcp`)
         # off, and the workspace trusted so its rules file is enforced:
-        # no campaign tools inside a campaign.
+        # no campaign tools inside a campaign. The server is defined whole
+        # on the command line: an `enabled` key alone makes a server with
+        # no transport, and Codex refuses the entire config for it
+        # (verified 2026-10-27: every Codex session of a campaign failed on
+        # a box whose config had no such server).
+        cmd.extend(["-c", 'mcp_servers.kapso.command="kapso-mcp"'])
         cmd.extend(["-c", "mcp_servers.kapso.enabled=false"])
         cmd.extend(["-c", f'projects.{json.dumps(self._workspace)}.trust_level="trusted"'])
         if self._hooks_trust_bypass:

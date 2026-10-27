@@ -180,6 +180,16 @@ verified) and the six descriptions say "never inside a Kapso campaign
 session". The proof lists a campaign session's skills and tools on both
 hosts.
 
+**The Codex session's disabled server is defined whole.** The line
+that keeps the person's own `kapso` server out of a campaign session
+(`mcp_servers.kapso.enabled=false`) made Codex refuse its entire config
+on a box with no such server ("invalid transport": a table with an
+`enabled` key and no command), and every Codex session of both
+machines' campaigns failed on it in the round; the adapter now names the
+command beside the switch (`mcp_servers.kapso.command="kapso-mcp"`,
+`enabled=false`), a complete definition of a server that never starts,
+whether or not the person has one.
+
 **A Codex campaign session trusts its own workspace.** The execpolicy
 rule that refuses the campaign verbs lives in the workspace's project
 layer (`.codex/rules/`), which Codex enforces for a trusted project

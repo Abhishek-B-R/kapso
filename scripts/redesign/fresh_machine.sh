@@ -98,7 +98,7 @@ cmd_delete() {
   fi
   local left; left="$(gcloud compute instances list --project "$PROJECT" --filter="name=$name" --format='value(name)')"
   if [ -n "$left" ]; then echo "STILL PRESENT: $left" >&2; exit 1; fi
-  local disks; disks="$(gcloud compute disks list --project "$PROJECT" --filter="name~^$name" --format='value(name)')"
+  local disks; disks="$(gcloud compute disks list --project "$PROJECT" --filter="name~^$name\$" --format='value(name)')"
   if [ -n "$disks" ]; then echo "leftover disks: $disks" >&2; exit 1; fi
   if [ -f "$RUNS/$id/created_at" ]; then
     local start now hours cost

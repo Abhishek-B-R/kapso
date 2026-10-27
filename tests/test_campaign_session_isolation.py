@@ -39,5 +39,7 @@ def test_a_codex_session_disables_the_persons_server_and_refuses_the_verbs_by_ru
     for verb in ("build", "learn", "deploy"):
         assert f'prefix_rule(pattern = ["kapso", "{verb}"], decision = "forbidden", justification = "never inside a Kapso campaign session' in CAMPAIGN_RULES
     joined = " ".join(agent._exec_command("m", "/tmp/last.txt"))
-    assert "-c mcp_servers.kapso.enabled=false" in joined
+    # The server defined whole, then off: an `enabled` key alone is a
+    # server with no transport, which Codex refuses the config for.
+    assert '-c mcp_servers.kapso.command="kapso-mcp" -c mcp_servers.kapso.enabled=false' in joined
     assert f'-c projects."{workspace}".trust_level="trusted"' in joined

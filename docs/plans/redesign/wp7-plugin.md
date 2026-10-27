@@ -803,6 +803,158 @@ explicit loading, the brief as the server's instructions), 7 (the tools
 land last in this package). Decision 9 was drift in the first plan and
 is now the rule above. The owner checks the decisions.
 
+## Proof run
+
+**The round** (`scripts/redesign/plugin_proof.py`, the matrix's steps
+driven host by host as a scripted person: S2's steps without the
+simulated user and the judge; the records in the semantic shape, the
+budgets in `tests/semantic/budgets.json`, every report rendered by
+`tests/semantic/report.py`). The wheel built from the branch at
+`3e2ab47b` (sha256 `c16a36e9…`; the later commits touch the plugin, the
+examples, the scripts and the docs, which the machine reads from its
+clone); every skill file the hosts read is the branch's, installed from
+the clone as a local marketplace.
+
+**Two fresh machines** (`e2-standard-4`, Ubuntu 24.04, Claude Code
+2.1.311, the wheel as a uv tool, the examples' dependencies in a venv
+first on PATH). `kapso-fresh-wp7`, created 2026-10-27 00:58 UTC, ran the
+round as the driver was first written and taught it most of what the
+Findings list: thirteen of its seventeen steps passed, the four that
+did not were the driver's own faults, and its learn outran the driver's
+turn deadline. `kapso-fresh-wp7b`, created 02:05 UTC, ran the whole
+round again with every fix in; its record is the Claude Code half's
+evidence (`scripts/redesign/runs/wp7/claude_code/record.json`,
+`report.md`, the artifacts beside them; the first machine's under
+`claude_code_first/`). **The development box** ran the Codex half in a
+scratch project, the wheel in its own venv, the plugin installed into
+the box's Codex from the worktree (`scripts/redesign/runs/wp7/codex/`);
+its churn build ran twice, at thirty minutes (no attempt scored) and at
+sixty, and the steps its earlier driver had misread were redone with
+the final one, the record saying which.
+
+**(a) Install.** Both hosts install the plugin from the clone
+(`claude plugin marketplace add <clone>`, `claude plugin install
+kapso@kapso`; `codex plugin marketplace add <clone>`, `codex plugin add
+kapso@kapso`); `claude plugin validate --strict --json` passes;
+`claude plugin details` lists the ten commands and the six skills;
+`$kapso` loads on Codex by name.
+
+**(b) Setup**, from the warm state: one message, no question, the
+doctor's required rows green; on Codex the `codex mcp add kapso --
+kapso-mcp` line lands in the user's config (the mcp list artifact).
+**(b2) The cold install** as a second user, `uv tool install` of the
+wheel, `kapso --version` and `kapso-mcp --version` from one install:
+TODO-B2.
+
+**(c) The churn build.** The session discovers the repository, hands the
+evaluator to the evaluation skill (which audits it against the contract
+and runs the baseline, 0.7974, in a copy), sends one message with the
+brief and the one thing to confirm, and on "go" launches detached; the
+status appears within the minute. Claude Code: two messages, one
+question, 1.6 minutes; Codex: two messages, one question, 2.0 minutes.
+Both sessions had first to patch the fixture's predictor for pandas 3
+(the Findings), the Codex session asking its one approval for the
+evaluator copy whose labels it moved inside.
+
+**(d) Following.** `/kapso:watch` and "how is it going" answer in three
+lines from `kapso watch --json` (two messages, under a minute, no
+question). **The injected pause**: a second churn build whose brief
+names a key `.env` lacks; the implementation session files the request
+through the inbox gate and the campaign pauses (`done`,
+`stopped_reason: waiting_for_user`); `/kapso:inbox` renders the request
+(key, hit, tried, fix, next) and, told the key is in place before it
+is, refuses to say so ("telling it the key is done would be false", the
+first machine); with the key written where the fix line says, the
+session replies with a note through `kapso inbox reply … --detach` and
+the campaign resumes (the second machine: TODO-INBOX-NUMBERS).
+
+**(e) Review** of the finished churn campaign: one message in the
+order the skill sets (what won with its evaluation "protected,
+unversioned", the diff in outline, nothing voided, the risks, the
+spend, the next action), then "is it safe to merge" answered from the
+record. The first machine's campaign delivered `generic_exp_0` at ROC
+AUC 0.8450 against the 0.85 target in its thirty minutes; the second
+machine's sixty-minute build: TODO-E. The development box's
+thirty-minute build delivered nothing (ideation outran its deadline;
+the Findings), and the review said so with the record's own words.
+
+**(f) Deploy** to the local target: the session deploys, proves one
+call, scores the whole hold-out through the deployment and gets the
+delivered AUC back, explains the score, and hands back the numbered
+next actions (the first machine: two messages, 9.4 minutes; the second:
+TODO-F). The development box's deploy refused with the engine's line
+when the campaign had delivered nothing, and ran on the sixty-minute
+build: TODO-F-CODEX.
+
+**(g) The three branches of the evaluation.** The fraud example (a
+protocol, no evaluator): the session proposes the evaluator from the
+protocol, builds it, asks one approval and launches (Claude Code: two
+messages, one question, 3.0 minutes on the first machine). The data-only
+copy: candidate criteria from the labelled data with their evidence,
+average precision recommended, one approval asked, nothing launched. The
+empty wish (a README alone): candidate criteria from nothing, one
+approval asked, nothing launched. Both hosts, both machines: TODO-G.
+
+**(h) The harness interview** on the trading example with no harness:
+the proposal in one message within the first turn (the domain in a
+sentence, six standing rules each with its evidence, candidate skills,
+hooks and pages with theirs, the modules the repository says nothing
+about, the tree), written on "go" where the README points
+(`../harnesses/trading`), `kapso harness check` green on the first
+write, every attachment tested against the data, the module questions
+numbered; the second machine's harness: `check ok (1 skills, 1 agents,
+0 servers, 4 hooks)`, two messages, one question, 3.0 minutes. **The
+probe build** on that harness at ten minutes and one experiment ended
+`goal_achieved`. **(i) Improve** from the probe's trace: TODO-I.
+
+**(j) Learn** from the churn campaign, detached, the serving offer in
+the same reply (one message, 1.1 minutes on the second machine; the
+first machine's session waited half an hour for the banking, the
+Findings); **learn-complete**: TODO-J.
+
+**(k) Share** to a local bare remote, the second user's `experience add`
+of it: TODO-K.
+
+**(l) Export** of the trading harness for both hosts: the skills, the
+delegates (Claude Code's agent files, Codex's TOML roles with the config
+lines printed), the servers (`.mcp.json`; `codex mcp add` lines), the
+standing rules as `kapso-harness-trading.md` with the include line,
+hooks and the module pages left behind and said, a second export into
+the same directory refused by name; a session in the exported directory
+answers from the `backtesting` skill.
+
+**(m) The session brief**: `session_sources: [mine:all]` in the
+project's config, the server's instructions naming the sources, one
+bank retrieval: TODO-M.
+
+**(n) The campaign tools** from a session: `kapso_build_start` returns
+the receipt, `kapso_status` the status, `kapso_stop` ends it (one
+message, under a minute, both hosts). **The campaign sessions'
+isolation**: TODO-N.
+
+**(o) The trigger suite.** Claude Code, the second machine, 101 cases
+twice on `claude-opus-5-5` ($26.81 at list price, 20 minutes): build
+19/20, harness 20/20, the operating skill 20/21, review 19/20, setup
+20/20, no near miss invoking the skill under test; the ten held-out
+paraphrases 10/10. The three cases below: a build-and-verify ask that
+never names Kapso and gets no skill, the doctor-and-`.env` question
+answered without the skill, and one of two runs of a review-or-harness
+near miss hitting the turn cap. Codex, the development box, the
+eighty-nine implicit and near-miss cases twice on `gpt-6-astra`
+(medium): every case passed every run under the host's rule (the
+expected skill read; a near miss that read the skill under test beside
+it routed right, two of them reading it first), the held-out ten 10/10.
+The first machine's run, under the first graders, counted the plugin's
+own commands as misses (the operating skill at seven of thirteen) and
+led to the rule that a command counts for its skill.
+
+**(p) Cold start.** TODO-P.
+
+**Deferred**, said in the records: on Codex the cold install, the
+improve, the learn and its completion, the share and the cold start
+(the matrix's rows); the `uvx` and `pipx` branches of the launcher
+until the pin is on PyPI.
+
 ## Findings for later packages
 
 Fixed on this branch during the round:
@@ -851,6 +1003,18 @@ Fixed on this branch during the round:
   turn open for half an hour waiting to make the offer; the command and
   the operating skill offer the line in the same reply as the launch and
   say not to wait.
+- **The Codex isolation line broke every Codex session of a campaign.**
+  `-c mcp_servers.kapso.enabled=false` on a box whose Codex config has
+  no `kapso` server made Codex refuse its whole config ("Error loading
+  config.toml: invalid transport in `mcp_servers.kapso`"): the research
+  and repo-memory sessions of every campaign in the round failed, and
+  the development box's builds, slower without them, scored nothing in
+  thirty or sixty minutes. The host fact behind the line had been
+  verified with the server present. The adapter defines the server
+  whole beside the switch (`command="kapso-mcp"`, `enabled=false`), a
+  server that never starts whether or not the person has one; the
+  isolation step runs a campaign on the fixed wheel and reads its Codex
+  sessions' exits.
 - **Thirty minutes is too short a churn build for a review.** Neither
   host's campaign scored an attempt by the budget's end on the first
   attempt (the ideation alone takes a quarter of an hour, as WP1's proof
@@ -886,6 +1050,19 @@ For later packages:
   deadline; implementation never launched") and the deploy session
   refused with the engine's own line; the engine should record the
   reason it knows (WP6's record, WP1's strategy).
+- **A learn dies on one unquoted scalar the flow writer wrote.** The
+  first machine's learn, mining the churn campaign for fifty minutes,
+  failed in `mining.py`'s `_split_frontmatter` on a flow file whose
+  evidence reference ran `…/stream.jsonl#"rows: 3000  seconds: 11.4
+  fast: False"` unquoted: YAML read a mapping value inside the fragment.
+  The frame's docstring chooses this ("genuinely malformed YAML raises;
+  model output that cannot parse fails loud"), and the repair round that
+  exists for a missing key never sees a document that does not parse.
+  The learning package should either have the mining prompt's evidence
+  grammar quote a reference whole when its fragment holds a colon, or
+  let the validator hand a non-parsing document back to the crew as a
+  finding, the way it hands back a missing block. Until then a learn of
+  an hour can end on one such line.
 - **The fresh machine's examples' dependencies.** Ubuntu 24.04 ships no
   `python3-pyarrow`, so an apt line for the examples fails whole; the
   round makes a uv venv first on PATH. WP9's provisioning should do the
