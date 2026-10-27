@@ -860,7 +860,7 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
     # A Codex session the machine's own quota refused never ran: said, not counted.
     quota = [s for s in codex_sessions if any("Quota exceeded" in error for error in s["errors"])]
     ran = [s for s in codex_sessions if s not in quota]
-    codex_ok = all(all(exit == 0 for exit in s["exits"]) for s in ran)
+    codex_ok = all(all(exit == "success" for exit in s["exits"]) for s in ran)
     rules_files = [str(path.relative_to(campaign)) for path in campaign.rglob("kapso-campaign.rules")]
     report = {
         "launch": launch.stdout.strip().splitlines()[:3], "status": (status_of(campaign) or {}).get("state"),
