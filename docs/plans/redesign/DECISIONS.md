@@ -194,6 +194,35 @@ directory lies inside a campaign (the `.kapso/experiment_history.json`
 mark the host session already uses), so a person inspecting a finished
 campaign from inside it runs the verbs in the shell.
 
+**`kapso --version` and `kapso-mcp --version` exist.** The setup skill
+tells one install from two by reading both, and neither command had the
+flag: both print the package's version now, pinned by the version test
+beside the manifests' and the launcher's.
+
+**The trigger suite's pins.** Every case runs on `claude-opus-5-5`, the
+model a Max session runs by default, twice, with six turns, three
+minutes and the read-only tools (`Read`, `Glob`, `Grep`, `Skill`), so a
+run is the routing decision and little else; an explicit command's
+grader accepts the command (`kapso:build`) or the skill it hands over to
+(`kapso-build`), since either is the plugin firing; the Codex runner
+skips the explicit cases (Codex's explicit form is `$kapso-<skill>`,
+proven in the host facts) and reads a skill load from the stream's
+command that read the `SKILL.md` or the rollout's `<skill>` message,
+pinned by a captured fixture.
+
+**The round's learn runs on another model when the token's window is
+spent.** The fresh machine's Claude token had no weekly window left for
+`claude-fable-5`, the model the learning crews ship on, while the
+all-models window had room; the driver's `--learn-model claude-opus-5`
+puts the crews on that model for the round through the project's
+config, and the record says so. The shipped config is unchanged; a
+person's campaign never has its models swapped by the engine.
+
+**The plugin tree is kept out of the docs build.** `plugin/` joins
+`.mintignore`: the trigger suite's prompts hold text the site's MDX
+parser reads as tags (a `WAITING ON YOU` block with `<note>`), and
+nothing under `plugin/` is a page.
+
 **A session-built evaluator keeps its hold-out inside the evaluation
 directory.** The one thing the product promise rests on: labels left
 under `--data` are copied to `kapso_datasets/` and reachable by every
