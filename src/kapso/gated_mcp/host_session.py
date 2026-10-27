@@ -258,9 +258,10 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             "`codex mcp add kapso -- kapso-mcp --experience mine`."
         ),
     )
+    parser.add_argument("--version", action="version", version=f"kapso-mcp {__version__}")
     parser.add_argument(
         "--config", type=str, default=None,
-        help="Config path (default: packaged config.yaml)",
+        help="Config path (default: the project root's kapso-config.yaml, else the packaged config.yaml)",
     )
     parser.add_argument(
         "--root", type=str, default=None,

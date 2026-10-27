@@ -21,6 +21,7 @@ from dotenv import find_dotenv, load_dotenv
 # README tells users to create next to their project was never read.
 load_dotenv(find_dotenv(usecwd=True))
 
+from kapso import __version__
 from kapso.cli import build, deploy, doctor, experience, harness, inbox, learn, trace, watch
 from kapso.cli.common import list_agents
 from kapso.cli.errors import install_error_hook
@@ -69,6 +70,7 @@ Examples:
         action="store_true",
         help="List available coding agents"
     )
+    parser.add_argument("--version", action="version", version=f"kapso {__version__}")
 
     # Subparsers for commands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

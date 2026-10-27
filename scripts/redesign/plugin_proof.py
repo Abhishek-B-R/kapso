@@ -13,7 +13,7 @@ Runs where the host's CLI is logged in and the package is installed with
 the Codex half on the development box. The record is written after every
 step, so a crash keeps what ran and `--from` continues. Every step the
 matrix marks deferred for the host is recorded as such. The driver uses
-the standard library alone, so it runs on the machine's python3.
+the standard library and PyYAML (the examples' python3 has it).
 """
 
 import argparse
@@ -27,6 +27,8 @@ import sys
 import time
 import uuid
 from datetime import datetime, timezone
+
+import yaml
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -163,8 +165,9 @@ class CodexHost:
 
 # --------------------------------------------------------------- context
 class Context:
-    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str):
+    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None):
         self.host, self.clone, self.work, self.out, self.wheel, self.machine = host, clone, work, out, wheel, machine
+        self.learn_model = learn_model
         self.state_file = out / "state.json"
         self.state: Dict[str, Any] = json.loads(self.state_file.read_text()) if self.state_file.exists() else {}
         (out / "transcripts").mkdir(parents=True, exist_ok=True)
@@ -221,6 +224,31 @@ class Context:
         if generate:
             self.shell("python3 generate.py", cwd=path, timeout=600)
         return path
+
+
+def project_config(project: Path, blocks: Dict[str, Any]) -> Path:
+    """The project's kapso-config.yaml with `blocks` merged over what it
+    holds; the skills pass it on every line."""
+    path = project / "kapso-config.yaml"
+    current = yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    current = current or {}
+    for key, value in blocks.items():
+        current[key] = {**current.get(key, {}), **value} if isinstance(value, dict) and isinstance(current.get(key), dict) else value
+    path.write_text(yaml.safe_dump(current, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def effective_config(ctx: "Context", project: Path) -> Dict[str, Any]:
+    return yaml.safe_load(ctx.shell("kapso doctor --show-config" + (" --config kapso-config.yaml" if (project / "kapso-config.yaml").is_file() else ""), cwd=project).stdout)
+
+
+def learning_on(block: Any, model: str, replaced: str) -> Any:
+    """The learning block with every crew on `model` instead of `replaced`."""
+    if isinstance(block, dict):
+        return {key: learning_on(value, model, replaced) for key, value in block.items()}
+    if isinstance(block, list):
+        return [learning_on(item, model, replaced) for item in block]
+    return model if block == replaced else block
 
 
 def wait_for(predicate: Callable[[], bool], seconds: int, every: int = 10) -> bool:
@@ -580,16 +608,25 @@ def step_deploy(ctx: Context) -> Dict[str, Any]:
 
 def step_learn(ctx: Context) -> Dict[str, Any]:
     project = Path(ctx.state["churn_project"])
-    status_dir = ctx.shell("kapso doctor --show-config | python3 -c 'import sys,yaml;print(yaml.safe_load(sys.stdin)[\"learning\"][\"status_dir\"])'", cwd=project, check=False).stdout.strip() or "learning/status"
-    before = set(glob.glob(str(Path(status_dir).expanduser() / "*.json"))) if Path(status_dir).expanduser().is_dir() else set()
+    config = effective_config(ctx, project)
+    notes = []
+    if ctx.learn_model:
+        # The round's accommodation: the crews on another model when the
+        # token's window for the shipped one is spent; said in the record.
+        project_config(project, {"learning": learning_on(config["learning"], ctx.learn_model, "claude-fable-5")})
+        notes.append(f"the learning crews ran on {ctx.learn_model} for this round (--learn-model): the token's window for the shipped model was spent")
+    status_dir = Path(config["learning"]["status_dir"]).expanduser()
+    if not status_dir.is_absolute():
+        status_dir = project / status_dir
+    before = set(glob.glob(str(status_dir / "*.json"))) if status_dir.is_dir() else set()
     turns = ctx.converse("learn", project, ctx.host.command("learn", "../churn-campaign"), lambda text, index: None, max_turns=1)
-    after = lambda: set(glob.glob(str(Path(status_dir).expanduser() / "*.json"))) - before
+    after = lambda: set(glob.glob(str(status_dir / "*.json"))) - before
     launched = wait_for(lambda: bool(after()), 180)
     ctx.state["learn_status"] = sorted(after())[-1] if after() else None
     ctx.save()
     artifacts = [ctx.artifact("learn-answers.txt", "\n".join(turn.text for turn in turns))]
     offered = any("session_sources" in turn.text for turn in turns)
-    return record_step("learn", turns, launched, artifacts, [f"the serving offer (session_sources) was made: {offered}"])
+    return record_step("learn", turns, launched, artifacts, [f"the serving offer (session_sources) was made: {offered}", *notes])
 
 
 def step_learn_complete(ctx: Context) -> Dict[str, Any]:
@@ -607,7 +644,7 @@ def step_learn_complete(ctx: Context) -> Dict[str, Any]:
 
 def step_session_brief(ctx: Context) -> Dict[str, Any]:
     project = Path(ctx.state["churn_project"])
-    (project / "kapso-config.yaml").write_text("experience:\n  session_sources: [mine:all]\n", encoding="utf-8")
+    project_config(project, {"experience": {"session_sources": ["mine:all"]}})
     prompt = "What experience is this session served, according to your MCP server's instructions? Then read one card from the bank with the bank tools and quote its title."
     turns = ctx.converse("session-brief", project, prompt, lambda text, index: None, max_turns=1)
     names = [tool["name"] for turn in turns for tool in turn.tools]
@@ -695,12 +732,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--from", dest="start", default=None, help="continue from this step")
     parser.add_argument("--wheel", default=None, help="the wheel the cold install uses")
     parser.add_argument("--machine", default=os.uname().nodename)
+    parser.add_argument("--learn-model", default=None, help="run the learning crews on this model instead of the shipped one (said in the record)")
     args = parser.parse_args(argv)
     host = ClaudeHost() if args.host == "claude_code" else CodexHost()
     out = Path(args.out).resolve()
     work = Path(args.work).resolve() if args.work else out / "work"
     work.mkdir(parents=True, exist_ok=True)
-    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine)
+    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model)
     record_file = out / "record.json"
     record = json.loads(record_file.read_text()) if record_file.exists() else {
         "test": "S2-mechanical", "host": host.name, "machine": args.machine,
