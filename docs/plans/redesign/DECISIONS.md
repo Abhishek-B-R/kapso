@@ -2079,3 +2079,25 @@ not conflated) and reported as the longest single flow, with the limit
 stated in the step's notes. Capturing each invocation's exact source would
 need the host to write a fresh filename per attempt, which the engineer,
 not the driver, controls.
+
+## WP9 S1 flow-length bar: a finding, not a loosened bar (2026-10-27)
+
+The first S1 proof arm (`s1-claude-1`) failed its `python_lines` bar
+(16 > 12 for the longest single task) and the judge scored "the flows fit
+the design's lengths" at 0. Both read the same thing: the engineer's flow
+for the hardest task — load a path-named harness, build under a churn
+config, read the solution — was longer than the design's target. The bar
+was **not** loosened to pass the run. Two readings are left for the owner:
+
+- **A product finding.** If ≤12 lines is the real target for any single
+  task, the harness-load-plus-build path may warrant a more concise idiom,
+  or the docs a terser worked example, so a cold engineer reaches it
+  without a five-line call plus diagnostics.
+- **A metric calibration.** `python_lines` counts physical non-blank,
+  non-comment lines, so a readable multi-line `build(...)` call and
+  voluntary `print()`s inflate it past a bar tuned for terse flows.
+  Counting statements rather than lines, or excluding pure diagnostics,
+  would measure the intent — how much the engineer must write to drive a
+  task — more directly.
+
+Until the owner chooses, the bar stands and the run reads FAIL honestly.

@@ -685,12 +685,64 @@ reused within a task.
 
 ## Proof run
 
-(Filled as the runs land: the learn on WP7's archive; S1; S2; S4; S5; S6;
-the author test; each with its run id and report.)
+Each arm lands here with its run id, report and verdict. The first arm
+proved the runner end to end and drove the fixes recorded with it.
+
+### S1, Claude host, fresh GCP machine — run `s1-claude-1` (2026-10-27)
+
+A real cold engineer on a fresh machine: two prerequisite campaigns built
+(the second killed at ideation), tasks 1–6 on both the Python API and the
+CLI, the comprehension reading, the flow counts. Provision → preflight
+(real routes) → wheel install → scaffold → driver → fetch → judge → grade
+→ report all ran; the machine was deleted after the record was verified
+local (5.72 h, about $0.77). Report `tests/semantic/reports/s1-claude-1.md`.
+
+**Verdict: FAIL**, each cause recorded as a fix or a finding:
+
+- `comprehension_correct` 1.0, `wrong_calls` 0, `first_try` 10/≥9 — the
+  engineer read the tool correctly from the docs alone.
+- **The grading tail was broken on first real contact** (commit
+  `dc3d0a8b`): the judge's summary read the model reply's `scores` key, not
+  the block's `items` (a crash that aborts the grade under set -e);
+  `s1 --grade` demanded the `--host`/`--clone` the runner does not pass;
+  and `evidence_of("resumed")` required the campaign to be still running,
+  so a resume that *finished* — the good case — scored as no evidence. The
+  tail only runs once a fetched record reaches the judge, which no earlier
+  run had reached, so neither the unit tests nor the flow review had
+  exercised it. Tests now pin all three.
+- **The fetch dragged the throwaway venv** (commit `e07d8524`): the run's
+  fetch ran over an hour because `scp --recurse` doubled a 1.2 GB venv
+  across a symlink and paid a round trip per `.pyc`; it is now one tar
+  stream with the venv/cache excludes — 67 MB of evidence in seconds.
+- **task6-cli resume** was the resumed-evidence bug: it actually succeeded
+  (0.797 → 0.8476, stopped sensibly on budget) and will pass with the fix.
+- **task6-python resume**: the engineer ran the resume detached and ended
+  the turn with "I'll report once it finishes", capturing no result — a
+  detached-resume reporting signal (see findings).
+- **task3-cli**: the machine's Codex credit was exhausted, so the churn
+  build fell back to an all-Claude override — an environment limit the
+  device-auth Codex session removes for later arms, not a product fault.
+- **`python_lines` 16 > 12 and the judge's "flows fit the design's
+  lengths" 0** — a bar not loosened to pass; see findings and DECISIONS.
 
 ## Findings for later packages
 
-(Filled as the runs land.)
+From `s1-claude-1` — the signal the suite exists to catch, kept for the
+product and the docs, not the suite:
+
+- **A detached resume leaves the engineer without the result.** On the
+  Python surface the engineer launched the resume detached and could not
+  report its outcome within the turn. `kapso build --resume` returns once
+  the run is launched, but the cold engineer had no obvious way to await or
+  poll a detached run's result from Python. Worth a concise "wait for / read
+  a detached run's result" idiom in the docs or the API.
+- **The hardest single task ran 16 lines of Python against a 12-line bar**,
+  and the judge independently read the flow as longer than the design
+  intends. The core flow — load the path-named harness, build, read the
+  solution — is terse; the length came from a multi-line `build(...)` call
+  and voluntary diagnostics. Whether the target is the product (a more
+  concise harness-load-plus-build idiom) or the metric (count statements,
+  not physical lines) is left for the owner in DECISIONS.
 
 ## Built
 
@@ -700,3 +752,5 @@ the author test; each with its run id and report.)
 | `d47187a2` | change 1: the learn completes on the two cases the round found (the colon fragment as a finding; the role runner fails loud with what each session said) |
 | `70398ae5` | the suite README's fixture table |
 | `2c19d9d9`, `83fdc7f1` | change 9: the pipeline example on dbt and DuckDB, its evaluator, brief, README, baseline, runner and contract test |
+| `dc3d0a8b` | the grading tail fixed where the first live S1 run exercised it (judge summary shape, `--grade` args, resumed evidence) + tests |
+| `e07d8524` | the fetch is one tar stream with venv/cache excludes, not a recursive scp |
