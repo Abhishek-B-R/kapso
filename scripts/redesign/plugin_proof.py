@@ -461,7 +461,7 @@ def step_watch(ctx: Context) -> Dict[str, Any]:
     return record_step("watch", turns, completed, [ctx.artifact("watch-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))])
 
 
-CASE_NAME = re.compile(r"^(?P<skill>[a-z]+)-(?P<kind>[eicn])\d+$")
+CASE_NAME = re.compile(r"^(?P<skill>[a-z]+)-(?P<kind>[eicn])\d+$|^(?P<holdout>holdout)-\d+$")
 TRIGGER_BAR = 0.9   # eighteen of twenty per skill
 
 
@@ -477,7 +477,7 @@ def trigger_bar(out_dir: Path, host: str) -> Dict[str, Any]:
             match = CASE_NAME.match(case["name"])
             if match is None:
                 continue
-            passed.setdefault(match.group("skill"), []).append(case["aggregates"]["score"] >= 1.0)
+            passed.setdefault(match.group("skill") or "holdout", []).append(case["aggregates"]["score"] >= 1.0)
             for run in case["arms"]["with"]:
                 if any(g["name"].startswith("not-") and not g["passed"] for g in run.get("graders", [])):
                     false_positives.append(case["name"])
@@ -490,7 +490,7 @@ def trigger_bar(out_dir: Path, host: str) -> Dict[str, Any]:
             match = CASE_NAME.match(name)
             if match is None:
                 continue
-            passed.setdefault(match.group("skill"), []).append(all(run["passed"] for run in runs))
+            passed.setdefault(match.group("skill") or "holdout", []).append(all(run["passed"] for run in runs))
             if any(g["name"].startswith("not-") and not g["passed"] for run in runs for g in run["graders"]):
                 false_positives.append(name)
     per_skill = {skill: f"{sum(ok)}/{len(ok)}" for skill, ok in passed.items()}
@@ -498,27 +498,37 @@ def trigger_bar(out_dir: Path, host: str) -> Dict[str, Any]:
     return {"per_skill": per_skill, "false_positives": sorted(set(false_positives)), "met": met}
 
 
+def trigger_verdict(ctx: Context) -> Dict[str, Any]:
+    """The suite's verdict from the step's artifacts: both runs read
+    against the bar; a run without a result file fails."""
+    notes, verdicts = [], []
+    for label in ("main", "holdout"):
+        out_dir = ctx.out / "artifacts" / f"triggers-{label}"
+        result_file = out_dir / ("triggers.json" if ctx.host.name == "claude_code" else "results.json")
+        if result_file.is_file():
+            verdict = trigger_bar(out_dir, ctx.host.name)
+            verdicts.append(verdict["met"])
+            notes.append(f"{label}: {verdict['per_skill']}; cross-skill false positives: {verdict['false_positives'] or 'none'}")
+        else:
+            verdicts.append(False)
+            notes.append(f"{label}: the suite wrote no result file")
+    notes.append("the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way")
+    return {"completed": bool(verdicts) and all(verdicts), "notes": notes}
+
+
 def step_triggers(ctx: Context) -> Dict[str, Any]:
     started = time.monotonic()
     which = "claude-triggers" if ctx.host.name == "claude_code" else "codex-triggers"
     main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main", cwd=ctx.clone, timeout=10800, check=False)
     holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1", cwd=ctx.clone, timeout=3600, check=False)
-    artifacts, notes, verdicts = [], [], []
+    artifacts = []
     for label, run in (("main", main), ("holdout", holdout)):
         out_dir = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""
         if out_dir and Path(out_dir).is_dir():
             artifacts.append(ctx.copy_artifact(Path(out_dir), f"triggers-{label}"))
-            result_file = Path(out_dir) / ("triggers.json" if ctx.host.name == "claude_code" else "results.json")
-            if result_file.is_file():
-                verdict = trigger_bar(Path(out_dir), ctx.host.name)
-                verdicts.append(verdict["met"])
-                notes.append(f"{label}: {verdict['per_skill']}; cross-skill false positives: {verdict['false_positives'] or 'none'}")
-            else:
-                verdicts.append(False)
-                notes.append(f"{label}: the suite wrote no result file (exit {run.returncode})")
         artifacts.append(ctx.artifact(f"triggers-{label}.log", run.stdout + run.stderr))
-    notes.append("the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way")
-    return shell_step("triggers", bool(verdicts) and all(verdicts), artifacts, (time.monotonic() - started) / 60, notes)
+    verdict = trigger_verdict(ctx)
+    return shell_step("triggers", verdict["completed"], artifacts, (time.monotonic() - started) / 60, verdict["notes"])
 
 
 def step_harness_export(ctx: Context) -> Dict[str, Any]:
@@ -836,6 +846,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--wheel", default=None, help="the wheel the cold install uses")
     parser.add_argument("--machine", default=os.uname().nodename)
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model instead of the shipped one (said in the record)")
+    parser.add_argument("--recompute-triggers", action="store_true", help="read the trigger step's verdict again from its artifacts, run nothing")
     args = parser.parse_args(argv)
     host = ClaudeHost() if args.host == "claude_code" else CodexHost()
     out = Path(args.out).resolve()
@@ -849,6 +860,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "wheel_sha256": subprocess.run(["sha256sum", str(ctx.wheel)], capture_output=True, text=True).stdout.split()[0] if ctx.wheel else "-"},
         "started": datetime.now(timezone.utc).isoformat(timespec="seconds"), "finished": None, "steps": [], "notes": [], "transcripts": [],
     }
+    if args.recompute_triggers:
+        # The verdict's rule changed after the suite ran: the same evidence
+        # read again, the record saying so.
+        verdict = trigger_verdict(ctx)
+        for step in record["steps"]:
+            if step["name"] == "triggers":
+                step["completed"] = verdict["completed"]
+                step["notes"] = [*verdict["notes"], "verdict recomputed from the artifacts after the bar's rule read the held-out cases as their own group"]
+        record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        print(json.dumps(verdict))
+        return 0
     selected = args.steps.split(",") if args.steps else list(STEP_NAMES)
     if args.start:
         selected = selected[selected.index(args.start):]
