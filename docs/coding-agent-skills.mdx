@@ -79,15 +79,15 @@ A campaign's own sessions never get the plugin: the ideation, implementation and
 
 ## The second engineer
 
-A teammate with the plugin installed loads the bank you shared:
+A teammate with the plugin installed reads the bank you shared by its reference; a bank needs no `add` (loading fetches it into their store the first time):
 
 ```bash
 kapso experience share https://github.com/acme/kapso-bank.git     # you, once; create the repository first
-kapso experience add acme/kapso-bank@main --config kapso-config.yaml   # them, once
-kapso experience update --config kapso-config.yaml                     # them, whenever they want your newest lessons
+kapso build --experience acme/kapso-bank@main --config kapso-config.yaml …   # them: a build served your bank
+kapso experience update --config kapso-config.yaml                           # them, whenever they want your newest lessons
 ```
 
-Their `session_sources` lists `acme/kapso-bank@main` beside `mine:all`, and their builds load it with `--experience`. To hand the plugin itself to everyone who opens the repository, Claude Code reads a marketplace from the project's settings:
+Their `session_sources` lists `acme/kapso-bank@main` beside `mine:all`, so their sessions are served it too, and `kapso experience list` shows it under the banks they read. To hand the plugin itself to everyone who opens the repository, Claude Code reads a marketplace from the project's settings:
 
 ```json
 // .claude/settings.json

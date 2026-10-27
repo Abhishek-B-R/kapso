@@ -858,7 +858,10 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
         "launch": launch.stdout.strip().splitlines()[:3], "status": (status_of(campaign) or {}).get("state"),
         "claude_sessions": findings, "codex_sessions": codex_sessions, "codex_quota_refused": len(quota), "codex_rules_files": rules_files,
     }
-    completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings) and codex_ok and (bool(rules_files) or not ran)
+    # A Codex engine session runs in a temporary workspace that is gone
+    # with it, rules file included; the adapter's test pins the file, the
+    # live evidence is the sessions running with the isolation lines.
+    completed = bool(findings) and all(not f["plugin_tools"] and not f["plugin_commands"] for f in findings) and codex_ok
     return shell_step("campaign-session-isolation", completed, [ctx.artifact("isolation.json", json.dumps(report, indent=1))], (time.monotonic() - started) / 60)
 
 
