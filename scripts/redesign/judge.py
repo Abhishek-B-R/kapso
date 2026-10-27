@@ -312,10 +312,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if block["failure"]:
         print(f"judge failure: {block['failure']}")
         return 2
-    for dimension, entry in block["passes"][0]["scores"].items():
-        scores = [p["scores"][dimension]["score"] for p in block["passes"]]
-        adjudicated = block["adjudication"].get(dimension, {}).get("score")
-        print(f"{dimension}: {scores}" + (f" adjudicated {adjudicated}" if adjudicated is not None else ""))
+    for label, dimensions in block["passes"][0]["items"].items():
+        for dimension in dimensions:
+            scores = [p["items"][label][dimension]["score"] for p in block["passes"]]
+            adjudicated = block["adjudication"].get(f"{dimension}|{label}", {}).get("score")
+            print(f"{label} / {dimension}: {scores}" + (f" adjudicated {adjudicated}" if adjudicated is not None else ""))
     return 0
 
 

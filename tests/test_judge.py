@@ -127,6 +127,18 @@ def test_a_conversation_step_with_no_transcript_raises(tmp_path):
         judge.gather_materials(record_dir, json.loads((record_dir / "record.json").read_text()), None, record_dir / "judge")
 
 
+def test_main_prints_the_per_item_summary_without_crashing(tmp_path, monkeypatch, capsys):
+    # main() runs the judge then prints a per-item, per-dimension summary over
+    # the block it wrote; the summary must read the block's `items` shape, not
+    # the model reply's `scores` key (a crash there aborts the runner's grade).
+    record_dir = _record_dir(tmp_path)
+    replies = [_reply([5, 5, 5, 5, 5]), _reply([5, 5, 5, 5, 5])]
+    monkeypatch.setattr(judge, "ask", lambda prompt, settings: replies.pop(0))
+    assert judge.main([str(record_dir), "--rubric", "s2"]) == 0
+    out = capsys.readouterr().out
+    assert f"watch / {DIMENSIONS[0]}: [5, 5]" in out
+
+
 def test_the_preflight_reads_one_json_object(monkeypatch):
     monkeypatch.setattr(judge, "ask", lambda prompt, settings: '{"ok": true}')
     assert judge.preflight(SUITE).startswith("the judge's route answers")

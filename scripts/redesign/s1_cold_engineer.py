@@ -260,8 +260,13 @@ def evidence_of(task: Dict[str, Any], sandbox: Path, prereq: Path) -> bool:
     if kind == "learn-status":
         return any(sandbox.glob("**/learning/status/*.json"))
     if kind == "resumed":
+        # A resume that is still in flight (running, live pid) or that already
+        # carried the killed campaign through to the end (done) are both proof
+        # it continued from the checkpoint; the killed campaign on its own stays
+        # stopped at the kill phase, so neither state arises without a resume.
         status = status_of(sandbox / "campaign-killed") or {}
-        return status.get("state") == "running" and pid_alive(status.get("pid"))
+        state = status.get("state")
+        return state == "done" or (state == "running" and pid_alive(status.get("pid")))
     raise ValueError(kind)
 
 
@@ -489,8 +494,8 @@ STEP_NAMES = ["sandbox", "prerequisite-campaign", "prerequisite-killed", *[f"tas
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--host", choices=["claude_code", "codex"], required=True)
-    parser.add_argument("--clone", required=True)
+    parser.add_argument("--host", choices=["claude_code", "codex"])
+    parser.add_argument("--clone")
     parser.add_argument("--out", required=True)
     parser.add_argument("--wheel", default=None, help="the wheel built from the branch (the branch's package)")
     parser.add_argument("--package", choices=["branch", "released"], default="branch", help="released: the retrospective baseline on the released wheel and the tag's docs")
@@ -507,6 +512,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
         print(json.dumps(record["metrics"]))
         return 0
+    if not args.host or not args.clone:
+        parser.error("--host and --clone are required to run the cold engineer (omitted only with --grade)")
     if args.package == "branch" and not args.wheel:
         parser.error("--wheel is the branch's package; --package released needs none")
     driver = S1(args)

@@ -13,6 +13,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "redesign"))
 spec = importlib.util.spec_from_file_location("s1_cold_engineer", ROOT / "scripts" / "redesign" / "s1_cold_engineer.py")
@@ -128,6 +130,20 @@ def test_the_evidence_predicates_read_what_a_task_leaves(tmp_path):
     assert s1.evidence_of(s1.TASKS[5], sandbox, prereq)
     (sandbox / "campaign-killed" / ".kapso" / "status.json").write_text(json.dumps({"state": "running", "pid": 2 ** 22 - 1}))
     assert not s1.evidence_of(s1.TASKS[5], sandbox, prereq)
+    (sandbox / "campaign-killed" / ".kapso" / "status.json").write_text(json.dumps({"state": "done", "pid": 2 ** 22 - 1}))
+    assert s1.evidence_of(s1.TASKS[5], sandbox, prereq), "a resume that already finished (done) is still proof it continued"
+    (sandbox / "campaign-killed" / ".kapso" / "status.json").write_text(json.dumps({"state": "stopped", "pid": 2 ** 22 - 1}))
+    assert not s1.evidence_of(s1.TASKS[5], sandbox, prereq), "a campaign left at its kill was never resumed"
+
+
+def test_grade_parses_with_only_out_while_a_run_requires_host_and_clone(tmp_path):
+    dims = s1.SUITE["tests"]["S1"]["judge"]["dimensions"]
+    passes = [{"items": {"comprehension": {d: {"score": 1, "evidence": []} for d in dims}}} for _ in range(2)]
+    (tmp_path / "record.json").write_text(json.dumps({"steps": [], "metrics": {}, "judge": {"failure": None, "passes": passes, "adjudication": {}}}))
+    assert s1.main(["--grade", "--out", str(tmp_path)]) == 0  # the runner grades the fetched record with --out alone
+    assert json.loads((tmp_path / "record.json").read_text())["metrics"]["comprehension_correct"] == 1.0
+    with pytest.raises(SystemExit):  # a real cold-engineer run still needs the host and the clone
+        s1.main(["--out", str(tmp_path)])
 
 
 def test_the_two_counts_and_the_run_metrics(tmp_path):
