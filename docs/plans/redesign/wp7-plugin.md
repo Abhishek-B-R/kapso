@@ -875,7 +875,14 @@ through the inbox gate and the campaign pauses (`done`,
 is, refuses to say so ("telling it the key is done would be false", the
 first machine); with the key written where the fix line says, the
 session replies with a note through `kapso inbox reply … --detach` and
-the campaign resumes (the second machine: two messages, one question, 1.8 minutes).
+the campaign resumes (the second machine: two messages, one question,
+1.8 minutes). On Codex, on the development box, the pause campaign was
+given twenty minutes (its ten-minute one never reached the ask; the
+Findings): the request came twelve minutes in, the session rendered it
+with its fix line, told the key was placed replied through `kapso inbox
+reply … --detach` and the campaign resumed (two messages, under a
+minute), whereupon the engine's reserve rule stopped it with seven
+minutes left, an attempt having taken eleven.
 
 **(e) Review** of the finished churn campaign: one message in the
 order the skill sets (what won with its evaluation "protected,
@@ -887,15 +894,28 @@ machine's sixty-minute build delivered `generic_exp_0` at 0.847 (two
 messages, 2.1 minutes, the second a plain "is it safe to merge"
 answered from the verdicts and the diff). The development box's
 thirty-minute build delivered nothing (ideation outran its deadline;
-the Findings), and the review said so with the record's own words.
+the Findings), and so did its sixty-minute one (ideation took fifty
+of the sixty minutes; the implementation session was cut at the hour
+with a 0.8447 result file no judge read; the Findings): the Codex review
+said so with the record's own words both times ("no winner was
+delivered", the saved 0.8447 named as an unjudged, unversioned result,
+"I would not merge it yet"; two messages, 1.4 minutes).
 
 **(f) Deploy** to the local target: the session deploys, proves one
 call, scores the whole hold-out through the deployment and gets the
 delivered AUC back, explains the score, and hands back the numbered
 next actions (the first machine: two messages, 9.4 minutes; the second: two
-messages, 5.0 minutes). The development box's deploy refused with the engine's line
-when the campaign had delivered nothing, and ran on the sixty-minute
-build: TODO-F-CODEX.
+messages, 5.0 minutes). The development box's deploy refused with the
+engine's line ("produced no candidate before its budget was exhausted";
+"has no deployment" when asked to call it) each time its own campaign
+had delivered nothing, so the Codex deploy ran on the second machine's
+delivered campaign, restored under the box's work directory with its
+old home rewritten and its deployment removed
+(`scripts/redesign/runs/wp7/codex/restore_campaign.py`; the record's
+deploy entry says so): deployment #1 local and healthy with the proof
+verified, the served AUC 0.8471 named against the target, the stop line
+given, and one call with the saved proof inputs returning the proof's
+own output (two messages, 8.8 minutes).
 
 **(g) The three branches of the evaluation.** The fraud example (a
 protocol, no evaluator): the session proposes the evaluator from the
@@ -967,8 +987,14 @@ isolation**: a ten-minute campaign on the installed wheel with the
 plugin at user scope: its ideation and implementation sessions on
 Claude Code list no plugin tool and no `kapso:` command in their init
 events; its two engine sessions on Codex were refused by the machine's
-own Codex quota (said, not counted), and the development box's final
-pass shows them running with the isolation lines (TODO-N-CODEX).
+own Codex quota (said, not counted). On the development box the same
+campaign's Codex engine sessions ran to success, two of two (and three
+of three in the pass before it, whose verdict a driver fault spoiled:
+the exit read as a number), with the isolation lines on the adapter's
+command (the installed wheel's adapter, pinned by its test; a session's
+temporary workspace takes its rules file with it, so the step reports a
+rules file where one is found and requires the sessions to run), and the
+box's Claude session listed no plugin tool and no command.
 
 **(o) The trigger suite.** Claude Code, the second machine, 101 cases
 twice on `claude-opus-5-5` ($26.81 at list price, 20 minutes): build
@@ -1186,4 +1212,4 @@ check 6 quoted files, `mint validate` and `mint broken-links` passing).
 | `0f323983` | the trigger suite under `plugin/evals/` and its two runners (change 9) |
 | `a27a88e5` | the plugin page, the README's step 0, the installation page's `/kapso:setup`, the reference lines, the superseded notes, the validator's CLI pinned (change 10) |
 | `1f952164`, `3e2ab47b` | the round's driver, budgets and report; `kapso --version` and `kapso-mcp --version` (change 11) |
-| `1829844b` to the round's last commit | the round's findings as they landed: the driver's fixes (the wheel copy, the questions a turn asks in every shape the hosts wrote them, the second user run from its own home, the pause as its own step, the token in each fixture's `.env`, the key written before the person says so, a numbered list answered in one reply, the probe launch clearing a leftover result, a turn's and a trigger run's deadline as the `timeout` command's, the held-out cases as their own group, the bar read per skill and recomputable, the isolation campaign of its own, the shared remote where the second user can read it); the churn example on pandas 3; the evaluation skill's churn note; the learn command's offer in the same reply; the operating skill's line on the local target after an upgrade; the plugin page's teammate lines by the bank's reference; the trigger graders counting a skill's commands, and the Codex rule for a near miss that read the expected skill too; the Codex adapter's disabled server defined whole; the decisions of the build and the findings of the round |
+| `1829844b` to the round's last commit | the round's findings as they landed: the driver's fixes (the wheel copy, the questions a turn asks in every shape the hosts wrote them, the second user run from its own home, the pause as its own step, the token in each fixture's `.env`, the key written before the person says so, a numbered list answered in one reply, the probe launch clearing a leftover result, a turn's and a trigger run's deadline as the `timeout` command's, the held-out cases as their own group, the bar read per skill and recomputable, the isolation campaign of its own, the shared remote where the second user can read it, the pause campaign's budget as an option, the machine's delivered campaign stood in for the box's deploy, a Codex session's exit read as the word it is); the churn example on pandas 3; the evaluation skill's churn note; the learn command's offer in the same reply; the operating skill's line on the local target after an upgrade; the plugin page's teammate lines by the bank's reference; the trigger graders counting a skill's commands, and the Codex rule for a near miss that read the expected skill too; the Codex adapter's disabled server defined whole; the decisions of the build and the findings of the round |

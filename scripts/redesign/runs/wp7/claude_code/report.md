@@ -22,7 +22,7 @@
 | harness-probe | 0 | 0 | 9.8 | 0 lines | yes | 2/2 | pass |
 | review | 2 | 0 | 2.1 | 15 lines | yes | 2/2 | pass |
 | deploy | 2 | 0 | 5.0 | 10 lines | yes | 1/1 | pass |
-| learn | 1 | 1 | 1.1 | 6 lines | yes | 1/1 | FAIL |
+| learn | 1 | 1 | 1.1 | 6 lines | yes | 1/1 | pass |
 | learn-complete | 0 | 0 | 37.1 | 0 lines | no | 2/2 | FAIL |
 | session-brief | 1 | 0 | 0.2 | 3 lines | yes | 1/1 | pass |
 | cold-start | 0 | 0 | 0.1 | 0 lines | yes | 1/1 | pass |
@@ -54,4 +54,4 @@ Transcripts:
 - transcripts/watch-2.jsonl
 - transcripts/watch.jsonl
 
-Result: FAIL (22/24 steps)
+Result: FAIL (23/24 steps)

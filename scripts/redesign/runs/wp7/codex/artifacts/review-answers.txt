@@ -1,21 +1,29 @@
-**No winner was delivered.** The campaign exhausted its budget; `goal_achieved=False`. Attempt `generic_exp_0` at `07b094a70af2` has no evaluation score, so improvement over baseline and achievement of the **0.85 AUC** target remain unverified.
+**No winner was delivered.** The campaign exhausted its budget; `generic_exp_0` at `10074d814cfc` remains an unsuccessful, unjudged candidate.
 
-- **Changes:** No winning diff exists. The proposal replaced logistic regression in `predict.py` with 16 averaged, three-leaf histogram gradient boosting models, native categorical handling, and single-thread execution while preserving the prediction contract. Implementation timed out.
-- **Rejected or voided:** None recorded. During exploration, the agent discarded feature engineering, monotonic constraints, and model blends; these were exploratory decisions, not judge verdicts.
-- **Risks:** No harness verification or completed judge review exists. No hook blocks were recorded. Two Codex memory sessions failed because `mcp_servers.kapso` had an invalid transport configuration.
-- **Spend:** 58.5 minutes of a 60-minute budget: 51.5 on ideation and 7 on implementation. Recorded cost **$2.814**, covering priced Claude Code work only; one run lacked a cost figure, and Codex costs were unreported. One experiment, zero rejections.
+**Evaluation:** The candidate contains a full-evaluator result of **0.8447 ROC AUC**, versus the documented baseline **0.7974**: +0.0473, but **0.0053 below** the 0.85 threshold. These are supplied-evaluator, unversioned records; the trace registers no evaluator and accepts no campaign score.
 
-**Next action:** Fix the Codex transport configuration, then resume with more budget to finish implementation and obtain a verified evaluation before considering a merge.
+**Change outline:**
+- `predict.py`: replaces logistic regression with a five-family rank ensemble, including linear-leaf LightGBM and spline models.
+- Adds experiment scripts, results, predictions, and planning/evaluation notes.
+- Preserves the CLI and `id,churn_probability` output structure; evaluator code is unchanged.
+
+**Rejections:** No attempts were voided or integrity-rejected. Implementation timed out; judging and reconstruction never ran.
+
+**Risks:** No harness verification or reviewer reports exist. Hooks recorded no blocks. Output values are ranks, not calibrated probabilities. The recorded score has not been independently reproduced in this review.
+
+**Spend:** 59.8 of 60 minutes; **$3.249 recorded**, covering priced Claude Code sessions only. One run was unpriced; Codex reports no cost. One experiment, zero rejections.
+
+**Next action:** Resume with more budget to finish evaluation and verification before considering a merge.
 
 ---
 
-**No—not ready to merge. The campaign did not actually deliver an accepted winner.**
+**I would not merge it yet.** The campaign actually delivered no successful branch; `generic_exp_0` at `10074d814cfc` is an unfinished candidate.
 
-- The surviving attempt is `generic_exp_0` at `07b094a`. Implementation timed out, verification is absent, and the judge was skipped because the budget expired.
-- Its committed evaluation result reports **AUC 0.8464** using the provided evaluator (**protected, unversioned**): above the brief’s 0.7974 baseline, but **0.0036 below the 0.85 target**. The campaign’s official score is null.
-- The diff replaces logistic regression with 16 shallow gradient-boosting models. It also commits predictions, experiment scripts, binary arrays, and PID files.
-- The evaluator script is unchanged, and the prediction code appears to preserve the CLI/output contract and fit only training rows. I did not independently rerun evaluation or verify historical access to holdout labels.
-- No voided attempts or integrity rejections are recorded; there is also no reviewer approval. Feature engineering, constraints, and blends were rejected during exploration.
-- Spend: **58.5 minutes, $2.814 recorded**, with incomplete cost coverage; one experiment.
+- **Evidence:** Implementation timed out; verification and judging never ran. The campaign’s official score is null.
+- **Saved result:** The branch records **0.8447 AUC** from the provided evaluator (protected, unversioned), versus baseline **0.7974**—an improvement of **0.0473**, but **0.0053 below target**. I have not independently rerun it.
+- **Changes:** Replaces logistic regression with a five-family ensemble; adds experiment scripts, binary artifacts, and generated predictions.
+- **Integrity:** Evaluator code and datasets are unchanged. No voided attempts or integrity rejections were recorded. The prediction code fits on training rows.
+- **Risks:** Outputs are batch-relative ranks rather than calibrated probabilities. LightGBM is a new dependency without an accompanying dependency manifest. No reviewer verdict establishes merge safety.
+- **Spend:** 59.8 minutes; $3.249 recorded, with incomplete cost coverage; one experiment, zero rejected.
 
-**Next action:** recover the `predict.py` change into a clean candidate, rerun protected evaluation and verification, and meet the target before merging.
+**Next action:** Validate the exact candidate commit with the full evaluator, resolve probability semantics and dependencies, and meet the target before merging.

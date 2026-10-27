@@ -2,7 +2,7 @@
 
 - machine: dev-box
 - package: 0.8.0.dev1 (c16a36e94479)
-- started: 2026-10-27T01:12:12+00:00  finished: 2026-10-27T04:42:20+00:00
+- started: 2026-10-27T01:12:12+00:00  finished: 2026-10-27T06:12:00+00:00
 
 | step | messages | questions | minutes | longest message | completed | artifacts | verdict |
 |---|---|---|---|---|---|---|---|
@@ -22,14 +22,14 @@
 | build-data-only | 2 | 1 | 1.2 | 4 lines | yes | 1/1 | pass |
 | build-empty-wish | 2 | 1 | 0.9 | 7 lines | yes | 1/1 | pass |
 | harness-new | 2 | 1 | 3.7 | 22 lines | yes | 3/3 | pass |
-| review | 2 | 1 | 1.1 | 8 lines | yes | 2/2 | FAIL |
-| deploy | 2 | 0 | 1.0 | 2 lines | no | 1/1 | FAIL |
-| campaign-session-isolation | 0 | 0 | 0.0 | 0 lines | yes | 1/1 | pass |
 | build-churn | 1 | 0 | 1.2 | 7 lines | yes | 2/2 | pass |
-| build-pause | 1 | 0 | 0.8 | 4 lines | yes | 2/2 | pass |
 | watch | 2 | 0 | 0.7 | 3 lines | yes | 1/1 | pass |
-| inbox | 2 | 0 | 1.5 | 2 lines | no | 1/1 | FAIL |
 | harness-probe | 0 | 0 | 8.8 | 0 lines | yes | 2/2 | pass |
+| review | 2 | 0 | 1.4 | 10 lines | yes | 2/2 | pass |
+| build-pause | 1 | 0 | 0.8 | 4 lines | yes | 2/2 | pass |
+| inbox | 2 | 0 | 0.8 | 5 lines | yes | 2/2 | pass |
+| deploy | 2 | 0 | 8.8 | 3 lines | yes | 1/1 | pass |
+| campaign-session-isolation | 0 | 0 | 9.8 | 0 lines | yes | 1/1 | pass |
 
 Transcripts:
 - transcripts/build-churn.jsonl
@@ -51,4 +51,4 @@ Transcripts:
 - transcripts/watch-2.jsonl
 - transcripts/watch.jsonl
 
-Result: FAIL (15/18 steps)
+Result: PASS (18/18 steps)

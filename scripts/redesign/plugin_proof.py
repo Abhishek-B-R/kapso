@@ -817,8 +817,9 @@ def step_harness_improve(ctx: Context) -> Dict[str, Any]:
 def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
     """A campaign of its own at a tiny budget, run on the installed
     wheel with the plugin at user scope: its Claude Code sessions list
-    no plugin tool or command, its Codex sessions run (the isolation
-    lines must not break them) and carry the rules file."""
+    no plugin tool or command, and its Codex sessions run (the isolation
+    lines must not break them); a rules file is reported where one is
+    found, not required (a session's temporary workspace is gone with it)."""
     started = time.monotonic()
     project = Path(ctx.state["churn_project"])
     campaign = ctx.work / "isolation-campaign"

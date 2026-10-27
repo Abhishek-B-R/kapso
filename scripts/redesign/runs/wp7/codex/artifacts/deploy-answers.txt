@@ -1,9 +1,36 @@
-Deployment failed: `../churn-campaign` exhausted its budget without producing a candidate, so there is nothing to deploy.
+Deployed locally as **deployment #1**, running and healthy. The engine verified the proof call.
 
-The campaign needs to produce a candidate before local deployment can proceed.
+```python
+from kapso import Software
+
+software = Software.open("../churn-campaign", 1)
+print(software.run(software.proof["inputs"]))
+```
+
+Served AUC: **0.8471**, below the campaign’s 0.85 target.
+
+Stop with:
+```bash
+kapso deploy ../churn-campaign --stop --number 1
+```
 
 ---
 
-There’s no deployment to call: `kapso deploy ../churn-campaign --status` reports `has no deployment`.
+Called deployment 1 once with its exact saved proof inputs. It returned:
 
-The recorded deployment attempt failed because the build delivered no candidate (`budget_exhausted`). No proof inputs or response exist, so I made no inference call.
+```json
+{
+  "status": "success",
+  "output": {
+    "id": "C010001",
+    "churn_probability": 0.9790020997900208,
+    "arm_probabilities": {
+      "hgb": 0.8582369819237355,
+      "spline_lr": 0.8705081092313289
+    },
+    "absent_fields": []
+  }
+}
+```
+
+The output matches the saved proof.
