@@ -1069,6 +1069,31 @@ its six steps fetched (`scripts/redesign/runs/s2-codex-4/fetched/`); the
 clean run relaunches as `s2-codex-5` behind a latency gate — three one-token
 `gpt-6-astra` calls in a row under twenty seconds and free of 429s.
 
+**`s2-claude-2`** (the clean Claude run, 2026-10-28 13:05–19:05, TOKEN3,
+the learn on Opus): twenty-two steps recorded in the launch log, sixteen
+true — cold-install, build-pause, watch, triggers (23.7 min), harness-export,
+campaign-tools, **inbox** (the pause arrived, was replied, the campaign
+continued), **build-fraud launched** (2 messages, a contract-ok evaluator),
+build-empty-wish, harness-new (3 messages, 2 questions, 5.1 min),
+harness-probe, learn, session-brief, experience-share; false: build-churn
+(the host launched without ending a turn asking — once, against four
+Claude arms that asked), build-data-only (3 messages, 2 questions, the
+persona at its cap), review (the verdict in the skill's form the detector
+did not know, fixed above), deploy (parity "differs", 0.9803 vs 0.9805, the
+re-fit finding), **learn-complete at the step's 150-minute cutoff** — the
+churn campaign's first attempt took 48 minutes and the learn over it ran
+mining 36, the exam 68 and the lesson past 80 minutes, a timing finding
+beside the learn validation's — and second-engineer-build with no card to
+serve. Then the machine's six-hour auto-delete fired at harness-improve,
+step twenty-three of twenty-four, the fetch never reached: the evidence
+beyond those step lines is lost. The cap was a literal per test
+(`machine.max_run`); it is now the run's own length from the suite — the
+host's step budgets end to end, the grace and an hour of provisioning,
+rounded up (`machine_hours`; ten hours for the Claude S2 run, eight for S5
+and S6, six for S1 — which had survived its five-and-three-quarter hours
+under the same six by a quarter). The clean Claude run is re-run as
+`s2-claude-3` under that cap.
+
 **Calibration, said rather than tuned.** The Claude host's build
 conversations run 14–19 lines against the 12-line budget in every arm
 (`build-churn` 11 → 14–15, `build-pause` 19 → 15, `build-fraud` 15,
