@@ -284,7 +284,7 @@ class UserMode:
 
 
 class Context:
-    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = 10, user: Optional[UserMode] = None):
+    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = _PAUSE_B["minutes"], user: Optional[UserMode] = None):
         self.host, self.clone, self.work, self.out, self.wheel, self.machine = host, clone, work, out, wheel, machine
         self.learn_model = learn_model
         self.pause_minutes = pause_minutes
@@ -1271,7 +1271,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--wheel", default=None, help="the wheel the cold install uses")
     parser.add_argument("--machine", default=os.uname().nodename)
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model instead of the shipped one (said in the record)")
-    parser.add_argument("--pause-minutes", type=int, default=10, help="the injected pause campaign's budget; a slow box needs more than the machine's ten for its session to reach the ask")
+    parser.add_argument("--pause-minutes", type=int, default=_PAUSE_B["minutes"], help="the injected pause campaign's budget (the suite's builds.pause.minutes); a slow box needs more than the default for its session to reach the ask")
     parser.add_argument("--recompute-triggers", action="store_true", help="read the trigger step's verdict again from its artifacts, run nothing")
     parser.add_argument("--advisory", default=None, help="the reason this arm runs on the development box; the record is marked and never a fresh-machine acceptance")
     parser.add_argument("--user", default="scripted", help="who answers the host: scripted (the mechanical round) or persona:<card> (a card under tests/semantic/personas through the other vendor's CLI)")
