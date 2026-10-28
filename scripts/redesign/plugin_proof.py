@@ -44,7 +44,14 @@ SUITE = json.loads(SUITE_PATH.read_text(encoding="utf-8"))
 CLAUDE_MODEL = SUITE["hosts"]["claude_code"]["model"]
 CODEX_MODEL = SUITE["hosts"]["codex"]["model"]
 TURN_TIMEOUT = SUITE["turn_timeout"]
-_CHURN_B, _FRAUD_B, _PAUSE_B = SUITE["builds"]["churn"], SUITE["builds"]["fraud"], SUITE["builds"]["pause"]
+_CHURN_B, _FRAUD_B, _PAUSE_B, _PROBE_B = SUITE["builds"]["churn"], SUITE["builds"]["fraud"], SUITE["builds"]["pause"], SUITE["builds"]["probe"]
+# How long a step waits for a campaign or a learn: the step's own minutes
+# from the suite, or the campaign's budget plus the suite's grace.
+CAMPAIGN_GRACE_SECONDS = SUITE["waits"]["campaign_grace_minutes"] * 60
+
+
+def step_seconds(name: str) -> int:
+    return SUITE["steps"][name]["minutes"] * 60
 # A turn that waits for a word without a question mark: "say go and I'll launch".
 # An approval request, matched only against the FINAL line: a plain
 # courtesy ("let me know if you want the full trace") is not a question,
@@ -1018,9 +1025,9 @@ def step_harness_probe(ctx: Context) -> Dict[str, Any]:
         leftover.unlink()
     run = ctx.shell(
         f"kapso build --harness {harness} --brief kapso-brief.md --repo repo --evaluation evaluation --data data "
-        f"--output {campaign} --budget-minutes 10 --budget-experiments 1 --detach", cwd=project, check=False,
+        f"--output {campaign} --budget-minutes {_PROBE_B['minutes']} --budget-experiments {_PROBE_B['experiments']} --detach", cwd=project, check=False,
     )
-    done = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 1500, every=20)
+    done = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), step_seconds("harness-probe"), every=20)
     artifacts = [ctx.artifact("harness-probe-launch.txt", run.stdout + run.stderr)]
     if status_of(campaign) is not None:
         artifacts.append(ctx.copy_artifact(campaign / ".kapso" / "status.json", "harness-probe-status.json"))
@@ -1029,7 +1036,7 @@ def step_harness_probe(ctx: Context) -> Dict[str, Any]:
 
 def step_review(ctx: Context) -> Dict[str, Any]:
     project, campaign = Path(ctx.state["churn_project"]), Path(ctx.state["churn_campaign"])
-    finished = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 4500, every=20)
+    finished = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), _CHURN_B["minutes"] * 60 + CAMPAIGN_GRACE_SECONDS, every=20)
     turns = ctx.converse("review", project, ctx.host.command("review", "../churn-campaign"), lambda text, index: "is it safe to merge?" if index == 0 else None, max_turns=3)   # WP7's round: the review's two-turn headroom was thin for a persona
     # The merge question is the step's second want; a persona that spent
     # its turn elsewhere (s2-claude-2 asked about the planted baseline and
@@ -1118,7 +1125,7 @@ def step_learn_complete(ctx: Context) -> Dict[str, Any]:
     status = ctx.state.get("learn_status")
     if not status:
         return shell_step("learn-complete", False, [], 0, ["no learn status appeared"])
-    done = wait_for(lambda: json.loads(Path(status).read_text()).get("state") in ("done", "failed"), 9000, every=60)
+    done = wait_for(lambda: json.loads(Path(status).read_text()).get("state") in ("done", "failed"), step_seconds("learn-complete"), every=60)
     final = json.loads(Path(status).read_text())
     listing = ctx.shell("kapso experience list", cwd=Path(ctx.state["churn_project"]), check=False)
     artifacts = [ctx.artifact("learn-status.json", json.dumps(final, indent=1)), ctx.artifact("experience-list.txt", listing.stdout + listing.stderr)]
@@ -1229,9 +1236,9 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
         shutil.rmtree(campaign)
     launch = ctx.shell(
         f"kapso build --brief kapso-brief.md --repo repo --evaluation evaluation --data data --output {campaign} "
-        "--budget-minutes 10 --budget-experiments 1 --detach", cwd=project, check=False,
+        f"--budget-minutes {_PROBE_B['minutes']} --budget-experiments {_PROBE_B['experiments']} --detach", cwd=project, check=False,
     )
-    wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 1200, every=20)
+    wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), step_seconds("campaign-session-isolation"), every=20)
     findings = []
     # The implementation sessions' streams are `.kapso/sessions/<branch>/stream.jsonl`,
     # the ideation sessions' `.kapso/ideation/iter<n>/<host>_<model>.stream.txt`.
