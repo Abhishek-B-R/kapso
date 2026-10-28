@@ -502,7 +502,7 @@ is WP10's).
 | S1, one package, Claude Code | two prerequisite builds of an hour, twelve attempts, about four hours | 6h | about $20 | blocked | the Codex arm, advisory |
 | S2, Claude Code host | about three and a half hours | 6h | about $30 with the persona | the persona: blocked | both arms, advisory |
 | S4 | the readings, under an hour, on S5's machine | | about $5 | the reader: blocked | |
-| S5 | six injections, about four hours | 6h | about $25 | | |
+| S5 | six injections on hour-long campaigns (the second attempt needs the room: the engine starts one only when the remainder covers the last), run as two arms of three under the 6h cap | 6h | about $35 | | |
 | S6 | two builds of an hour and the bank's transfer, about three hours | 6h | about $20 | the learn's graders | the learn |
 | the author test | two rounds, about an hour | 3h | about $10 | the author: blocked | |
 
