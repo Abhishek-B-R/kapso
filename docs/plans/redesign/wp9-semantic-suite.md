@@ -778,6 +778,28 @@ ladder respected) all passed, 3/3 steps. Report
   `docs/reference/harness.mdx`, each stating what `check` and staging do;
   the next author run is the design's round two.
 
+**The loop, run to its bar (2026-10-28, four fresh authors on four guides;
+reports `author-claude-1..4.md`):**
+
+| run | guide | guesses | structural gaps | contradictions | `check` | verdict |
+|---|---|---|---|---|---|---|
+| `author-claude-1` | as shipped by WP2 | 34 | 8 | 1 | green | FAIL |
+| `author-claude-2` | after run 1's fixes (b6f9277c) | 36 | 2 | 0 | green | FAIL |
+| `author-claude-3` | after run 2's fixes (4cd4a99d) | 46 | 3 → 1 re-graded | 2 → 1 | green | FAIL |
+| `author-claude-4` | after run 3's fixes (2fed2120), sha256 78fa1323… | 24 | 0 | 0 | green | **PASS** |
+
+Run 3's classifier pass had labelled as structural three choices no rule
+rejects (an MCP SDK pattern, a Python version, an optional README); the
+`CLASSIFY` prompt now states the design's rejection test and asks for the
+rule a wrong guess would trip (DECISIONS, 606ad0c3), and the same guesses
+re-graded 1 + 1 — the gap a real one the first pass had filed as
+already-in-guide (a skill named only on `guardrails.md` does not satisfy
+the mention warning). Run 4 met the bar with the four judge dimensions
+passing: the acceptance's "run after the guide's fixes" is this one, and
+the guide's fixes are the four commits above. Each run's guesses fell
+mostly into already-in-guide and domain decisions; the guide pages grew
+by a clause per gap, none past a screen.
+
 ### S5 injections, Claude host — arms s5-claude-1..4 (2026-10-27/28)
 
 The product handled every operational failure correctly — the evidence is the
