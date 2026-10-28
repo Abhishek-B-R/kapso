@@ -862,6 +862,38 @@ the author test's bar on the guide as it stands.
 
 ## Findings for later packages
 
+**From the live S2 round (2026-10-28, both hosts on fresh machines):**
+
+- **Deploy parity fails on a delivery that trains at load.** On both hosts
+  the deployed call's answer for the proof row differed from the delivered
+  prediction (Claude 0.9838 vs 0.9871; Codex 0.9776 vs its own): the churn
+  fixture's `predict.py` fits its models when it loads, so the deployment
+  re-fits them and the figures drift. Parity, as WP5 defines it, needs a
+  frozen artifact; the fraud brief asks for one ("deliver it frozen"), the
+  churn brief does not. Either the deploy adapter freezes what it serves,
+  or a brief that wants a deployable result says so — WP5's call.
+- **Codex 0.165 on a fresh machine triggers the plugin's skills implicitly
+  in 4 of 18 cases per skill** (holdout 0/10), where WP7's round on the
+  development box's codex 0.153 passed the same probe and the Claude host
+  passes it at 19–20 of 20. A Codex skill-discovery change between those
+  versions is the prime suspect; WP7's domain.
+- **An exported skill was not loaded when asked.** The export itself was
+  right on both hosts (the skills, delegates and `.mcp.json` placed, the
+  hooks and module pages left behind with the reason), but in the plain
+  session that followed, the Claude host answered a question about the
+  backtesting skill from memory, drifted, and the persona's "load the
+  skill and cite its path" went unresolved — the judge's lowest scores of
+  the round. What a plugin session does with an exported skill directory
+  is WP7's and WP10's to look at.
+- **The Claude host's build conversations run long and, twice, did not
+  launch.** Its `build-pause` reply was 19 and 15 lines against a 12-line
+  budget; on the fraud fixture it spent its four messages revising the
+  evaluation protocol and ended with "Nothing is launched"; the Codex host
+  launched the same fixture in two messages with a contract-ok evaluator.
+  The build skill's wording on when to stop designing and launch is WP7's.
+- **Fable 5's safeguards and the mining prompt; codex-cli 0.165's
+  workspace-write sandbox on a VM** — recorded in DECISIONS (S6).
+
 From `s1-claude-1` — the signal the suite exists to catch, kept for the
 product and the docs, not the suite:
 
