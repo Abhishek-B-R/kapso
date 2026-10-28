@@ -154,6 +154,12 @@ def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
     if any(tool["name"] == "AskUserQuestion" for tool in tools):
         return True
     lines = [line.strip().rstrip("*_`)\"' ") for line in text.splitlines() if line.strip()]
+    # The command the ask refers to, shown after it (a fenced block, a
+    # backtick-wrapped line, a `kapso ...` line), is not the ask's last
+    # word: three steps on the Claude host ended "Say go and I'll run:"
+    # and the command, and read as never asking (2026-10-28).
+    while lines and (lines[-1] == "" or lines[-1].startswith("`") or lines[-1].startswith("kapso ") or lines[-1].startswith("$ ")):
+        lines.pop()
     if not lines:
         return False
     # A question mark in the closing lines, or an approval request anchored

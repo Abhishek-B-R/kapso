@@ -171,3 +171,14 @@ def test_a_review_names_the_delivered_branch_or_that_nothing_was_delivered():
     assert proof.names_delivery("finished at 0.8459 ROC AUC, 0.0041 below the target. The goal was not met.", None)
     assert proof.names_delivery("Nothing was delivered; do not merge.", None)
     assert not proof.names_delivery("What won: generic_exp_0 at 0.8459 — safe to merge.", None)
+
+
+def test_a_turn_that_asks_then_shows_the_command_it_will_run_asks():
+    # Two shapes the Claude host wrote on 2026-10-28 (build-churn and
+    # build-data-only): the approval request, then the command it refers to.
+    fenced = "Baseline measured at 0.7974.\n\nApprove the evaluation change, or edit a line of the brief. Say **go** and I'll run:\n```\nkapso build --brief kapso-brief.md --output ../churn-campaign --detach\n```\n"
+    assert proof.question_asked(fenced, [])
+    inline = "Approve, or edit a line. On \"go\", I'll launch it in the background:\n`kapso build --brief kapso-brief.md --output ../fraud-campaign --detach`\n"
+    assert proof.question_asked(inline, [])
+    # A statement followed by a command is still no question.
+    assert not proof.question_asked("Launched. The campaign is at ../churn-campaign.\n```\nkapso watch ../churn-campaign\n```\n", [])
