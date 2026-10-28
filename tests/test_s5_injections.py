@@ -155,24 +155,6 @@ def test_the_seeded_bank_is_the_fixture_as_one_commit_in_a_bare_repo(tmp_path):
         s5.seed_bank(tmp_path / "no-such-fixture", tmp_path / "other.git")
 
 
-def test_the_second_attempt_staging_raises_the_target_and_reads_the_status(tmp_path):
-    # The classes staged after the first checkpoint used to race a node 0
-    # that met its goal and ended the campaign; the target raised past reach
-    # keeps the campaign going, and the staging waits for iteration two's
-    # implementation with the first attempt scored.
-    brief = tmp_path / "kapso-brief.md"
-    brief.write_text("Objective    raise the AUC\nTarget       0.85\nRules\n  - the evaluator is never modified\n", encoding="utf-8")
-    assert s5.raise_target(tmp_path, 0.99) == "Target 0.99"
-    assert "Target       0.99\n" in brief.read_text(encoding="utf-8") and "0.85" not in brief.read_text(encoding="utf-8")
-    brief.write_text("Objective    raise the AUC\nRules\n", encoding="utf-8")
-    with pytest.raises(ValueError):
-        s5.raise_target(tmp_path, 0.99)
-    assert s5.second_attempt_reached({"iteration": 2, "phase": "implementation", "best": {"score": 0.85, "node": 0}})
-    assert not s5.second_attempt_reached({"iteration": 1, "phase": "implementation", "best": None})
-    assert not s5.second_attempt_reached({"iteration": 2, "phase": "ideation", "best": {"score": 0.85, "node": 0}})
-    assert not s5.second_attempt_reached(None)
-
-
 def test_a_crash_is_read_from_the_attempts_own_sessions(tmp_path):
     # evaluator-crash read 0 crashed attempts in four arms: the session ran
     # the evaluator, and the crash sat in the session's stream, not in the

@@ -502,7 +502,7 @@ is WP10's).
 | S1, one package, Claude Code | two prerequisite builds of an hour, twelve attempts, about four hours | 6h | about $20 | blocked | the Codex arm, advisory |
 | S2, Claude Code host | about three and a half hours | 6h | about $30 with the persona | the persona: blocked | both arms, advisory |
 | S4 | the readings, under an hour, on S5's machine | | about $5 | the reader: blocked | |
-| S5 | six injections on hour-long campaigns (the second attempt needs the room: the engine starts one only when the remainder covers the last), run as two arms of three under the 6h cap | 6h | about $35 | | |
+| S5 | six injections, about four hours; run as two arms of three | 6h | about $25 | | |
 | S6 | two builds of an hour and the bank's transfer, about three hours | 6h | about $20 | the learn's graders | the learn |
 | the author test | two rounds, about an hour | 3h | about $10 | the author: blocked | |
 
@@ -860,27 +860,24 @@ provider-limit (arm at launch; accept recover-or-resume) now passes, and
 evaluator-crash (detect the crash in the attempt's session, where it surfaces).
 The product validation stands on its own.
 
-**The deterministic-staging pass (built 2026-10-28, d0ba4c42 + affb0ee9).**
-The four arms' evidence was read from their step records (the machines'
-`out/` was never fetched then): provider-limit fired 3 of 3 once armed at
-launch and passed twice; missing-key and killed-session passed; evaluator-crash
-read 0 crashed attempts in every arm; killed-writer, full-disk, tampering and
-bank-compare never ran to a record. Three causes, each now staged rather than
-raced: (1) the classes the design stages "after the first checkpoint" raced a
-node 0 that met the fixture's 0.85 goal and ended the campaign, so each now
-runs on a brief whose target is raised past reach (`injections.unreachable_target`
-0.99, a driver's act in the record) and injects while iteration two is being
-implemented, with the campaign given the room for it (60 min, 3 experiments:
-the engine starts another attempt only when the remainder covers the last; a
-first attempt took 19 min in S6 and 48 min in `s2-claude-2`'s churn campaign,
-so an outlier still leaves the premise unmet, and the step then says so);
-(2) bank-compare compared nothing because no bank was ever loaded, so every
-campaign is now served a seeded bank (`tests/fixtures/bank_seed`, the S6
-round-5 bank's three cards as one commit in a bare repo) and the comparison
-has a head and a count to hold; (3) evaluator-crash's crash sat in the
-attempt's own session when the session ran the evaluator, so the detection
-reads the sessions as well as the trace row. Arm `s5-claude-5` runs
-evaluator-crash, killed-writer and bank-compare on this staging; the second
+**The calibration pass (2026-10-28).** The four arms' evidence was read
+from their step records (the machines' `out/` was never fetched then):
+provider-limit fired 3 of 3 once armed at launch and passed twice;
+missing-key and killed-session passed; evaluator-crash read 0 crashed
+attempts in every arm; killed-writer, full-disk, tampering and bank-compare
+never ran to a record (a crash on an already-gone pid, since guarded; the
+arms stopped). Two gaps closed: bank-compare compared nothing because no
+bank was ever loaded, so every campaign is now served a seeded bank
+(`tests/fixtures/bank_seed`, the S6 round-5 bank's three cards as one commit
+in a bare repo) and the comparison has a head and a count to hold; and
+evaluator-crash's crash sits in the attempt's own session when the session
+ran the evaluator, so the detection reads the sessions as well as the trace
+row. The staging itself stays as the 2026-10-27 decision left it — every
+injection fires early, during the implementation phase, on the fixture's
+real 0.85 goal: an unreachable target was re-tried for a second-attempt
+staging and withdrawn within the hour, the recorded reason (the cold
+engineer saw through the artificial goal) standing. Arm `s5-claude-5` runs
+evaluator-crash, killed-writer and bank-compare on this harness; the second
 arm full-disk and tampering; S4's readers on the tampering campaign after.
 
 ### S6 experience, Claude host, fresh machines — arms s6-claude-1..5 (2026-10-28)
