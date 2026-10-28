@@ -99,7 +99,12 @@ STEP_INTENTS = {
     "build-churn": "get one proposal for the churn build and have it launched detached at the budget the brief names; you do not hold the data API key a rule may mention, the campaign's own session asks through the inbox when it needs it",
     "build-pause": "have the campaign launched now without being asked for the key: its own session asks through the inbox when it needs it",
     "watch": "how the campaign is going, in a few lines", "watch-2": "how the campaign is going, in a few lines",
-    "inbox": "answer the campaign's request: the key is now in both .env files; there is no enrichment service and no enrichment table; the campaign must reach 0.85 without it",
+    # The inbox step is two exchanges: the host reads the request and says what
+    # the person must do (the key is NOT in .env yet; the driver writes it
+    # after), then the host replies. A want that spans both can never be met
+    # in the first, so each exchange has its own.
+    "inbox": "hear what the campaign is waiting on and what I must do before it can continue; I will do it myself and come back",
+    "inbox-reply": "answer the campaign's request: the key is now in both .env files; there is no enrichment service and no enrichment table; the campaign must reach 0.85 without it",
     "build-fraud": "a fraud scorer that beats the rule-based one, with an evaluator proposed from the protocol and approved by you, then launched",
     "build-data-only": "see the candidate criteria and the recommended one; take the first; do not launch anything",
     "build-empty-wish": "see what could be built here and the candidate criteria; take the first; do not launch anything",
