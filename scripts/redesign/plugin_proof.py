@@ -987,7 +987,10 @@ def step_review(ctx: Context) -> Dict[str, Any]:
     branch = None
     if solution.is_file():
         artifacts.append(ctx.copy_artifact(solution, "churn-solution.json"))
-        branch = (json.loads(solution.read_text(encoding="utf-8")).get("delivered") or {}).get("branch")
+        # The solution record's own key (handles.py writes `branch` at the top;
+        # a run on the Claude host read an older shape's `delivered.branch`
+        # and named nothing). Null when no node scored.
+        branch = json.loads(solution.read_text(encoding="utf-8")).get("branch")
     answer = "\n".join(turn.text for turn in turns).lower()
     # The answer must name what was delivered (the branch, or that nothing
     # was) and give a merge verdict, so "I can't read that campaign" does
