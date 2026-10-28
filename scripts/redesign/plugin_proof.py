@@ -570,22 +570,49 @@ def step_setup(ctx: Context) -> Dict[str, Any]:
     return record_step("setup", turns, required_ok, artifacts, notes)
 
 
-def step_cold_install(ctx: Context) -> Dict[str, Any]:
-    started = time.monotonic()
+SECOND_USER = "proof2"
+
+
+def second_user_install_script(wheel_name: str) -> str:
+    """The second engineer's own install, from its own home: `kapso` reads
+    `.env` from the working directory, and a directory the user cannot
+    see is no place to run."""
+    return (
+        "set -e; cd ~; curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; "
+        f"uv tool install --python 3.12 /tmp/{wheel_name} >/dev/null 2>&1; echo kapso $(kapso --version); echo kapso-mcp $(kapso-mcp --version); "
+        "echo which $(which kapso) $(which kapso-mcp)"
+    )
+
+
+def stage_wheel_for_second_user(ctx: Context) -> Path:
+    """The wheel where another user can read it."""
     wheel = ctx.wheel
-    user = "proof2"
-    ctx.shell(f"id -u {user} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {user}")
     if wheel.resolve() != Path("/tmp") / wheel.name:
         ctx.shell(f"sudo cp {wheel} /tmp/{wheel.name}")
     ctx.shell(f"sudo chmod 644 /tmp/{wheel.name}")
-    # From the user's own home: `kapso` reads `.env` from the working
-    # directory, and a directory the user cannot see is no place to run.
-    script = (
-        "set -e; cd ~; curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; "
-        f"uv tool install --python 3.12 /tmp/{wheel.name} >/dev/null 2>&1; echo kapso $(kapso --version); echo kapso-mcp $(kapso-mcp --version); "
-        "echo which $(which kapso) $(which kapso-mcp)"
-    )
-    run = ctx.shell(f"sudo -u {user} -H bash -lc {shlex.quote(script)}", timeout=1200, check=False)
+    return wheel
+
+
+def ensure_second_user(ctx: Context) -> None:
+    """The second engineer exists with the wheel on its PATH. The Claude
+    host's cold-install step measures that install; the Codex step list
+    has no cold-install, so the steps that act as the second user make
+    sure of it here (a no-op once it is there). A fresh Codex machine
+    (2026-10-28) had no such user and the ninth step died on it."""
+    ctx.shell(f"id -u {SECOND_USER} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {SECOND_USER}")
+    present = ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc 'export PATH=$HOME/.local/bin:$PATH; command -v kapso'", check=False)
+    if present.returncode == 0:
+        return
+    wheel = stage_wheel_for_second_user(ctx)
+    ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc {shlex.quote(second_user_install_script(wheel.name))}", timeout=1200)
+
+
+def step_cold_install(ctx: Context) -> Dict[str, Any]:
+    started = time.monotonic()
+    user = SECOND_USER
+    ctx.shell(f"id -u {user} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {user}")
+    wheel = stage_wheel_for_second_user(ctx)
+    run = ctx.shell(f"sudo -u {user} -H bash -lc {shlex.quote(second_user_install_script(wheel.name))}", timeout=1200, check=False)
     text = run.stdout + run.stderr
     # The lines read `kapso kapso 0.8.0.dev1`: the label, then what --version printed.
     versions = re.findall(r"^(kapso|kapso-mcp) (?:\1 )?(\S+)$", run.stdout, re.M)
@@ -1088,6 +1115,7 @@ def step_session_brief(ctx: Context) -> Dict[str, Any]:
 
 def step_experience_share(ctx: Context) -> Dict[str, Any]:
     project = Path(ctx.state["churn_project"])
+    ensure_second_user(ctx)
     # The bare remote where the second user can read it: the first user's
     # home is its own.
     remote = Path("/tmp") / "bank-remote.git"
@@ -1119,6 +1147,7 @@ def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
     started = time.monotonic()
     project = Path(ctx.state["churn_project"])
     budget = SUITE["builds"]["second_engineer"]
+    ensure_second_user(ctx)
     ctx.shell(f"sudo rm -rf /home/proof2/churn-second /home/proof2/second-campaign /home/proof2/second-campaign.log; sudo cp -r {project} /home/proof2/churn-second; sudo chown -R proof2:proof2 /home/proof2/churn-second")
     launch = ctx.shell(
         "sudo -u proof2 -H bash -lc 'cd ~/churn-second; export PATH=$HOME/.local/bin:$PATH; "
