@@ -166,7 +166,40 @@ def judge_material(material: str, rubric_text: str, dimensions: Sequence[str], s
     (archive / f"prompt-{label}.md").write_text(prompt, encoding="utf-8")
     reply = ask(prompt, settings)
     (archive / f"raw-{label}.txt").write_text(reply, encoding="utf-8")
-    return validate(extract_json(reply), dimensions, scale, root, allowed)
+    data = extract_json(reply)
+    # A quote that is not on its cited line, the reply otherwise in shape,
+    # is the model's citation slip (two of ten judge runs on 2026-10-28
+    # lost their whole report to one): one re-ask, archived beside the
+    # first; a second slip fails loud in validate as before.
+    if misquoted(data, root):
+        reply = ask(prompt, settings)
+        (archive / f"raw-{label}-retry.txt").write_text(reply, encoding="utf-8")
+        data = extract_json(reply)
+    return validate(data, dimensions, scale, root, allowed)
+
+
+def misquoted(data: dict, root: Path) -> bool:
+    """True when some evidence entry's quote is not on the line it cites,
+    with everything on the way there well formed; any other fault is left
+    to validate, which names it."""
+    scores = data.get("scores")
+    if not isinstance(scores, dict):
+        return False
+    for entry in scores.values():
+        evidence = entry.get("evidence") if isinstance(entry, dict) else None
+        for item in evidence if isinstance(evidence, list) else []:
+            where, quote = (item.get("where"), item.get("quote")) if isinstance(item, dict) else (None, None)
+            if not isinstance(where, str) or not isinstance(quote, str) or ":L" not in where:
+                return False
+            file, _, label = where.rpartition(":L")
+            path = root / file
+            if not path.is_file() or not label.isdigit():
+                return False
+            lines = path.read_text(encoding="utf-8").splitlines()
+            number = int(label)
+            if not 1 <= number <= len(lines) or quote.strip() not in lines[number - 1]:
+                return True
+    return False
 
 
 def gather_materials(record_dir: Path, record: dict, inputs: Optional[Sequence[str]], archive: Path) -> Dict[str, Dict[str, str]]:
