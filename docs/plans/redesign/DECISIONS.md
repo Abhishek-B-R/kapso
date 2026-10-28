@@ -2240,3 +2240,19 @@ recovered by the frame's repair round) — the learn ran on Opus 5.5 after
 that (`--learn-model`, authorized); and the mined `mining-report.md` the
 first session left was the API error's text, which the mined-view
 validation accepted as a report.
+
+## WP9 S2 line budget: the Claude host's approval message runs fifteen lines against twelve (2026-10-28)
+
+Every build conversation on the Claude host in the S2 round (`build-churn`
+14–15, `build-pause` 15–19, `build-fraud` 15, `build-data-only` 15 lines
+outside fenced blocks) ran over the design's 12-line budget while the
+Codex host said the same in 3–8. The message is the one the evaluation
+skill prescribes inside `kapso-build`'s single approval: what is here,
+the protocol in five lines, the brief in a fenced block, the baseline and
+the ask — about fifteen lines of prose when written as the skill says.
+The judge rated those messages 4–5 on "not annoying" and "return on
+attention". The budget stays at twelve and the rows read FAIL, as the
+design wrote them; the owner's call is whether the skill's message is
+trimmed (a shorter "what is here", the protocol's five lines folded into
+the brief) or the build conversations' budget is fifteen. Not taken here
+because the budget is a design value, not a harness calibration.

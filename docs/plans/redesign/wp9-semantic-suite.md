@@ -924,6 +924,71 @@ rubric scores (the Claude author kept it unprompted); it does now, in
 contradictions, `check` green, the four dimensions at 1. Both hosts meet
 the author test's bar on the guide as it stands.
 
+### S2 with the persona, both hosts, fresh machines (2026-10-28)
+
+The round that found the suite's own rough edges: two full runs on the
+first harness, then targeted re-runs of the rows each fix touched, then
+the clean full runs on the fixed harness and wheel (`s2-claude-2`,
+`s2-codex-4`, recorded below when they land). Every row that failed is
+either a harness fix with its commit, a product finding under "Findings
+for later packages", or a budget calibration said in the open — never a
+bar loosened to pass.
+
+**`s2-claude-1`** (Claude host, the persona on `gpt-6-astra`, the first
+harness and wheel; 2.68 h of machine, about $0.36; report
+`tests/semantic/reports/s2-claude-1.md`): 16 of 25 steps; the triggers
+19–20 of 20 per skill and the holdout 10 of 10; cold-install, harness-new
+(3 messages, 2 questions, 4.7 min), harness-probe, campaign-session
+isolation and cold-start true; the judge at 4–5 on every conversation but
+two (`harness-export` 1–3: the exported skill not loaded when asked;
+`deploy` engaging 2). The nine false rows and what each became:
+
+| row | what happened | became |
+|---|---|---|
+| inbox | the pause campaign's 10-min budget was spent before the reply (`attempt_would_not_fit`); the persona's first-exchange want read the key's sequencing wrong | `builds.pause.minutes` 40 single-sourced (d783ad90, 0b5b16ae); the exchange wants split (490235b8) — every predicate true on both hosts (`s2-claude-inbox-3`, judge 5/5/5/4/4; `s2-codex-inbox-2`, judge 3/5/5/4/4: the Codex host's reply named the key, told the person to put it in `.env` and to follow with `kapso watch`, which both passes read as short of proactive) |
+| review | the predicate wanted a delivered branch named; a campaign that missed its goal delivers none, and the record's branch lives at the solution's top level | `names_delivery` with the nothing-delivered words (672a38a3); the top-level branch (02682132); turn cap 2→3 — every predicate passed on `s2-claude-review-2` (judge 5/5/5/4/4), capped only on the persona assigning follow-up work → the persona's DONE rule (ea5fa8ee), `s2-claude-review-3` running |
+| build-data-only | the approval request sat two lines above a closing command line, which the end-anchored detector read as no question | the detector sets trailing command lines aside and reads the closing three prose lines (c2c2a000, fbcf9fe0) — true on `s2-claude-dataonly-1` (3 messages, 1 question, judge 4–5) |
+| build-fraud | four messages revising the protocol, "Nothing is launched" | a product finding (the build skill's stop-designing-and-launch wording); on `s2-claude-propose-1` the same fixture launched in 2 messages (judge 5/5/5/5/4) |
+| build-pause, build-empty-wish | true, over the 12-line budget (19 and 14 lines) | calibration, below |
+| learn-complete | the exam's report writer died on the Codex sandbox — the pre-fix wheel | the engine fix (c151df52), proved by S6 round 5 |
+| second-engineer-build | no cards to serve (the learn above) | the same; and the Codex run's crash on the missing second user → `ensure_second_user` (dc1f21d6) |
+| deploy | parity "differs" (0.9838 deployed vs 0.9871 delivered) | a product finding: the delivery re-fits at load (WP5's call) |
+
+**`s2-codex-1`** (Codex host, the persona on `claude-opus-5`, the first
+harness; evidence under `scripts/redesign/runs/s2-codex-1/fetched/`, no
+report — the driver crashed at second-engineer-build): 14 true of 21
+recorded; build-churn, build-pause, watch, harness-export, campaign-tools,
+build-fraud (2 messages, a contract-ok evaluator), build-data-only,
+build-empty-wish, harness-new, harness-probe, learn, session-brief true;
+**the triggers 4 of 18 per skill, the holdout 0 of 10** (codex-cli 0.165;
+WP7's round on 0.153 passed — a product finding); inbox, review and
+learn-complete false for the harness and wheel reasons above; deploy
+parity differs on this host too (0.9776 vs 0.9817); experience-share
+false, then the crash: `cp: cannot create directory '/home/proof2/…'`,
+`chown: invalid user proof2` — the second user existed only on the Claude
+host's cold-install path, now made by every step that needs it.
+
+**Calibration, said rather than tuned.** The Claude host's build
+conversations run 14–19 lines against the 12-line budget in every arm
+(`build-churn` 11 → 14–15, `build-pause` 19 → 15, `build-fraud` 15,
+`build-data-only` 15): the approval message the evaluation skill
+prescribes — what is here, the five-line protocol, the brief in a fenced
+block, the ask — needs about fifteen lines outside the fences; the Codex
+host says the same in 3–8. The budget is the design's and stays; whether
+the skill's message is trimmed or the budget is fifteen is the owner's
+call (DECISIONS). The persona for Claude hosts moved from `gpt-6-astra`
+to `gpt-5.6-sol` (57bf5f50) after the device-auth Codex session's
+`gpt-6-astra` spent the afternoon in 429 retries — the persona's minutes
+exclude its own waiting, so no row moved, but a full run crawled.
+
+**The judge, hardened by this round.** Gemini's fail-loud citation check
+lost two of ten reports before three causes were found and fixed: a quote
+on the wrong line is re-asked once (b59937ef); a sentence the rendering
+wrapped is cited by the line it starts on (9ff6ba26); markdown around the
+quoted words is folded on both sides (07d040a6, ae665730). A fetched run
+is re-judged on the development box with `judge.py` and `report.py` over
+its `fetched/out`.
+
 ## Findings for later packages
 
 **From the live S2 round (2026-10-28, both hosts on fresh machines):**
