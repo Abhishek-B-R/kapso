@@ -52,6 +52,16 @@ CAMPAIGN_GRACE_SECONDS = SUITE["waits"]["campaign_grace_minutes"] * 60
 
 def step_seconds(name: str) -> int:
     return SUITE["steps"][name]["minutes"] * 60
+
+
+def machine_hours(test: str, host: str) -> str:
+    """A fresh machine's auto-delete cap for one test on one host: the
+    host's required steps' budgets end to end, the campaign grace and an
+    hour of provisioning, rounded up to the hour — a safety net past the
+    whole run, never inside it (s2-claude-2 was deleted at its twenty-third
+    step of twenty-four under a six-hour literal, its evidence with it)."""
+    minutes = sum(SUITE["steps"][name]["minutes"] for name in SUITE["tests"][test]["required_steps"][host])
+    return f"{math.ceil((minutes + SUITE['waits']['campaign_grace_minutes'] + 60) / 60)}h"
 # A turn that waits for a word without a question mark: "say go and I'll launch".
 # An approval request, matched only against the FINAL line: a plain
 # courtesy ("let me know if you want the full trace") is not a question,

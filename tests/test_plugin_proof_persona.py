@@ -198,3 +198,17 @@ def test_a_turn_that_asks_then_shows_the_command_it_will_run_asks():
     # A statement followed by a command is still no question, nor is a courtesy sign-off.
     assert not proof.question_asked("Launched. The campaign is at ../churn-campaign.\n```\nkapso watch ../churn-campaign\n```\n", [])
     assert not proof.question_asked("Launched. The campaign is at ../churn-campaign.\nLet me know if you want the full trace.\n", [])
+
+
+def test_the_machine_cap_is_the_runs_own_length_from_the_suite():
+    # s2-claude-2 (2026-10-28) was deleted by a six-hour literal at its
+    # twenty-third step of twenty-four, the fetch never reached: the cap is
+    # the host's step budgets end to end, grace and provisioning, rounded up.
+    steps = proof.SUITE["tests"]["S2"]["required_steps"]["claude_code"]
+    minutes = sum(proof.SUITE["steps"][name]["minutes"] for name in steps)
+    assert minutes > 6 * 60, "the Claude S2 run is longer than the six hours that deleted it"
+    grace = proof.SUITE["waits"]["campaign_grace_minutes"]
+    assert proof.machine_hours("S2", "claude_code") == f"{-(-(minutes + grace + 60) // 60)}h"
+    for test, hosts in proof.SUITE["tests"].items():
+        for host in hosts["required_steps"]:
+            assert proof.machine_hours(test, host).endswith("h")

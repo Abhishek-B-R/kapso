@@ -42,8 +42,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# The suite's machine.max_run key is lowercase for the author, uppercase
-# for the numbered tests.
+# The suite's test key is lowercase for the author, uppercase for the
+# numbered tests.
 [ "$TEST" = author ] && SUITE_KEY=author || SUITE_KEY="$(echo "$TEST" | tr 'a-z' 'A-Z')"
 suite_get() { python3 -c "import json,sys; print(json.load(open('$SUITE'))$1)"; }
 RELEASED="$(suite_get "['released']['version']")"   # the tag whose docs ride in the pack (S1's retrospective baseline)
@@ -204,7 +204,10 @@ if [ -n "$ADVISORY" ]; then
 fi
 
 # ---- a fresh machine ----
-export KAPSO_FRESH_MAX_RUN="$(suite_get "['machine']['max_run']['$SUITE_KEY']")"
+# The cap is the run's own length from the suite (the host's step budgets
+# end to end, plus grace and provisioning), never a literal the steps outgrow.
+export KAPSO_FRESH_MAX_RUN="$(cd "$HERE" && python3 -c "import plugin_proof; print(plugin_proof.machine_hours('$SUITE_KEY', '$HOST'))")"
+echo "machine cap: $KAPSO_FRESH_MAX_RUN"
 WHEEL="$(build_wheel)"; WHEEL_NAME="$(basename "$WHEEL")"
 HARNESS="$RUN_DIR/harness.tgz"; pack_harness "$HARNESS"
 "$FRESH" create "$RUN_ID"
