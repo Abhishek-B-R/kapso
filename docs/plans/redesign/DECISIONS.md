@@ -2197,3 +2197,21 @@ and each success condition should accept the engineer's correct behaviour.
 Deferred to a focused pass rather than burned down with multi-hour runs, since
 the product is already validated. S4 (which reads S5's tampering campaign)
 defers with it.
+
+## WP9 author classifier: the structural gap is the design's rejection test, made explicit (2026-10-28)
+
+Three author runs on successive guides — `author-claude-1` (8 gaps + 1
+contradiction), `author-claude-2` on the guide after those fixes (2 + 0),
+`author-claude-3` after the next (3 + 2) — showed the judge's classifier
+labelling as structural things no rule rejects: which MCP SDK pattern a
+stub server uses, the Python version a script may assume, whether a README
+may ship. The design defines a structural gap as "a field, file, key,
+convention or host behaviour the engine or `check` would reject if guessed
+wrong"; the `CLASSIFY` prompt now says that test out loud (name the rule a
+wrong guess would trip; an open choice any reasonable value satisfies is a
+domain decision, which now covers the author's own code as well as their
+domain). Re-grading run 3's own guesses under it: 1 gap + 1 contradiction,
+the gap a real one the first pass had filed as already-in-guide (a skill
+named only on `guardrails.md` does not satisfy the module-page mention);
+both are in the guide. The bar stays max 0; the re-graded report is the
+committed one. Not a loosening: the same words, applied as written.

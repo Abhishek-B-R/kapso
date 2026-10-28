@@ -59,12 +59,12 @@ Be honest and complete: a guess you later confirmed in the example still counts 
 """
 CLASSIFY = """You are grading the guess log of an author who wrote a Kapso harness with only the authoring guide below. Classify each guess as exactly one of:
 
-- "structural_gap": a field, file, key, convention or host behaviour the engine or `kapso harness check` would reject if guessed wrong, which the guide does not state.
+- "structural_gap": a field, file, key, convention or host behaviour the engine or `kapso harness check` would reject if guessed wrong, which the guide does not state. The test is rejection: name the check rule or engine behaviour that a wrong guess would trip. A choice the guide leaves open that any reasonable value satisfies (a library or SDK pattern, a code style, a language version, an optional extra file) is not structural: it is a domain_decision, a choice that is the author's to make about their own domain or their own code.
 - "contradiction": the guide says two things that cannot both hold.
-- "domain_decision": a choice about the author's own domain (dbt), not about Kapso, that no guide could make for them.
+- "domain_decision": a choice about the author's own domain (dbt), not about Kapso, that no guide could make for them; or a choice about the author's own code (a library, a style, a language version, an extra file) to which the engine accepts any reasonable answer.
 - "already_in_guide": the guide already states it; the author did not find it.
 
-Reply with exactly one JSON object: {{"classifications": [{{"index": <1-based int>, "class": "<one of the four>", "why": "<one sentence in plain prose that cites the guide by file and section, never by pasting code, and uses no double-quote characters, so the JSON stays valid>"}}, ...]}}, one entry per guess, in order.
+Reply with exactly one JSON object: {{"classifications": [{{"index": <1-based int>, "class": "<one of the four>", "why": "<one sentence in plain prose that cites the guide by file and section, never by pasting code, and uses no double-quote characters, so the JSON stays valid; for a structural_gap it names the check rule or engine behaviour a wrong guess would trip>"}}, ...]}}, one entry per guess, in order.
 
 === THE GUIDE ===
 {guide}
