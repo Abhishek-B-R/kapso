@@ -74,7 +74,9 @@ driver_cmd() {
   local wheel_flag=""
   [ -n "$WHEEL_NAME" ] && wheel_flag="--wheel /tmp/$WHEEL_NAME"
   case "$TEST" in
-    s1)     echo "python3 scripts/redesign/s1_cold_engineer.py --clone \$PWD --out ~/out --host $HOST $wheel_flag" ;;
+    s1)     # the released baseline (`-- --package released`) installs the published wheel itself; the branch's is not its package
+            case " ${DRIVER_FLAGS[*]:-} " in *" released "*) wheel_flag="" ;; esac
+            echo "python3 scripts/redesign/s1_cold_engineer.py --clone \$PWD --out ~/out --host $HOST $wheel_flag" ;;
     s2)     echo "python3 scripts/redesign/plugin_proof.py --clone \$PWD --out ~/out --host $HOST --user persona:ml-engineer $wheel_flag" ;;
     s5)     echo "python3 scripts/redesign/s5_injections.py --clone \$PWD --out ~/out" ;;
     s6)     echo "python3 scripts/redesign/s6_experience.py --clone \$PWD --out ~/out" ;;
