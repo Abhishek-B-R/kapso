@@ -12,11 +12,11 @@ two turns ("what happened?" and the fix the skill names):
   the CLI; handled means the run entry errors with the limit's text, the
   attempt fails, the campaign goes on or stops truthfully, the skill names
   the class and the fix.
-- evaluator-crash: after attempt one the hold-out labels are moved out of
-  the campaign's tree (the engine seals and commits them there), so the
-  next attempt's commit lacks them and the protected evaluator crashes on
-  every evaluation of it, the engine's own included; the attempt's
-  evaluation output carries it and the judge's rejection names it.
+- evaluator-crash: after attempt one the hold-out labels are moved away
+  from where the protected evaluator reads them, so the second attempt's
+  evaluation crashes, the engine's own included; the crash is read where
+  it surfaced (the attempt's trace row or its own session) and the judge's
+  rejection names it.
 - missing-key: a local enrichment service answers the table to the key
   alone; the brief requires the table before training; the session asks
   through the inbox; the driver writes the key where the request's fix
@@ -24,20 +24,29 @@ two turns ("what happened?" and the fix the skill names):
   service's log shows the resumed attempt's authorised fetch.
 - killed-session: an implementation CLI killed mid-run; the run entry ends
   in error, the attempt fails, the campaign goes on by itself.
-- killed-writer: the campaign's writer killed after its first checkpoint;
-  the heartbeat stops at once, a reader sees DEAD (the writer gone), the
-  user resumes with one flag, the attempts are kept.
+- killed-writer: the campaign's writer killed after its first checkpoint,
+  while it implements the second attempt; the heartbeat stops at once, a
+  reader sees DEAD (the writer gone), the user resumes with one flag, the
+  attempts are kept.
 - full-disk: a small tmpfs holding the campaign directory, filled after
-  the first checkpoint; the writer dies with ENOSPC in the launch's log
-  (kept outside the full disk; no try/except), the user frees the filler
-  and resumes.
-- tampering: the evaluator edited inside an attempt's workspace while it
-  runs; the integrity check voids the attempt with the hash evidence; this
-  campaign is S4's.
+  the first checkpoint while the second attempt is written; the writer
+  dies with ENOSPC in the launch's log (kept outside the full disk; no
+  try/except), the user frees the filler and resumes.
+- tampering: the second attempt's evaluator edited inside its workspace
+  while it runs; the integrity check voids the attempt with the hash
+  evidence; this campaign is S4's (a scored loser and a void).
 
-The timeline sampler runs beside every campaign at the engine config's
-heartbeat cadence; the bank's head and card count are compared before and
-after each injection.
+The classes staged after the first checkpoint run on a brief whose target
+is raised past reach (the suite's `injections.unreachable_target`), so the
+campaign does not stop on a first attempt that met its goal — the staging
+is then a matter of the campaign's phases, not of its luck; the raised
+line is a driver's act in the record, and a campaign that ends before its
+second attempt makes the step say the premise was not reached. The
+timeline sampler runs beside every campaign at the engine config's
+heartbeat cadence; every campaign is served a seeded bank (the fixture
+`tests/fixtures/bank_seed`, three cards of a real learn, as one commit in
+a bare repo under the output directory) whose head and card count are
+compared before and after each injection.
 
     python3 s5_injections.py --clone <clone> --out <dir> [--bank <bank-dir>] [--steps a,b] [--advisory <reason>]
 """
@@ -159,6 +168,63 @@ def request_names_no_value(inbox: Path, key_value: str) -> Optional[bool]:
     return "DATA_API_KEY" in text and key_value not in text
 
 
+def seed_bank(fixture: Path, target: Path) -> Dict[str, Any]:
+    """A bare bank at `target` holding the fixture's tree as one commit —
+    the seeded bank every S5 campaign is served and the comparison reads
+    before and after each injection (a bank with no card compares
+    vacuously). Returns its state."""
+    if not fixture.is_dir():
+        raise FileNotFoundError(f"the bank fixture is missing: {fixture}")
+    source = target.with_name(target.name + ".src")
+    for path in (source, target):
+        if path.exists():
+            shutil.rmtree(path)
+    shutil.copytree(fixture, source)
+    git = lambda *args: subprocess.run(["git", "-C", str(source), "-c", "user.name=kapso-semantic", "-c", "user.email=semantic@kapso.invalid", *args], check=True, capture_output=True, text=True)
+    git("init", "-q")
+    git("add", "-A")
+    git("commit", "-q", "-m", "the seeded bank")
+    subprocess.run(["git", "clone", "-q", "--bare", str(source), str(target)], check=True, capture_output=True, text=True)
+    shutil.rmtree(source)
+    return bank_state(target)
+
+
+def raise_target(project: Path, target: float) -> str:
+    """The brief's `Target` line raised past what the fixture can reach, so
+    the campaign runs on to a second attempt instead of stopping on its
+    first — the classes staged after the first checkpoint need one. The
+    line as rewritten is returned for the record."""
+    brief = project / "kapso-brief.md"
+    text = brief.read_text(encoding="utf-8")
+    rewritten, count = re.subn(r"(?m)^(Target\s+)\S+", lambda m: f"{m.group(1)}{target}", text)
+    if count != 1:
+        raise ValueError(f"the brief has {count} Target lines, not one: {brief}")
+    brief.write_text(rewritten, encoding="utf-8")
+    return f"Target {target}"
+
+
+def second_attempt_reached(status: Optional[Dict[str, Any]]) -> bool:
+    """The campaign is implementing its second attempt: iteration two in
+    the implementation phase, the first attempt scored."""
+    status = status or {}
+    return (status.get("iteration") or 0) >= 2 and status.get("phase") == "implementation" and status.get("best") is not None
+
+
+def session_mentions(campaign: Path, attempt: Dict[str, Any], needle: str) -> bool:
+    """Whether the attempt's own sessions (their stored stream and record
+    under the campaign's `.kapso/sessions/<label>/`) carry the needle —
+    where a crash of the evaluator the session ran surfaces when the
+    attempt's trace row carries only the score it did not get."""
+    for session in attempt.get("sessions", []):
+        folder = campaign / ".kapso" / "sessions" / str(session.get("label", ""))
+        if not folder.is_dir():
+            continue
+        for path in folder.rglob("*"):
+            if path.is_file() and path.suffix in (".jsonl", ".json", ".md", ".txt", ".log") and needle in path.read_text(encoding="utf-8", errors="replace"):
+                return True
+    return False
+
+
 def bank_state(bank: Path) -> Dict[str, Any]:
     """A bank's head and card count, read with git so a BARE repo (Kapso's
     own bank home) works: an insight is `insights/<name>.md` but not the
@@ -187,8 +253,10 @@ class S5:
         self.work.mkdir(parents=True, exist_ok=True)
         self.ctx = Context(ClaudeHost(), self.clone, self.work, self.out, None, args.machine, user=UserMode("scripted", "claude_code"))
         self.cadence = heartbeat_seconds() if args.cadence is None else args.cadence
-        self.bank = Path(args.bank).resolve() if args.bank else None
-        self.bank_before = bank_state(self.bank) if self.bank else {"head": None, "cards": None, "readable": None}
+        # The bank every campaign is served: the one given, else the seeded
+        # fixture (three cards of a real learn) as a bare repo under out/.
+        self.bank = Path(args.bank).resolve() if args.bank else self.out / "bank-seed.git"
+        self.bank_before = bank_state(self.bank) if args.bank else seed_bank(self.clone / "tests" / "fixtures" / "bank_seed", self.bank)
         self.samplers: Dict[str, subprocess.Popen] = {}
 
     # -- machinery --
@@ -203,7 +271,7 @@ class S5:
             self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
             shutil.rmtree(campaign, ignore_errors=True)
         budget = budget or BUDGET
-        experience = f" --experience {self.bank}" if self.bank else ""
+        experience = f" --experience file://{self.bank}"
         where = f" --log {log}" if log else ""
         # No --config: the churn fixture ships none, and passing any config
         # changes the engine's defaults (the known layering gotcha), so the
@@ -243,6 +311,22 @@ class S5:
 
     def wait_phase(self, campaign: Path, phase: str, seconds: int) -> bool:
         return wait_for(lambda: (status_of(campaign) or {}).get("phase") == phase or (status_of(campaign) or {}).get("state") in ("done", "failed"), seconds, every=10)
+
+    def second_attempt_project(self, name: str) -> Path:
+        """The fixture with its target raised past reach: the classes staged
+        during the second attempt need a campaign that does not stop on
+        its first. A driver's act, named in the record."""
+        project = self.project(name)
+        line = raise_target(project, INJECTIONS["unreachable_target"])
+        self.ctx.user.interventions.append(f"{name}: the brief's target raised to `{line}` so the campaign runs on to a second attempt")
+        return project
+
+    def wait_second_attempt(self, campaign: Path) -> bool:
+        """Until the second attempt is being implemented, or the campaign
+        has ended first (then the injection's premise was not reached,
+        and the step says so rather than injecting into nothing)."""
+        wait_for(lambda: second_attempt_reached(status_of(campaign)) or (status_of(campaign) or {}).get("state") in ("done", "failed"), BUDGET["minutes"] * 60 + 300, every=10)
+        return second_attempt_reached(status_of(campaign))
 
     def record_injection(self, name: str, turns, metrics: Dict[str, Any], artifacts: List[str], notes: List[str], completed: bool, started: float) -> Dict[str, Any]:
         step = record_step(name, turns, completed, artifacts, notes, extra_minutes=(time.monotonic() - started) / 60 - sum(turn.seconds for turn in turns) / 60, kind="injection")
@@ -301,13 +385,14 @@ class S5:
     def step_evaluator_crash(self) -> Dict[str, Any]:
         started = time.monotonic()
         name = "evaluator-crash"
-        project = self.project(name)
+        # After attempt one, as the design stages it: the target raised past
+        # reach so the campaign goes on to a second attempt (a node 0 that
+        # met its goal used to finish before the labels were moved), and the
+        # labels moved while that attempt is being implemented, before its
+        # evaluation reads them.
+        project = self.second_attempt_project(name)
         campaign = self.launch(name, project)
-        # Move the labels while the campaign is implementing node 0, before its
-        # first evaluation reads them: waiting for a checkpoint instead races a
-        # node 0 that meets its goal and finishes before the labels are moved
-        # (observed: the labels moved 16 s after the campaign had finished).
-        self.wait_phase(campaign, "implementation", BUDGET["minutes"] * 60)
+        reached = self.wait_second_attempt(campaign)
         # The evaluator reads the labels through the ABSOLUTE path in
         # evaluation/private_dir.txt, the project's own private directory
         # outside the campaign; moving it there breaks every evaluation,
@@ -320,21 +405,22 @@ class S5:
         status = self.finish(name, campaign)
         trace = self.trace(campaign)
         # The attempt that could not score because the labels were gone: the
-        # evaluator's error surfaces in the attempt's session (where the engine
-        # ran evaluate.py), not in the evaluation summary's `output`, so match
-        # the whole attempt. Paired with a null score it stays specific to the
-        # crash (a healthy attempt carries a score).
-        crashed = [a for a in trace.get("attempts", []) if (a.get("evaluation", {}) or {}).get("score") is None and "holdout_labels.csv" in json.dumps(a)]
+        # evaluator's error surfaces where it ran — in the attempt's trace row
+        # when the engine ran evaluate.py, in the attempt's own session when
+        # the session did — so both are read. Paired with a null score it
+        # stays specific to the crash (a healthy attempt carries a score).
+        crashed = [a for a in trace.get("attempts", []) if (a.get("evaluation", {}) or {}).get("score") is None
+                   and ("holdout_labels.csv" in json.dumps(a) or session_mentions(campaign, a, "holdout_labels.csv"))]
         turn_1 = self.ask(name, project, f"why did the later attempt of the kapso campaign at ../s5-{name} fail?")
         moved.rename(labels)
         turn_2 = self.ask(name + "-2", project, f"the labels file is back where it was; continue the campaign at ../s5-{name}")
         resumed = wait_for(lambda: (status_of(campaign) or {}).get("state") == "running", 300, every=10)
         diagnosis = names_class_and_fix(turn_1.text, name)
-        metrics = {"attempts_with_the_crash": len(crashed), "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis, "resumed": resumed}
+        metrics = {"second_attempt": reached, "attempts_with_the_crash": len(crashed), "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis, "resumed": resumed}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
-        return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, ["the hold-out labels moved away after attempt one: the protected evaluator crashes on every invocation, the engine's own included"],
-                                     bool(crashed) and diagnosis["names_class"] and diagnosis["names_fix"] and resumed, started)
+        return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, ["the hold-out labels moved away after attempt one (the target raised past reach so there is one): the protected evaluator crashes on every invocation, the engine's own included"],
+                                     reached and bool(crashed) and diagnosis["names_class"] and diagnosis["names_fix"] and resumed, started)
 
     def step_missing_key(self) -> Dict[str, Any]:
         started = time.monotonic()
@@ -419,7 +505,7 @@ class S5:
         return self.record_injection(name, [turn_1], metrics, artifacts, ["an implementation CLI killed mid-run: the run entry ends in error, the attempt fails, the campaign goes on by itself"],
                                      session_killed and bool(errored) and status.get("state") in ("done", "failed") and diagnosis["names_class"] and diagnosis["names_fix"], started)
 
-    def _resume_after_writer_gone(self, name: str, project: Path, campaign: Path, injected_at: datetime, second_prompt: str, note: str, started: float, extra: Dict[str, Any]) -> Dict[str, Any]:
+    def _resume_after_writer_gone(self, name: str, project: Path, campaign: Path, injected_at: datetime, second_prompt: str, note: str, started: float, extra: Dict[str, Any], premise: bool = True) -> Dict[str, Any]:
         attempts_before = len(self.trace(campaign).get("attempts", []))
         shown_dead = wait_for(lambda: (self.timeline(name) or [{}])[-1].get("shown") == "DEAD", int(3 * self.cadence) + 60, every=5)
         turn_1 = self.ask(name, project, f"what happened to the kapso campaign at ../s5-{name}? kapso watch says something is wrong")
@@ -433,33 +519,32 @@ class S5:
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
         return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, [note],
-                                     shown_dead and diagnosis["names_class"] and diagnosis["names_fix"] and resumed and metrics["attempts_kept"], started)
+                                     premise and shown_dead and diagnosis["names_class"] and diagnosis["names_fix"] and resumed and metrics["attempts_kept"], started)
 
     def step_killed_writer(self) -> Dict[str, Any]:
         started = time.monotonic()
         name = "killed-writer"
-        project = self.project(name)
+        # After the first checkpoint, as the design stages it: the target
+        # raised past reach so the campaign goes on to a second attempt (a
+        # node 0 that met its goal flipped the campaign to done as the
+        # checkpoint landed), and the writer killed while it is demonstrably
+        # implementing that attempt — so the resume has an attempt to keep.
+        project = self.second_attempt_project(name)
         campaign = self.launch(name, project)
-        # Kill the writer while it is demonstrably running (the implementation
-        # phase), not at the first checkpoint: a node-0 that reaches the goal
-        # flips the campaign to done in the same instant the checkpoint lands,
-        # so a post-checkpoint kill would race the writer's own exit. The guard
-        # still covers the edge where the writer has already gone -- os.kill on
-        # a dead pid would raise, and a writer already absent satisfies the
-        # injection's premise either way.
-        self.wait_phase(campaign, "implementation", BUDGET["minutes"] * 60)
+        reached = self.wait_second_attempt(campaign)
         pid = (status_of(campaign) or {}).get("pid")
         writer_killed = isinstance(pid, int) and Path(f"/proc/{pid}").exists()
         if writer_killed:
             os.kill(pid, signal.SIGKILL)
         injected_at = datetime.now(timezone.utc)
         return self._resume_after_writer_gone(name, project, campaign, injected_at, f"continue the campaign at ../s5-{name} from where it stopped",
-                                              "the writer killed with SIGKILL during the implementation phase; the heartbeat stops at once; a reader sees DEAD as soon as the writer is gone", started, {"writer_killed": writer_killed})
+                                              "the writer killed with SIGKILL while implementing the second attempt; the heartbeat stops at once; a reader sees DEAD as soon as the writer is gone; the first attempt is kept across the resume",
+                                              started, {"second_attempt": reached, "writer_killed": writer_killed}, premise=reached)
 
     def step_full_disk(self) -> Dict[str, Any]:
         started = time.monotonic()
         name = "full-disk"
-        project = self.project(name)
+        project = self.second_attempt_project(name)
         mount = self.work / f"s5-{name}-disk"
         campaign = mount / "campaign"
         if mount.exists():
@@ -472,11 +557,11 @@ class S5:
             return shell_step(name, False, [self.ctx.artifact(f"{name}-mount.txt", mounted.stderr)], (time.monotonic() - started) / 60, ["the tmpfs could not be mounted (root on the machine is the requirement)"], kind="injection")
         log = self.out / "artifacts" / f"{name}-launch.log"
         campaign = self.launch(name, project, campaign=campaign, log=log)
-        # Fill the disk while the writer is implementing (actively writing to
-        # the campaign dir), not at the first checkpoint: a node-0 that reaches
-        # the goal finishes before a post-checkpoint fill, and ENOSPC can only
-        # kill a writer that is still writing.
-        self.wait_phase(campaign, "implementation", BUDGET["minutes"] * 60)
+        # Fill the disk after the first checkpoint, while the writer is
+        # implementing the second attempt (the target raised past reach, so
+        # there is one): ENOSPC can only kill a writer that is still writing,
+        # and the resume then has an attempt to keep.
+        reached = self.wait_second_attempt(campaign)
         filler = mount / "filler"
         fill = subprocess.run(["dd", "if=/dev/zero", f"of={filler}", "bs=1M", f"count={INJECTIONS['tmpfs_mb'] + 8}", "status=none"], capture_output=True, text=True)
         injected_at = datetime.now(timezone.utc)
@@ -484,8 +569,8 @@ class S5:
         log_text = log.read_text(encoding="utf-8") if log.is_file() else ""
         filler.unlink(missing_ok=True)
         step = self._resume_after_writer_gone(name, project, campaign, injected_at, f"the disk has space again; continue the campaign at ../s5-{name}-disk/campaign",
-                                              f"a {INJECTIONS['tmpfs_mb']} MB tmpfs holding the campaign directory, filled while the writer is implementing; the writer dies with ENOSPC in the launch's log (kept outside the full disk; no try/except); the truth lives in the log and the receipt", started,
-                                              {"fill_said": fill.stderr.strip()[-200:], "enospc_in_log": bool(re.search(r"No space left on device|ENOSPC", log_text))})
+                                              f"a {INJECTIONS['tmpfs_mb']} MB tmpfs holding the campaign directory, filled while the writer is implementing the second attempt; the writer dies with ENOSPC in the launch's log (kept outside the full disk; no try/except); the truth lives in the log and the receipt", started,
+                                              {"second_attempt": reached, "fill_said": fill.stderr.strip()[-200:], "enospc_in_log": bool(re.search(r"No space left on device|ENOSPC", log_text))}, premise=reached)
         step["artifacts"].append(f"artifacts/{name}-launch.log")
         # Copy the whole campaign off the tmpfs and verify it BEFORE
         # unmounting, so the checkpoint, sessions and history survive for
@@ -502,9 +587,12 @@ class S5:
     def step_tampering(self) -> Dict[str, Any]:
         started = time.monotonic()
         name = "tampering"
-        project = self.project(name)
+        # The second attempt's evaluator edited (the target raised past reach
+        # so there is one): attempt one stands as a scored, judged loser and
+        # attempt two as the void — the campaign S4 reads needs both.
+        project = self.second_attempt_project(name)
         campaign = self.launch(name, project)
-        self.wait_phase(campaign, "implementation", 1800)
+        reached = self.wait_second_attempt(campaign)
         # The implementation runs in a git CLONE of the campaign under
         # sessions/<branch>/; editing THAT working tree before it commits
         # carries the edit into the committed branch the integrity check
@@ -526,12 +614,12 @@ class S5:
         integrity_voids = [v for v in voided if "evaluate.py" in str(v.get("reason", "")) or "integrity" in str(v.get("reason", "")).lower()]
         turn_1 = self.ask(name, project, f"what happened to the first attempt of the kapso campaign at ../s5-{name}? it is not counted")
         diagnosis = names_class_and_fix(turn_1.text, name)
-        metrics = {"evaluator_edited": len(edited), "voided": len(voided), "integrity_voids": len(integrity_voids), "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis}
+        metrics = {"second_attempt": reached, "evaluator_edited": len(edited), "voided": len(voided), "integrity_voids": len(integrity_voids), "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.state["tampering_campaign"] = str(campaign)
         self.ctx.save()
-        return self.record_injection(name, [turn_1], metrics, artifacts, ["the evaluator edited inside the running attempt's session clone; the integrity check voids the attempt with the hash evidence; this campaign is S4's (left running to its end, never stopped)"],
-                                     bool(edited) and bool(integrity_voids) and diagnosis["names_class"], started)
+        return self.record_injection(name, [turn_1], metrics, artifacts, ["the evaluator edited inside the second attempt's session clone; the integrity check voids the attempt with the hash evidence; this campaign is S4's (left running to its end, never stopped)"],
+                                     reached and bool(edited) and bool(integrity_voids) and diagnosis["names_class"], started)
 
     def step_bank_compare(self) -> Dict[str, Any]:
         started = time.monotonic()

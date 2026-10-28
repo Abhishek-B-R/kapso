@@ -143,6 +143,50 @@ def test_bank_state_reads_a_bare_repo_and_fails_unreadable(tmp_path):
     assert s5.bank_state(tmp_path / "nope")["readable"] is False
 
 
+def test_the_seeded_bank_is_the_fixture_as_one_commit_in_a_bare_repo(tmp_path):
+    # bank-compare compared nothing in every S5 arm before 2026-10-28: no
+    # bank was loaded, so "intact" was vacuous. The seed is the fixture's
+    # tree, three cards, read back by the same reader the comparison uses.
+    state = s5.seed_bank(ROOT / "tests" / "fixtures" / "bank_seed", tmp_path / "bank-seed.git")
+    assert state["readable"] is True and state["cards"] == 3 and state["head"]
+    assert (tmp_path / "bank-seed.git" / "HEAD").is_file() and not (tmp_path / "bank-seed.git.src").exists()
+    assert s5.seed_bank(ROOT / "tests" / "fixtures" / "bank_seed", tmp_path / "bank-seed.git") == state, "re-seeding replaces the bank; the tree is the same"
+    with pytest.raises(FileNotFoundError):
+        s5.seed_bank(tmp_path / "no-such-fixture", tmp_path / "other.git")
+
+
+def test_the_second_attempt_staging_raises_the_target_and_reads_the_status(tmp_path):
+    # The classes staged after the first checkpoint used to race a node 0
+    # that met its goal and ended the campaign; the target raised past reach
+    # keeps the campaign going, and the staging waits for iteration two's
+    # implementation with the first attempt scored.
+    brief = tmp_path / "kapso-brief.md"
+    brief.write_text("Objective    raise the AUC\nTarget       0.85\nRules\n  - the evaluator is never modified\n", encoding="utf-8")
+    assert s5.raise_target(tmp_path, 0.99) == "Target 0.99"
+    assert "Target       0.99\n" in brief.read_text(encoding="utf-8") and "0.85" not in brief.read_text(encoding="utf-8")
+    brief.write_text("Objective    raise the AUC\nRules\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        s5.raise_target(tmp_path, 0.99)
+    assert s5.second_attempt_reached({"iteration": 2, "phase": "implementation", "best": {"score": 0.85, "node": 0}})
+    assert not s5.second_attempt_reached({"iteration": 1, "phase": "implementation", "best": None})
+    assert not s5.second_attempt_reached({"iteration": 2, "phase": "ideation", "best": {"score": 0.85, "node": 0}})
+    assert not s5.second_attempt_reached(None)
+
+
+def test_a_crash_is_read_from_the_attempts_own_sessions(tmp_path):
+    # evaluator-crash read 0 crashed attempts in four arms: the session ran
+    # the evaluator, and the crash sat in the session's stream, not in the
+    # trace row.
+    campaign = tmp_path / "campaign"
+    folder = campaign / ".kapso" / "sessions" / "generic_exp_1"
+    folder.mkdir(parents=True)
+    (folder / "stream.jsonl").write_text(json.dumps({"type": "tool_result", "text": "FileNotFoundError: private/holdout_labels.csv"}) + "\n", encoding="utf-8")
+    attempt = {"node": 1, "sessions": [{"label": "generic_exp_1", "module": "implementation"}], "evaluation": {"score": None}}
+    assert s5.session_mentions(campaign, attempt, "holdout_labels.csv")
+    assert not s5.session_mentions(campaign, attempt, "ENOSPC")
+    assert not s5.session_mentions(campaign, {"sessions": [{"label": "missing"}]}, "holdout_labels.csv")
+
+
 def test_the_request_names_the_variable_and_never_a_value_and_the_diagnosis_names_its_class(tmp_path):
     inbox = tmp_path / "inbox.jsonl"
     assert s5.request_names_no_value(inbox, "secret-value") is None
