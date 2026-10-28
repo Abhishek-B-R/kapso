@@ -53,6 +53,22 @@ APPROVAL_ASKED = re.compile(
     r"\b(say|reply|type)\b[^\n]{0,30}\b(go|yes)\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b|\bif you say\b|\bsay the word\b",
     re.I,
 )
+# A campaign that misses its goal delivers no branch; a review of it must say
+# so rather than dress a near miss as something to merge.
+NOTHING_DELIVERED = re.compile(
+    r"\b(goal|target) (was )?not (met|reached)\b|\bnothing (was )?delivered\b|\bno (branch|result|delivery) (was )?delivered\b|\bdid not deliver\b|\b(below|short of|under) the target\b|\bmissed the target\b",
+    re.I,
+)
+
+
+def names_delivery(answer: str, branch: Optional[str]) -> bool:
+    """The review names what the campaign delivered: its branch, when there
+    is one; that nothing was delivered, when there is none."""
+    if branch:
+        return branch.lower() in answer.lower()
+    return bool(NOTHING_DELIVERED.search(answer))
+
+
 CHURN_WISH = (
     "get the churn model's ROC AUC above 0.85 without changing the prediction contract; "
     f"the campaign goes to ../churn-campaign with a budget of {_CHURN_B['minutes']} minutes and {_CHURN_B['experiments']} experiments"
@@ -963,7 +979,7 @@ def step_harness_probe(ctx: Context) -> Dict[str, Any]:
 def step_review(ctx: Context) -> Dict[str, Any]:
     project, campaign = Path(ctx.state["churn_project"]), Path(ctx.state["churn_campaign"])
     finished = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 4500, every=20)
-    turns = ctx.converse("review", project, ctx.host.command("review", "../churn-campaign"), lambda text, index: "is it safe to merge?" if index == 0 else None, max_turns=2)
+    turns = ctx.converse("review", project, ctx.host.command("review", "../churn-campaign"), lambda text, index: "is it safe to merge?" if index == 0 else None, max_turns=3)   # WP7's round: the review's two-turn headroom was thin for a persona
     if len(turns) == 1:
         turns += ctx.converse("review-2", project, "is the branch the campaign delivered in ../churn-campaign safe to merge?", lambda text, index: None, max_turns=1)
     artifacts = [ctx.artifact("review-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
@@ -973,9 +989,10 @@ def step_review(ctx: Context) -> Dict[str, Any]:
         artifacts.append(ctx.copy_artifact(solution, "churn-solution.json"))
         branch = (json.loads(solution.read_text(encoding="utf-8")).get("delivered") or {}).get("branch")
     answer = "\n".join(turn.text for turn in turns).lower()
-    # The answer must name the delivered branch and give a merge verdict,
-    # so "I can't read that campaign" does not pass review.
-    named = bool(branch) and branch.lower() in answer
+    # The answer must name what was delivered (the branch, or that nothing
+    # was) and give a merge verdict, so "I can't read that campaign" does
+    # not pass review.
+    named = names_delivery(answer, branch)
     verdict = any(word in answer for word in ("merge", "safe", "do not merge", "not safe"))
     completed = ctx.user.ended_well("review", finished and solution.is_file() and named and verdict)
     return record_step("review", turns, completed, artifacts, [f"the churn campaign ended: {(status_of(campaign) or {}).get('state')}; the answer named the delivered branch {branch!r}: {named}; a merge verdict: {verdict}"])

@@ -160,3 +160,14 @@ def test_the_records_user_block_carries_the_personas_pins():
     assert block["kind"] == "persona" and block["card"] == "ml-engineer" and len(block["card_sha256"]) == 64
     assert block["vendor"] == "codex" and block["model"] == proof.SUITE["user"]["persona"]["claude_code"]["model"] and len(block["prompt_sha256"]) == 64
     assert proof.UserMode("scripted", "codex").record() == {"kind": "scripted", "card": None, "interventions": [], "events": [], "pushback": None}
+
+
+def test_a_review_names_the_delivered_branch_or_that_nothing_was_delivered():
+    # S2 on the Claude host (2026-10-28): the churn campaign missed 0.85 by
+    # 0.0041 and delivered no branch; the review said so, and the predicate
+    # that wanted a branch name could never pass it.
+    assert proof.names_delivery("What won: kapso/exp-7 at 0.861 — merge it.", "kapso/exp-7")
+    assert not proof.names_delivery("I could not read that campaign.", "kapso/exp-7")
+    assert proof.names_delivery("finished at 0.8459 ROC AUC, 0.0041 below the target. The goal was not met.", None)
+    assert proof.names_delivery("Nothing was delivered; do not merge.", None)
+    assert not proof.names_delivery("What won: generic_exp_0 at 0.8459 — safe to merge.", None)
