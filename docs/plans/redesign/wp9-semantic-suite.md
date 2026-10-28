@@ -747,6 +747,46 @@ local (5.72 h, about $0.77). Report `tests/semantic/reports/s1-claude-1.md`.
 - **`python_lines` 16 > 12 and the judge's "flows fit the design's
   lengths" 0** — a bar not loosened to pass; see findings and DECISIONS.
 
+### S1 on the released 0.7.10, Claude host, fresh machine — run `s1-released-2` (2026-10-28)
+
+The retrospective baseline the design asks for: the same cold engineer,
+tasks, budgets and judge on the released package's public docs (44 pages
+staged from tag v0.7.10, 0.7.10 in the sandbox venv; the prerequisites
+built the package's own way, `kapso evolve` detached, 56 min, 0.8503; the
+second killed at five minutes in ideation). 3.92 h of machine, about
+$0.53. Report `tests/semantic/reports/s1-released-2.md`. **Verdict: FAIL**
+— the baseline the new stack is measured against, not a run to fix:
+
+| | released 0.7.10 (`s1-released-2`) | the new stack (`s1-claude-1`) |
+|---|---|---|
+| first-try launches of twelve | 1 (task5-python) | 10 |
+| launched at all | 6 (tasks 1, 2, 5-python, 6-cli) | 10 in the record, 11 real (the task6-cli resume) |
+| minutes to launch, tasks 1–2 | 10.8 / 15.6 / 13.2 / 17.2 | 9.5 / 11.2 / 20.6 / 12.9 |
+| comprehension, 7 facts | 0 | 7 |
+| judge: names / lengths / docs | 0 / 0 / 0 | 1 / 0 / 1 |
+| python_lines / cli_commands | 24 / 1 | 16 / 2 |
+| wrong calls | 0 | 0 |
+
+What the released tool made the engineer believe, in its own words: "I
+couldn't find a call named build. The build step was `Kapso.evolve()`";
+"this Kapso has no way to take a harness" (task 3, both flows, nothing
+launched); deploy "copied the repo … and wrote a `main.py` with a
+`predict(inputs)` entry point" whose keys the engineer guessed wrong so the
+one call wrote its defaults (task 4: the record the suite looks for does
+not exist in 0.7.10); the Python learn stuck in its exam and the CLI learn
+failed it — `report-writer produced no report`, the Codex sandbox on the
+fresh VM: `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`,
+the same fault S6 met on the new wheel and the engine now avoids (the
+learning crews' Codex roles on the adapter's default sandbox) — so the
+released product's learn does not run on a stock Ubuntu 24.04 VM at all;
+tasks 1 and 2 launched but delivered nothing in ten minutes (planning took
+the budget, the coder had a minute). The resume on the CLI
+(`kapso evolve --output campaign-killed --resume`) worked; both resume
+flows ended the turn before the result, the detached-resume reporting
+pattern seen on the new stack too, a host habit rather than either
+package's fault. Bars: first-try 1 < 9, comprehension 0 < 1, python lines
+24 > 12; the judge 0 on all three dimensions, quoting those answers.
+
 ### author, Claude host, fresh GCP machine — run `author-claude-1` (2026-10-27)
 
 The cold author wrote a Kapso harness from the guide alone, over two rounds;
