@@ -482,14 +482,19 @@ class S5:
 
     def _resume_after_writer_gone(self, name: str, project: Path, campaign: Path, injected_at: datetime, second_prompt: str, note: str, started: float, extra: Dict[str, Any]) -> Dict[str, Any]:
         attempts_before = len(self.trace(campaign).get("attempts", []))
-        shown_dead = wait_for(lambda: (self.timeline(name) or [{}])[-1].get("shown") == "DEAD", int(3 * self.cadence) + 60, every=5)
+        # The writer gone, said truthfully: DEAD when it vanished without a
+        # word, FAILED when it recorded its own end first (ENOSPC: the
+        # engine wrote `failed` before it died, s5-claude-6) — a reader sees
+        # the writer is gone either way; a RUNNING with the pid gone is the lie.
+        shown_dead = wait_for(lambda: (self.timeline(name) or [{}])[-1].get("shown") in ("DEAD", "FAILED"), int(3 * self.cadence) + 60, every=5)
+        shown_after = (self.timeline(name) or [{}])[-1].get("shown")
         turn_1 = self.ask(name, project, f"what happened to the kapso campaign at ../s5-{name}? kapso watch says something is wrong")
         turn_2 = self.ask(name + "-2", project, second_prompt)
         resumed = wait_for(lambda: (status_of(campaign) or {}).get("state") == "running" and status_timeline.sample(campaign).get("shown") == "RUNNING", 300, every=10)
         status = self.finish(name, campaign)
         trace = self.trace(campaign)
         diagnosis = names_class_and_fix(turn_1.text, name)
-        metrics = {**extra, "shown_dead": shown_dead, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=True), **diagnosis, "resumed": resumed,
+        metrics = {**extra, "shown_dead": shown_dead, "shown_after": shown_after, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=True), **diagnosis, "resumed": resumed,
                    "attempts_kept": len(trace.get("attempts", [])) >= attempts_before, "attempts_before": attempts_before, "attempts_after": len(trace.get("attempts", []))}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)

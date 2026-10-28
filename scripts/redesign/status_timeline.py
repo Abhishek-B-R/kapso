@@ -88,12 +88,16 @@ def sample(campaign: Path) -> Dict[str, Any]:
 
 def run(campaign: Path, timeline: Path, every: float, until_terminal: bool) -> None:
     while True:
+        began = time.monotonic()
         row = sample(campaign)
         with open(timeline, "a", encoding="utf-8") as out:
             out.write(json.dumps(row) + "\n")
         if until_terminal and row["stored"] and row["stored"]["state"] in TERMINAL:
             return
-        time.sleep(every)
+        # The cadence counts from one sample's start to the next: two
+        # `kapso watch` calls take seconds, and a sleep of the whole cadence
+        # on top left no sample inside S5's one-heartbeat window.
+        time.sleep(max(0.0, every - (time.monotonic() - began)))
 
 
 def rows(timeline: Path):
