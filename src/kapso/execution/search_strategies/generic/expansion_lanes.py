@@ -107,12 +107,7 @@ def lane_env_overlay(
     lane_index: int,
 ) -> Optional[Dict[str, str]]:
     """This lane's env pin mapping (None when no overlay is configured)."""
-    return (
-        expansion_lane_env[lane_index]
-        if expansion_lane_env
-        and lane_index < len(expansion_lane_env)
-        else None
-    )
+    return expansion_lane_env[lane_index] if expansion_lane_env else None
 
 
 def pick_representative(
