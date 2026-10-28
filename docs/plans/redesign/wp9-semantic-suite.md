@@ -1094,6 +1094,35 @@ and S6, six for S1 — which had survived its five-and-three-quarter hours
 under the same six by a quarter). The clean Claude run is re-run as
 `s2-claude-3` under that cap.
 
+**`s2-codex-5`** (the clean Codex run, launched by the latency gate at
+16:46, token-5, the learn on Opus; 4.31 h of machine, about $0.58; report
+`tests/semantic/reports/s2-codex-5.md`): **17 of 24 steps**, every
+conversation inside its budget on time and lines (the host answered in 2–9
+lines, 0.3–2.5 min). True: install, setup, build-churn (2 messages, 1
+question), build-pause, harness-export (the export and its refusal; the
+exported skill's session is the Claude host's — recorded as a shell step on
+this host now, the judge having died on a conversation that never was),
+campaign-tools, **inbox** (paused, replied, continued), **build-fraud**
+(launched in 2 messages, a contract-ok evaluator), build-data-only,
+build-empty-wish, harness-new (2 messages, 1 question, 5.1 min),
+harness-probe, learn, experience-share, harness-improve, campaign-session
+isolation, the Codex rules probe. False: watch (every predicate held; the
+persona asked a third question at the two-turn cap), **triggers 4 of 18 per
+skill and 0 of 10 holdout — the first run's figures exactly** (deterministic,
+and clean of 429s: 2 of 178 runs met one), review (the host wrote "no
+winner was delivered … 0.0041 short of 0.85 … the target remains unmet" of
+a campaign with no branch, words the detector did not know and now does;
+re-read, both predicates hold), deploy (nothing delivered to deploy),
+learn-complete at the 150-minute cutoff (mining 25, the exam 48, the
+lesson past 77 minutes; DECISIONS), session-brief (an empty bank; the host
+asked instead of answering) and second-engineer-build (no card to serve).
+The judge: clear 4 and not annoying 4 pass; **proactive 1, engaging 1,
+return on attention 1 fail** — the Codex host's answers are right and
+terse (build-pause, campaign-tools, experience-share, learn, session-brief
+and watch at proactive 1–2: the state said, the next step never offered)
+where the Claude host's ran 4–5 on the same steps; a product finding for
+the Codex host's skill wording, under "Findings for later packages".
+
 **Calibration, said rather than tuned.** The Claude host's build
 conversations run 14–19 lines against the 12-line budget in every arm
 (`build-churn` 11 → 14–15, `build-pause` 19 → 15, `build-fraud` 15,
@@ -1151,6 +1180,17 @@ its `fetched/out`.
   The build skill's wording on when to stop designing and launch is WP7's.
 - **Fable 5's safeguards and the mining prompt; codex-cli 0.165's
   workspace-write sandbox on a VM** — recorded in DECISIONS (S6).
+- **The Codex host answers right and stops.** On the clean Codex run
+  (`s2-codex-5`) every conversation met its budget, the states it reported
+  were true, and the judge read "clear" and "not annoying" at 4 — and
+  "proactive" at 1 to 2 on six steps (build-pause, campaign-tools,
+  experience-share, learn, session-brief, watch): the answer gives the
+  state and never the next step — what to watch, what the pause wants,
+  what the bank now serves — where the Claude host's answers on the same
+  steps carried it and scored 4 to 5. The skills are the same files on
+  both hosts; the Codex host reads their "say what comes next" less. A
+  wording the Codex host follows is WP7's; whether a terse right answer
+  should fail "proactive" is the rubric's owner's.
 - **A session that met a crashed evaluator rebuilt its inputs instead of
   reporting it.** In `s5-claude-5`'s evaluator-crash (2026-10-28) the
   hold-out labels were moved away while attempt one was being written; the
