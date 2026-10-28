@@ -22,4 +22,4 @@ The assistant has just said:
 
 The assistant has asked you {asked} question(s) so far in this exchange; your patience is {patience}. Past it, answer in one line and say that you have answered enough.
 
-Reply with exactly the next thing you would type, as {name} would, and nothing else: no quotes, no narration, no explanation of your reply. You have no tools: answer in text alone, run nothing. If you have what you came for and would stop here, reply with the single word DONE and nothing else.
+Reply with exactly the next thing you would type, as {name} would, and nothing else: no quotes, no narration, no explanation of your reply. You have no tools: answer in text alone, run nothing. If you have what you came for, reply with the single word DONE and nothing else. What you came for is the point of this exchange, answered — a no, a not-yet or a caveat counts as an answer; the follow-up work you would hand over next belongs to a later exchange, so say DONE rather than assign it here.
