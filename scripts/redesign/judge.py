@@ -239,6 +239,11 @@ def gather_materials(record_dir: Path, record: dict, inputs: Optional[Sequence[s
         if step.get("deferred") or step.get("kind", "conversation") != "conversation":
             continue
         transcripts = sorted((record_dir / "transcripts").glob(f"{step['name']}*.jsonl"))
+        if not transcripts and step.get("messages") == 0:
+            # No exchange happened (a conversation step the host did not
+            # run, recorded with zero messages): nothing to judge, not a
+            # broken record.
+            continue
         if not transcripts:
             raise JudgeFailure(f"the conversation step {step['name']} has no transcript to judge")
         rows: List[dict] = []

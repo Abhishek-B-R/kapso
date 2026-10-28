@@ -844,6 +844,12 @@ def step_harness_export(ctx: Context) -> Dict[str, Any]:
     turns = ctx.converse("harness-export", session_dir, "Using the backtesting skill in this project, tell me in three lines what timestamp discipline it asks for. Load the skill rather than guessing.", lambda text, index: None, max_turns=1) if ctx.host.name == "claude_code" else []
     skill_used = any(tool["name"] == "Skill" and "backtesting" in json.dumps(tool["input"]) for turn in turns for tool in turn.tools) if turns else True
     completed = refused.returncode != 0 and (ctx.work / "export-codex" / ".codex" / "agents" / "lookahead-auditor.toml").is_file() and skill_used
+    if not turns:
+        # The exported skill's session is the Claude host's; on the Codex
+        # host the step is the export and its refusal alone — a shell step,
+        # so the judge does not look for a conversation that never was
+        # (s2-codex-5's judge died on it).
+        return shell_step("harness-export", completed, artifacts, (time.monotonic() - started) / 60, ["the export and its refusal on both hosts; the exported skill's session is the Claude host's, not run here"])
     step = record_step("harness-export", turns, completed, artifacts)
     step["minutes"] = round(step["minutes"] + (time.monotonic() - started) / 60, 1)
     return step

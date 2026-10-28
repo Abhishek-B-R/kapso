@@ -55,3 +55,17 @@ def test_a_quote_on_the_wrong_line_is_asked_once_more_then_fails_loud(tmp_path, 
     # A fault that is not a misquote is validate's to name, never retried.
     assert not judge.misquoted({"scores": {"clear": {"score": 4, "evidence": []}}}, tmp_path)
     assert not judge.misquoted({"scores": {"clear": {"score": 4, "evidence": [{"where": "judge/elsewhere.md:L1", "quote": "x"}]}}}, tmp_path)
+
+
+def test_a_conversation_step_with_no_exchange_is_skipped_but_a_missing_transcript_still_raises(tmp_path):
+    # s2-codex-5: harness-export on the Codex host ran no session (zero
+    # messages, no transcript) and the judge died on it; a step with
+    # messages and no transcript is still a broken record.
+    (tmp_path / "transcripts").mkdir()
+    archive = tmp_path / "judge"
+    archive.mkdir()
+    record = {"steps": [{"name": "harness-export", "kind": "conversation", "messages": 0}]}
+    assert judge.gather_materials(tmp_path, record, None, archive) == {}
+    record = {"steps": [{"name": "watch", "kind": "conversation", "messages": 2}]}
+    with pytest.raises(judge.JudgeFailure, match="no transcript"):
+        judge.gather_materials(tmp_path, record, None, archive)
