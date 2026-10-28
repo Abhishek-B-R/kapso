@@ -140,11 +140,25 @@ def validate(data: dict, dimensions: Sequence[str], scale: Sequence[int], root: 
             path = root / file
             if not path.is_file() or not label.isdigit():
                 raise JudgeFailure(f"{dimension}: {where} names no line of a file under the record")
-            lines = path.read_text(encoding="utf-8").splitlines()
-            number = int(label)
-            if not 1 <= number <= len(lines) or quote.strip() not in lines[number - 1]:
+            if not quote_on(path.read_text(encoding="utf-8").splitlines(), label, quote):
                 raise JudgeFailure(f"{dimension}: the quote {quote!r} is not on {where}")
     return scores
+
+
+def quote_on(lines: Sequence[str], label: str, quote: str) -> bool:
+    """The quote starts on line `label` (1-based): on that line, or across
+    it and the lines after it, whitespace folded — a judge quoting a
+    sentence the rendering wrapped cites the line it starts on."""
+    number = int(label)
+    if not 1 <= number <= len(lines):
+        return False
+    def folded(line: str) -> str:   # the line's text, its `L<n>: ` number and runs of whitespace folded
+        return " ".join(re.sub(r"^L\d+:\s?", "", line).split())
+    wanted = " ".join(quote.split())
+    first = folded(lines[number - 1])
+    window = " ".join([first, *(folded(line) for line in lines[number:number + 3])])
+    start = window.find(wanted) if wanted else -1
+    return 0 <= start < len(first)   # it begins on the cited line, whatever it runs on to
 
 
 # ------------------------------------------------------------------- calls
@@ -195,9 +209,7 @@ def misquoted(data: dict, root: Path) -> bool:
             path = root / file
             if not path.is_file() or not label.isdigit():
                 return False
-            lines = path.read_text(encoding="utf-8").splitlines()
-            number = int(label)
-            if not 1 <= number <= len(lines) or quote.strip() not in lines[number - 1]:
+            if not quote_on(path.read_text(encoding="utf-8").splitlines(), label, quote):
                 return True
     return False
 

@@ -38,6 +38,13 @@ def test_a_quote_on_the_wrong_line_is_asked_once_more_then_fails_loud(tmp_path, 
     replies = iter([slipped, slipped])
     with pytest.raises(judge.JudgeFailure, match="is not on"):
         judge.judge_material("material", "rubric", DIMENSIONS, [1, 5], {}, tmp_path, rendered.parent, "watch-pass2", [WATCH])
+    # A sentence the rendering wrapped is cited by the line it starts on.
+    rendered.write_text("L1: # step watch\nL2: \nL3: [assistant]\nL4: Running, iteration 1 in ideation;\nL5: no score yet.\n")
+    lines = rendered.read_text().splitlines()
+    assert judge.quote_on(lines, "4", "Running, iteration 1 in ideation; no score yet.")
+    assert judge.quote_on(lines, "4", "iteration 1 in ideation;")
+    assert not judge.quote_on(lines, "5", "Running, iteration 1 in ideation; no score yet.")
+    assert not judge.quote_on(lines, "4", "the best score is 0.9")
     # A fault that is not a misquote is validate's to name, never retried.
     assert not judge.misquoted({"scores": {"clear": {"score": 4, "evidence": []}}}, tmp_path)
     assert not judge.misquoted({"scores": {"clear": {"score": 4, "evidence": [{"where": "judge/elsewhere.md:L1", "quote": "x"}]}}}, tmp_path)
