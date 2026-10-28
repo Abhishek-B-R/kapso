@@ -52,12 +52,16 @@ def _fill(template: str, values: Dict[str, str]) -> str:
 
 def _session_said(result) -> str:
     """What a role session's result says about itself, for the fail-loud
-    line when the artifact never appeared."""
+    line when the artifact never appeared: its error, its refusal, or the
+    tail of its own last words — a session that ends saying "the workspace
+    rejected writes" must say so in the line, not vanish behind "ended
+    without writing it" (S6, 2026-10-28)."""
     if result.error:
         return f"error: {result.error}"
     if result.refused:
         return "refused"
-    return "ended without writing it"
+    said = " ".join((result.output or "").split())
+    return f"ended without writing it, saying: ...{said[-300:]}" if said else "ended without writing it, saying nothing"
 
 
 class GradingFrame:
@@ -81,10 +85,12 @@ class GradingFrame:
         """One role session; its result (output, error, refusal) is the
         caller's to read."""
         spec = self.crew_config[role]
+        # A Codex role runs in the adapter's default sandbox, as every engine
+        # session does: on a stock Ubuntu 24.04 machine with codex-cli 0.165
+        # the workspace-write sandbox rejects every write, so a role under it
+        # ends saying so and leaves no artifact (S6, 2026-10-28).
         agent_specific: Dict[str, Any] = {"effort": spec["effort"]}
-        if spec["cli"] == "codex":
-            agent_specific["sandbox"] = "workspace-write"
-        else:
+        if spec["cli"] != "codex":
             agent_specific["auth_mode"] = spec["auth_mode"]
         agent = self.agent_factory.create(CodingAgentConfig(
             agent_type=spec["cli"],

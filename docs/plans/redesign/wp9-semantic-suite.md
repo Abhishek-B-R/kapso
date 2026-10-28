@@ -822,6 +822,41 @@ The rest need the same pass — deferred as a focused follow-up (DECISIONS). The
 product validation stands on its own. S4 reads S5's tampering campaign, so it
 defers with S5.
 
+### S6 experience, Claude host, fresh machines — arms s6-claude-1..4 (2026-10-28)
+
+Four arms, each one lesson deeper. `s6-claude-1`: build-one true (43 min,
+node 0 at 0.8484 then a second iteration), the learn dead in 0.2 s — the
+mining crew on `claude-fable-5` met "You've reached your Fable limit": the
+machine token's Fable week was spent (the learn validation and the S5 arms).
+`s6-claude-2` (the learn on Opus 5.5) was stopped after eight minutes when
+a fresh account turned up: the `kapso/.env` setup token, 0% on every window,
+now secret `claude-oauth-token-5`. `s6-claude-3` on it, the shipped config:
+build-one true (33.6 min, a 0.8624 GLM delivered, one scored observation);
+the learn harvested and mined — the first mining session dead in 3 s on
+"Fable 5's safeguards flagged this message (`[reasoning_extraction]`)",
+the second interrupted mid-tool-call by the same classifier and finished by
+the frame's repair round (22 min, 112 tools) — then the exam failed:
+`report_writer produced no report.md … after 2 session(s): ended without
+writing it; ended without writing it`, 0 cards, bank head unchanged.
+Reproduced on a live machine: codex-cli 0.165.0's `workspace-write` sandbox
+rejects every write on a stock Ubuntu 24.04 VM; only the adapter's default
+sandbox writes. Fixed in the engine (DECISIONS: the learning crews' Codex
+roles on the adapter's default sandbox; the fail-loud line quotes the
+session) — a product finding a user on a fresh VM would have met.
+`s6-claude-4` (Opus learn, before the fix) stopped at install; `s6-claude-5`
+runs the fixed wheel with the learn on Opus 5.5 (the Fable safeguard
+stands between the shipped model and the mining prompt; an owner call).
+
+### author, Codex host — run `author-codex-1` (2026-10-28)
+
+On the guide after the four Claude rounds: 35 guesses, 0 structural gaps,
+0 contradictions, `check` green, three judge dimensions at 1 — and "the
+ladder respected" at 0 in both passes: a SessionStart hook that restates a
+page line and a server returning a fixed checklist, filler for the brief's
+"at least two hooks, one server". The guide never stated the ladder the
+rubric scores (the Claude author kept it unprompted); it does now, in
+"The directory", and the Codex author runs again.
+
 ## Findings for later packages
 
 From `s1-claude-1` — the signal the suite exists to catch, kept for the

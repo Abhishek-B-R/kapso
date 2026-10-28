@@ -120,8 +120,7 @@ class BehaviorRunner:
             agent_specific={
                 "effort": reviewer["effort"],
                 **({"auth_mode": reviewer["auth_mode"]}
-                   if reviewer["cli"] == "claude_code" else
-                   {"sandbox": "workspace-write"}),
+                   if reviewer["cli"] == "claude_code" else {}),   # a Codex reviewer: the adapter's default sandbox (graders/frame.py says why)
             },
         ))
         agent.initialize(str(run_dir))

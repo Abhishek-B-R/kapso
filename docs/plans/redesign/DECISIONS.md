@@ -2215,3 +2215,28 @@ the gap a real one the first pass had filed as already-in-guide (a skill
 named only on `guardrails.md` does not satisfy the module-page mention);
 both are in the guide. The bar stays max 0; the re-graded report is the
 committed one. Not a loosening: the same words, applied as written.
+
+## WP9: the learning crews' Codex roles run in the adapter's default sandbox (2026-10-28)
+
+S6's third arm (`s6-claude-3`, the shipped Fable-5 learn on a fresh Ubuntu
+24.04 machine with codex-cli 0.165.0) mined its trajectory and then failed
+the exam: both report_writer sessions ended without `report.md`, and the
+frame's line said only "ended without writing it". Reproduced on another
+fresh machine: `codex exec --sandbox workspace-write` cannot write into its
+own workspace there ("the workspace rejected writes due to a sandbox
+permission error"), plain, git-initialised or with `--add-dir`; only the
+adapter's default `danger-full-access` — the sandbox every engine session
+already runs under — writes. The learning subsystem was the one place that
+asked for workspace-write: the graders' roles, the update crew's worker
+launcher, codify's implementor and judge, the behavior reviewer. All four
+now take the adapter's default; the execpolicy rules file the adapter
+stages (`.codex/rules/kapso-campaign.rules`) stays the campaign-tool
+guard, as for every other session. And the frame's fail-loud line now
+carries the tail of what a session said, so the next such failure names
+itself. Two further findings from the same arm, for the owner: Fable 5's
+safeguards flagged the mining prompt ("`[reasoning_extraction]`", the
+first mining session dead in 3 s, the second interrupted mid-tool-call and
+recovered by the frame's repair round) — the learn ran on Opus 5.5 after
+that (`--learn-model`, authorized); and the mined `mining-report.md` the
+first session left was the API error's text, which the mined-view
+validation accepted as a report.

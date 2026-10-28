@@ -499,7 +499,7 @@ STREAM={stream}
 mkdir -p "$(dirname "$STREAM")"
 status=0
 {exports}cat "role-prompts/$ROLE.md"{guidance_file} "$ASSIGNMENT" | codex exec --json \\
-  --sandbox workspace-write --skip-git-repo-check --color never \\
+  --sandbox danger-full-access --skip-git-repo-check --color never \\
   --output-last-message "$OUT" -m "{worker['model']}" \\
   -c 'model_reasoning_effort="{worker['effort']}"'{extra} >> "$STREAM" || status=$?
 printf '{{"type":"kapso.exit","role":"%s","code":%s}}\\n' "$ROLE" "$status" >> "$STREAM"

@@ -63,3 +63,20 @@ def test_a_role_session_that_writes_no_artifact_is_run_once_more_then_fails_loud
     frame._run_role = run_role_then_write
     frame._run_role_for_artifact("assessor", "assess", tmp_path, tmp_path / "verdict.yaml")
     assert wrote == ["assessor", "assessor"]
+
+
+def test_a_session_that_ends_without_the_artifact_has_its_last_words_in_the_line(tmp_path):
+    # S6 on a fresh machine (2026-10-28): both report_writer sessions ended
+    # saying the workspace rejected writes, and the line said only "ended
+    # without writing it" — the one fact that explained the failure was lost.
+    frame = GradingFrame.__new__(GradingFrame)
+    frame._run_role = lambda role, prompt, cwd: SimpleNamespace(
+        output="Unable to create report.md:\n the workspace rejected writes due to a sandbox permission error.", error=None, refused=False, success=True,
+    )
+    with pytest.raises(FileNotFoundError) as raised:
+        frame._run_role_for_artifact("report_writer", "write the report", tmp_path, tmp_path / "report.md")
+    said = "ended without writing it, saying: ...Unable to create report.md: the workspace rejected writes due to a sandbox permission error."
+    assert str(raised.value).count(said) == 2
+    frame._run_role = lambda role, prompt, cwd: SimpleNamespace(output="", error=None, refused=False, success=True)
+    with pytest.raises(FileNotFoundError, match="saying nothing; ended without writing it, saying nothing"):
+        frame._run_role_for_artifact("report_writer", "write the report", tmp_path, tmp_path / "report.md")
