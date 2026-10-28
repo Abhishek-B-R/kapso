@@ -65,7 +65,7 @@ modules:                            # any of the seven; a module left out still 
 
 ## Pages
 
-`instructions/guardrails.md` reaches every session; `instructions/<module>.md` reaches that module's sessions, after it. Both go into the prompt whole, under a `Domain guidance` heading that ends with the paths of the task statement and the prepared resources, so a page says "the task statement" or "the diff" and never a path it would have to guess. They are short and dense: standing rules, the discipline of the domain, where to look. The config's `harness.page_warning_lines` (40) is where `check` starts warning: it counts every line of the file, blank lines and headings included, and a long page is a warning, never a failure. A page never holds a value that belongs to one task: the task statement carries the brief, and its values win. A prepared resource is a directory the setup session leaves under `prepared/<name>/`, nothing is registered; the files an attempt saves under `results/` are the harness's own convention, the engine requires none.
+`instructions/guardrails.md` reaches every session; `instructions/<module>.md` reaches that module's sessions, after it. Both go into the prompt whole, under a `Domain guidance` heading that ends with the paths of the task statement and the prepared resources, so a page says "the task statement" or "the diff" and never a path it would have to guess. They are short and dense: standing rules, the discipline of the domain, where to look. A page over the config's `harness.page_warning_lines` (40) — forty-one lines and up, every line of the file counted, blank lines and headings included — draws a warning from `check`, never a failure. A page never holds a value that belongs to one task: the task statement carries the brief, and its values win. A prepared resource is a directory the setup session leaves under `prepared/<name>/`, nothing is registered; the files an attempt saves under `results/` are the harness's own convention, the engine requires none.
 
 | Page | What it holds |
 |---|---|
@@ -82,7 +82,7 @@ A module with a page or any attachment has content. The setup session and the ve
 
 ## Skills
 
-A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs beside it. Those two keys are all `check` reads; any other front-matter key (the example's `metadata`, say) is left to the host, and the engine reads nothing else there. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
+A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs under it (the example keeps them in a `scripts/` directory). Those two keys are all `check` reads; any other front-matter key (the example's `metadata`, say) is left to the host, and the engine reads nothing else there. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
 
 ```markdown
 ---
@@ -95,7 +95,7 @@ Run the scan on the attempt's diff; a hit is a finding with its file and line:
     git diff main...HEAD | python3 $KAPSO_HARNESS_ROOT/skills/lookahead-scan/scripts/scan.py
 ```
 
-`KAPSO_HARNESS_ROOT` is set in every staged session and names the harness directory, so a script is run where it lives. Name each skill on its module's page — the directory name, literally, anywhere in the page's text is what `check` looks for — since it warns on one the page never mentions: a session that is never told about a skill does not look for it.
+`KAPSO_HARNESS_ROOT` is set in every staged session and names the harness directory, so a script is run where it lives. Name each skill on its module's own page — the directory name, literally, anywhere in that page's text is what `check` looks for; a mention on `guardrails.md` does not count — since it warns on one the module's page never mentions: a session that is never told about a skill does not look for it.
 
 ## Servers
 
@@ -111,7 +111,7 @@ Run the scan on the attempt's diff; a hit is a finding with its file and line:
 }
 ```
 
-A stdio server has `command`, `args`, `env` and `cwd`; a streamable-http server has `type`, `url` and `headers`. `${PLUGIN_ROOT}` is the harness directory, expanded at staging. A server runs with the session's directory as its working directory, with `KAPSO_HARNESS_ROOT` set, beside the engine's own gates; on Codex the engine forwards the variables the server names, which that host does not inherit. Names match `[A-Za-z0-9_-]+`; `gated-knowledge` is the engine's own server.
+A stdio server has `command`, `args`, `env` and `cwd`; a streamable-http server has `type`, `url` and `headers`. A stdio server is any program that speaks MCP on its stdin and stdout; the example's are Python on the official SDK's FastMCP (`from mcp.server.fastmcp import FastMCP`, one `@server.tool()` per tool, `server.run()`), with `mcp` in `requirements.txt`. `${PLUGIN_ROOT}` is the harness directory, expanded at staging. A server runs with the session's directory as its working directory, with `KAPSO_HARNESS_ROOT` set, beside the engine's own gates; on Codex the engine forwards the variables the server names, which that host does not inherit. Names match `[A-Za-z0-9_-]+`; `gated-knowledge` is the engine's own server.
 
 Every `env` and `headers` value is one `${NAME}` reference, the whole value (`Bearer ...` prefix included, so the variable holds the whole header), and an `env` entry names the variable it forwards (`"BROKER_API_KEY": "${BROKER_API_KEY}"`, never another name: Codex forwards by name). The value lives in `.env` beside the run, or in the environment. A literal, a credential-shaped value, a reference embedded in a longer value or an `env` key that references another variable is a failure; an unset reference is reported as something the machine lacks, scoped to the modules that mount the server, and a build whose modules need it refuses before any session.
 
