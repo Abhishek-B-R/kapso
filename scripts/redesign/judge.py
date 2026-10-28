@@ -153,12 +153,13 @@ def quote_on(lines: Sequence[str], label: str, quote: str) -> bool:
     if not 1 <= number <= len(lines):
         return False
     def folded(text: str) -> str:
-        # The text with its `L<n>: ` number, a leading list bullet, emphasis
-        # marks and runs of whitespace folded away — a judge quotes the words,
-        # not the markdown around them (both sides fold the same way).
+        # The text with its `L<n>: ` number, a leading bullet, heading or
+        # quote mark, inline emphasis and code marks, and runs of whitespace
+        # folded away — a judge quotes the words, not the markdown around
+        # them, and drops a different mark each time (both sides fold alike).
         text = re.sub(r"^L\d+:\s?", "", text)
-        text = re.sub(r"^(?:[-*+]|\d+\.)\s+", "", text)
-        return " ".join(re.sub(r"[*_]", "", text).split())
+        text = re.sub(r"^(?:[-*+>]|\d+\.|#{1,6})\s+", "", text)
+        return " ".join(re.sub(r"[*_`~]", "", text).split())
     wanted = folded(quote)
     first = folded(lines[number - 1])
     window = " ".join([first, *(folded(line) for line in lines[number:number + 3])])

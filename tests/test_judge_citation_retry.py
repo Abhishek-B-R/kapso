@@ -50,6 +50,8 @@ def test_a_quote_on_the_wrong_line_is_asked_once_more_then_fails_loud(tmp_path, 
     assert judge.quote_on(marked, "1", "Data: `data/transactions.csv` has 20,000 labelled rows, `fraud_probability` in input order.")
     assert judge.quote_on(marked, "1", "**Data:** `data/transactions.csv` has 20,000")
     assert not judge.quote_on(marked, "1", "Data: `data/transactions.csv` has 30,000")
+    assert judge.quote_on(marked, "1", "Data: data/transactions.csv has 20,000 labelled rows, fraud_probability in input order.")
+    assert judge.quote_on(["L3: ### What's here"], "1", "What's here")
     # A fault that is not a misquote is validate's to name, never retried.
     assert not judge.misquoted({"scores": {"clear": {"score": 4, "evidence": []}}}, tmp_path)
     assert not judge.misquoted({"scores": {"clear": {"score": 4, "evidence": [{"where": "judge/elsewhere.md:L1", "quote": "x"}]}}}, tmp_path)
