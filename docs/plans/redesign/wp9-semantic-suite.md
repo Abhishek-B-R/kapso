@@ -205,7 +205,8 @@ reported incomplete, with this reason, until the credit exists.
   public pages, no `docs/plans`, no `docs/research`); the wheel installed
   into a venv that is the Python the engineer's sessions use, its import
   and the CLI's provenance verified. `--package released`: the released
-  wheel 0.7.10 by sha256 and the released docs from the tag's checkout,
+  wheel 0.7.10 by sha256 and the tag's docs, staged into the harness pack as
+  `released-docs/` by semantic.sh (the clone reaches the machine without `.git`),
   the tasks' goals version-neutral; a verb 0.7.10 lacks is "unsupported",
   counted in the denominator as a miss and said; labelled a retrospective
   baseline, not MASTER's pre-WP1 one.
@@ -630,7 +631,7 @@ answered by this second version, each row naming where.
 | 12 | P2: Q2 and Q6 have no ground truth | fixed: scored on every cited fact checking out and the conclusion naming its evidence |
 | 13 | P2: `first_try` undefined | fixed: the counted call and the rules |
 | 14 | P2: the sandbox not enforced | fixed: proved from the init event, no web, the snapshot |
-| 15 | P2: the released docs are not in this tree | fixed: the tag's checkout, pinned |
+| 15 | P2: the released docs are not in this tree | fixed: the tag's docs, staged into the pack by semantic.sh, pinned |
 | 16 | P2: the comprehension key and the counts | fixed: in `s1.md` and the metrics |
 | 17 | P2: no status history | fixed: the sampled timeline at the config's cadence |
 | 18 | P2: S6 at one pair | fixed: sixty minutes, the spread recorded, the learn's output requirements, the claim stated |

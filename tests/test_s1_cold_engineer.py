@@ -5,8 +5,10 @@ repository's own README; a session's init event proves the sandbox cold;
 the counted verb's executions are read from a session's stream (help,
 doctor and reads never count; an errored execution followed by a success
 is an error that led to its fix); the evidence predicates read the
-artifacts a task leaves; the two counts the design names are metrics."""
+artifacts a task leaves; the two counts the design names are metrics; the
+released baseline reads the docs the packer staged, or fails loud."""
 
+import argparse
 import importlib.util
 import json
 import os
@@ -188,3 +190,13 @@ def test_flow_counts_are_per_task_so_a_reused_filename_is_not_conflated(tmp_path
 
     step = s1.S1.step_flow_counts(_Driver(), record)
     assert step["metrics"] == {"python_lines": 3, "cli_commands": 2}, "the longest single task's flow, not the sum over tasks"
+
+
+def test_the_released_baseline_needs_the_staged_docs(tmp_path):
+    # The clone reaches the machine without .git, so the tag's docs come
+    # staged as released-docs/ by semantic.sh; a pack without them must not
+    # fall back to the branch's docs.
+    args = argparse.Namespace(clone=tmp_path / "clone", out=tmp_path / "out", sandbox=None, host="claude_code", package="released")
+    (tmp_path / "clone").mkdir()
+    with pytest.raises(RuntimeError, match="no released docs"):
+        s1.S1(args).step_sandbox()

@@ -58,7 +58,7 @@ is the contract; the drivers are the `s*_*.py` and `author_test.py` and
    `dbt-duckdb==1.11.1` for `pipeline-dbt`), so the generator, the
    evaluator and `predict.py` all resolve them;
 3. unpacks the test scaffold (the drivers, the suite, the fixtures under
-   `examples/`, the docs — not the product, which is the installed
+   `examples/`, the docs, the released tag's docs as `released-docs/` — not the product, which is the installed
    wheel) into `~/kapso-clone`, runs the driver under an immutable run
    id, **archives** the whole run under
    `scripts/redesign/runs/wp9/<run_id>/` (the create/install/wheel logs,

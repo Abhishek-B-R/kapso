@@ -306,11 +306,11 @@ class S1:
         started = time.monotonic()
         self.sandbox.mkdir(parents=True, exist_ok=True)
         if self.args.package == "released":
-            docs_source = self.out / "released-docs"
-            if docs_source.exists():
-                shutil.rmtree(docs_source)
-            docs_source.mkdir()
-            self.shell(f"git -C {self.clone} archive v{RELEASED} docs docs.json | tar -x -C {docs_source}", cwd=self.out)
+            # The tag's docs and docs.json, staged into the pack by semantic.sh
+            # (the clone carries no .git to archive them from).
+            docs_source = self.clone / "released-docs"
+            if not (docs_source / "docs.json").is_file():
+                raise RuntimeError(f"no released docs at {docs_source}: semantic.sh stages the v{RELEASED} tag's docs into the harness pack")
             pages = navigated_pages(docs_source)
             count = snapshot_docs(docs_source / "docs", pages, self.sandbox / "docs")
             self.shell(f"python3 -m venv {self.venv} && {self.venv}/bin/pip install -q 'leeroo-kapso=={RELEASED}'", cwd=self.out, timeout=900)

@@ -46,6 +46,7 @@ done
 # for the numbered tests.
 [ "$TEST" = author ] && SUITE_KEY=author || SUITE_KEY="$(echo "$TEST" | tr 'a-z' 'A-Z')"
 suite_get() { python3 -c "import json,sys; print(json.load(open('$SUITE'))$1)"; }
+RELEASED="$(suite_get "['released']['version']")"   # the tag whose docs ride in the pack (S1's retrospective baseline)
 RUN_ID="${MACHINE:-wp9-$TEST-$HOST-$(date -u +%Y%m%dT%H%M%S)}"
 RUN_DIR="$RUNS/$RUN_ID"
 mkdir -p "$RUN_DIR" "$REPORTS"
@@ -88,9 +89,14 @@ case "$TEST" in s1) RUBRIC=s1 ;; s2) RUBRIC=s2 ;; s4) RUBRIC=s4 ;; author) RUBRI
 pack_harness() {   # a partial checkout: the drivers, the suite, the fixtures, the plugin, the docs navigation
   # Exclude runs/ (the local run archives, where this very tar is written —
   # self-inclusion makes tar exit 1 on "file changed as we read it") and caches.
-  tar -C "$ROOT" --exclude='scripts/redesign/runs' --exclude='__pycache__' --exclude='*.pyc' --exclude='.git' -czf "$1" \
-    scripts/redesign tests/semantic tests/fixtures/semantic_transcripts \
-    examples docs docs.json .claude-plugin plugin
+  # The released tag's docs ride along as released-docs/ (S1's retrospective
+  # baseline reads them): the pack carries no .git, so they are staged here.
+  rm -rf "$RUN_DIR/released-docs"; mkdir -p "$RUN_DIR/released-docs"
+  git -C "$ROOT" archive "v$RELEASED" docs docs.json | tar -x -C "$RUN_DIR/released-docs"
+  tar --exclude='scripts/redesign/runs' --exclude='__pycache__' --exclude='*.pyc' --exclude='.git' -czf "$1" \
+    -C "$ROOT" scripts/redesign tests/semantic tests/fixtures/semantic_transcripts \
+    examples docs docs.json .claude-plugin plugin \
+    -C "$RUN_DIR" released-docs
 }
 
 route_ok() {   # a real one-token generation on the host CLI, so a dead login stops us before provisioning
