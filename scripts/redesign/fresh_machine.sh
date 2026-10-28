@@ -23,6 +23,9 @@ HOURLY_USD="0.134"
 LABEL="purpose=kapso-fresh"
 CLAUDE_SECRET="${KAPSO_FRESH_CLAUDE_SECRET:-claude-oauth-token-3}"   # the token rule's answer, when another login has the headroom
 OPENAI_SECRET="openai-api-key"
+# Codex credit lives in a device-auth ChatGPT session, not the api key (which is
+# credit-exhausted); its auth.json is pushed to the machine at install.
+CODEX_SESSION="${KAPSO_CODEX_SESSION:-/home/ubuntu/.codex-semantic/auth.json}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RUNS="$HERE/runs"
 
@@ -71,7 +74,11 @@ cmd_install() {
   ssh_run "$name" "bash -s -- $(basename "$wheel")" < "$HERE/fresh_machine_install.sh" 2>&1 | tee "$RUNS/$id/install.log"
   push_secret "$name" CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_SECRET"
   push_secret "$name" OPENAI_API_KEY "$OPENAI_SECRET"
-  ssh_run "$name" "set -a; . ~/.secrets/env; set +a; printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null && echo 'codex: logged in with the API key'"
+  # The credited Codex login is the device-auth ChatGPT session (the api key is
+  # credit-exhausted); push its auth.json rather than logging in with the key.
+  # The session travels on ssh stdin only, never the command line.
+  [ -f "$CODEX_SESSION" ] || { echo "no Codex session at $CODEX_SESSION" >&2; exit 1; }
+  cat "$CODEX_SESSION" | ssh_run "$name" "umask 077; mkdir -p ~/.codex && cat > ~/.codex/auth.json && echo 'codex: device-auth session installed'"
   echo "installed $(basename "$wheel") on $name"
 }
 

@@ -25,6 +25,7 @@ RUNS="$HERE/runs/wp9"
 REPORTS="$ROOT/tests/semantic/reports"
 PROJECT="${KAPSO_FRESH_PROJECT:-trans-density-437811-p2}"
 ZONE="${KAPSO_FRESH_ZONE:-us-central1-a}"
+CODEX_SESSION_HOME="${KAPSO_CODEX_SESSION_HOME:-/home/ubuntu/.codex-semantic}"   # the device-auth ChatGPT session that holds the Codex credit
 
 TEST="${1:-}"; HOST="${2:-}"
 case "$TEST" in s1|s2|s4|s5|s6|author) ;; *) echo "usage: semantic.sh <s1|s2|s4|s5|s6|author> <host> [--machine id] [--advisory reason] [-- driver flags]" >&2; exit 2 ;; esac
@@ -54,6 +55,9 @@ mkdir -p "$RUN_DIR" "$REPORTS"
 # persona test; a run needs Codex credit when any of its roles is Codex).
 PERSONA_VENDOR=""; NEEDS_CODEX_CREDIT=""; NEEDS_PLUGIN=""
 [ "$HOST" = codex ] && NEEDS_CODEX_CREDIT=1
+# S6's learning crews grade on Codex (gpt-5.6-sol), so it needs Codex credit
+# even on the Claude host.
+[ "$TEST" = s6 ] && NEEDS_CODEX_CREDIT=1
 if [ "$TEST" = s2 ]; then
   [ "$HOST" = claude_code ] && PERSONA_VENDOR=codex || PERSONA_VENDOR=claude_code
   [ "$PERSONA_VENDOR" = codex ] && NEEDS_CODEX_CREDIT=1
@@ -107,14 +111,13 @@ preflight() {
     route_ok "$PERSONA_VENDOR" || { echo "persona $PERSONA_VENDOR: a one-token call did not answer" >&2; exit 3; }
     echo "persona $PERSONA_VENDOR: a one-token call answered" | tee -a "$RUN_DIR/preflight.log"
   fi
-  if [ -n "$NEEDS_CODEX_CREDIT" ] && [ -n "${OPENAI_API_KEY:-}" ]; then
-    # The one call that distinguishes credit from a working login (the
-    # models endpoint answers 200 with the credit exhausted): statuses
-    # only, never the key.
-    local status
-    status="$(curl -s -o /dev/null -w '%{http_code}' https://api.openai.com/v1/responses -H "Authorization: Bearer $OPENAI_API_KEY" -H 'content-type: application/json' -d '{"model":"gpt-5.6-sol","input":"ok","max_output_tokens":16}')"
-    echo "codex key: a responses call returned $status" | tee -a "$RUN_DIR/preflight.log"
-    [ "$status" = 200 ] || { echo "codex credit is not available ($status); this arm must wait or run --advisory" >&2; exit 3; }
+  if [ -n "$NEEDS_CODEX_CREDIT" ]; then
+    # The credit is the device-auth ChatGPT session (the api key is credit
+    # exhausted); verify it answers here before provisioning -- it is exactly
+    # what fresh_machine.sh installs on the machine. A real one-token call.
+    CODEX_HOME="$CODEX_SESSION_HOME" codex exec -m gpt-5.6-sol --sandbox read-only --skip-git-repo-check "reply with the word ok" >/dev/null 2>&1 \
+      || { echo "the device-auth Codex session is not answering; re-login (codex login --device-auth) before provisioning" >&2; exit 3; }
+    echo "codex: the device-auth session answered" | tee -a "$RUN_DIR/preflight.log"
   fi
 }
 
