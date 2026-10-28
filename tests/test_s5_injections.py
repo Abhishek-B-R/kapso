@@ -150,6 +150,10 @@ def test_the_seeded_bank_is_the_fixture_as_one_commit_in_a_bare_repo(tmp_path):
     state = s5.seed_bank(ROOT / "tests" / "fixtures" / "bank_seed", tmp_path / "bank-seed.git")
     assert state["readable"] is True and state["cards"] == 3 and state["head"]
     assert (tmp_path / "bank-seed.git" / "HEAD").is_file() and not (tmp_path / "bank-seed.git.src").exists()
+    # The engine reads a bank's `main` branch (s5-claude-5 was refused a seed
+    # committed on git's default branch): the skeleton is there on main.
+    on_main = subprocess.run(["git", "-C", str(tmp_path / "bank-seed.git"), "ls-tree", "--name-only", "main"], capture_output=True, text=True)
+    assert on_main.returncode == 0 and {"index.md", "insights", "procedures"} <= set(on_main.stdout.split())
     assert s5.seed_bank(ROOT / "tests" / "fixtures" / "bank_seed", tmp_path / "bank-seed.git") == state, "re-seeding replaces the bank; the tree is the same"
     with pytest.raises(FileNotFoundError):
         s5.seed_bank(tmp_path / "no-such-fixture", tmp_path / "other.git")

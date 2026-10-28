@@ -179,7 +179,8 @@ def seed_bank(fixture: Path, target: Path) -> Dict[str, Any]:
             shutil.rmtree(path)
     shutil.copytree(fixture, source)
     git = lambda *args: subprocess.run(["git", "-C", str(source), "-c", "user.name=kapso-semantic", "-c", "user.email=semantic@kapso.invalid", *args], check=True, capture_output=True, text=True)
-    git("init", "-q")
+    # On `main`: the engine reads a bank's main branch, whatever git's default is.
+    git("init", "-q", "-b", "main")
     git("add", "-A")
     git("commit", "-q", "-m", "the seeded bank")
     subprocess.run(["git", "clone", "-q", "--bare", str(source), str(target)], check=True, capture_output=True, text=True)
