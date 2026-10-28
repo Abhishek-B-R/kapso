@@ -491,7 +491,19 @@ class S5:
         turn_1 = self.ask(name, project, f"what happened to the kapso campaign at ../s5-{name}? kapso watch says something is wrong")
         turn_2 = self.ask(name + "-2", project, second_prompt)
         resumed = wait_for(lambda: (status_of(campaign) or {}).get("state") == "running" and status_timeline.sample(campaign).get("shown") == "RUNNING", 300, every=10)
-        status = self.finish(name, campaign)
+        # The resumed campaign is watched for what is left of the step's own
+        # budget, not to its end: the claim is that it continues from its
+        # checkpoint with the attempts kept, read from the trace, and a
+        # forty-minute campaign run out in full put both resume classes over
+        # their forty-five minutes (s5-claude-6: 48.7 and 60.6). It is
+        # stopped below either way.
+        remaining = SUITE["steps"][name]["minutes"] * 60 - (time.monotonic() - started) - 120   # two minutes for the trace and the stop
+        wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), max(int(remaining), 60), every=20)
+        sampler = self.samplers.pop(name, None)
+        if sampler:
+            sampler.terminate()
+            sampler.wait()
+        status = status_of(campaign) or {}
         trace = self.trace(campaign)
         diagnosis = names_class_and_fix(turn_1.text, name)
         metrics = {**extra, "shown_dead": shown_dead, "shown_after": shown_after, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=True), **diagnosis, "resumed": resumed,
