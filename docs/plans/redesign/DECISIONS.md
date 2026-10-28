@@ -2241,6 +2241,25 @@ that (`--learn-model`, authorized); and the mined `mining-report.md` the
 first session left was the API error's text, which the mined-view
 validation accepted as a report.
 
+## WP9 S2 learn-complete: a learn over the churn campaign outruns its 150-minute step (2026-10-28)
+
+Both clean S2 runs read `learn-complete` false at the step's 150-minute
+cutoff with the learn still in its lesson phase: on the Claude host mining
+took 36 minutes, the exam 68 and the lesson ran past 80 (the churn
+campaign's first attempt had taken 48 minutes with the research tools);
+on the Codex host mining 25, the exam 48, the lesson past 77. S6's learn
+over the same fixture finished in 135.8 minutes (mining 37, the lesson 88),
+inside S6's own `learn-build-one` budget of 240 minutes — the same operation
+carries 150 in S2 and 240 in S6. The exam's length varies most (20 to 68
+minutes): its report writer is a Codex session on `gpt-5.6-sol`, slow on
+a loaded afternoon. The step's budget is a design value and stays as
+written; the record shows the overrun and its parts. The owner's call:
+align S2's `learn-complete` with S6's 240 minutes (the learn validation's
+finding — a learn's wall-clock scales with the campaign's richness — was
+already on the table), or accept that the second engineer's served build
+reads false whenever the learn runs long, since it has no card to serve
+until the learn banks.
+
 ## WP9 S2 line budget: the Claude host's approval message runs fifteen lines against twelve (2026-10-28)
 
 Every build conversation on the Claude host in the S2 round (`build-churn`
