@@ -822,7 +822,7 @@ The rest need the same pass — deferred as a focused follow-up (DECISIONS). The
 product validation stands on its own. S4 reads S5's tampering campaign, so it
 defers with S5.
 
-### S6 experience, Claude host, fresh machines — arms s6-claude-1..4 (2026-10-28)
+### S6 experience, Claude host, fresh machines — arms s6-claude-1..5 (2026-10-28)
 
 Four arms, each one lesson deeper. `s6-claude-1`: build-one true (43 min,
 node 0 at 0.8484 then a second iteration), the learn dead in 0.2 s — the
@@ -843,9 +843,33 @@ rejects every write on a stock Ubuntu 24.04 VM; only the adapter's default
 sandbox writes. Fixed in the engine (DECISIONS: the learning crews' Codex
 roles on the adapter's default sandbox; the fail-loud line quotes the
 session) — a product finding a user on a fresh VM would have met.
-`s6-claude-4` (Opus learn, before the fix) stopped at install; `s6-claude-5`
-runs the fixed wheel with the learn on Opus 5.5 (the Fable safeguard
-stands between the shipped model and the mining prompt; an owner call).
+`s6-claude-4` (Opus learn, before the fix) stopped at install.
+
+`s6-claude-5`, the fixed wheel with the learn on Opus 5.5 (the Fable
+safeguard stands between the shipped model and the mining prompt; an owner
+call): **PASS, 4/4 steps** (2.97 h of machine, about $0.40; report
+`tests/semantic/reports/s6-claude-5.md`). Build one, served nothing: node 0
+at 0.8508 in 19.4 min, `goal_achieved`. The learn over its campaign, 135.8
+min: mining on Opus, the exam's report written by the Codex `report_writer`
+on the adapter's sandbox, the lesson crew (an Opus lead, two `gpt-5.6-sol`
+workers; 88 min, $15.28, 204 tool calls) through three critic rounds to
+three candidate cards — the holdout's sampling error bounding what a run can
+claim and stop on, independence claims needing a channel the audited party
+cannot touch, binned outcome profiles before model capacity — reliability
+0.63–0.65, bank `026473cd9 → 53f04261c`. Build two, served that bank: read
+two of the three cards in ideation, the judge found all three load-bearing
+(lessons cited 1 of 1), node 0 at 0.8509 in 17.6 min, `goal_achieved`. The
+pair: the same delivered score to four decimals, one node each, the served
+build 1.8 min quicker to it — at this budget the churn fixture's goal falls
+to the first attempt with or without the bank, so the bank can show only in
+the time to the goal and in what the sessions read. The comparison's grid
+held no common scored point: build one's score landed in the final partial
+interval, past a grid cut at the last whole cadence, and build two's sampler
+was killed by the driver's own poll before its terminal row — fixed after
+the run (the grid reaches the terminal sample on one shared horizon; the
+sampler writes its terminal row), so the Codex arm will carry a real gap
+series. The bar as written (lessons cited, both builds scored) passed; the
+gap bar was vacuous here and says so in the record.
 
 ### author, Codex host — run `author-codex-1` (2026-10-28)
 
