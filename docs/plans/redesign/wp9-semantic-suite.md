@@ -1040,6 +1040,25 @@ its `fetched/out`.
   The build skill's wording on when to stop designing and launch is WP7's.
 - **Fable 5's safeguards and the mining prompt; codex-cli 0.165's
   workspace-write sandbox on a VM** — recorded in DECISIONS (S6).
+- **A session that met a crashed evaluator rebuilt its inputs instead of
+  reporting it.** In `s5-claude-5`'s evaluator-crash (2026-10-28) the
+  hold-out labels were moved away while attempt one was being written; the
+  evaluator crashed on `holdout_labels.csv`, and within a minute the
+  implementation session re-ran the fixture's seeded `generate.py`,
+  checked the output against `MANIFEST.json`, copied the labels into the
+  protected `private/` directory, scored 0.8503 and left itself a note
+  (`.kapso/shared_cache/fixture-restore-note.md`) on how to do it again.
+  The engine's feedback judge named it — "an evaluation defect to report,
+  not to repair"; the session should have stopped with an
+  `<evaluation_change_request>` — and accepted the score, since the
+  rebuilt file matched the manifest's hash; the cold engineer, asked
+  afterwards, said the result "is valid only if you accept the agent's
+  repair of the evaluator". Two things for the owner: a session's write
+  under the evaluator's private directory is a protocol breach the hash
+  check cannot see (the file was identical), so the judge's flag should be
+  a void, not a remark; and the fixture's generator is what made the
+  rebuild possible — a real repository has none, so S5 now removes it
+  from its project before the launch (a driver's act in the record).
 
 From `s1-claude-1` — the signal the suite exists to catch, kept for the
 product and the docs, not the suite:
