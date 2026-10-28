@@ -56,7 +56,9 @@ APPROVAL_ASKED = re.compile(
 # A campaign that misses its goal delivers no branch; a review of it must say
 # so rather than dress a near miss as something to merge.
 NOTHING_DELIVERED = re.compile(
-    r"\b(goal|target) (was )?not (met|reached)\b|\bnothing (was )?delivered\b|\bno (branch|result|delivery) (was )?delivered\b|\bdid not deliver\b|\b(below|short of|under) the target\b|\bmissed the target\b",
+    r"\b(goal|target) (was )?not (met|reached)\b|\b(goal|target) (remains |is |still )?unmet\b|\bnothing (was )?delivered\b"
+    r"|\bno (approved )?(winner|branch|result|delivery|candidate) (was )?delivered\b|\bdelivered no (approved )?(winner|branch|result|candidate)\b|\bdid not deliver\b"
+    r"|\b(below|short of|under) (the )?(target|threshold|goal|[0-9.]+)\b|\bmissed the (target|goal)\b",
     re.I,
 )
 

@@ -171,6 +171,11 @@ def test_a_review_names_the_delivered_branch_or_that_nothing_was_delivered():
     assert proof.names_delivery("finished at 0.8459 ROC AUC, 0.0041 below the target. The goal was not met.", None)
     assert proof.names_delivery("Nothing was delivered; do not merge.", None)
     assert not proof.names_delivery("What won: generic_exp_0 at 0.8459 — safe to merge.", None)
+    # s2-codex-5's review of a campaign that delivered nothing, in the
+    # host's words: the detector's vocabulary had none of them.
+    assert proof.names_delivery("**No winner was delivered.** Candidate generic_exp_0 scored 0.8459, 0.0041 below the 0.85 threshold.", None)
+    assert proof.names_delivery("The campaign actually delivered no approved winner; the judge timed out.", None)
+    assert proof.names_delivery("falling 0.0041 short of 0.85; the original performance target remains unmet.", None)
     # The verdict in the skill's own forms (s2-claude-2's review said "merging
     # the branch whole carries the labels" and "resume with more time" and
     # was read as giving none).
