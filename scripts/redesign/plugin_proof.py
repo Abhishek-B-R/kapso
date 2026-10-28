@@ -153,18 +153,23 @@ def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
     sentence on why it is needed)."""
     if any(tool["name"] == "AskUserQuestion" for tool in tools):
         return True
-    lines = [line.strip().rstrip("*_`)\"' ") for line in text.splitlines() if line.strip()]
+    # A fence line is nothing once its backticks are stripped; it is dropped
+    # so the closing lines are the closing prose and commands.
+    lines = [line for line in (raw.strip().rstrip("*_`)\"' ") for raw in text.splitlines()) if line]
     # The command the ask refers to, shown after it (a fenced block, a
     # backtick-wrapped line, a `kapso ...` line), is not the ask's last
     # word: three steps on the Claude host ended "Say go and I'll run:"
     # and the command, and read as never asking (2026-10-28).
-    while lines and (lines[-1] == "" or lines[-1].startswith("`") or lines[-1].startswith("kapso ") or lines[-1].startswith("$ ")):
+    while lines and (lines[-1].startswith("`") or lines[-1].startswith("kapso ") or lines[-1].startswith("$ ")):
         lines.pop()
     if not lines:
         return False
-    # A question mark in the closing lines, or an approval request anchored
-    # to the FINAL line (so a courtesy sign-off is not counted a question).
-    return "?" in "\n".join(lines[-3:]) or bool(APPROVAL_ASKED.search(lines[-1]))
+    # A question mark or an approval request in the closing lines: the
+    # regex names real requests only (a courtesy sign-off never matches),
+    # and a host closes "Say go and I'll run:", the command, "or edit a
+    # line first" — the request three lines up, its continuation last.
+    closing = "\n".join(lines[-3:])
+    return "?" in closing or bool(APPROVAL_ASKED.search(closing))
 
 
 def lines_outside_fences(text: str) -> int:

@@ -180,5 +180,9 @@ def test_a_turn_that_asks_then_shows_the_command_it_will_run_asks():
     assert proof.question_asked(fenced, [])
     inline = "Approve, or edit a line. On \"go\", I'll launch it in the background:\n`kapso build --brief kapso-brief.md --output ../fraud-campaign --detach`\n"
     assert proof.question_asked(inline, [])
-    # A statement followed by a command is still no question.
+    # The request three lines up, the command, then its own continuation last.
+    tailed = "`kapso doctor build` passed.\nSay **go** and I'll launch this:\n```\nkapso build --brief kapso-brief.md --output ../fraud-campaign --detach\n```\nOr edit a line of the brief or the evaluation first.\n"
+    assert proof.question_asked(tailed, [])
+    # A statement followed by a command is still no question, nor is a courtesy sign-off.
     assert not proof.question_asked("Launched. The campaign is at ../churn-campaign.\n```\nkapso watch ../churn-campaign\n```\n", [])
+    assert not proof.question_asked("Launched. The campaign is at ../churn-campaign.\nLet me know if you want the full trace.\n", [])
