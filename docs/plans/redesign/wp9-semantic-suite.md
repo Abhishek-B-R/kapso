@@ -1039,7 +1039,10 @@ its `fetched/out`.
   in 4 of 18 cases per skill** (holdout 0/10), where WP7's round on the
   development box's codex 0.153 passed the same probe and the Claude host
   passes it at 19–20 of 20. A Codex skill-discovery change between those
-  versions is the prime suspect; WP7's domain.
+  versions is the prime suspect; WP7's domain. Checked against the day's
+  429 storms on `gpt-6-astra`: of `s2-codex-1`'s 188 trigger runs only 4
+  met a 429, and 137 of the 138 failed runs were clean sessions (exit 0,
+  18–42 s) that loaded no skill — the miss is the host's, not the limit's.
 - **An exported skill was not loaded when asked.** The export itself was
   right on both hosts (the skills, delegates and `.mcp.json` placed, the
   hooks and module pages left behind with the reason), but in the plain
