@@ -69,6 +69,17 @@ def names_delivery(answer: str, branch: Optional[str]) -> bool:
     return bool(NOTHING_DELIVERED.search(answer))
 
 
+# The review skill's verdict comes as "is it safe to merge" answered, or as
+# the one-line next action it prescribes (merge, cherry-pick, resume with
+# more budget, learn from it) — a review that said "merging the branch
+# whole carries the labels" and "resume with more time" had given it.
+MERGE_VERDICT = re.compile(r"\bmerg(e|ing|ed)\b|\b(not )?safe\b|\bcherry-pick|\bresume with\b|\blearn from\b", re.I)
+
+
+def merge_verdict(answer: str) -> bool:
+    return bool(MERGE_VERDICT.search(answer))
+
+
 CHURN_WISH = (
     "get the churn model's ROC AUC above 0.85 without changing the prediction contract; "
     f"the campaign goes to ../churn-campaign with a budget of {_CHURN_B['minutes']} minutes and {_CHURN_B['experiments']} experiments"
@@ -1018,7 +1029,10 @@ def step_review(ctx: Context) -> Dict[str, Any]:
     project, campaign = Path(ctx.state["churn_project"]), Path(ctx.state["churn_campaign"])
     finished = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 4500, every=20)
     turns = ctx.converse("review", project, ctx.host.command("review", "../churn-campaign"), lambda text, index: "is it safe to merge?" if index == 0 else None, max_turns=3)   # WP7's round: the review's two-turn headroom was thin for a persona
-    if len(turns) == 1:
+    # The merge question is the step's second want; a persona that spent
+    # its turn elsewhere (s2-claude-2 asked about the planted baseline and
+    # was done) leaves it to be asked once, as the scripted user would.
+    if len(turns) == 1 or not merge_verdict("\n".join(turn.text for turn in turns)):
         turns += ctx.converse("review-2", project, "is the branch the campaign delivered in ../churn-campaign safe to merge?", lambda text, index: None, max_turns=1)
     artifacts = [ctx.artifact("review-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     solution = campaign / ".kapso" / "solution.json"
@@ -1034,7 +1048,7 @@ def step_review(ctx: Context) -> Dict[str, Any]:
     # was) and give a merge verdict, so "I can't read that campaign" does
     # not pass review.
     named = names_delivery(answer, branch)
-    verdict = any(word in answer for word in ("merge", "safe", "do not merge", "not safe"))
+    verdict = merge_verdict(answer)
     completed = ctx.user.ended_well("review", finished and solution.is_file() and named and verdict)
     return record_step("review", turns, completed, artifacts, [f"the churn campaign ended: {(status_of(campaign) or {}).get('state')}; the answer named the delivered branch {branch!r}: {named}; a merge verdict: {verdict}"])
 

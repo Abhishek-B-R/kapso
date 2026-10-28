@@ -171,6 +171,13 @@ def test_a_review_names_the_delivered_branch_or_that_nothing_was_delivered():
     assert proof.names_delivery("finished at 0.8459 ROC AUC, 0.0041 below the target. The goal was not met.", None)
     assert proof.names_delivery("Nothing was delivered; do not merge.", None)
     assert not proof.names_delivery("What won: generic_exp_0 at 0.8459 — safe to merge.", None)
+    # The verdict in the skill's own forms (s2-claude-2's review said "merging
+    # the branch whole carries the labels" and "resume with more time" and
+    # was read as giving none).
+    assert proof.merge_verdict("Risks: merging the branch whole carries the labels into the repository.")
+    assert proof.merge_verdict("Next action: resume with more time, kapso build --resume.")
+    assert proof.merge_verdict("Not safe: the evaluator was edited.") and proof.merge_verdict("cherry-pick the one change")
+    assert not proof.merge_verdict("I could not read that campaign.")
 
 
 def test_a_turn_that_asks_then_shows_the_command_it_will_run_asks():
