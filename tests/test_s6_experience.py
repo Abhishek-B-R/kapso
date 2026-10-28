@@ -30,6 +30,15 @@ def test_the_anytime_series_is_the_running_best_on_the_grid():
     assert [point for point, _ in series] == [0.0, 60.0, 120.0, 180.0, 240.0]
     assert [score for _, score in series] == [None, None, 0.80, 0.80, 0.85], "running max, None until the first score"
     assert s6.anytime_series([], 60.0) == []
+    # s6-claude-5 (2026-10-28): the delivered score landed in the final
+    # partial interval and fell off a grid cut at the last whole cadence;
+    # the grid reaches the last sample, and a horizon past it (the other
+    # build still running) carries the incumbent forward.
+    terminal = timeline + [_row(250, 0.86)]
+    assert s6.anytime_series(terminal, 60.0)[-1] == (300.0, 0.86)
+    assert s6.last_sample_seconds(terminal) == 250.0 and s6.last_sample_seconds([]) == 0.0
+    carried = s6.anytime_series(terminal, 60.0, horizon=420.0)
+    assert [point for point, _ in carried][-3:] == [300.0, 360.0, 420.0] and [score for _, score in carried][-3:] == [0.86, 0.86, 0.86]
 
 
 def test_the_gap_is_build_two_minus_build_one_per_common_point():

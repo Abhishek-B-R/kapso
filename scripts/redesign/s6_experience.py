@@ -64,17 +64,29 @@ def best_score(row: Dict[str, Any]) -> Optional[float]:
     return None
 
 
-def anytime_series(timeline: Sequence[Dict[str, Any]], cadence: float) -> List[Tuple[float, Optional[float]]]:
+def last_sample_seconds(timeline: Sequence[Dict[str, Any]]) -> float:
+    """Seconds from a timeline's first sample to its last (0 when empty)."""
+    rows = [row for row in timeline if row.get("ts")]
+    if not rows:
+        return 0.0
+    return (datetime.fromisoformat(rows[-1]["ts"]) - datetime.fromisoformat(rows[0]["ts"])).total_seconds()
+
+
+def anytime_series(timeline: Sequence[Dict[str, Any]], cadence: float, horizon: Optional[float] = None) -> List[Tuple[float, Optional[float]]]:
     """The incumbent's best score at each grid point k*cadence from the
-    first sample to the last, the running max of the scores seen by then
-    (None until the first score)."""
+    first sample to the horizon, the running max of the scores seen by
+    then (None until the first score). The grid's last point is at or
+    past the last sample, so a score landing in the final partial
+    interval is on it; a horizon past the last sample (the other build
+    still running) carries the incumbent forward — a finished build's
+    delivered score stands for the rest of the budget."""
     rows = [row for row in timeline if row.get("ts")]
     if not rows:
         return []
     start = datetime.fromisoformat(rows[0]["ts"])
     elapsed = [( (datetime.fromisoformat(row["ts"]) - start).total_seconds(), best_score(row)) for row in rows]
-    last = elapsed[-1][0]
-    points = int(last // cadence) + 1
+    reach = max(elapsed[-1][0], horizon or 0.0)
+    points = math.ceil(reach / cadence - 1e-9) + 1
     series = []
     for step in range(points):
         point = step * cadence
@@ -247,7 +259,12 @@ class S6:
         wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), BUDGET["minutes"] * 60 + 900, every=20)
         sampler = self.samplers.pop(name, None)
         if sampler:
-            sampler.terminate()
+            # The sampler exits by itself once it has written the terminal
+            # row — the sample that carries the delivered score; it is only
+            # killed when that row does not come within two cadences.
+            wait_for(lambda: sampler.poll() is not None, int(self.cadence * 2) + 30, every=2)
+            if sampler.poll() is None:
+                sampler.terminate()
             sampler.wait()
         trace = self.trace(campaign)
         status = status_of(campaign) or {}
@@ -293,8 +310,11 @@ class S6:
         started = time.monotonic()
         trace_one = self.trace(self.work / "s6-campaign-one")
         trace_two = self.trace(self.work / "s6-campaign-two")
-        series_one = anytime_series(self.timeline("build-one"), self.cadence)
-        series_two = anytime_series(self.timeline("build-two"), self.cadence)
+        # One grid for both: to the later build's last sample, the earlier
+        # finisher's incumbent carried forward.
+        horizon = max(last_sample_seconds(self.timeline("build-one")), last_sample_seconds(self.timeline("build-two")))
+        series_one = anytime_series(self.timeline("build-one"), self.cadence, horizon)
+        series_two = anytime_series(self.timeline("build-two"), self.cadence, horizon)
         gaps = gap_series(series_two, series_one)
         served = served_and_used(trace_two)
         metrics = comparison_metrics(trace_one, trace_two, gaps, served, behind=behind_points(series_two, series_one))
