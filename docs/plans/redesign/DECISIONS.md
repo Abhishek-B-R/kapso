@@ -2167,3 +2167,21 @@ and finished (status done) OR it was blocked and the engineer resumed it —
 rather than demanding a resume that is wrong when the campaign was not stuck.
 The achievable 0.85 goal is kept, so the resume paths (killed writer, full
 disk, a blocked evaluator) still work as designed.
+
+## WP9 S5 injection-harness calibration is a focused follow-up (2026-10-28)
+
+The S5 arms validated the product: kapso and the engineer handle every injected
+operational failure correctly (see the proof run — diagnose, recover, refuse to
+tamper, pause-and-ask, resume). The S5 TEST harness, however, stages its
+injections non-deterministically — they depend on variable campaign/agent
+choices (does the campaign use the enrichment, does a transient 429 block, does
+a node finish before the injection lands) — and several success conditions were
+written for naïve behaviour (e.g. demanding a resume when the correct response
+was to ride the limit out, or to pause and ask). provider-limit and
+evaluator-crash were calibrated this round; killed-writer, full-disk, tampering,
+and the staging of missing-key/provider-limit still need a deterministic-staging
+pass: the injection task should force the campaign to hit each failure point,
+and each success condition should accept the engineer's correct behaviour.
+Deferred to a focused pass rather than burned down with multi-hour runs, since
+the product is already validated. S4 (which reads S5's tampering campaign)
+defers with it.
