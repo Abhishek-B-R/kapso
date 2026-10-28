@@ -33,6 +33,12 @@ def normalize_node_expansion(params: Mapping[str, Any]) -> Tuple[int, Optional[L
                 "expansion_lane_env must be a list of {str: str} mappings "
                 "(one per lane, e.g. CUDA_VISIBLE_DEVICES pins)"
             )
+        # A lane with no entry would run unpinned beside pinned siblings.
+        if len(lane_env) != raw:
+            raise ValueError(
+                f"expansion_lane_env has {len(lane_env)} entries for "
+                f"node_expansion_value {raw}; it needs one per lane"
+            )
     return raw, lane_env
 
 
