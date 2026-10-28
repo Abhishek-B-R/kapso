@@ -65,17 +65,16 @@ def test_the_classification_shape_is_validated_and_counts_structural_gaps():
     assert author.classify_guesses([], "G", {}, ask=ask_good) == []
 
 
-def test_the_run_metrics_promote_round_two_and_the_steps_match_the_suite():
-    record = {"steps": [
-        {"name": "round-1", "metrics": {"structural_gaps": 7, "check_green": True}},
-        {"name": "guide-fixes", "metrics": {"fixes_from_round1": 5}},
-        {"name": "round-2", "metrics": {"structural_gaps": 0, "check_green": True}},
-    ]}
-    assert author.run_metrics(record) == {"structural_gaps_round1": 7, "structural_gaps_round2": 0, "check_green_round2": 1}
-    red = {"steps": [{"name": "round-2", "metrics": {"structural_gaps": 2, "check_green": False}}]}
-    assert author.run_metrics(red) == {"structural_gaps_round1": None, "structural_gaps_round2": 2, "check_green_round2": 0}
+def test_the_run_metrics_read_the_write_step_and_the_steps_match_the_suite():
+    record = {"steps": [{"name": "write", "metrics": {"structural_gaps": 0, "contradictions": 0, "check_green": True}}]}
+    assert author.run_metrics(record) == {"structural_gaps": 0, "contradictions": 0, "check_green": 1}
+    red = {"steps": [{"name": "write", "metrics": {"structural_gaps": 2, "contradictions": 1, "check_green": False}}]}
+    assert author.run_metrics(red) == {"structural_gaps": 2, "contradictions": 1, "check_green": 0}
+    ungraded = {"steps": [{"name": "write", "metrics": {"structural_gaps": None, "contradictions": None, "check_green": True}}]}
+    assert author.run_metrics(ungraded) == {"structural_gaps": None, "contradictions": None, "check_green": 1}
+    assert author.run_metrics({"steps": []}) == {"structural_gaps": None, "contradictions": None, "check_green": None}
     assert author.STEP_NAMES == author.SUITE["tests"]["author"]["required_steps"]["claude_code"]
-    assert set(author.SUITE["tests"]["author"]["bars"]) == {"structural_gaps_round2", "check_green_round2"}
+    assert set(author.SUITE["tests"]["author"]["bars"]) == {"structural_gaps", "check_green"}
 
 
 def test_the_author_rubric_scores_only_the_harness_and_the_classifier_owns_the_classes():

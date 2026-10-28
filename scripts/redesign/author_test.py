@@ -3,13 +3,15 @@ WP2's S3 made runnable): a model author with only the authoring guide,
 the reference and the trading example writes a harness for a new domain
 in a scratch directory, logging every guess as one line, and may not run
 `kapso`. The driver runs `check`; the judge classifies each guess and
-reviews the harness against the guide's rules. Two rounds: the structural
-gaps and contradictions of round one are written into the guide (this
-package owns those pages), and a fresh author runs round two. The bar is
-zero structural gaps in round two and a green `check`.
+reviews the harness against the guide's rules. One cold author per run, on
+the guide as committed (the record pins its hash): the structural gaps and
+contradictions it logs are written into the guide between runs (this
+package owns those pages) and committed, and the next run's fresh author
+is the design's round two. The bar is zero structural gaps and a green
+`check`.
 
-    python3 author_test.py --clone <clone> --out <dir> [--host claude_code] [--round round-1] [--advisory <reason>]
-    python3 author_test.py --out <dir> --grade        # classify the guesses on the judge's route
+    python3 author_test.py --clone <clone> --out <dir> [--host claude_code] [--advisory <reason>]
+    python3 author_test.py --out <dir> --clone <clone> --grade        # classify the guesses on the judge's route
 
 The guess grammar, one per line of the author's `GUESSES.md`:
 
@@ -31,7 +33,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
-from plugin_proof import SUITE, ClaudeHost, CodexHost, record_step, shell_step  # noqa: E402
+from plugin_proof import SUITE, ClaudeHost, CodexHost, record_step  # noqa: E402
 from s1_cold_engineer import CLAUDE_COLD, CODEX_COLD  # noqa: E402
 import judge as judge_module  # noqa: E402
 
@@ -39,7 +41,7 @@ GUESS_PATTERN = re.compile(r"^GUESS:\s*(?P<what>.+?)\s*\|\s*(?P<where>.+?)\s*\|\
 CLASSES = ("structural_gap", "contradiction", "domain_decision", "already_in_guide")
 GUIDE_PAGES = ["docs/harnesses/write.mdx", "docs/harnesses/index.mdx", "docs/reference/harness.mdx", "docs/harnesses/example-trading.mdx"]
 EXAMPLE = "examples/harnesses/trading"
-STEP_NAMES = ["round-1", "guide-fixes", "round-2"]
+STEP_NAMES = ["write"]
 BRIEF = """You are a domain author writing a Kapso harness for a new domain, `pipeline-dbt`: dbt data pipelines (models, sources, tests, incremental builds, a warehouse the project runs against, CI that runs the project). You have never seen Kapso before; you know dbt well.
 
 Read, in this order, and nothing else in the repository:
@@ -137,12 +139,11 @@ def contradictions(classified: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]
 
 
 def run_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
-    rounds = {step["name"]: step for step in record["steps"] if step["name"] in ("round-1", "round-2")}
-    two = rounds.get("round-2", {}).get("metrics", {})
+    metrics = next((step["metrics"] for step in record["steps"] if step["name"] == "write"), {})
     return {
-        "structural_gaps_round1": rounds.get("round-1", {}).get("metrics", {}).get("structural_gaps"),
-        "structural_gaps_round2": two.get("structural_gaps"),
-        "check_green_round2": 1 if two.get("check_green") else (0 if "check_green" in two else None),
+        "structural_gaps": metrics.get("structural_gaps"),
+        "contradictions": metrics.get("contradictions"),
+        "check_green": 1 if metrics.get("check_green") else (0 if "check_green" in metrics else None),
     }
 
 
@@ -150,7 +151,7 @@ def run_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
 class Author:
     def __init__(self, args: argparse.Namespace):
         self.args = args
-        self.clone = Path(args.clone).resolve() if args.clone else None
+        self.clone = Path(args.clone).resolve()
         self.out = Path(args.out).resolve()
         (self.out / "transcripts").mkdir(parents=True, exist_ok=True)
         (self.out / "artifacts").mkdir(parents=True, exist_ok=True)
@@ -166,7 +167,8 @@ class Author:
             example=self.clone / EXAMPLE, out=scratch,
         )
 
-    def step_round(self, name: str) -> Dict[str, Any]:
+    def step_write(self) -> Dict[str, Any]:
+        name = "write"
         scratch = self.out / "work" / name
         if scratch.exists():
             shutil.rmtree(scratch)
@@ -188,40 +190,25 @@ class Author:
             artifacts.append(f"artifacts/{name}-harness.md")
         step = record_step(name, [turn], check.returncode == 0 and bool(files) and bool(guesses), artifacts,
                            [f"{len(guesses)} guesses; check exited {check.returncode}; {len(files)} files", "the author did not run kapso (the guide forbids it); the driver runs check"])
-        step["metrics"] = {"guesses": len(guesses), "check_green": check.returncode == 0, "files": len(files), "structural_gaps": None}
-        return step
-
-    def step_guide_fixes(self) -> Dict[str, Any]:
-        """The gaps and contradictions of round one are written into the
-        guide between rounds (this package owns those pages); the step
-        records what was fed into the fix and the guide's diff."""
-        record = json.loads((self.out / "record.json").read_text())
-        round_one = next((step for step in record["steps"] if step["name"] == "round-1"), None)
-        classified = round_one.get("classification", []) if round_one else []
-        gaps = [row for row in classified if row["class"] in ("structural_gap", "contradiction")]
-        diff = subprocess.run(["git", "-C", str(self.clone), "diff", "--stat", "--", "docs/harnesses", "docs/reference/harness.mdx"], capture_output=True, text=True) if self.clone else None
-        artifacts = [self.artifact("guide-fixes-inputs.json", json.dumps(gaps, indent=2))]
-        if diff:
-            artifacts.append(self.artifact("guide-fixes-diff.txt", diff.stdout))
-        step = shell_step("guide-fixes", True, artifacts, 0.0,
-                          [f"{len(gaps)} structural gaps and contradictions from round one fed into the guide; the pages this package owns: {', '.join(GUIDE_PAGES)}"])
-        step["metrics"] = {"fixes_from_round1": len(gaps)}
+        step["metrics"] = {"guesses": len(guesses), "check_green": check.returncode == 0, "files": len(files), "structural_gaps": None, "contradictions": None}
         return step
 
 
 def grade(record: Dict[str, Any], out: Path, clone: Path, settings: dict, ask: Optional[Callable[[str, dict], str]] = None) -> Dict[str, Any]:
-    """Classify each round's guesses on the judge's route; the counts into
-    the record's metrics."""
-    guide = guide_text(clone)
-    for step in record["steps"]:
-        if step["name"] not in ("round-1", "round-2"):
-            continue
-        guesses_md = out / "artifacts" / f"{step['name']}-guesses.md"
-        guesses = parse_guesses(guesses_md.read_text(encoding="utf-8")) if guesses_md.is_file() else []
-        classified = classify_guesses(guesses, guide, settings, ask=ask, raw_path=out / judge_module.JUDGE_DIR / f"classify-{step['name']}.txt")
-        step["classification"] = classified
-        step["metrics"]["structural_gaps"] = structural_gaps(classified)
-        (out / "artifacts" / f"{step['name']}-classification.json").write_text(json.dumps(classified, indent=2), encoding="utf-8")
+    """Classify the write step's guesses on the judge's route; the counts
+    into the record's metrics. The guide classified against is the clone's
+    as it is now: grade a record against the guide its run pinned."""
+    steps = [step for step in record["steps"] if step["name"] == "write"]
+    if not steps:
+        raise RuntimeError("the record has no write step to grade")
+    step = steps[0]
+    guesses_md = out / "artifacts" / "write-guesses.md"
+    guesses = parse_guesses(guesses_md.read_text(encoding="utf-8")) if guesses_md.is_file() else []
+    classified = classify_guesses(guesses, guide_text(clone), settings, ask=ask, raw_path=out / judge_module.JUDGE_DIR / "classify-write.txt")
+    step["classification"] = classified
+    step["metrics"]["structural_gaps"] = structural_gaps(classified)
+    step["metrics"]["contradictions"] = len(contradictions(classified))
+    (out / "artifacts" / "write-classification.json").write_text(json.dumps(classified, indent=2), encoding="utf-8")
     record["metrics"] = run_metrics(record)
     return record
 
@@ -231,18 +218,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--clone", default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--host", default="claude_code", choices=["claude_code", "codex"])
-    parser.add_argument("--round", default=None, choices=STEP_NAMES)
     parser.add_argument("--machine", default=os.uname().nodename)
     parser.add_argument("--advisory", default=None)
     parser.add_argument("--grade", action="store_true")
     args = parser.parse_args(argv)
+    if args.clone is None:
+        parser.error("--clone is the checkout whose guide the author reads (and the grade classifies against)")
     driver = Author(args)
     record_file = driver.out / "record.json"
     started = datetime.now(timezone.utc)
     record = json.loads(record_file.read_text()) if record_file.exists() else {
         "test": "author", "host": args.host, "machine": args.machine, "run_id": f"author-{args.host}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
         "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": "-"},
-        "pins": {"suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "pages": GUIDE_PAGES, "example": EXAMPLE},
+        "pins": {"suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "pages": GUIDE_PAGES, "example": EXAMPLE,
+                 "guide_sha256": hashlib.sha256(guide_text(driver.clone).encode("utf-8")).hexdigest()},
         "user": {"kind": "scripted", "card": None, "interventions": ["the author holds only the guide pages, the reference and the trading example; it may not run kapso; the driver runs check and classifies the guesses"], "events": [], "pushback": None},
         "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [], "transcripts": [],
     }
@@ -251,10 +240,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
         print(json.dumps(record["metrics"]))
         return 0
-    selected = [args.round] if args.round else STEP_NAMES
-    for name in selected:
+    for name in STEP_NAMES:
         print(f"== {name}", flush=True)
-        step = driver.step_guide_fixes() if name == "guide-fixes" else driver.step_round(name)
+        step = driver.step_write()
         record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]
         record["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         record["transcripts"] = sorted(f"transcripts/{path.name}" for path in (driver.out / "transcripts").glob("*.jsonl"))

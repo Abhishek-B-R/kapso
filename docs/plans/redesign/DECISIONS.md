@@ -2102,7 +2102,7 @@ was **not** loosened to pass the run. Two readings are left for the owner:
 
 Until the owner chooses, the bar stands and the run reads FAIL honestly.
 
-## WP9 author improvement loop is not wired end to end (2026-10-27)
+## WP9 author improvement loop is not wired end to end — RESOLVED (2026-10-27/28)
 
 The first live author arm (`author-claude-1`) surfaced that the round-1 →
 guide-fixes → round-2 loop does not actually improve the guide between
@@ -2136,8 +2136,20 @@ Options for the owner:
    consistency across cold authors, not its improvement), and set the bar to
    "no worse than round-1" rather than max 0.
 
-Until the owner chooses, the author arm's `structural_gaps_round2` bar reads
-FAIL honestly, but as a harness-wiring gap, not a guide-quality verdict.
+**Resolved 2026-10-28**, under the standing "no need to wait for approval":
+the design's own words describe the loop as development work — "fixed in the
+guide (this package owns those pages for that) … the guide's fixes committed"
+— not as something one driver run performs, so the arm now matches them. One
+cold author per run, on the guide as committed (the record pins the guide's
+sha256; the step is `write`; the bars `structural_gaps` max 0 and
+`check_green` min 1, `contradictions` reported beside them). The gaps and
+contradictions a run classifies are written into the guide and committed,
+and the next run's fresh author is the design's round two; both runs' counts
+go in the sub-plan's proof table. Deleted: the in-run `guide-fixes` step,
+`--round`, the `_round1`/`_round2` metrics. `author-claude-1`'s eight gaps
+and one contradiction are in the guide as of this entry. Options 1–3 stay
+open if the owner wants the loop inside one run; option 1 is the faithful
+one.
 
 ## WP9 S5 injections stage early and accept correct handling — RESOLVED (2026-10-27)
 

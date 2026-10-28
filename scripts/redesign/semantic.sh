@@ -161,7 +161,7 @@ judge_and_report() {   # on the development box, over the fetched record; the re
     case "$TEST" in
       s1)     inputs=(--inputs artifacts/comprehension-answers.txt) ;;
       s4)     inputs=(--inputs judge/reading-claude_code.md judge/reading-codex.md) ;;
-      author) inputs=(--inputs artifacts/round-1-harness.md artifacts/round-2-harness.md) ;;
+      author) inputs=(--inputs artifacts/write-harness.md) ;;
     esac
     python3 "$HERE/judge.py" "$fetched" --rubric "$RUBRIC" "${inputs[@]}" 2>&1 | tee "$RUN_DIR/judge.log"
     case "$TEST" in

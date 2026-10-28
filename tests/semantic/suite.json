@@ -41,8 +41,8 @@
       "judge": null
     },
     "author": {
-      "required_steps": {"claude_code": ["round-1", "guide-fixes", "round-2"], "codex": ["round-1", "guide-fixes", "round-2"]},
-      "bars": {"structural_gaps_round2": {"max": 0}, "check_green_round2": {"min": 1}},
+      "required_steps": {"claude_code": ["write"], "codex": ["write"]},
+      "bars": {"structural_gaps": {"max": 0}, "check_green": {"min": 1}},
       "judge": {"rubric": "author", "dimensions": ["pages under forty lines", "every skill named on its page", "no task value in the harness", "the ladder respected"], "scale": [0, 1], "bar": 1}
     }
   },
@@ -99,9 +99,7 @@
     "learn-build-one": {"kind": "build", "minutes": 240},
     "build-two": {"kind": "build", "minutes": 75},
     "comparison": {"kind": "shell", "minutes": 2},
-    "round-1": {"kind": "conversation", "messages": 6, "questions": 0, "minutes": 40, "longest_message_lines": 80},
-    "guide-fixes": {"kind": "shell", "minutes": 60},
-    "round-2": {"kind": "conversation", "messages": 6, "questions": 0, "minutes": 40, "longest_message_lines": 80}
+    "write": {"kind": "conversation", "messages": 6, "questions": 0, "minutes": 40, "longest_message_lines": 80}
   },
   "user": {
     "persona": {

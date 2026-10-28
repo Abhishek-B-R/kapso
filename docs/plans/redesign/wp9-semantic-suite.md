@@ -325,10 +325,12 @@ reported incomplete, with this reason, until the credit exists.
   convention or host behaviour the engine or `check` would reject if
   guessed wrong), a contradiction in the guide, a domain decision, or a
   thing the guide already says, and reviews the harness against the
-  guide's rules. Two rounds per author: the structural gaps and
-  contradictions of round one are fixed in the guide (this package owns
-  those pages for that), and a fresh author runs round two. The bar is
-  zero structural gaps in round two.
+  guide's rules. One cold author per run, on the guide as committed (the
+  record pins the guide's hash): the structural gaps and contradictions a
+  run logs are fixed in the guide (this package owns those pages for that)
+  and committed, and the next run's fresh author is the design's round
+  two. The bar is zero structural gaps and a green `check`; both runs'
+  counts are recorded beside each other.
 - `scripts/redesign/semantic.sh <s1|s2|s4|s5|s6|author> <host> [--machine
   <id>] [--advisory]`: preflights every role's route (the host CLI's
   login, the persona's vendor, the judge's route, the Codex key's credit
@@ -535,8 +537,9 @@ on the machine the key's credit, when it exists.
   cards read and cited in the trace and named by the review; the gap
   non-negative at every point where both observed, or the pair reported
   as the design's bar unmet with the numbers.
-- The author test's second round: `check` green, zero structural gaps,
-  the guide's fixes committed; both rounds' counts recorded beside WP2's.
+- The author test's run after the guide's fixes: `check` green, zero
+  structural gaps, the fixes committed; both runs' counts recorded beside
+  WP2's.
 - `semantic.sh` runs each test from one line, preflights the routes,
   archives and verifies before deleting, renders a report with the
   verdict the runner's exit status carries; the reports cited here are
@@ -757,12 +760,21 @@ ladder respected) all passed, 3/3 steps. Report
   now asks for quote-free prose that cites the guide by reference, and the
   reply is archived before validation (as `judge_material` does); the
   offline re-grade then parsed and scored (gaps 8 then 6; check green).
-- **The improvement loop is not wired** (DECISIONS): `guide-fixes` can
-  neither classify round-1's gaps on the machine (the judge is dev-box-only)
-  nor edit the guide, so round-2 is written against the same guide and the
-  max-0 bar is unreachable by construction. Left as an owner decision; the
-  arm proved the author can write a passing harness, not that the guide
-  improves between rounds.
+- **The improvement loop was not wired** (DECISIONS, resolved 2026-10-28):
+  the in-run `guide-fixes` step could neither classify round-1's gaps on
+  the machine (the judge is dev-box-only) nor edit the guide, so round-2
+  was written against the same guide — both rounds logged the same gaps —
+  and the max-0 bar was unreachable by construction. The arm is now one
+  cold author per run (step `write`, bars `structural_gaps` max 0 and
+  `check_green` min 1, the guide's hash pinned), the fixes development
+  work between runs. This run's eight structural gaps and one
+  contradiction — pages need no front matter (the guide contradicted the
+  reference), the pin form, what "mentions" a skill, how page lines are
+  counted, extra front-matter keys on skills and delegates, the optional
+  matcher, the `NAME=value` prefix in a hook command, the hook's working
+  directory — are written into `docs/harnesses/write.mdx` and
+  `docs/reference/harness.mdx`, each stating what `check` and staging do;
+  the next author run is the design's round two.
 
 ### S5 injections, Claude host — arms s5-claude-1..4 (2026-10-27/28)
 
