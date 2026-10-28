@@ -1002,6 +1002,17 @@ false, then the crash: `cp: cannot create directory '/home/proof2/…'`,
 `chown: invalid user proof2` — the second user existed only on the Claude
 host's cold-install path, now made by every step that needs it.
 
+**`s2-codex-4`** (the clean Codex run's first attempt, 2026-10-28 14:16–16:41,
+2.46 h of machine, about $0.33): install, setup, build-churn, build-pause and
+watch true, then the triggers probe at a third of the morning's pace — 67 of
+178 runs in 107 minutes, only one of them a 429, each `gpt-6-astra` session
+simply slow — on course to meet the machine's 6-hour cap before the fetch.
+The host's own turns had run 8–11 minutes against 2–5-minute budgets on the
+same slowness (build-churn 11.0, build-pause 9.4, watch 8.5). Stopped with
+its six steps fetched (`scripts/redesign/runs/s2-codex-4/fetched/`); the
+clean run relaunches as `s2-codex-5` behind a latency gate — three one-token
+`gpt-6-astra` calls in a row under twenty seconds and free of 429s.
+
 **Calibration, said rather than tuned.** The Claude host's build
 conversations run 14–19 lines against the 12-line budget in every arm
 (`build-churn` 11 → 14–15, `build-pause` 19 → 15, `build-fraud` 15,
