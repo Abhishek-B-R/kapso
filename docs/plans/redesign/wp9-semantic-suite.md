@@ -855,7 +855,10 @@ ladder respected" at 0 in both passes: a SessionStart hook that restates a
 page line and a server returning a fixed checklist, filler for the brief's
 "at least two hooks, one server". The guide never stated the ladder the
 rubric scores (the Claude author kept it unprompted); it does now, in
-"The directory", and the Codex author runs again.
+"The directory" (330f8e1f), and `author-codex-2` on that guide (sha256
+7c7ea8a2…) passed everything: 34 guesses, 0 structural gaps, 0
+contradictions, `check` green, the four dimensions at 1. Both hosts meet
+the author test's bar on the guide as it stands.
 
 ## Findings for later packages
 
