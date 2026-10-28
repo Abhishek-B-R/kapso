@@ -81,10 +81,22 @@ def fact_sheet(trace: Dict[str, Any], labels: Optional[bool]) -> Dict[str, Any]:
     winner = attempts.get(delivered.get("branch")) if delivered else None
     voided = trace.get("voided") or []
     # The trace's `voided` holds both: an integrity/harness void and a
-    # judge rejection, each with its reason. Split them, so the two
-    # questions get distinct keys.
-    voids = [entry for entry in voided if str(entry.get("reason", "")).startswith("void")]
-    rejections = [entry for entry in voided if not str(entry.get("reason", "")).startswith("void")]
+    # judge rejection, each with its reason. Split them by substance, so
+    # the two questions get distinct keys: the engine words an integrity
+    # failure "rejected: Provided evaluation integrity check failed
+    # (changed: evaluate.py)" (s4-claude-1), and a void it is — the design's
+    # "voided on the hash evidence"; a judge's "not valid" is the rejection.
+    def is_void(entry: Dict[str, Any]) -> bool:
+        reason = str(entry.get("reason", "")).lower()
+        return reason.startswith("void") or "integrity" in reason
+    voids = [entry for entry in voided if is_void(entry)]
+    rejections = [entry for entry in voided if not is_void(entry)]
+    # What the dollar figure covers: the sessions whose runs carry no cost
+    # (a Codex session reports none), named by host, beside the header's
+    # own coverage word — a reader who says "not established" for the
+    # whole is reading the record right.
+    every_session = list(trace.get("sessions") or []) + [session for attempt in trace["attempts"] for session in attempt.get("sessions", [])]
+    unpriced = [session.get("host") for session in every_session if session.get("runs") and all(run.get("cost_usd") is None for run in session["runs"])]
     runners_up = [
         {"branch": attempt["branch"], "score": attempt["evaluation"].get("score")}
         for attempt in trace["attempts"]
@@ -105,7 +117,8 @@ def fact_sheet(trace: Dict[str, Any], labels: Optional[bool]) -> Dict[str, Any]:
         "why": {"idea": winner.get("idea") if winner else None, "judge": winner.get("judge") if winner else None, "score": winner["evaluation"].get("score") if winner else None},
         "what was voided and on what evidence": voids or "nothing voided",
         "what was rejected and why": rejections or f"nothing rejected (the header counts {header.get('rejected', 0)}); the scored runners-up were {runners_up or 'none'}",
-        "what it cost": {"usd": cost.get("usd"), "coverage": cost.get("coverage"), "unpriced_runs": cost.get("unpriced_runs")},
+        "what it cost": {"usd": cost.get("usd"), "coverage": cost.get("coverage"), "unpriced_runs": cost.get("unpriced_runs"),
+                         "sessions_without_a_cost": {host: unpriced.count(host) for host in sorted(set(unpriced))} or "none: every session priced"},
         "safe to merge": merge_facts,
         "scored_not_delivered": runners_up,
     }

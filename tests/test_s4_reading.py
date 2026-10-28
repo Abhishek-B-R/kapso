@@ -24,7 +24,9 @@ def test_the_fact_sheet_is_extracted_from_the_trace_and_the_history():
     assert facts["what won"]["branch"] == "generic_exp_0" and facts["what won"]["score"] == 0.847 and facts["what won"]["commit"].startswith("4223437")
     assert facts["what was voided and on what evidence"] == "nothing voided"
     assert facts["what was rejected and why"].startswith("nothing rejected")
-    assert facts["what it cost"] == {"usd": 4.0038255, "coverage": "claude_code", "unpriced_runs": 0}
+    # The two Codex repo-memory sessions carry no cost: the sheet says so by
+    # host, so a reader's "not established for the whole" reads as right.
+    assert facts["what it cost"] == {"usd": 4.0038255, "coverage": "claude_code", "unpriced_runs": 0, "sessions_without_a_cost": {"codex": 2}}
     merge = facts["safe to merge"]
     assert merge["labels_in_history"].startswith("the hold-out labels are in the delivered commit's own history")
     assert "kapso_evaluation/result.json" in merge["files_changed"] and merge["integrity"] == "no integrity error on the delivered attempt"
@@ -35,7 +37,10 @@ def test_the_fact_sheet_is_extracted_from_the_trace_and_the_history():
 
 def test_a_scored_runner_up_is_not_a_rejection_but_a_void_is():
     # A scored non-winner is a runner-up, not a rejection; a rejection is a
-    # voided entry, split from an integrity void by its reason.
+    # voided entry, split from an integrity void by its substance: the engine
+    # words an integrity failure "rejected: Provided evaluation integrity
+    # check failed (changed: evaluate.py)" (s4-claude-1's campaign), and it
+    # is the void the design means.
     trace = json.loads(json.dumps(TRACE))
     trace["attempts"].append({"branch": "generic_exp_1", "evaluation": {"score": 0.84, "valid": True, "integrity_error": None}, "cards": {"read": [], "listed": 0, "load_bearing": []}, "judge": None, "idea": "x", "verification": None})
     trace["voided"] = [{"node": 3, "branch": "generic_exp_2", "reason": "rejected: judged not valid", "evidence": ["the judge said so"]},
@@ -44,6 +49,11 @@ def test_a_scored_runner_up_is_not_a_rejection_but_a_void_is():
     assert facts["scored_not_delivered"] == [{"branch": "generic_exp_1", "score": 0.84}]
     assert facts["what was rejected and why"] == [{"node": 3, "branch": "generic_exp_2", "reason": "rejected: judged not valid", "evidence": ["the judge said so"]}]
     assert facts["what was voided and on what evidence"] == [{"node": 4, "branch": "generic_exp_3", "reason": "void: integrity error on kapso_evaluation/evaluate.py", "evidence": ["hash mismatch"]}]
+    engine_wording = {"node": 0, "branch": "generic_exp_0", "reason": "rejected: Provided evaluation integrity check failed (changed: evaluate.py)", "evidence": ["$ python3 kapso_evaluation/evaluate.py"]}
+    trace["voided"] = [engine_wording]
+    facts = s4.fact_sheet(trace, labels=False)
+    assert facts["what was voided and on what evidence"] == [engine_wording], "the integrity failure is the void, whatever the engine's first word"
+    assert facts["what was rejected and why"].startswith("nothing rejected")
 
 
 def test_labels_in_history_reads_the_delivered_commits_own_ancestry(tmp_path):
