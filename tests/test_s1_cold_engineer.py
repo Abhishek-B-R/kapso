@@ -200,3 +200,13 @@ def test_the_released_baseline_needs_the_staged_docs(tmp_path):
     (tmp_path / "clone").mkdir()
     with pytest.raises(RuntimeError, match="no released docs"):
         s1.S1(args).step_sandbox()
+
+
+def test_the_prerequisite_campaign_is_built_in_the_packages_own_verb():
+    # The branch's `build` detaches itself; 0.7.10 has no `build`, `--detach`
+    # or stop verb, so its `evolve` is backgrounded and signalled by pid.
+    branch = s1.prerequisite_launch("branch", Path("/sb/campaign-prereq"), 60, 3)
+    released = s1.prerequisite_launch("released", Path("/sb/campaign-prereq"), 60, 3)
+    assert branch.startswith("kapso build ") and "--detach" in branch and "--budget-minutes 60 --budget-experiments 3" in branch
+    assert released.startswith("nohup kapso evolve -f kapso-brief.md ") and released.endswith("&")
+    assert "-o /sb/campaign-prereq -i 3 --time-budget-minutes 60" in released and "--initial-repo repo" in released

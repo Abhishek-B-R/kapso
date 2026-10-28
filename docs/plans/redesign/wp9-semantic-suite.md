@@ -207,6 +207,8 @@ reported incomplete, with this reason, until the credit exists.
   and the CLI's provenance verified. `--package released`: the released
   wheel 0.7.10 by sha256 and the tag's docs, staged into the harness pack as
   `released-docs/` by semantic.sh (the clone reaches the machine without `.git`),
+  its prerequisite campaigns built by 0.7.10's own `evolve` (backgrounded and
+  signalled by pid: that package has no `--detach`, stop or `--version`),
   the tasks' goals version-neutral; a verb 0.7.10 lacks is "unsupported",
   counted in the denominator as a miss and said; labelled a retrospective
   baseline, not MASTER's pre-WP1 one.

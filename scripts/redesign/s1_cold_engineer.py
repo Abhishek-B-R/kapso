@@ -271,6 +271,18 @@ def evidence_of(task: Dict[str, Any], sandbox: Path, prereq: Path) -> bool:
 
 
 # ---------------------------------------------------------------- driver
+def prerequisite_launch(package: str, campaign: Path, minutes: int, experiments: int) -> str:
+    """The command that builds a prerequisite campaign from a task view, in
+    the package's own verb: the branch's `build` detaches itself; 0.7.10's
+    `evolve` has no detach, so it is backgrounded (its status.json carries
+    the pid the killed variant and `_stop` signal)."""
+    if package == "released":
+        return (f"nohup kapso evolve -f kapso-brief.md --eval-dir evaluation --data-dir data --initial-repo repo -o {campaign} "
+                f"-i {experiments} --time-budget-minutes {minutes} > {campaign}.log 2>&1 &")
+    return (f"kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output {campaign} "
+            f"--budget-minutes {minutes} --budget-experiments {experiments} --detach")
+
+
 class S1:
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -326,7 +338,9 @@ class S1:
         (self.sandbox / ".env").write_text("", encoding="utf-8")
         seed_env(self.sandbox)
         version = self.shell(f"{self.venv}/bin/python -c 'import kapso; print(kapso.__version__)'", check=False)
-        cli = self.shell("command -v kapso && kapso --version", check=False)
+        # The CLI's provenance is its path (the sandbox's venv) and that it
+        # runs; the version is the import's, since 0.7.10 has no --version.
+        cli = self.shell("command -v kapso && kapso --help >/dev/null", check=False)
         probe, transcript = self.turn("sandbox", "Say only the word ready.")
         init = session_init(plugin_proof_rows(transcript))
         cold = is_cold(init)
@@ -336,15 +350,26 @@ class S1:
         return shell_step("sandbox", version.returncode == 0 and cli.returncode == 0 and isolated, artifacts, (time.monotonic() - started) / 60,
                           [f"{count} public pages; the package {version.stdout.strip()} in the sandbox's venv; isolation: {proof}"])
 
+    def _stop(self, campaign: Path) -> None:
+        """A live campaign stopped before its directory is replaced: the
+        branch's `build --stop`; 0.7.10 has no stop verb, so the pid its
+        status.json records is signalled."""
+        if self.args.package == "released":
+            pid = (status_of(campaign) or {}).get("pid")
+            if pid_alive(pid):
+                os.kill(int(pid), signal.SIGTERM)
+            return
+        self.shell(f"kapso build --output {campaign} --stop", check=False)
+
     def _build(self, name: str, example: str, minutes: int, experiments: int, kill_after: Optional[int] = None) -> Dict[str, Any]:
         started = time.monotonic()
         project = self.sandbox / f"prereq-{name}"
         task_view(self.clone / "examples" / example, project)
         campaign = self.sandbox / name
         if campaign.exists():
-            self.shell(f"kapso build --output {campaign} --stop", check=False)
+            self._stop(campaign)
             shutil.rmtree(campaign)
-        launch = self.shell(f"kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output {campaign} --budget-minutes {minutes} --budget-experiments {experiments} --detach", cwd=project, check=False)
+        launch = self.shell(prerequisite_launch(self.args.package, campaign, minutes, experiments), cwd=project, check=False)
         if kill_after:
             wait_for(lambda: (status_of(campaign) or {}).get("phase") not in (None, "setup"), kill_after * 60, every=15)
             pid = (status_of(campaign) or {}).get("pid")
@@ -371,7 +396,7 @@ class S1:
         if not snap.exists():
             return
         if live.exists():
-            self.shell(f"kapso build --output {live} --stop", check=False)
+            self._stop(live)
             shutil.rmtree(live)
         shutil.copytree(snap, live, symlinks=True)
 
