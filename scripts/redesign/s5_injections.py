@@ -319,7 +319,12 @@ class S5:
         injected_at = datetime.now(timezone.utc)
         status = self.finish(name, campaign)
         trace = self.trace(campaign)
-        crashed = [a for a in trace.get("attempts", []) if a.get("evaluation", {}).get("score") is None and "holdout_labels.csv" in (a.get("evaluation", {}).get("output") or "")]
+        # The attempt that could not score because the labels were gone: the
+        # evaluator's error surfaces in the attempt's session (where the engine
+        # ran evaluate.py), not in the evaluation summary's `output`, so match
+        # the whole attempt. Paired with a null score it stays specific to the
+        # crash (a healthy attempt carries a score).
+        crashed = [a for a in trace.get("attempts", []) if (a.get("evaluation", {}) or {}).get("score") is None and "holdout_labels.csv" in json.dumps(a)]
         turn_1 = self.ask(name, project, f"why did the later attempt of the kapso campaign at ../s5-{name} fail?")
         moved.rename(labels)
         turn_2 = self.ask(name + "-2", project, f"the labels file is back where it was; continue the campaign at ../s5-{name}")
