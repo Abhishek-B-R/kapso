@@ -893,8 +893,35 @@ running and declined a competing writer), and the campaign went on from its
 checkpoint to 0.8506 — the product's path as designed; the step read false
 on `shown_dead` and `truthful` because the sampler kept the screen's first
 word (RUNNING) and not its marker (⚠ DEAD) — fixed in the sampler, five
-samples of the dead writer re-read. The second arm runs full-disk and
-tampering with the two re-runs; S4's readers on the tampering campaign after.
+samples of the dead writer re-read.
+
+**Arm `s5-claude-6`** (evaluator-crash and killed-writer again, full-disk,
+tampering, bank-compare; 2.72 h of machine, about $0.36; report
+`tests/semantic/reports/s5-claude-6.md`). **evaluator-crash true** on the
+generator-free project: one attempt crashed on the missing labels, nothing
+rebuilt, the engineer truthful, naming the class and the fix, the campaign
+resumed. **killed-writer true on every predicate**: the writer killed while
+implementing, DEAD shown within a heartbeat, the resume keeping the
+attempts (none to two), the bank intact — the row reads FAIL on time alone,
+48.7 min against 45. **full-disk**: the writer died with ENOSPC in the
+launch's log, the engineer freed the space and resumed, two attempts after,
+the campaign saved off the tmpfs — and the screen said FAILED with the pid
+gone, not DEAD: the engine recorded its own end before it died, a more
+truthful terminal word than the design expected, and the sampler's sleep on
+top of its two `kapso watch` calls left no sample inside the one-heartbeat
+window; both read right now (DEAD or FAILED counts as gone; the sampler
+keeps its cadence), the row false on those two readings and on 60.6 min
+against 45. **tampering true**: the evaluator edited inside the running
+attempt's session clone, one void, the integrity void, truthful, the class
+named — the campaign S4 reads. **bank-compare true** again. The two resume
+classes ran their resumed campaigns out in full (a forty-minute budget
+inside a forty-five-minute step), so the resumed campaign is now watched
+for what is left of the step and stopped, the claim (continues from its
+checkpoint, attempts kept) read from the trace. Across the six arms every
+class has now been handled by the product with at most two user messages;
+one clean arm of all eight steps on this harness is the record to cite,
+run when a token window frees. S4's readers run on this arm's tampering
+campaign (`s4-claude-1`).
 
 ### S6 experience, Claude host, fresh machines — arms s6-claude-1..5 (2026-10-28)
 
