@@ -2180,6 +2180,18 @@ rather than demanding a resume that is wrong when the campaign was not stuck.
 The achievable 0.85 goal is kept, so the resume paths (killed writer, full
 disk, a blocked evaluator) still work as designed.
 
+## WP9 S5 injection-harness calibration is a focused follow-up — RESOLVED (2026-10-28, evening)
+
+Resolved by the pass recorded in the sub-plan's S5 section: the seeded
+bank, the crash read from the attempt's sessions, the generator removed
+from S5's project, the sampler reading `kapso watch`'s verdict marker and
+keeping its cadence, a writer that recorded its own end counted as gone,
+the resumed campaign watched for the step's budget. The clean arm of all
+eight steps (`s5-claude-7`) met every bar with seven of eight steps true;
+the eighth (evaluator-crash) passed on the arm before and read false on
+the clean arm for the engineer's slip, not the product's. The staging
+stays early on the real goal, as the entry below records.
+
 ## WP9 S5 injection-harness calibration is a focused follow-up (2026-10-28)
 
 The S5 arms validated the product: kapso and the engineer handle every injected
