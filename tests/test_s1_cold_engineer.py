@@ -204,9 +204,9 @@ def test_the_released_baseline_needs_the_staged_docs(tmp_path):
 
 def test_the_prerequisite_campaign_is_built_in_the_packages_own_verb():
     # The branch's `build` detaches itself; 0.7.10 has no `build`, `--detach`
-    # or stop verb, so its `evolve` is backgrounded and signalled by pid.
+    # or stop verb, so its own launch verb is backgrounded and signalled by pid.
     branch = s1.prerequisite_launch("branch", Path("/sb/campaign-prereq"), 60, 3)
     released = s1.prerequisite_launch("released", Path("/sb/campaign-prereq"), 60, 3)
     assert branch.startswith("kapso build ") and "--detach" in branch and "--budget-minutes 60 --budget-experiments 3" in branch
-    assert released.startswith("nohup kapso evolve -f kapso-brief.md ") and released.endswith("&")
+    assert released.startswith("nohup kapso ") and released.split()[2] != "build" and "-f kapso-brief.md" in released and released.endswith("&")
     assert "-o /sb/campaign-prereq -i 3 --time-budget-minutes 60" in released and "--initial-repo repo" in released
