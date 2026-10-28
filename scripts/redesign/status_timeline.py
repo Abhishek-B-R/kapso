@@ -49,7 +49,15 @@ _STATE_WORD = re.compile(r"\b(" + "|".join(SHOWN_STATES) + r")\b")
 def shown_state(watch_text: str) -> Optional[str]:
     """The state `kapso watch` prints for the campaign — the verdict the
     user reads (DEAD when the writer is gone, STALLED on a stale heartbeat),
-    not a re-derivation. None when nothing was printed."""
+    not a re-derivation. The single-campaign screen keeps the stored word
+    and appends the verdict as a marker ("RUNNING ♥ 289s ago   ⚠ DEAD (pid
+    5554 is gone)"), so the marker wins over the word (s5-claude-5 read
+    RUNNING through a writer the screen called dead). None when nothing
+    was printed."""
+    if "⚠ DEAD" in watch_text:
+        return "DEAD"
+    if "⚠ STALLED" in watch_text:
+        return "STALLED"
     match = _STATE_WORD.search(watch_text)
     return match.group(1) if match else None
 

@@ -94,6 +94,11 @@ def test_shown_state_reads_the_verdict_kapso_watch_prints():
     assert timeline.shown_state("churn-campaign   DEAD   120s ago") == "DEAD"
     assert timeline.shown_state("state: RUNNING (phase implementation)") == "RUNNING"
     assert timeline.shown_state("nothing here") is None
+    # The single-campaign screen: the stored word, then the verdict as a
+    # marker (s5-claude-5's killed writer read RUNNING for five samples).
+    assert timeline.shown_state("RUNNING ♥ 289s ago   ⚠ DEAD (pid 5554 is gone)      pid 5554\nbudget 9%") == "DEAD"
+    assert timeline.shown_state("RUNNING ♥ 200s ago   ⚠ STALLED?      pid 5554") == "STALLED"
+    assert timeline.shown_state("RUNNING ♥ 8s ago      pid 6754") == "RUNNING"
 
 
 def test_the_sampler_records_what_watch_shows_beside_the_stored_status(tmp_path, monkeypatch):
