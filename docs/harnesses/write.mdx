@@ -158,10 +158,10 @@ The events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `
 | | Claude Code | Codex |
 |---|---|---|
 | the shell tool | `Bash`, `tool_input.command` | `Bash`, `tool_input.command` |
-| the file tools | `Write`, `Edit`, `MultiEdit`; `tool_input.file_path` | `apply_patch`; `tool_input.command` is the patch, with `*** Add File:` and `*** Update File:` lines; a matcher `Edit\|Write\|MultiEdit` fires on it too |
+| the file tools | `Write`, `Edit`, `MultiEdit`; `tool_input.file_path` | `apply_patch`; `tool_input.command` is the patch, whose file headers are `*** Add File: <path>`, `*** Update File: <path>`, `*** Delete File: <path>` and `*** Move to: <path>` (one regex in the example's `protect-prepared` reads all four); a matcher `Edit\|Write\|MultiEdit` fires on it too |
 | a server's tool | `mcp__<server>__<tool>` | `mcp__<server>__<tool>` |
 
-A file hook reads both shapes, as the trading harness's `protect-prepared` and `scan-writes` do. Exit 0 with nothing printed is no opinion. A `PreToolUse` denial and a `SessionStart` or `PostToolUse` context line go inside `hookSpecificOutput`; a `Stop` hook's decision is top level, `{"decision": "block", "reason": "..."}`, and it sees `stop_hook_active` turn true after it blocked once, on both hosts, which is when it stays silent.
+A file hook reads both shapes, as the trading harness's `protect-prepared` and `scan-writes` do. Exit 0 with nothing printed is no opinion. A `PreToolUse` denial (`permissionDecision` and `permissionDecisionReason`) and a `SessionStart` or `PostToolUse` context line (the `additionalContext` key, as the trading example's `session-brief` and `scan-writes` print) go inside `hookSpecificOutput` beside `hookEventName`; a `Stop` hook's decision is top level, `{"decision": "block", "reason": "..."}`, and it sees `stop_hook_active` turn true after it blocked once, on both hosts, which is when it stays silent.
 
 ## Environment
 
