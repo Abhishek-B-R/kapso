@@ -96,7 +96,7 @@ pack_harness() {   # a partial checkout: the drivers, the suite, the fixtures, t
   rm -rf "$RUN_DIR/released-docs"; mkdir -p "$RUN_DIR/released-docs"
   git -C "$ROOT" archive "v$RELEASED" docs docs.json | tar -x -C "$RUN_DIR/released-docs"
   tar --exclude='scripts/redesign/runs' --exclude='__pycache__' --exclude='*.pyc' --exclude='.git' -czf "$1" \
-    -C "$ROOT" scripts/redesign tests/semantic tests/fixtures/semantic_transcripts \
+    -C "$ROOT" scripts/redesign tests/semantic tests/fixtures/semantic_transcripts tests/fixtures/bank_seed \
     examples docs docs.json .claude-plugin plugin \
     -C "$RUN_DIR" released-docs
 }
