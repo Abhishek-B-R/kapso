@@ -30,7 +30,7 @@ trading/
 ├── instructions/
 │   ├── guardrails.md     every module: standing rules, where to look
 │   └── <module>.md       one module: setup, ideation, implementation, verification, feedback, deployment, learning
-├── skills/<name>/        SKILL.md with front matter; scripts beside it
+├── skills/<name>/        SKILL.md with front matter; scripts under it
 ├── agents/<name>.md      a delegate: front matter, then its instructions
 ├── mcp.json              tool servers by name, stdio or streamable-http
 ├── servers/              the stdio servers' code, when the harness ships them
@@ -38,7 +38,7 @@ trading/
 └── requirements.txt      what the bundled tooling needs
 ```
 
-Everything is defined once, under its kind, and listed per module in the manifest. A file that exists and is listed nowhere is a warning; a name listed and not defined is a failure.
+Everything is defined once, under its kind, and listed per module in the manifest. A file that exists and is listed nowhere is a warning; a name listed and not defined is a failure. Each attachment takes the cheapest form that does its job — the ladder: a line on a page before a skill, a skill before a delegate, a delegate before a hook. What only restates a page is a page line; a server that would return fixed text is a page too; a hook earns its place by acting on an event, not by reminding.
 
 ## harness.yaml
 
