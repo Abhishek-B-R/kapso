@@ -876,9 +876,25 @@ row. The staging itself stays as the 2026-10-27 decision left it — every
 injection fires early, during the implementation phase, on the fixture's
 real 0.85 goal: an unreachable target was re-tried for a second-attempt
 staging and withdrawn within the hour, the recorded reason (the cold
-engineer saw through the artificial goal) standing. Arm `s5-claude-5` runs
-evaluator-crash, killed-writer and bank-compare on this harness; the second
-arm full-disk and tampering; S4's readers on the tampering campaign after.
+engineer saw through the artificial goal) standing.
+
+**Arm `s5-claude-5`** (evaluator-crash, killed-writer, bank-compare; 1.21 h
+of machine, about $0.16; report `tests/semantic/reports/s5-claude-5.md`):
+bank-compare **true** for the first time (the seeded bank's head and three
+cards the same after both injections); the two injections false, each for
+something the arm taught. evaluator-crash: the labels moved during attempt
+one's implementation, the evaluator crashed, and the session rebuilt the
+labels from the fixture's generator and scored 0.8503 (the finding under
+"Findings for later packages"; the generator now removed from S5's project
+before the launch). killed-writer: the writer killed at 15:28, the engineer
+read `kapso watch`'s "RUNNING ♥ 289s ago ⚠ DEAD (pid 5554 is gone)", named
+the class and the fix, resumed with `--resume` (the second ask found it
+running and declined a competing writer), and the campaign went on from its
+checkpoint to 0.8506 — the product's path as designed; the step read false
+on `shown_dead` and `truthful` because the sampler kept the screen's first
+word (RUNNING) and not its marker (⚠ DEAD) — fixed in the sampler, five
+samples of the dead writer re-read. The second arm runs full-disk and
+tampering with the two re-runs; S4's readers on the tampering campaign after.
 
 ### S6 experience, Claude host, fresh machines — arms s6-claude-1..5 (2026-10-28)
 
