@@ -1084,3 +1084,18 @@ From the learn validation:
 | `2c19d9d9`, `83fdc7f1` | change 9: the pipeline example on dbt and DuckDB, its evaluator, brief, README, baseline, runner and contract test |
 | `dc3d0a8b` | the grading tail fixed where the first live S1 run exercised it (judge summary shape, `--grade` args, resumed evidence) + tests |
 | `e07d8524` | the fetch is one tar stream with venv/cache excludes, not a recursive scp |
+| `64eef486`, `3010342f`, `f3c69f68` | S5: injection kills guard an already-gone process; a driver crash no longer hangs the run on an orphaned sampler; full-disk fills while the writer implements |
+| `ff42ef0c` → `19bb4cb5`, `659712b6` | S5: the unreachable target tried and reverted; every injection fires early and accepts the engineer's correct handling; evaluator-crash reads the failure where it surfaces |
+| `7300a665`, `4724ad6a`, `238c7d3c`, `606ad0c3` | the author test: classify keeps its reply; one cold author per run with the guide's fixes between runs; the classifier applies the design's rejection test; the reports tracked |
+| `b6f9277c`, `4cd4a99d`, `2fed2120`, `330f8e1f` | the harness guide's fixes from the author rounds (the nine guessed points, the hook context key, the module-page mention, the attachment ladder) |
+| `d5ac28ea`, `b1200b85`, `873b03f2` | S1's released baseline: the tag's docs staged into the pack; no wheel flag; the prerequisites in 0.7.10's own verb |
+| `411b230e` | fresh machines get the credited device-auth Codex session |
+| `c151df52` | engine: the learning crews' Codex roles run in the adapter's default sandbox; the grader's fail-loud line quotes the session |
+| `d783ad90`, `0b5b16ae`, `490235b8`, `ea5fa8ee` | S2: the pause campaign's budget in the suite (forty minutes); the inbox exchanges' wants; the persona's DONE rule |
+| `672a38a3`, `02682132`, `dc1f21d6` | S2: a review of nothing delivered passes by saying so (a third turn); the solution record's own branch key; the second user provisioned on either host |
+| `c2c2a000`, `fbcf9fe0` | S2: an approval request within the closing lines ends the turn asking, trailing command lines set aside |
+| `b59937ef`, `9ff6ba26`, `07d040a6`, `ae665730` | the judge: one re-ask on a citation slip; a quote on the line it starts on; the markdown around the quoted words folded |
+| `57bf5f50` | the Claude host's persona answers on `gpt-5.6-sol` |
+| `d4364027` | S6: the grid reaches the terminal sample on one shared horizon; the sampler writes its terminal row before it is stopped |
+| `d0ba4c42`, `2ac0a113` | S5: every campaign served a seeded bank (`tests/fixtures/bank_seed`); the crash read from the attempt's sessions; the second-attempt staging tried and withdrawn under the 2026-10-27 decision |
+| `a52e1a10` | the name-hygiene tests allow the released baseline's evidence |
