@@ -532,7 +532,7 @@ re-measured a row:
 | S2, Claude host | `s2-claude-1` 2.68, `s2-claude-2` 6.00 (lost at the cap), `s2-claude-3` 3.79; the targeted arms (inbox ×5, review ×2, propose, data-only) 5.69; the second engineer's arms `s2-claude-second-1` 3.0, `-2` 3.54 | 24.7 | $3.31 |
 | S2, Codex host | `s2-codex-1` (fetched, no report), `s2-codex-4` 2.46 (stopped), `s2-codex-5` 4.31; the inbox arms 0.57; `s2-codex-triggers-1` 0.93 | 8.3 and the first run | about $1.20 |
 | S4 | `s4-claude-1` | 0.12 | $0.02 |
-| S5 | arms 1 to 4 (stopped early), `s5-claude-5` 1.21, `s5-claude-6` 2.72, `s5-claude-7` 4.14 | 8.1 and the first four | about $1.20 |
+| S5 | arms 1 to 4 (stopped early), `s5-claude-5` 1.21, `s5-claude-6` 2.72, `s5-claude-7` 4.14, `s5-claude-8` 4.01 | 12.1 and the first four | about $1.70 |
 | S6 | rounds 1 to 4 (stopped), `s6-claude-5` 2.97, `s6-codex-1` 2.95, `s6-codex-2` 3.01 | 8.9 and the rest | about $1.20 |
 | the author test | six rounds of about ten minutes | 1.0 | $0.14 |
 
@@ -625,13 +625,18 @@ run"):**
   judge rejection (the report's `campaign_has_rejection` bar reads FAIL),
   and no archived campaign holds both — the Codex reader's coldness is
   reported as not established, the machine being fresh.
-- **S5: met.** Across `s5-claude-5` to `s5-claude-7` every one of the six
-  classes was handled as designed with at most two user messages, the
-  shown state truthful within a heartbeat on every sampled timeline, the
-  one request naming its variable and never a value, the resumed campaigns
-  continuing from their checkpoints, the seeded bank intact after every
-  injection; the clean arm met every bar, its one false row the
-  engineer's slip on a class arm 6 had passed.
+- **S5: met.** `s5-claude-8`, under the rules the review called for
+  (the shown verdict against the observed liveness sample by sample, an
+  unobserved injection counted, the crash from the evaluator's own line,
+  disjoint diagnosis vocabularies): 8 of 8 steps and every bar — every
+  class handled within two user messages, no sample untruthful and none
+  unobserved, the request naming its variable and never a value, the
+  campaigns continuing after the kills (retention of landed attempts not
+  exercised, the injections being staged early), the seeded bank intact;
+  two of its steps re-read on the development box under rules that
+  landed while it ran, said in the record. The earlier arms
+  (`s5-claude-5` to `-7`) stand as re-derived, with their unobserved
+  samples now counted.
 - **S6: met on the Claude host in the acceptance's second form; unmet
   on the Codex host, a product finding.** `s6-claude-5` and `s6-codex-1`
   (both Claude-host pairs, the second on a real grid): the pair on the
@@ -1153,6 +1158,33 @@ instead and declared the campaign running while it re-paused on the
 unanswered request two minutes later. The class passed on arm 6, where the
 engineer resumed a campaign that had gone on; across the two arms every
 one of the six classes has been handled as designed.
+
+**Arm `s5-claude-8`, the six classes under the rules the review called
+for** (2026-10-29 03:47 to 07:48, TOKEN3; 4.01 h of machine, about $0.54;
+report `tests/semantic/reports/s5-claude-8.md`): **PASS, 8 of 8 steps
+and every bar** — the shown verdict truthful against the observed
+liveness on every injection's judged samples (none unobserved), the one
+request naming its variable and never a value, the seeded bank intact,
+each class handled within two user messages. provider-limit: the shim
+fired three times, the campaign rode the limit out, the engineer named
+the class and the fix and rightly declined to resume a finished run.
+evaluator-crash: the evaluator's own failure line on the labels, the
+labels not rebuilt, the engineer's fix, the resume. missing-key: the
+session asked first, the reply resumed it, the authorised table fetch
+after the reply, and the paused node's own first score after it (the
+driver that ran read node identities and had scored that nothing new;
+re-read from the trace under the rule now in the driver, DECISIONS).
+killed-session: SIGKILL 1.6 s into the session, the campaign on to its
+second attempt and done; the engineer: "the only thing killed was one
+coding session … finished normally … nothing to resume or stop" (the
+fix vocabulary learned those words from this answer; re-read).
+killed-writer: DEAD shown, resumed with one flag, the kill confirmed;
+retention not exercised (no attempt had landed), said. full-disk: ENOSPC
+in the log, FAILED shown with the pid gone, resumed; the campaign copied
+off the tmpfs. tampering: the edited evaluator voided on the integrity
+check. Two steps were re-read on the development box under rules that
+landed while the machine ran (each note says so); every other figure is
+the machine's.
 
 ### S4, both readers on the S5 tampering campaign — run `s4-claude-1` (2026-10-28)
 
