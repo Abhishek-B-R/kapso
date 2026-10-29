@@ -861,14 +861,19 @@ that is still evidence.
   - `arm-ioai` (`s3-ioai-1`): the tooling established, the score a replay
     of the account's own earlier kernel, no candidate delivered; the
     step's bar now includes a delivered candidate and the arm fails it.
+    The owner accepts this standing for the release (2026-10-29): the
+    record keeps the failing bar and the release notes say what was and
+    was not measured.
   - `swap-ale` (`s3-ale-swap-ahc011-1`): the campaign ended at 18:10Z; the
     final report (the private cases) was computing at the time of writing.
   - `arm-ale` (`s3-ale-2`), `arm-relbench` (`s3-relbench-2`), `arm-mle`
     (`s3-mle-4`): running, their first attempts having died on the two
     engine faults and the evaluator fault recorded under What the arms
     found; recorded as they land, before the merge.
-  - `swap-ioai`: deferred to the owner (the open practice competitions
-    need their rules accepted in a browser).
+  - `swap-ioai`: dropped from the release's required steps by the owner
+    (2026-10-29: no Kaggle account will be set up; the open practice
+    competitions need their rules accepted in a browser); the step
+    definition stays for a later run.
   - The author test's re-run on both hosts: owed; it waits for the arms,
     since a fresh machine's copy of the Codex login would refresh the
     token the arms' machines hold.

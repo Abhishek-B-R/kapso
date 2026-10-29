@@ -2746,3 +2746,22 @@ now says the number is self-reported and what checks it. Making the
 grader own the split (deterministic hold-out ids from `task.json`, the
 predictions scored by the grader) is the owner's call for a later
 package.
+
+## The IOAI arm stands as a replay, the IOAI swap is dropped, the merge waits for the arms, the MLE grader keeps the self-reported number until after the release (2026-10-29, the owner and the builder)
+
+Asked what needed a call, the owner answered three things. No clean
+Kaggle account will be set up: the IOAI arm's record stands as it is
+(the preflight, the contest root, the ledger, the hooks and the runner
+established; the score a replay of the account's own earlier kernel; no
+cold-start claim), and the IOAI swap, which needs a practice
+competition's rules accepted in a browser, is dropped from the suite's
+required steps for the release (`tests/semantic/suite.json`, the `s3`
+entry's `machine` list) and kept as a step definition for a later run.
+The merge of the harness ports waits for the running arms to land in the
+record. The MLE grader was left to the builder: the release keeps the
+in-loop number as the candidate's own hold-out score, since the number
+the release reports is the official final grade on the private answers
+either way, and the grader-owned split (deterministic hold-out ids from
+the task file, the held-out predictions scored by the grader) is the
+first item after the release; changing it now would cost a day and a
+rerun of the MLE arm without changing what is reported.
