@@ -525,7 +525,7 @@ re-measured a row:
 | S2, Codex host | `s2-codex-1` (fetched, no report), `s2-codex-4` 2.46 (stopped), `s2-codex-5` 4.31; the inbox arms 0.57 | 7.3 and the first run | about $1.10 |
 | S4 | `s4-claude-1` | 0.12 | $0.02 |
 | S5 | arms 1 to 4 (stopped early), `s5-claude-5` 1.21, `s5-claude-6` 2.72, `s5-claude-7` 4.14 | 8.1 and the first four | about $1.20 |
-| S6 | rounds 1 to 4 (stopped), `s6-claude-5` 2.97, `s6-codex-1` running | 3.0 and the rest | about $0.50 |
+| S6 | rounds 1 to 4 (stopped), `s6-claude-5` 2.97, `s6-codex-1` 2.95 | 5.9 and the rest | about $0.80 |
 | the author test | six rounds of about ten minutes | 1.0 | $0.14 |
 
 Model spend: the Claude Max tokens' windows, read before each launch and
