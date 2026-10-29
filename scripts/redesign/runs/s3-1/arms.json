@@ -10,7 +10,7 @@
   "runs": {
     "arm-relbench": null,
     "arm-mle": "s3-mle-4",
-    "arm-ale": null,
+    "arm-ale": "s3-ale-2",
     "arm-ioai": "s3-ioai-1",
     "swap-relbench": "s3-relbench-swap-1",
     "swap-ale": "s3-ale-swap-ahc011-1",

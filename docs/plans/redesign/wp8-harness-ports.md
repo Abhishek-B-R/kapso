@@ -879,11 +879,15 @@ that is still evidence.
     population's best (0.230, 0.247, 0.284) and under the bronze bar
     (0.294); two experiments, the delivered candidate the second; the
     first attempt died on the evaluator the setup session wrote.
-  - `arm-ale` (`s3-ale-2`) and `arm-relbench` (`s3-relbench-3`): running,
-    their earlier attempts having died on the two engine faults recorded
-    under What the arms found (the RelBench arm twice: the stream split,
-    then the run folder on a wheel that predated its fix); recorded as
-    they land, before the merge.
+  - `arm-ale` (`s3-ale-2`, ahc008, three hours on the Docker judge, 21:10Z):
+    the delivered candidate accepted on every private case, rank 311 of
+    642, a performance of 1363 against the recorded 1221 and the bar of
+    1189 (ALE Agent's), four experiments, $11.98 of hosted cost; the
+    first attempt had died on the run folder under a session's ignore
+    rule.
+  - `arm-relbench` (`s3-relbench-3`): running, its earlier attempts having
+    died on the stream split and then on the run folder on a wheel that
+    predated its fix; recorded as it lands, before the merge.
   - `swap-ioai`: dropped from the release's required steps by the owner
     (2026-10-29: no Kaggle account will be set up; the open practice
     competitions need their rules accepted in a browser); the step
