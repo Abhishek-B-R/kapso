@@ -901,9 +901,10 @@ that is still evidence.
     time per in-flight lane under a short budget (a follow-up outside this
     package). A second attempt at six hours on the same shape
     (`s3-relbench-4`) was launched to read the harness past the first
-    iteration; its result replaces this one in the record if it lands
-    before the merge, and this attempt stays in the notes. The two earlier
-    attempts died on the stream split and on the run folder.
+    iteration; its result replaces this one in the record when it lands,
+    and this attempt stays in the notes; it is the last attempt (the
+    owner, 2026-10-29). The two earlier attempts died on the stream split
+    and on the run folder.
   - `swap-ioai`: dropped from the release's required steps by the owner
     (2026-10-29: no Kaggle account will be set up; the open practice
     competitions need their rules accepted in a browser); the step
