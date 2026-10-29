@@ -3,23 +3,27 @@
 # the fresh-machine script's shape with a GPU, the wheel and the benchmark
 # tree at this commit, the benchmark's own stack, and the run archived.
 #
-#   scripts/redesign/benchmark_machine.sh create  <run-id> gpu|cpu
+#   scripts/redesign/benchmark_machine.sh create  <run-id> gpu|gpu4|cpu
 #   scripts/redesign/benchmark_machine.sh install <run-id> <wheel-path> <benchmark>   # relbench | mle | ale | ioai2026
 #   scripts/redesign/benchmark_machine.sh run     <run-id> "<command>"               # from ~/bench, the venv on PATH, the secrets in the environment
 #   scripts/redesign/benchmark_machine.sh fetch   <run-id> <remote-path>              # into runs/<run-id>/fetched/
 #   scripts/redesign/benchmark_machine.sh delete  <run-id>
 #   scripts/redesign/benchmark_machine.sh status
 #
-# gpu: a spot a2-highgpu-1g (one A100 40 GB; the project's only GPU quota)
-# on a driver-bearing image, tried zone by zone; cpu: an e2-standard-8 for
-# the Docker scorer. Both auto-delete after MAX_RUN. The secrets travel on
-# ssh stdin only, as in fresh_machine.sh.
+# gpu: a spot a2-highgpu-1g (one A100 40 GB); gpu4: a spot a2-highgpu-4g
+# (four A100 40 GB, the shape the RelBench lanes recorded; inside the
+# project's preemptible A100 quota); both on a driver-bearing image, tried
+# zone by zone; cpu: an e2-standard-8 for the Docker scorer. All auto-delete
+# after MAX_RUN. The secrets travel on ssh stdin only, as in fresh_machine.sh;
+# the Kaggle credential too, for the benchmarks that download or submit
+# through it.
 set -euo pipefail
 
 PROJECT="${KAPSO_FRESH_PROJECT:-trans-density-437811-p2}"
 GPU_ZONES="${KAPSO_BENCH_GPU_ZONES:-us-central1-a us-central1-b us-central1-f}"
 CPU_ZONE="${KAPSO_FRESH_ZONE:-us-central1-a}"
 GPU_MACHINE_TYPE="a2-highgpu-1g"
+GPU4_MACHINE_TYPE="a2-highgpu-4g"
 GPU_IMAGE_FAMILY="common-cu129-ubuntu-2204-nvidia-580"
 GPU_IMAGE_PROJECT="deeplearning-platform-release"
 CPU_MACHINE_TYPE="e2-standard-8"
@@ -27,11 +31,13 @@ CPU_IMAGE_FAMILY="ubuntu-2404-lts-amd64"
 CPU_IMAGE_PROJECT="ubuntu-os-cloud"
 MAX_RUN="${KAPSO_BENCH_MAX_RUN:-14h}"
 GPU_HOURLY_USD="1.30"    # the spot a2-highgpu-1g price in us-central1 when this was written; the record carries the bill
+GPU4_HOURLY_USD="5.20"   # four times that, the spot a2-highgpu-4g
 CPU_HOURLY_USD="0.27"
 LABEL="purpose=kapso-bench"
 CLAUDE_SECRET="${KAPSO_FRESH_CLAUDE_SECRET:-claude-oauth-token-3}"
 OPENAI_SECRET="openai-api-key"
 CODEX_SESSION="${KAPSO_CODEX_SESSION:-/home/ubuntu/.codex-semantic/auth.json}"
+KAGGLE_CREDENTIAL="${KAPSO_KAGGLE_CREDENTIAL:-$HOME/.kaggle/kaggle.json}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
 RUNS="$HERE/runs"
@@ -64,13 +70,15 @@ push_secret() {   # push_secret <run-id> <VAR> <secret-name>
 
 create_in_zone() {   # create_in_zone <run-id> <kind> <zone>
   local id="$1" kind="$2" zone="$3" name; name="$(name_of "$id")"
-  if [ "$kind" = gpu ]; then
+  if [ "$kind" = gpu ] || [ "$kind" = gpu4 ]; then
+    local machine_type="$GPU_MACHINE_TYPE" gpus=1
+    if [ "$kind" = gpu4 ]; then machine_type="$GPU4_MACHINE_TYPE"; gpus=4; fi
     gcloud compute instances create "$name" --project "$PROJECT" --zone "$zone" \
-      --machine-type "$GPU_MACHINE_TYPE" --accelerator "type=nvidia-tesla-a100,count=1" --maintenance-policy TERMINATE \
+      --machine-type "$machine_type" --accelerator "type=nvidia-tesla-a100,count=$gpus" --maintenance-policy TERMINATE \
       --provisioning-model SPOT --instance-termination-action DELETE --max-run-duration "$MAX_RUN" \
       --image-family "$GPU_IMAGE_FAMILY" --image-project "$GPU_IMAGE_PROJECT" \
       --boot-disk-size 300GB --boot-disk-type pd-balanced --metadata install-nvidia-driver=True \
-      --labels "$LABEL,run=$id,kind=gpu" --scopes default --quiet
+      --labels "$LABEL,run=$id,kind=$kind" --scopes default --quiet
   else
     gcloud compute instances create "$name" --project "$PROJECT" --zone "$zone" \
       --machine-type "$CPU_MACHINE_TYPE" --image-family "$CPU_IMAGE_FAMILY" --image-project "$CPU_IMAGE_PROJECT" \
@@ -81,11 +89,11 @@ create_in_zone() {   # create_in_zone <run-id> <kind> <zone>
 
 cmd_create() {
   local id="$1" kind="$2"
-  case "$kind" in gpu|cpu) ;; *) usage ;; esac
+  case "$kind" in gpu|gpu4|cpu) ;; *) usage ;; esac
   mkdir -p "$RUNS/$id"
   date -u +%Y-%m-%dT%H:%M:%SZ > "$RUNS/$id/created_at"
   echo "$kind" > "$RUNS/$id/kind"
-  local zones="$CPU_ZONE"; [ "$kind" = gpu ] && zones="$GPU_ZONES"
+  local zones="$CPU_ZONE"; [ "$kind" != cpu ] && zones="$GPU_ZONES"
   local zone created=""
   for zone in $zones; do
     if create_in_zone "$id" "$kind" "$zone" 2>&1 | tee -a "$RUNS/$id/create.log"; then
@@ -115,6 +123,12 @@ cmd_install() {
   push_secret "$id" OPENAI_API_KEY "$OPENAI_SECRET"
   [ -f "$CODEX_SESSION" ] || { echo "no Codex session at $CODEX_SESSION" >&2; exit 1; }
   cat "$CODEX_SESSION" | ssh_run "$id" "umask 077; mkdir -p ~/.codex && cat > ~/.codex/auth.json && echo 'the device-auth ChatGPT session of the owner, pushed by benchmark_machine.sh at $(date -u +%FT%TZ); no Codex credit of the run itself' > ~/.codex/SOURCE"
+  case "$benchmark" in
+    mle|ioai2026)
+      [ -f "$KAGGLE_CREDENTIAL" ] || { echo "no Kaggle credential at $KAGGLE_CREDENTIAL" >&2; exit 1; }
+      cat "$KAGGLE_CREDENTIAL" | ssh_run "$id" "umask 077; mkdir -p ~/.kaggle && cat > ~/.kaggle/kaggle.json"
+      ;;
+  esac
   echo "installed $(basename "$wheel") and benchmarks/$benchmark on $(name_of "$id")"
 }
 
@@ -149,7 +163,8 @@ cmd_delete() {
   local disks; disks="$(gcloud compute disks list --project "$PROJECT" --filter="name~^$name\$" --format='value(name)')"
   if [ -n "$disks" ]; then echo "leftover disks: $disks" >&2; exit 1; fi
   if [ -f "$RUNS/$id/created_at" ]; then
-    local rate="$CPU_HOURLY_USD"; [ "$(cat "$RUNS/$id/kind" 2>/dev/null)" = gpu ] && rate="$GPU_HOURLY_USD"
+    local rate="$CPU_HOURLY_USD"
+    case "$(cat "$RUNS/$id/kind" 2>/dev/null)" in gpu) rate="$GPU_HOURLY_USD" ;; gpu4) rate="$GPU4_HOURLY_USD" ;; esac
     local start now hours cost
     start="$(date -u -d "$(cat "$RUNS/$id/created_at")" +%s)"; now="$(date -u +%s)"
     hours="$(awk -v s="$start" -v n="$now" 'BEGIN{printf "%.2f", (n-s)/3600}')"
