@@ -2355,3 +2355,67 @@ Retention after a resume compares the attempts' identities and reads
 "not exercised" when none had landed before the kill (the early staging
 makes that the usual case): the claim the records support is the
 campaign's continuation, said as such.
+
+## WP8: the IOAI book onboards as a bank in the card grammar, not an index (2026-10-29)
+
+The port plan of 2026-10-24 said "an ingested index"; WP3 then settled the
+forms a source takes: a bank (served whole by the bank gate, from git
+alone), the hosted gate, or an index (a corpus ingested through sessions
+into Weaviate and Neo4j, searched by embedding). The book is sixty-seven
+entries, each a problem, a winning idea with its provenance and a public
+score, and runnable code: evidence-priced cards in all but format. A bank
+fits it without infrastructure on the contest machine, serves an entry
+whole (the code with the card, as a procedure card does), and keeps the
+provenance line per card; an index would spend hours of ingestor sessions
+turning notebooks into pages and need the two stores wherever the harness
+runs. The conversion script writes the grammar's every field; the
+harness's playbook skill says how to pull the cards for a statement's
+twist and names no problem. If a later package wants the book searched by
+embedding, the same bank ingests then.
+
+## WP8: the abstraction scan is a gate test with the benchmarks' vocabularies, not a `check` rule (2026-10-29)
+
+The plan asked for the scan "run by `check` for shipped harnesses".
+`check` is domain-agnostic and reads one harness; it cannot know which
+words are a benchmark's task names, and a user's harness is not our
+benchmark's. The scan is a module (`src/kapso/harness/abstraction.py`)
+with its vocabulary passed in, and a gate test runs it over the bundled
+trees with the words read from the benchmarks' own registries, so a task
+added to a benchmark is scanned without anyone editing a list. The two
+fixed rules (a decimal that reads as a score, a quota or a deadline; a
+path outside the harness's conventions) are the module's own.
+
+## WP8: one reproduction per benchmark at its recorded budget, after a smoke arm; MLE and ALE establish their baselines (2026-10-29)
+
+The done-when lines ask for "the recorded score within noise". The tree
+records RelBench's scores per task and the IOAI contest's; it records no
+MLE or ALE result. The RelBench arm is judged against its task's band; the
+IOAI arm against the practice task's recorded cold start; the MLE and ALE
+arms record the baseline this package establishes, and their bar is a
+valid score at the budget, said as such in the record. A two-hour smoke
+arm precedes each full arm: a harness fault found at a tenth of the cost.
+
+## WP8: the predictive-modelling task swap runs through the IOAI runner's preflight (2026-10-29)
+
+The swap wants a Kaggle tabular competition, a task the benchmark does not
+contain. The IOAI runner's preflight already turns a Kaggle URL into a task
+root; with `--harness predictive-modelling` it is the swap, with no runner
+written for it. That the runner's `--harness` takes any reference is what
+makes the swaps cheap, and is why the flag exists on every runner.
+
+## WP8: the hooks shared with the trading example are copied (2026-10-29)
+
+`protect-prepared` and `deny-web-fetch` are the same programs in the
+trading example and in `predictive-modelling`. A harness is a plain
+directory and composition is not in the design, so the two scripts are
+copied, with a test that runs each bundled hook on both hosts' event
+shapes. A shared hook library would be a design change for a later
+package, once a third harness wants them.
+
+## WP8: nothing of the IOAI book is pushed anywhere by this package (2026-10-29)
+
+The provenance table gives a verdict per entry; the conversion writes a
+shareable bank (the entries whose source licence permits redistribution,
+and our own reimplementations) and a local-only bank (the rest). Both
+live on this machine and in the backup bucket. Whether the shareable bank
+gets a remote, and which, is the owner's call, with the table in hand.
