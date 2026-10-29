@@ -204,8 +204,10 @@ data/indexes/
 # Paper directory (private/unpublished work)
 paper/
 
-# Data directory (local data files)
+# Data directory (local data files); the benchmarks' data directories are
+# committed files (provided evaluation suites, seeded baselines, vocabularies)
 data/
+!benchmarks/*/data/
 
 # Developer docs (internal documentation)
 developer_docs/
