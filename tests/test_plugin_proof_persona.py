@@ -74,10 +74,16 @@ def test_the_turn_cap_ends_the_step_as_an_event_never_a_pass(tmp_path, monkeypat
     user, _ = _persona(monkeypatch, ["more", "more", "more", "more", "more", "more", "more", "more"])
     host = FakeHost([("Question?", True)] * 8)
     ctx = _context(tmp_path, host, user)
+    # The cap is the step's own message budget (watch: 2), not a literal
+    # per call site; a follow-up exchange (watch-2) is capped by its parent's
+    # budget and its cap makes the parent step incomplete.
     turns = ctx.converse("watch", tmp_path / "work", "/kapso:watch", lambda t, i: None, max_turns=8)
-    assert len(turns) == 8 and user.events[-1].endswith("the step is incomplete") and "watch" in user.capped
+    assert len(turns) == proof.SUITE["steps"]["watch"]["messages"] == 2 and user.events[-1].endswith("the step is incomplete") and "watch" in user.capped
     # The cap makes even a satisfied-looking predicate incomplete.
     assert user.ended_well("watch", True) is False and user.ended_well("other", True) is True
+    user.capped.clear()
+    ctx.converse("review-2", tmp_path / "work", "safe to merge?", lambda t, i: None, max_turns=1)
+    assert "review" in user.capped and "review-2" not in user.capped and user.ended_well("review", True) is False
 
 
 def test_the_scripted_loop_still_ends_on_a_turn_that_does_not_ask(tmp_path):
@@ -232,3 +238,45 @@ def test_the_trigger_bar_is_not_established_on_a_run_whose_sandbox_never_started
     results["results"][2].update({"environment": None, "loaded": ["kapso-build"], "graders": [ok], "passed": True})
     (tmp_path / "results.json").write_text(json.dumps(results), encoding="utf-8")
     assert proof.trigger_bar(tmp_path, "codex") == {"per_skill": {"build": "2/2"}, "false_positives": [], "environment": 0, "met": True}
+
+
+def test_the_detectors_need_a_statement_not_the_vocabulary():
+    # A score beside a number is not a delivery statement; the merge
+    # question and a hedge are not verdicts; a negated or first-person
+    # mention of approval is not a request; a capped follow-up belongs to
+    # its step.
+    assert not proof.names_delivery("The model scored 0.8459, below 0.85.", None)
+    assert proof.names_delivery("No winner was delivered: 0.8459 fell below the target.", None)
+    assert not proof.merge_verdict("Is it safe to merge?")
+    assert not proof.merge_verdict("I can't tell whether it's safe to merge from the record alone.")
+    assert proof.merge_verdict("Verdict: do not merge; the evaluator was edited.\nWhat is it safe to merge? Nothing yet.")
+    assert not proof.question_asked("No approval is needed; launching now.\nThe campaign is at ../churn-campaign.", [])
+    assert not proof.question_asked("Let me confirm the data is present before I launch.\nDone: 13,000 rows.", [])
+    assert proof.question_asked("I'll launch once you confirm the budget.", [])
+    assert proof.parent_step("review-2") == "review" and proof.parent_step("inbox-reply") == "inbox" and proof.parent_step("build-churn") == "build-churn"
+
+
+def test_both_hosts_turns_carry_whether_a_tool_call_succeeded():
+    # The session-brief predicate "a bank tool succeeded" read a key no
+    # host recorded and passed on any bank-named call. Claude Code's result
+    # rides in a user row's tool_result block; Codex's completed item
+    # carries its status and error; a call with no result is neither.
+    claude_stream = "\n".join(json.dumps(event) for event in [
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "mcp__plugin_kapso_kapso__bank_get_card", "input": {"ref": "x"}}]}},
+        {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "no such card", "is_error": True}]}},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t2", "name": "mcp__plugin_kapso_kapso__bank_list", "input": {}}]}},
+        {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t2", "content": "[...]"}]}},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t3", "name": "Bash", "input": {"command": "ls"}}]}},
+        {"type": "result", "result": "done", "duration_ms": 1200, "session_id": "s-1"},
+    ])
+    text, tools, seconds, sid = proof.parse_claude_stream(claude_stream, "s-0", 9.0)
+    assert (text, seconds, sid) == ("done", 1.2, "s-1")
+    assert [(tool["name"], tool["is_error"]) for tool in tools] == [("mcp__plugin_kapso_kapso__bank_get_card", True), ("mcp__plugin_kapso_kapso__bank_list", False), ("Bash", None)]
+    codex_stream = "\n".join(json.dumps(event) for event in [
+        {"type": "thread.started", "thread_id": "th-1"},
+        {"type": "item.completed", "item": {"type": "mcp_tool_call", "server": "kapso", "tool": "bank_get_card", "arguments": {"ref": "x"}, "result": None, "error": {"message": "no such card"}, "status": "failed"}},
+        {"type": "item.completed", "item": {"type": "mcp_tool_call", "server": "kapso", "tool": "bank_list", "arguments": {}, "result": {"cards": []}, "error": None, "status": "completed"}},
+        {"type": "item.completed", "item": {"type": "command_execution", "command": "cat x", "exit_code": 1}},
+    ])
+    tools, sid = proof.parse_codex_stream(codex_stream, "")
+    assert sid == "th-1" and [(tool["name"], tool["is_error"]) for tool in tools] == [("mcp__kapso__bank_get_card", True), ("mcp__kapso__bank_list", False), ("Bash", True)]

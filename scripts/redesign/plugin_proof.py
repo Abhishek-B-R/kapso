@@ -71,19 +71,25 @@ APPROVAL_ASKED = re.compile(
     r"\b(say|reply|type)\b[^\n]{0,30}\b(go|yes)\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b|\bif you say\b|\bsay the word\b",
     re.I,
 )
+# The approval words without a request: a negation, or the host checking
+# something itself.
+NO_ASK = re.compile(r"\bno (approval|confirmation|go-ahead|input|answer) (is |was )?(needed|required)\b|\bwithout (your )?(approval|confirmation)\b", re.I)
+SELF_CHECK = re.compile(r"^(let me|i'?ll|i will|i) (confirm|approve|verify|check)\b", re.I)
 # A campaign that misses its goal delivers no branch; a review of it must say
 # so rather than dress a near miss as something to merge.
 NOTHING_DELIVERED = re.compile(
     r"\b(goal|target) (was )?not (met|reached)\b|\b(goal|target) (remains |is |still )?unmet\b|\bnothing (was )?delivered\b"
     r"|\bno (approved )?(winner|branch|result|delivery|candidate) (was )?delivered\b|\bdelivered no (approved )?(winner|branch|result|candidate)\b|\bdid not deliver\b"
-    r"|\b(below|short of|under) (the )?(target|threshold|goal|[0-9.]+)\b|\bmissed the (target|goal)\b",
+    r"|\b(below|short of|under) the (target|threshold|goal)\b|\bmissed the (target|goal)\b",
     re.I,
 )
 
 
 def names_delivery(answer: str, branch: Optional[str]) -> bool:
     """The review names what the campaign delivered: its branch, when there
-    is one; that nothing was delivered, when there is none."""
+    is one; that nothing was delivered, when there is none — a statement
+    of the fact (no winner, the goal unmet), never a bare score beside a
+    number ("0.8459, below 0.85" says what scored, not what was delivered)."""
     if branch:
         return branch.lower() in answer.lower()
     return bool(NOTHING_DELIVERED.search(answer))
@@ -94,10 +100,20 @@ def names_delivery(answer: str, branch: Optional[str]) -> bool:
 # more budget, learn from it) — a review that said "merging the branch
 # whole carries the labels" and "resume with more time" had given it.
 MERGE_VERDICT = re.compile(r"\bmerg(e|ing|ed)\b|\b(not )?safe\b|\bcherry-pick|\bresume with\b|\blearn from\b", re.I)
+# A line that carries the words without a decision: the question itself,
+# or a hedge ("I can't tell whether it's safe to merge").
+NOT_A_VERDICT = re.compile(r"\bwhether\b|\bcan(no|')t (tell|say|judge|determine)\b|\bnot sure\b|\bunsure\b|\bunclear\b|\bunable to (tell|say|judge)\b", re.I)
 
 
 def merge_verdict(answer: str) -> bool:
-    return bool(MERGE_VERDICT.search(answer))
+    """A merge verdict is a statement — merge, do not merge, not safe,
+    cherry-pick, resume with more budget, learn from it — on some line of
+    the answer; a line that asks the question or hedges it gives none."""
+    for raw in answer.splitlines():
+        line = raw.strip().rstrip("*_` ")
+        if MERGE_VERDICT.search(line) and not line.endswith("?") and not NOT_A_VERDICT.search(line):
+            return True
+    return False
 
 
 CHURN_WISH = (
@@ -140,7 +156,6 @@ STEP_CARDS = {
     "harness-new": "trading-author",
     "harness-probe": "trading-author",
     "harness-improve": "trading-author",
-    "second-engineer-build": "second-engineer",
 }
 STEP_INTENTS = {
     "setup": "set Kapso up on this machine to a green doctor; you have no Leeroopedia or OpenAI key and want none added; no harness for now",
@@ -200,8 +215,12 @@ def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
     # regex names real requests only (a courtesy sign-off never matches),
     # and a host closes "Say go and I'll run:", the command, "or edit a
     # line first" — the request three lines up, its continuation last.
-    closing = "\n".join(lines[-3:])
-    return "?" in closing or bool(APPROVAL_ASKED.search(closing))
+    closing = lines[-3:]
+    if any("?" in line for line in closing):
+        return True
+    # An approval request is a request: "no approval is needed" and "let
+    # me confirm the data" carry the word without asking for anything.
+    return any(APPROVAL_ASKED.search(line) and not NO_ASK.search(line) and not SELF_CHECK.match(line) for line in closing)
 
 
 def lines_outside_fences(text: str) -> int:
@@ -213,6 +232,54 @@ def lines_outside_fences(text: str) -> int:
         if not fenced and line.strip():
             count += 1
     return count
+
+
+def parse_claude_stream(stdout: str, sid: str, elapsed: float):
+    """A Claude Code stream-json turn: the final text, the tool calls with
+    whether each one's result was an error (the result rides in a user
+    row's tool_result block; None when no result row came, the stream
+    having ended first), the turn's seconds and the session id."""
+    text, tools, seconds = "", [], elapsed
+    results: Dict[str, bool] = {}   # a tool call's id → whether its result was an error
+    for line in stdout.splitlines():
+        if not line.startswith("{"):
+            continue
+        event = json.loads(line)
+        if event.get("type") == "assistant":
+            for block in event["message"].get("content", []):
+                if block.get("type") == "tool_use":
+                    tools.append({"id": block.get("id"), "name": block["name"], "input": block.get("input", {})})
+        elif event.get("type") == "user":
+            for block in event.get("message", {}).get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    results[block.get("tool_use_id")] = bool(block.get("is_error"))
+        elif event.get("type") == "result":
+            text = event.get("result") or ""
+            seconds = event.get("duration_ms", seconds * 1000) / 1000
+            sid = event.get("session_id", sid)
+    for tool in tools:
+        tool["is_error"] = results.get(tool.pop("id"))
+    return text, tools, seconds, sid
+
+
+def parse_codex_stream(stdout: str, sid: str):
+    """A Codex exec --json turn: the tool calls (a command with its exit
+    code, an MCP call with its completed item's status and error) and the
+    thread id."""
+    tools: List[Dict[str, Any]] = []
+    for line in stdout.splitlines():
+        if not line.startswith("{"):
+            continue
+        event = json.loads(line)
+        if event.get("type") == "thread.started":
+            sid = event["thread_id"]
+        item = event.get("item") or {}
+        if event.get("type") == "item.completed" and item.get("type") == "command_execution":
+            tools.append({"name": "Bash", "input": {"command": item.get("command", "")}, "is_error": item.get("exit_code", 0) != 0})
+        elif event.get("type") == "item.completed" and item.get("type") == "mcp_tool_call":
+            tools.append({"name": f"mcp__{item.get('server')}__{item.get('tool')}", "input": item.get("arguments", {}),
+                          "is_error": item.get("status") != "completed" or bool(item.get("error"))})
+    return tools, sid
 
 
 class ClaudeHost:
@@ -239,19 +306,7 @@ class ClaudeHost:
             out.write(json.dumps({"proof_prompt": prompt}) + "\n" + run.stdout + ("\n" if not run.stdout.endswith("\n") else ""))
             if run.stderr.strip():
                 out.write(json.dumps({"proof_stderr": run.stderr}) + "\n")
-        text, tools, seconds = "", [], time.monotonic() - started
-        for line in run.stdout.splitlines():
-            if not line.startswith("{"):
-                continue
-            event = json.loads(line)
-            if event.get("type") == "assistant":
-                for block in event["message"].get("content", []):
-                    if block.get("type") == "tool_use":
-                        tools.append({"name": block["name"], "input": block.get("input", {})})
-            elif event.get("type") == "result":
-                text = event.get("result") or ""
-                seconds = event.get("duration_ms", seconds * 1000) / 1000
-                sid = event.get("session_id", sid)
+        text, tools, seconds, sid = parse_claude_stream(run.stdout, sid, time.monotonic() - started)
         return Turn(text, seconds, sid, tools, question_asked(text, tools))
 
 
@@ -278,18 +333,7 @@ class CodexHost:
             out.write(json.dumps({"proof_prompt": prompt}) + "\n" + run.stdout + ("\n" if not run.stdout.endswith("\n") else ""))
             if run.stderr.strip():
                 out.write(json.dumps({"proof_stderr": run.stderr}) + "\n")
-        tools, sid = [], session or ""
-        for line in run.stdout.splitlines():
-            if not line.startswith("{"):
-                continue
-            event = json.loads(line)
-            if event.get("type") == "thread.started":
-                sid = event["thread_id"]
-            item = event.get("item") or {}
-            if event.get("type") == "item.completed" and item.get("type") == "command_execution":
-                tools.append({"name": "Bash", "input": {"command": item.get("command", "")}})
-            elif event.get("type") == "item.completed" and item.get("type") == "mcp_tool_call":
-                tools.append({"name": f"mcp__{item.get('server')}__{item.get('tool')}", "input": item.get("arguments", {})})
+        tools, sid = parse_codex_stream(run.stdout, session or "")
         text = last.read_text(encoding="utf-8") if last.exists() else ""
         if last.exists():
             last.unlink()
@@ -411,10 +455,12 @@ class Context:
         card = self.user.card_for(step)
         if card is not self.user.card:
             self.user.interventions.append(f"{step}: answered by the {card.name} card (its knowledge the step needs), not the run's {self.user.card.name}")
-        # A step's own line budget caps the exchange when it is longer than
-        # the global turn cap, so a legitimate interview is not cut short.
-        step_messages = SUITE["steps"].get(step, {}).get("messages")
-        cap = min(max_turns, max(self.user.turn_cap, step_messages or 0))
+        # The exchange's cap is the step's own message budget (a sub-exchange
+        # such as review-2 takes its parent's), so a legitimate interview is
+        # never cut short of what the suite allows and a step over it fails
+        # on its count; the persona's turn cap stands only where the suite
+        # has no entry. `max_turns` is the scripted loop's.
+        cap = SUITE["steps"].get(parent_step(step), {}).get("messages") or self.user.turn_cap
         for index in range(cap):
             turn = self.host.turn(cwd, prompt, session, transcript)
             turns.append(turn)
@@ -429,7 +475,7 @@ class Context:
                 return turns
             prompt = reply.text
         self.user.events.append(f"{step}: the turn cap ({cap}) ended the exchange without DONE: the step is incomplete")
-        self.user.capped.add(step)
+        self.user.capped.add(parent_step(step))   # a capped follow-up (review-2) makes its step incomplete, not a name nothing reads
         return turns
 
     def task_view(self, project: Path, planted: Optional[str] = None) -> None:
@@ -493,6 +539,19 @@ def learning_on(block: Any, model: str, replaced: str) -> Any:
     if isinstance(block, list):
         return [learning_on(item, model, replaced) for item in block]
     return model if block == replaced else block
+
+
+def parent_step(name: str) -> str:
+    """The suite step an exchange belongs to: the step itself; a numbered
+    follow-up's base (`review-2` → `review`); a named sub-exchange's head
+    (`inbox-reply` → `inbox`); else the name as given."""
+    if name in SUITE["steps"]:
+        return name
+    base = re.sub(r"-\d+$", "", name)
+    if base in SUITE["steps"]:
+        return base
+    head = name.split("-", 1)[0]
+    return head if head in SUITE["steps"] else name
 
 
 def codex_session_note() -> Optional[str]:
@@ -865,17 +924,18 @@ def step_harness_export(ctx: Context) -> Dict[str, Any]:
         artifacts.append(ctx.artifact(f"export-{host}-files.txt", "\n".join(tree) + "\n"))
     refused = ctx.shell(f"kapso harness export {harness} --host claude_code --to {ctx.work / 'export-claude_code'}", check=False)
     artifacts.append(ctx.artifact("export-refusal.txt", refused.stdout + refused.stderr))
-    session_dir = ctx.work / "export-claude_code"
-    turns = ctx.converse("harness-export", session_dir, "Using the backtesting skill in this project, tell me in three lines what timestamp discipline it asks for. Load the skill rather than guessing.", lambda text, index: None, max_turns=1) if ctx.host.name == "claude_code" else []
-    skill_used = any(tool["name"] == "Skill" and "backtesting" in json.dumps(tool["input"]) for turn in turns for tool in turn.tools) if turns else True
+    # The exported skill's session runs on this host, in its own export:
+    # Claude Code loads the skill through its Skill tool; Codex loads one by
+    # reading its file (the plugin's trigger runner reads the same event),
+    # so the host's commands are read for a SKILL.md read that succeeded.
+    session_dir = ctx.work / f"export-{ctx.host.name}"
+    turns = ctx.converse("harness-export", session_dir, "Using the backtesting skill in this project, tell me in three lines what timestamp discipline it asks for. Load the skill rather than guessing.", lambda text, index: None, max_turns=1)
+    if ctx.host.name == "claude_code":
+        skill_used = any(tool["name"] == "Skill" and "backtesting" in json.dumps(tool["input"]) for turn in turns for tool in turn.tools)
+    else:
+        skill_used = any("backtesting/SKILL.md" in json.dumps(tool["input"]) and tool.get("is_error") is False for turn in turns for tool in turn.tools)
     completed = refused.returncode != 0 and (ctx.work / "export-codex" / ".codex" / "agents" / "lookahead-auditor.toml").is_file() and skill_used
-    if not turns:
-        # The exported skill's session is the Claude host's; on the Codex
-        # host the step is the export and its refusal alone — a shell step,
-        # so the judge does not look for a conversation that never was
-        # (s2-codex-5's judge died on it).
-        return shell_step("harness-export", completed, artifacts, (time.monotonic() - started) / 60, ["the export and its refusal on both hosts; the exported skill's session is the Claude host's, not run here"])
-    step = record_step("harness-export", turns, completed, artifacts)
+    step = record_step("harness-export", turns, completed, artifacts, [f"the export and its refusal on both hosts; the exported skill's session on {ctx.host.name} loaded the skill: {skill_used}"])
     step["minutes"] = round(step["minutes"] + (time.monotonic() - started) / 60, 1)
     return step
 
@@ -1181,9 +1241,10 @@ def step_session_brief(ctx: Context) -> Dict[str, Any]:
     prompt = "What experience is this session served, according to your MCP server's instructions? Then read one card from the bank with the bank tools and quote its title."
     turns = ctx.converse("session-brief", project, prompt, lambda text, index: None, max_turns=1)
     bank_tools = [tool for turn in turns for tool in turn.tools if "bank" in tool["name"]]
-    # A successful bank read: the tool did not error (a named-but-failed
-    # call is not a card read).
-    bank_read = any(not tool.get("is_error") for tool in bank_tools)
+    # A successful bank read: a bank tool's result came back and was not
+    # an error (both hosts' turns carry `is_error` from the result; a call
+    # with no result, or a failed one, is not a card read).
+    bank_read = any(tool.get("is_error") is False for tool in bank_tools)
     names = [tool["name"] for turn in turns for tool in turn.tools]
     artifacts = [ctx.artifact("session-brief.txt", "\n".join(names) + "\n\n" + "\n".join(turn.text for turn in turns))]
     return record_step("session-brief", turns, ctx.user.ended_well("session-brief", bank_read), artifacts, [f"a bank tool succeeded (a card read): {bank_read}; the sources recognised judged by hand from the answer"])
@@ -1238,13 +1299,20 @@ def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
     solution = json.loads(solution_text) if solution_text.strip() else {}
     served = "bank-remote" in solution_text
     final_state = (read_status() or {}).get("state")
-    # Scored: the delivered branch has a score; and the build read a bank
-    # card (a pull record under the campaign names the shared bank).
-    scored = bool((solution.get("delivered") or {}).get("score") is not None) if solution else False
+    # Scored: the solution record's own `score` (handles.py writes it at
+    # the top; a `delivered.score` key does not exist, and reading it
+    # could never be true); and the build read a bank card (a record under
+    # the campaign names the shared bank).
+    scored = solution.get("score") is not None
     read_bank = "bank-remote" in ctx.shell(f"sudo cat {campaign}/.kapso/experiment_history.json 2>/dev/null; sudo cat {campaign}/.kapso/solution.json", check=False).stdout
     artifacts = [ctx.artifact("second-engineer-launch.txt", launch.stdout + launch.stderr)]
     if solution_text.strip():
         artifacts.append(ctx.artifact("second-engineer-solution.json", solution_text))
+    # The second user's campaign log and status, so a failure has an
+    # inspectable cause in the archive (the preflight death of s2-claude-3
+    # had none).
+    artifacts.append(ctx.artifact("second-engineer-campaign.log", ctx.shell("sudo cat /home/proof2/second-campaign.log", check=False).stdout))
+    artifacts.append(ctx.artifact("second-engineer-status.json", ctx.shell(f"sudo cat {campaign}/.kapso/status.json", check=False).stdout))
     ctx.user.interventions.append("second-engineer-build: the churn fixture copied to the second user's home; the build run as that user with the bank by reference")
     return shell_step("second-engineer-build", launch.returncode == 0 and done and final_state == "done" and served and scored, artifacts, (time.monotonic() - started) / 60,
                       [f"served the shared bank: {served}; a scored delivery: {scored}; the bank in the build's records: {read_bank}; final state: {final_state}"], kind="build")
