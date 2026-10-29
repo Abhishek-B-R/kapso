@@ -90,6 +90,16 @@ deployment:
   model: "claude-opus-5"
 
 # =============================================================================
+# RepoMemory: the evidence-backed Book updated after each experiment
+# =============================================================================
+repo_memory:
+  # Characters of line-numbered changed-file text one update call carries.
+  # Past it the update is windowed into several calls of whole files, so an
+  # experiment that commits large data or vendored files still gets a memory
+  # update instead of a prompt past the model's context window.
+  update_payload_max_chars: 400000
+
+# =============================================================================
 # Platform defaults — the base layer under every mode of every config file
 # =============================================================================
 # load_mode_config() resolves a mode as deep_merge(defaults, modes[<mode>]):
