@@ -176,7 +176,8 @@ def test_the_suite_knows_every_step_the_drivers_run_and_its_entries_hold_their_s
     assert set(proof.STEP_NAMES) <= set(SUITE["steps"]), sorted(set(proof.STEP_NAMES) - set(SUITE["steps"]))
     for test in SUITE["tests"].values():
         for host, names in test["required_steps"].items():
-            assert host in ("claude_code", "codex") and names and set(names) <= set(SUITE["steps"]), host
+            # The ports' record (s3) is a machine run with no host dimension.
+            assert host in ("claude_code", "codex", "machine") and names and set(names) <= set(SUITE["steps"]), host
         for bar in test["bars"].values():
             assert set(bar) <= {"min", "max", "exercised_by"} and ({"min", "max"} & set(bar))
         if test["judge"]:
