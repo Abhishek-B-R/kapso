@@ -666,7 +666,9 @@ def grade(record: Dict[str, Any]) -> Dict[str, Any]:
     if block.get("failure") or not block.get("passes"):
         return record
     spec = SUITE["tests"]["S1"]["judge"]
-    final = judge.resolve(block, spec["dimensions"], spec["bar"]).get(COMPREHENSION_DIMENSION)
+    labels = sorted({label for a_pass in block["passes"] for label in a_pass.get("items", {})})
+    eligible = {label: judge.eligible_dimensions(SUITE, spec, label, spec["dimensions"]) for label in labels}
+    final = judge.resolve(block, spec["dimensions"], spec["bar"], eligible).get(COMPREHENSION_DIMENSION)
     record.setdefault("metrics", {})["comprehension_correct"] = 1.0 if final is not None and final >= spec["bar"] else 0.0
     record["metrics"] = {**record["metrics"], **run_metrics(record)}
     return record

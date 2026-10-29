@@ -46,7 +46,7 @@ def _persona(monkeypatch, replies):
     user = proof.UserMode("persona:ml-engineer", "claude_code")
     queue = list(replies)
 
-    def next_message(card, task_dir, intent, history, host_message, host, settings):
+    def next_message(card, task_dir, intent, history, host_message, host, settings, timeout):
         text = queue.pop(0)
         next_message.calls.append({"intent": intent, "history": list(history), "host_message": host_message})
         return proof.simulated_user.Reply(text=text, done=text == "DONE", session="p-1", seconds=0.0)

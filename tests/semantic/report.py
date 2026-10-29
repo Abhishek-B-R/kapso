@@ -89,7 +89,7 @@ def judge_outcome(record: dict, spec: Optional[dict], expected_passes: int, suit
     passes = judge["passes"]
     bar = spec["bar"]
     labels = sorted({label for p in passes for label in p.get("items", {})})
-    eligible = {label: eligible_dimensions(suite, label, spec["dimensions"]) for label in labels}
+    eligible = {label: eligible_dimensions(suite, spec, label, spec["dimensions"]) for label in labels}
     finals = resolve_judge(judge, spec["dimensions"], bar, eligible)
     advisory = set((record.get("advisory_dimensions") or {}).get("dimensions", []))
 
@@ -217,7 +217,7 @@ def render(record: dict, suite: dict, root: Path) -> str:
             spec = test["judge"]
             sub = record["judge"]
             labels = sorted({label for p in sub["passes"] for label in p.get("items", {})})
-            eligible = {label: eligible_dimensions(suite, label, spec["dimensions"]) for label in labels}
+            eligible = {label: eligible_dimensions(suite, spec, label, spec["dimensions"]) for label in labels}
             lines += [f"Judge: {sub.get('vendor')} {sub.get('model')} via {sub.get('route', '-')}, {len(sub['passes'])} pass(es), bar {spec['bar']} (the worst eligible item binds; a step's `judged` list in the suite says which dimensions it is scored on)", "",
                       "| dimension | per-pass worst item | adjudicated items | final | verdict |", "|---|---|---|---|---|"]
             for dimension in spec["dimensions"]:

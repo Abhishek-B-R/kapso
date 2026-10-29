@@ -192,3 +192,18 @@ def test_a_quote_keeps_a_tokens_own_underscore_and_may_run_on_over_many_lines():
     assert judge.quote_on(["L1: _emphasised_ words"], "1", "emphasised words")
     assert judge.quote_on(lines, "2", "one two three four five"), "a quotation that starts on the cited line may run on"
     assert not judge.quote_on(lines, "3", "one two three"), "it must start on the cited line"
+
+
+def test_a_test_whose_rubric_rules_on_several_inputs_at_once_gets_them_as_one_item(tmp_path):
+    # S1's judge ruled on the flows file alone and scored the docs dimension
+    # 0 for want of the answers it had been promised: a combined-inputs test
+    # hands every input in one item, each file citable.
+    for name, text in (("artifacts/comprehension-answers.txt", "the answers\nthe key"), ("artifacts/flows.md", "# flows\nscript a.py (3 code lines)")):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    record = {"test": "S1", "steps": []}
+    materials = judge.gather_materials(tmp_path, record, ["artifacts/comprehension-answers.txt", "artifacts/flows.md"], tmp_path / "judge", SUITE)
+    assert list(materials) == ["inputs"] and materials["inputs"]["files"] == ["artifacts/comprehension-answers.txt", "artifacts/flows.md"]
+    assert "(file artifacts/comprehension-answers.txt)\nL1: the answers" in materials["inputs"]["text"] and "(file artifacts/flows.md)\nL1: # flows" in materials["inputs"]["text"]
+    separate = judge.gather_materials(tmp_path, {"test": "S4", "steps": []}, ["artifacts/flows.md"], tmp_path / "judge", SUITE)
+    assert list(separate) == ["flows"] and separate["flows"]["files"] == ["artifacts/flows.md"], "a test without combined_inputs judges each input alone"

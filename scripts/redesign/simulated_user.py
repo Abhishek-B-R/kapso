@@ -136,7 +136,7 @@ def _session(vendor: str, stdout: str) -> Optional[str]:
 
 
 def next_message(card: Card, task_dir: Path, intent: str, history: Sequence[Dict[str, str]], host_message: str, host: str,
-                 settings: Dict[str, Any], timeout: int = 600) -> Reply:
+                 settings: Dict[str, Any], timeout: int) -> Reply:
     """The persona's next message, from the other vendor's CLI. `settings`
     is the suite's `user.persona[host]` entry (vendor, model, effort);
     `task_dir` holds the task view whose README the persona reads."""

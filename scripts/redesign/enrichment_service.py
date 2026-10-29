@@ -19,7 +19,6 @@ from typing import Optional, Sequence
 from urllib.parse import parse_qs, urlparse
 
 SEGMENTS = ("new", "steady", "lapsing", "champion")
-ROWS = 13000  # the churn fixture's train (10000) + hold-out (3000) ids, C000001…C013000; the driver passes the fixture's own count
 
 
 def row(customer_id: str) -> dict:
@@ -37,7 +36,7 @@ def table_csv(ids: Sequence[str]) -> str:
 
 class Handler(BaseHTTPRequestHandler):
     key = ""
-    rows = ROWS
+    rows = 0   # set by serve(): the fixture's own id range, never a copy of its count here
     log_path: Optional[Path] = None
 
     def _log(self, status: int, note: str) -> None:
@@ -76,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
-def serve(port: int, key: str, log_path: Optional[Path], rows: int = ROWS) -> HTTPServer:
+def serve(port: int, key: str, log_path: Optional[Path], rows: int) -> HTTPServer:
     Handler.key = key
     Handler.log_path = log_path
     Handler.rows = rows
@@ -88,7 +87,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--key", required=True, help="the value DATA_API_KEY must carry (a placeholder the round makes up)")
     parser.add_argument("--log", default=None, help="every request appended as one JSON line")
-    parser.add_argument("--rows", type=int, default=ROWS, help="the id range to serve (C000001…C0{rows}); the fixture's train + hold-out count")
+    parser.add_argument("--rows", type=int, required=True, help="the id range to serve (C000001…C0{rows}); the fixture's train + hold-out count, read from its MANIFEST by the driver")
     args = parser.parse_args(argv)
     server = serve(args.port, args.key, Path(args.log) if args.log else None, args.rows)
     print(f"enrichment service on 127.0.0.1:{args.port}", flush=True)

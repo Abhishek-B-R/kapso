@@ -66,7 +66,7 @@ from typing import Any, Dict, List, Optional, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
 import status_timeline  # noqa: E402
-from plugin_proof import SUITE, ClaudeHost, Context, UserMode, record_step, shell_step, status_of, wait_for  # noqa: E402
+from plugin_proof import CAMPAIGN_GRACE_SECONDS, SUITE, ClaudeHost, Context, UserMode, codex_session_note, record_step, shell_step, status_of, wait_for  # noqa: E402
 from status_timeline import heartbeat_seconds  # noqa: E402
 
 BUDGET = SUITE["builds"]["s5"]
@@ -100,23 +100,27 @@ if [ "$turn" = "1" ] && [ -f "$HERE/armed" ]; then
 fi
 exec "$REAL" "$@"
 '''
+# The diagnosis names the class and the fix: each class's words are what
+# only that failure is called, and its fix's words are disjoint from them,
+# so one word never satisfies both halves ("you can resume it" named the
+# killed writer's class and fix at once under a looser table).
 CLASS_WORDS = {
-    "provider-limit": re.compile(r"rate.?limit|429|limit", re.I),
-    "evaluator-crash": re.compile(r"evaluat|labels|holdout|hold-out", re.I),
-    "missing-key": re.compile(r"DATA_API_KEY|key|inbox", re.I),
-    "killed-session": re.compile(r"kill|died|terminat|ended|session", re.I),
-    "killed-writer": re.compile(r"dead|died|killed|not running|no longer running|resume", re.I),
-    "full-disk": re.compile(r"disk|space|ENOSPC", re.I),
-    "tampering": re.compile(r"integrity|modif|tamper|void|evaluator", re.I),
+    "provider-limit": re.compile(r"rate.?limit|\b429\b|too many requests|quota", re.I),
+    "evaluator-crash": re.compile(r"evaluat\w*\s+(crash|fail|error|broke|could not)|labels?\s+(file\s+)?(is\s+|was\s+|were\s+)?(missing|gone|not found|moved|absent)|holdout_labels|hold-?out labels|FileNotFound", re.I),
+    "missing-key": re.compile(r"DATA_API_KEY|missing (the )?(api )?key|api key|waiting (on|for) (the|a|your) (key|reply|answer)|inbox request|asked (you )?for the key", re.I),
+    "killed-session": re.compile(r"session\s+(was\s+)?(killed|died|terminated|ended|crashed)|(killed|died|terminated)\s+(mid|during)|SIGKILL|exit(ed)?\s+(code\s+)?(137|-9)|run entry (ended|ends) in error|session (ended|exited) (abnormally|in error)", re.I),
+    "killed-writer": re.compile(r"\bdead\b|writer\s+(is\s+|was\s+)?(gone|dead|killed|died)|pid \d+ is gone|no longer running|not running|process\s+(is\s+)?gone|heartbeat\s+(stopped|stale|is old)", re.I),
+    "full-disk": re.compile(r"no space left|ENOSPC|disk\s+(is\s+|was\s+)?full|out of (disk )?space|tmpfs|ran out of space", re.I),
+    "tampering": re.compile(r"integrity|tamper|modified evaluator|evaluat\w*\s+(was\s+)?(edited|changed|modified|altered)|hash\s+(mismatch|check)|\bvoided\b", re.I),
 }
 FIX_WORDS = {
-    "provider-limit": re.compile(r"resume|wait|retry|window", re.I),
-    "evaluator-crash": re.compile(r"restore|labels|resume|evaluator", re.I),
-    "missing-key": re.compile(r"reply|\.env|resume", re.I),
-    "killed-session": re.compile(r"continue|next attempt|went on|resume|nothing", re.I),
-    "killed-writer": re.compile(r"--resume|resume", re.I),
-    "full-disk": re.compile(r"free|space|resume", re.I),
-    "tampering": re.compile(r"void|integrity|evaluator|hash", re.I),
+    "provider-limit": re.compile(r"\bwait\b|retry|retried|rode it out|window|resume", re.I),
+    "evaluator-crash": re.compile(r"restore|put (it|them|the labels) back|move (it|them) back|then resume|resume", re.I),
+    "missing-key": re.compile(r"kapso inbox reply|\breply\b|\.env|provide the key|set (the )?key", re.I),
+    "killed-session": re.compile(r"went on|carried on|continued|next attempt|moved on|nothing to do|no action|on its own", re.I),
+    "killed-writer": re.compile(r"--resume|\bresume\b", re.I),
+    "full-disk": re.compile(r"free (up )?(the )?(disk|space)|clear (up )?space|delete|remove .*(file|filler)|resume", re.I),
+    "tampering": re.compile(r"not counted|discarded|restore the evaluator|leave the evaluator|do not (edit|modify)|unedited|revert|unchanged", re.I),
 }
 STEP_NAMES = ["provider-limit", "evaluator-crash", "missing-key", "killed-session", "killed-writer", "full-disk", "tampering", "bank-compare"]
 PAUSE_RULE = (
@@ -127,21 +131,47 @@ PAUSE_RULE = (
 
 # -------------------------------------------------------------- readings
 DEAD_SHOWN = ("DEAD", "STALLED", "FAILED", "DONE")
-LIVE_SHOWN = ("RUNNING", "STARTING", "DONE", "FAILED")
+
+
+def row_truthful(row: Dict[str, Any], cadence: float) -> Optional[bool]:
+    """Whether one sample's shown verdict matches what the sampler observed
+    beside it: DEAD when the pid is gone; STALLED when the pid lives and the
+    heartbeat is older than a cadence; DONE or FAILED when the stored state
+    is terminal; RUNNING, STARTING or WAITING when the pid lives and the
+    heartbeat is fresh. None when the sample lacks the observation."""
+    shown, alive, age = row.get("shown"), row.get("pid_alive"), row.get("heartbeat_age_s")
+    stored = (row.get("stored") or {}).get("state")
+    if shown is None or alive is None:
+        return None
+    if shown == "DEAD":
+        return not alive
+    if shown == "STALLED":
+        return bool(alive) and (age is None or age > cadence)
+    if shown in ("DONE", "FAILED"):
+        return stored in ("done", "failed")
+    if shown in ("RUNNING", "STARTING", "WAITING"):
+        return bool(alive) and (age is None or age <= 3 * cadence)
+    return None
 
 
 def truthful_within(timeline: Sequence[Dict[str, Any]], injected_at: datetime, cadence: float, expect_terminal: bool) -> Optional[bool]:
     """Whether `kapso watch` SHOWED the truth within one heartbeat of the
-    injection — the verdict the user reads, not a re-derivation from /proc.
-    A writer the injection kills: a sample inside the window shows DEAD (or
-    terminal). A writer that lives on: every sample inside the window shows
-    it running (or terminal). None when no sample falls inside the window."""
-    window = [row for row in timeline if 0 <= (datetime.fromisoformat(row["ts"]) - injected_at).total_seconds() <= cadence + 5]
-    if not window:
+    injection — the verdict the user reads, held against the liveness the
+    sampler observed beside it, sample by sample. The first heartbeat after
+    the injection may still be in flight, so the samples judged are those
+    between one and two cadences after it; each must be truthful
+    (`row_truthful`), and a writer the injection killed must have been
+    shown gone (DEAD, STALLED, FAILED or DONE) by then. None when no sample
+    falls in the judged window: unobserved, which the run's bars count."""
+    rows = [(row, (datetime.fromisoformat(row["ts"]) - injected_at).total_seconds()) for row in timeline if row.get("ts")]
+    judged = [row for row, seconds in rows if cadence < seconds <= 2 * cadence + 5]
+    if not judged:
         return None
-    if expect_terminal:
-        return any(row.get("shown") in DEAD_SHOWN for row in window)
-    return all(row.get("shown") in LIVE_SHOWN for row in window)
+    verdicts = [row_truthful(row, cadence) for row in judged]
+    if any(verdict is None for verdict in verdicts):
+        return None
+    shown_gone = any(row.get("shown") in DEAD_SHOWN for row, seconds in rows if 0 <= seconds <= 2 * cadence + 5)
+    return all(verdicts) and (shown_gone or not expect_terminal)
 
 
 def fixture_row_count(project: Path) -> int:
@@ -188,19 +218,40 @@ def seed_bank(fixture: Path, target: Path) -> Dict[str, Any]:
     return bank_state(target)
 
 
-def session_mentions(campaign: Path, attempt: Dict[str, Any], needle: str) -> bool:
+def session_mentions(campaign: Path, attempt: Dict[str, Any], needle: Any) -> bool:
     """Whether the attempt's own sessions (their stored stream and record
-    under the campaign's `.kapso/sessions/<label>/`) carry the needle —
-    where a crash of the evaluator the session ran surfaces when the
-    attempt's trace row carries only the score it did not get."""
+    under the campaign's `.kapso/sessions/<label>/`) carry the needle (a
+    string, or a compiled pattern) — where a crash of the evaluator the
+    session ran surfaces when the attempt's trace row carries only the
+    score it did not get."""
     for session in attempt.get("sessions", []):
         folder = campaign / ".kapso" / "sessions" / str(session.get("label", ""))
         if not folder.is_dir():
             continue
         for path in folder.rglob("*"):
-            if path.is_file() and path.suffix in (".jsonl", ".json", ".md", ".txt", ".log") and needle in path.read_text(encoding="utf-8", errors="replace"):
-                return True
+            if path.is_file() and path.suffix in (".jsonl", ".json", ".md", ".txt", ".log"):
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if (needle.search(text) if hasattr(needle, "search") else needle in text):
+                    return True
     return False
+
+
+# The evaluator's own failure on the labels: the file not found, in a
+# traceback or an error line — never the file's name in a prompt or a
+# command, which any session that read the brief carries.
+CRASH_ON_LABELS = re.compile(r"(FileNotFoundError|No such file|Traceback|Errno 2)[^\n]{0,200}holdout_labels\.csv|holdout_labels\.csv[^\n]{0,120}(not found|No such file|does not exist|is missing)")
+
+
+def evaluator_crashed(campaign: Path, attempt: Dict[str, Any]) -> bool:
+    """The attempt could not score because the evaluator crashed on the
+    labels: no score, and the evaluator's failure line in the attempt's
+    evaluation output or integrity error, or in its sessions' records."""
+    evaluation = attempt.get("evaluation") or {}
+    if evaluation.get("score") is not None:
+        return False
+    if CRASH_ON_LABELS.search(f"{evaluation.get('output') or ''}\n{evaluation.get('integrity_error') or ''}"):
+        return True
+    return session_mentions(campaign, attempt, CRASH_ON_LABELS)
 
 
 def bank_state(bank: Path) -> Dict[str, Any]:
@@ -255,7 +306,7 @@ class S5:
         campaign = campaign or self.work / f"s5-{name}"
         if campaign.exists():
             self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
-            shutil.rmtree(campaign, ignore_errors=True)
+            shutil.rmtree(campaign)
         budget = budget or BUDGET
         experience = f" --experience file://{self.bank}"
         where = f" --log {log}" if log else ""
@@ -275,7 +326,7 @@ class S5:
                                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return campaign
 
-    def finish(self, name: str, campaign: Path, grace: int = 900) -> Dict[str, Any]:
+    def finish(self, name: str, campaign: Path, grace: int = CAMPAIGN_GRACE_SECONDS) -> Dict[str, Any]:
         wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), BUDGET["minutes"] * 60 + grace, every=20)
         sampler = self.samplers.pop(name, None)
         if sampler:
@@ -380,8 +431,7 @@ class S5:
         # when the engine ran evaluate.py, in the attempt's own session when
         # the session did — so both are read. Paired with a null score it
         # stays specific to the crash (a healthy attempt carries a score).
-        crashed = [a for a in trace.get("attempts", []) if (a.get("evaluation", {}) or {}).get("score") is None
-                   and ("holdout_labels.csv" in json.dumps(a) or session_mentions(campaign, a, "holdout_labels.csv"))]
+        crashed = [attempt for attempt in trace.get("attempts", []) if evaluator_crashed(campaign, attempt)]
         turn_1 = self.ask(name, project, f"why did the later attempt of the kapso campaign at ../s5-{name} fail?")
         # A labels file back in the protected directory before the driver
         # restores it was written by the campaign — the thing the record
@@ -420,6 +470,7 @@ class S5:
                 out.write(f"DATA_API_KEY={ENRICHMENT_KEY}\n")
         self.ctx.user.interventions.append(f"{name}: the key written into the campaign's and the project's .env before the person says so")
         replied_at = datetime.now(timezone.utc)
+        nodes_before_reply = {attempt.get("node") for attempt in self.trace(campaign).get("attempts", [])}
         turn_2 = self.ask(name + "-2", project, f"DATA_API_KEY is in both .env files now; reply to the request of ../s5-{name} that it is in place and resume")
         resumed = wait_for(lambda: inbox.is_file() and '"continued"' in inbox.read_text(encoding="utf-8"), 900, every=15)
         status = self.finish(name, campaign, grace=BUDGET["minutes"] * 60)
@@ -431,8 +482,9 @@ class S5:
         # not merely one row.
         authorised_after = any(entry["authorized"] and entry.get("ts", "") >= replied_at.isoformat(timespec="seconds") and entry.get("path", "").startswith("/table") for entry in fetches)
         trace = self.trace(campaign)
-        # A scored attempt that completed after the resume, not any attempt.
-        scored_after_resume = any(a.get("evaluation", {}).get("score") is not None for a in trace.get("attempts", []))
+        # A scored attempt that landed after the reply (a node the record did
+        # not hold when the reply went), not any attempt.
+        scored_after_resume = any((a.get("evaluation") or {}).get("score") is not None and a.get("node") not in nodes_before_reply for a in trace.get("attempts", []))
         metrics = {"paused": paused, "request_names_no_value": request_names_no_value(inbox, ENRICHMENT_KEY), "authorised_table_fetch_after_reply": authorised_after,
                    "unauthorised_before": any(not entry["authorized"] for entry in fetches), "scored_after_resume": scored_after_resume, "resumed": resumed,
                    "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **names_class_and_fix(turn_1.text, name)}
@@ -480,8 +532,13 @@ class S5:
         return self.record_injection(name, [turn_1], metrics, artifacts, ["an implementation CLI killed mid-run: the run entry ends in error, the attempt fails, the campaign goes on by itself"],
                                      session_killed and bool(errored) and status.get("state") in ("done", "failed") and diagnosis["names_class"] and diagnosis["names_fix"], started)
 
-    def _resume_after_writer_gone(self, name: str, project: Path, campaign: Path, injected_at: datetime, second_prompt: str, note: str, started: float, extra: Dict[str, Any]) -> Dict[str, Any]:
-        attempts_before = len(self.trace(campaign).get("attempts", []))
+    def _resume_after_writer_gone(self, name: str, project: Path, campaign: Path, injected_at: datetime, second_prompt: str, note: str, started: float, extra: Dict[str, Any], injected: bool) -> Dict[str, Any]:
+        # The attempts in the record before the writer went, by identity
+        # (node and branch), so "kept" means the same attempts are there
+        # after the resume — a count could hide a replaced one. With no
+        # attempt landed before the kill (the injection is staged early)
+        # retention is not exercised, said rather than passed.
+        attempts_before = sorted((attempt.get("node"), attempt.get("branch")) for attempt in self.trace(campaign).get("attempts", []))
         # The writer gone, said truthfully: DEAD when it vanished without a
         # word, FAILED when it recorded its own end first (ENOSPC: the
         # engine wrote `failed` before it died, s5-claude-6) — a reader sees
@@ -497,7 +554,7 @@ class S5:
         # forty-minute campaign run out in full put both resume classes over
         # their forty-five minutes (s5-claude-6: 48.7 and 60.6). It is
         # stopped below either way.
-        remaining = SUITE["steps"][name]["minutes"] * 60 - (time.monotonic() - started) - 120   # two minutes for the trace and the stop
+        remaining = SUITE["steps"][name]["minutes"] * 60 - (time.monotonic() - started) - SUITE["waits"]["trace_and_stop_seconds"]
         wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), max(int(remaining), 60), every=20)
         sampler = self.samplers.pop(name, None)
         if sampler:
@@ -505,13 +562,15 @@ class S5:
             sampler.wait()
         status = status_of(campaign) or {}
         trace = self.trace(campaign)
+        attempts_after = sorted((attempt.get("node"), attempt.get("branch")) for attempt in trace.get("attempts", []))
+        attempts_kept = (set(attempts_before) <= set(attempts_after)) if attempts_before else None
         diagnosis = names_class_and_fix(turn_1.text, name)
         metrics = {**extra, "shown_dead": shown_dead, "shown_after": shown_after, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=True), **diagnosis, "resumed": resumed,
-                   "attempts_kept": len(trace.get("attempts", [])) >= attempts_before, "attempts_before": attempts_before, "attempts_after": len(trace.get("attempts", []))}
+                   "injected": injected, "attempts_kept": attempts_kept, "attempts_before": len(attempts_before), "attempts_after": len(attempts_after)}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
         return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, [note],
-                                     shown_dead and diagnosis["names_class"] and diagnosis["names_fix"] and resumed and metrics["attempts_kept"], started)
+                                     injected and shown_dead and diagnosis["names_class"] and diagnosis["names_fix"] and resumed and attempts_kept is not False, started)
 
     def step_killed_writer(self) -> Dict[str, Any]:
         started = time.monotonic()
@@ -532,7 +591,8 @@ class S5:
             os.kill(pid, signal.SIGKILL)
         injected_at = datetime.now(timezone.utc)
         return self._resume_after_writer_gone(name, project, campaign, injected_at, f"continue the campaign at ../s5-{name} from where it stopped",
-                                              "the writer killed with SIGKILL during the implementation phase; the heartbeat stops at once; a reader sees DEAD as soon as the writer is gone", started, {"writer_killed": writer_killed})
+                                              "the writer killed with SIGKILL during the implementation phase; the heartbeat stops at once; a reader sees DEAD as soon as the writer is gone", started, {"writer_killed": writer_killed},
+                                              injected=writer_killed)
 
     def step_full_disk(self) -> Dict[str, Any]:
         started = time.monotonic()
@@ -543,7 +603,7 @@ class S5:
         if mount.exists():
             self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
             subprocess.run(["sudo", "umount", "-l", str(mount)], capture_output=True)
-            shutil.rmtree(mount, ignore_errors=True)
+            shutil.rmtree(mount)
         mount.mkdir()
         mounted = subprocess.run(["sudo", "mount", "-t", "tmpfs", "-o", f"size={INJECTIONS['tmpfs_mb']}m,uid={os.getuid()},gid={os.getgid()}", "tmpfs", str(mount)], capture_output=True, text=True)
         if mounted.returncode != 0:
@@ -563,7 +623,8 @@ class S5:
         filler.unlink(missing_ok=True)
         step = self._resume_after_writer_gone(name, project, campaign, injected_at, f"the disk has space again; continue the campaign at ../s5-{name}-disk/campaign",
                                               f"a {INJECTIONS['tmpfs_mb']} MB tmpfs holding the campaign directory, filled while the writer is implementing; the writer dies with ENOSPC in the launch's log (kept outside the full disk; no try/except); the truth lives in the log and the receipt", started,
-                                              {"fill_said": fill.stderr.strip()[-200:], "enospc_in_log": bool(re.search(r"No space left on device|ENOSPC", log_text))})
+                                              {"fill_said": fill.stderr.strip()[-200:], "enospc_in_log": bool(re.search(r"No space left on device|ENOSPC", log_text))},
+                                              injected=bool(re.search(r"No space left on device|ENOSPC", log_text)))
         step["artifacts"].append(f"artifacts/{name}-launch.log")
         # Copy the whole campaign off the tmpfs and verify it BEFORE
         # unmounting, so the checkpoint, sessions and history survive for
@@ -625,14 +686,52 @@ class S5:
         return step
 
 
+def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
+    """An archived run read again under the current rules where the archive
+    allows: the diagnosis from the answers artifact (the vocabularies
+    changed), the crash evidence from the trace and the campaign's sessions
+    (the evaluator's own failure line, not a mention), the retention claim
+    from the recorded attempt counts (not exercised when none had landed),
+    the run metrics with the unobserved count. The truthfulness verdicts
+    and each step's completion stay as recorded: the injection's moment is
+    not in the archive, so the sample-by-sample rule cannot be re-applied,
+    and the record says so."""
+    for step in record["steps"]:
+        if step.get("kind") != "injection" or step.get("deferred"):
+            continue
+        name, metrics = step["name"], step.setdefault("metrics", {})
+        answers = out / "artifacts" / f"{name}-answers.txt"
+        if answers.is_file():
+            metrics.update(names_class_and_fix(answers.read_text(encoding="utf-8").split("\n\n---\n\n")[0], name))
+        if name == "evaluator-crash":
+            trace_file = out / "artifacts" / f"{name}-trace.json"
+            if trace_file.is_file():
+                trace = json.loads(trace_file.read_text(encoding="utf-8"))
+                metrics["attempts_with_the_crash"] = sum(1 for attempt in trace.get("attempts", []) if evaluator_crashed(out / "work" / f"s5-{name}", attempt))
+        if "attempts_kept" in metrics and not metrics.get("attempts_before"):
+            metrics["attempts_kept"] = None
+        step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("re-read")],
+                         "re-read 2026-10-29 from the archive: the diagnosis under the disjoint vocabularies, the crash evidence from the evaluator's own failure line, retention not exercised where no attempt had landed; the truthfulness verdict and the completion as recorded (the injection's moment is not in the archive)"]
+    record["metrics"] = run_metrics(record)
+    record["notes"] = [*[note for note in record.get("notes", []) if not note.startswith("re-derived")],
+                       "re-derived 2026-10-29 under the current rules where the archive allows (each injection's note says what)"]
+    return record
+
+
 def run_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
     injections = [step for step in record["steps"] if step.get("kind") == "injection" and not step.get("deferred")]
     truthful = [step["metrics"].get("truthful") for step in injections if step["metrics"].get("truthful") is not None]
     requests = [step["metrics"].get("request_names_no_value") for step in injections if step["metrics"].get("request_names_no_value") is not None]
     bank = next((step["metrics"].get("bank_intact") for step in record["steps"] if step["name"] == "bank-compare"), None)
     return {
+        # The driver sends at most two messages by construction, so the
+        # count is information, not a bar; a class not handled within them
+        # reads false on its own predicate.
         "user_messages_max": max((step["metrics"]["user_messages"] for step in injections), default=None),
         "truthful_within_heartbeat": (sum(1 for value in truthful if value) / len(truthful)) if truthful else None,
+        # An injection whose judged window held no sample is unobserved: it
+        # leaves the ratio and is counted here, where the bar wants zero.
+        "truthfulness_unobserved": sum(1 for step in injections if step["metrics"].get("truthful") is None),
         "requests_name_no_value": (sum(1 for value in requests if value) / len(requests)) if requests else None,
         "bank_intact": 1.0 if bank else (0.0 if bank is False else None),
     }
@@ -640,8 +739,9 @@ def run_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--clone", required=True)
+    parser.add_argument("--clone", default=None)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--rederive", action="store_true", help="read an archived run again under the current rules where the archive allows (on the development box); runs nothing")
     parser.add_argument("--bank", default=None, help="a bank with at least one card, loaded into every campaign and compared before and after each injection")
     parser.add_argument("--cadence", type=float, default=None, help="the sampler's cadence; default: the engine config's budget.checkpoint_heartbeat_seconds")
     parser.add_argument("--machine", default=os.uname().nodename)
@@ -649,6 +749,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--steps", default=None)
     parser.add_argument("--from", dest="start", default=None)
     args = parser.parse_args(argv)
+    if args.rederive:
+        out = Path(args.out).resolve()
+        record = rederive(json.loads((out / "record.json").read_text(encoding="utf-8")), out)
+        (out / "record.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        print(json.dumps(record["metrics"]))
+        return 0
+    if not args.clone:
+        parser.error("--clone is the checkout the injections run from (omitted only with --rederive)")
     driver = S5(args)
     record_file = driver.out / "record.json"
     started = datetime.now(timezone.utc)
@@ -657,7 +765,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": "-"},
         "pins": {"suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "cadence_seconds": driver.cadence, "bank": str(driver.bank) if driver.bank else None},
         "user": {"kind": "scripted", "card": None, "interventions": [], "events": [], "pushback": None},
-        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [RECONSTRUCTED_LIMIT["note"]], "transcripts": [],
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [RECONSTRUCTED_LIMIT["note"], *[note for note in [codex_session_note()] if note]], "transcripts": [],
     }
     steps = {"provider-limit": driver.step_provider_limit, "evaluator-crash": driver.step_evaluator_crash, "missing-key": driver.step_missing_key,
              "killed-session": driver.step_killed_session, "killed-writer": driver.step_killed_writer, "full-disk": driver.step_full_disk,

@@ -467,7 +467,7 @@ class Context:
             session = turn.session
             history.append({"role": "user", "text": prompt})
             history.append({"role": "assistant", "text": turn.text, "asked": turn.asked})
-            reply = simulated_user.next_message(card, cwd, intent, history, turn.text, self.host.name, self.user.settings)
+            reply = simulated_user.next_message(card, cwd, intent, history, turn.text, self.host.name, self.user.settings, TURN_TIMEOUT)
             with open(transcript, "a", encoding="utf-8") as out:
                 out.write(json.dumps({"persona_reply": reply.text, "persona_session": reply.session, "done": reply.done}) + "\n")
             if reply.done:

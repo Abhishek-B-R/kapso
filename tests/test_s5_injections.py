@@ -120,12 +120,23 @@ def _row(seconds_after, shown, base):
 
 def test_truthful_within_one_heartbeat_is_read_from_what_watch_showed():
     base = datetime(2026, 10, 27, 10, 0, tzinfo=timezone.utc)
-    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(30, "DEAD", base)], base, 60.0, expect_terminal=True) is True, "watch showed DEAD within a heartbeat"
-    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(30, "RUNNING", base), _row(200, "DEAD", base)], base, 60.0, expect_terminal=True) is False, "still shown RUNNING a heartbeat later"
-    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(30, "RUNNING", base), _row(90, "RUNNING", base)], base, 60.0, expect_terminal=False) is True, "a living writer shown running"
-    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(30, "STALLED", base)], base, 60.0, expect_terminal=False) is False, "shown STALLED is not a happy run"
-    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(40, "DONE", base)], base, 60.0, expect_terminal=False) is True
-    assert s5.truthful_within([_row(-60, "RUNNING", base), _row(200, "FAILED", base)], base, 60.0, expect_terminal=False) is None, "no sample inside the window"
+
+    def row(seconds, shown, alive, age=1.0, state="running"):
+        return {"ts": datetime.fromtimestamp(base.timestamp() + seconds, timezone.utc).isoformat(), "shown": shown, "pid_alive": alive, "heartbeat_age_s": age, "stored": {"state": state}}
+
+    cadence = 60.0
+    # The first heartbeat after the injection may be in flight; the samples
+    # between one and two cadences are judged, each against the liveness
+    # the sampler observed beside it; a killed writer must be shown gone.
+    assert s5.truthful_within([row(-60, "RUNNING", True), row(30, "RUNNING", False), row(90, "DEAD", False)], base, cadence, expect_terminal=True) is True
+    assert s5.truthful_within([row(-60, "RUNNING", True), row(90, "RUNNING", False), row(200, "DEAD", False)], base, cadence, expect_terminal=True) is False, "shown RUNNING with the pid gone"
+    assert s5.truthful_within([row(-60, "RUNNING", True), row(90, "RUNNING", True)], base, cadence, expect_terminal=False) is True, "a living writer shown running"
+    assert s5.truthful_within([row(-60, "RUNNING", True), row(90, "WAITING", True)], base, cadence, expect_terminal=False) is True, "a writer paused on the inbox is shown WAITING, truthfully"
+    assert s5.truthful_within([row(-60, "RUNNING", True), row(90, "STALLED", True, age=200.0)], base, cadence, expect_terminal=False) is True, "STALLED with a late heartbeat is the truth"
+    assert s5.truthful_within([row(-60, "RUNNING", True), row(90, "STALLED", True, age=5.0)], base, cadence, expect_terminal=False) is False, "STALLED with a fresh heartbeat is not"
+    assert s5.truthful_within([row(-60, "RUNNING", True), row(100, "DONE", False, state="done")], base, cadence, expect_terminal=False) is True
+    assert s5.truthful_within([row(-60, "RUNNING", True), row(200, "FAILED", False, state="failed")], base, cadence, expect_terminal=False) is None, "no sample in the judged window: unobserved"
+    assert s5.row_truthful({"shown": "DEAD", "ts": "x"}, cadence) is None, "a sample without the observation decides nothing"
 
 
 def test_bank_state_reads_a_bare_repo_and_fails_unreadable(tmp_path):
@@ -196,5 +207,42 @@ def test_the_run_metrics_aggregate_the_injections():
         {"name": "killed-session", "kind": "injection", "metrics": {"user_messages": 1, "truthful": False}},
         {"name": "bank-compare", "kind": "shell", "metrics": {"bank_intact": True}},
     ]}
-    assert s5.run_metrics(record) == {"user_messages_max": 2, "truthful_within_heartbeat": 2 / 3, "requests_name_no_value": 1.0, "bank_intact": 1.0}
+    assert s5.run_metrics(record) == {"user_messages_max": 2, "truthful_within_heartbeat": 2 / 3, "truthfulness_unobserved": 0, "requests_name_no_value": 1.0, "bank_intact": 1.0}
+    # An injection with no sample in its judged window leaves the ratio and is counted, where the bar wants zero.
+    record["steps"].append({"name": "full-disk", "kind": "injection", "metrics": {"user_messages": 2, "truthful": None}})
+    metrics = s5.run_metrics(record)
+    assert metrics["truthful_within_heartbeat"] == 2 / 3 and metrics["truthfulness_unobserved"] == 1
+    assert "user_messages_max" not in s5.SUITE["tests"]["S5"]["bars"] and s5.SUITE["tests"]["S5"]["bars"]["truthfulness_unobserved"] == {"max": 0}
     assert s5.STEP_NAMES == s5.SUITE["tests"]["S5"]["required_steps"]["claude_code"]
+
+
+def test_the_diagnosis_vocabularies_are_disjoint_and_name_the_class(tmp_path):
+    # One word must never satisfy both halves of the bar: "you can resume
+    # it" named the killed writer's class and fix at once under a looser
+    # table; "the evaluator is fine" satisfied both halves of the crash.
+    assert s5.names_class_and_fix("you can resume it", "killed-writer") == {"names_class": False, "names_fix": True}
+    assert s5.names_class_and_fix("the writer is dead (pid 19524 is gone); run kapso build --output ../s5-killed-writer --resume", "killed-writer") == {"names_class": True, "names_fix": True}
+    assert s5.names_class_and_fix("the evaluator is fine", "evaluator-crash") == {"names_class": False, "names_fix": False}
+    assert s5.names_class_and_fix("the evaluator crashed: holdout_labels.csv was missing; restore it, then resume", "evaluator-crash") == {"names_class": True, "names_fix": True}
+    for name, class_regex in s5.CLASS_WORDS.items():
+        assert not class_regex.search("resume"), name
+    # The crash is the evaluator's own failure line, never the file named in a prompt.
+    assert not s5.evaluator_crashed(tmp_path, {"evaluation": {"score": None, "output": "I read the brief: the labels live in private/holdout_labels.csv."}})
+    assert s5.evaluator_crashed(tmp_path, {"evaluation": {"score": None, "output": "Traceback (most recent call last):\n  FileNotFoundError: [Errno 2] No such file or directory: 'private/holdout_labels.csv'"}})
+    assert not s5.evaluator_crashed(tmp_path, {"evaluation": {"score": 0.84, "output": "FileNotFoundError: holdout_labels.csv"}}), "a scored attempt did not crash"
+
+
+def test_an_archived_run_is_re_read_where_the_archive_allows(tmp_path):
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "artifacts" / "killed-writer-answers.txt").write_text("The writer is dead: pid 1 is gone; resume it with --resume.\n\n---\n\nResumed.", encoding="utf-8")
+    record = {"steps": [
+        {"name": "killed-writer", "kind": "injection", "completed": True, "notes": [], "metrics": {"user_messages": 2, "truthful": True, "names_class": True, "names_fix": True, "attempts_kept": True, "attempts_before": 0}},
+        {"name": "full-disk", "kind": "injection", "completed": True, "notes": [], "metrics": {"user_messages": 2, "truthful": None, "attempts_kept": True, "attempts_before": 1}},
+        {"name": "bank-compare", "kind": "shell", "metrics": {"bank_intact": True}},
+    ], "metrics": {}, "notes": []}
+    out = s5.rederive(record, tmp_path)
+    kept = {step["name"]: step["metrics"] for step in out["steps"]}
+    assert kept["killed-writer"]["attempts_kept"] is None, "no attempt had landed: retention not exercised"
+    assert kept["full-disk"]["attempts_kept"] is True and kept["full-disk"]["truthful"] is None, "the truthfulness verdict stays as recorded"
+    assert kept["killed-writer"]["names_class"] and kept["killed-writer"]["names_fix"]
+    assert out["metrics"]["truthfulness_unobserved"] == 1 and out["steps"][0]["notes"][-1].startswith("re-read 2026-10-29")

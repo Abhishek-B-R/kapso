@@ -51,11 +51,12 @@ def load_suite() -> dict:
     return json.loads(SUITE_PATH.read_text(encoding="utf-8"))
 
 
-def eligible_dimensions(suite: dict, label: str, dimensions: Sequence[str]) -> List[str]:
+def eligible_dimensions(suite: dict, spec: dict, label: str, dimensions: Sequence[str]) -> List[str]:
     """The dimensions an item can give evidence for: a step whose suite
     entry lists `judged` is scored on those alone (a two-line state report
     has nothing to be proactive about, and the worst item must not bind on
-    what a step was budgeted not to do); any other item, every dimension."""
+    what a step was budgeted not to do); any other item, every dimension.
+    `spec` is the test's judge entry, kept beside the suite for the call."""
     judged = suite.get("steps", {}).get(label, {}).get("judged")
     return [dimension for dimension in dimensions if judged is None or dimension in judged]
 
@@ -274,14 +275,24 @@ def gather_materials(record_dir: Path, record: dict, inputs: Optional[Sequence[s
     and its follow-ups, `<step>*.jsonl`), so the judge sees the whole
     exchange. A conversation step with no transcript raises (Rule 2: a
     broken record is not a smaller judged surface)."""
-    materials: Dict[str, Dict[str, str]] = {}
+    materials: Dict[str, Dict[str, Any]] = {}
     if inputs:
+        rendered = {}
         for name in inputs:
             path = record_dir / name
             if not path.is_file():
                 raise JudgeFailure(f"the input {name} does not exist under the record")
             numbered = "\n".join(f"L{n}: {line}" for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1))
-            materials[Path(name).stem] = {"file": name, "text": f"(file {name})\n{numbered}"}
+            rendered[name] = f"(file {name})\n{numbered}"
+        spec = (suite or load_suite())["tests"][record["test"]]["judge"]
+        if spec.get("combined_inputs"):
+            # One item holding every input (S1: the answers with the key and
+            # the flows), each file citable: a rubric that rules on both at
+            # once must see both at once, or it scores what it cannot see 0.
+            materials["inputs"] = {"file": inputs[0], "files": list(inputs), "text": "\n\n".join(rendered[name] for name in inputs)}
+            return materials
+        for name in inputs:
+            materials[Path(name).stem] = {"file": name, "files": [name], "text": rendered[name]}
         return materials
     for step in record["steps"]:
         if step.get("deferred") or step.get("kind", "conversation") != "conversation":
@@ -340,21 +351,21 @@ def judge_record(record_dir: Path, rubric: str, inputs: Optional[Sequence[str]],
         for label, material in materials.items():
             block["raw_paths"].append(f"{JUDGE_DIR}/raw-{label}-pass{number}.txt")
             persist()
-            items[label] = judge_material(material["text"], rubric_text, dimensions, scale, settings, record_dir, archive, f"{label}-pass{number}", [material["file"]])
+            items[label] = judge_material(material["text"], rubric_text, dimensions, scale, settings, record_dir, archive, f"{label}-pass{number}", material.get("files", [material["file"]]))
         block["passes"].append({"items": items})
         persist()
     # Each straddling (dimension, item) gets an adjudicating pass; the
     # minimum over items then binds per dimension (report.py resolves it).
     for dimension in dimensions:
         for label, material in materials.items():
-            if dimension not in eligible_dimensions(suite, label, dimensions):
-                continue   # a dimension this step is not judged on binds nothing: no adjudication for it
+            if dimension not in eligible_dimensions(suite, spec, label, dimensions):
+                continue   # a dimension this item is not judged on binds nothing: no adjudication for it
             scores = [block["passes"][number]["items"][label][dimension]["score"] for number in range(len(block["passes"]))]
             if min(scores) < bar <= max(scores):
                 raw_label = f"{label}-adjudication-{dimension}"
                 block["raw_paths"].append(f"{JUDGE_DIR}/raw-{raw_label}.txt")
                 persist()
-                third = judge_material(material["text"], rubric_text, dimensions, scale, settings, record_dir, archive, raw_label, [material["file"]])
+                third = judge_material(material["text"], rubric_text, dimensions, scale, settings, record_dir, archive, raw_label, material.get("files", [material["file"]]))
                 block["adjudication"][f"{dimension}|{label}"] = {"score": third[dimension]["score"], "evidence": third[dimension]["evidence"]}
     block["failure"] = None
     persist()
