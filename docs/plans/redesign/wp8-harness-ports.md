@@ -885,9 +885,25 @@ that is still evidence.
     1189 (ALE Agent's), four experiments, $11.98 of hosted cost; the
     first attempt had died on the run folder under a session's ignore
     rule.
-  - `arm-relbench` (`s3-relbench-3`): running, its earlier attempts having
-    died on the stream split and then on the run folder on a wheel that
-    predated its fix; recorded as it lands, before the merge.
+  - `arm-relbench` (`s3-relbench-3`, rel-trial/study-outcome, three hours on
+    one A100 with the four lanes, cold, 22:19Z): the bar is not met. The
+    campaign ran one iteration: the setup session, the lens planner and the
+    ideation ensemble took the first fifty minutes, the four lanes'
+    implementation sessions on the one GPU ran until the last quarter
+    hour, the verification of the first lane voided it, and the budget left
+    no time for the other three lanes' verification or judge (the
+    finishing cut), so no candidate was delivered; the runner's selection
+    among the registered finals (one run) scored a test AUROC of 0.558
+    against the band's 0.741, at $25.16 of hosted cost. Two readings: the
+    amended shape (three hours, one GPU, four lanes) does not finish one
+    iteration of this task, which the recorded twelve-hour lanes on four
+    GPUs did many times over; and the engine does not reserve finishing
+    time per in-flight lane under a short budget (a follow-up outside this
+    package). A second attempt at six hours on the same shape
+    (`s3-relbench-4`) was launched to read the harness past the first
+    iteration; its result replaces this one in the record if it lands
+    before the merge, and this attempt stays in the notes. The two earlier
+    attempts died on the stream split and on the run folder.
   - `swap-ioai`: dropped from the release's required steps by the owner
     (2026-10-29: no Kaggle account will be set up; the open practice
     competitions need their rules accepted in a browser); the step
