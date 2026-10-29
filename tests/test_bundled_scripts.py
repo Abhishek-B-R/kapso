@@ -35,7 +35,9 @@ VIOLATIONS = [
     ("removed-columns", "cols = db.table_dict['users'].removed_cols"),
     ("cache-location", "os.environ['RELBENCH_CACHE_DIR'] = '/tmp/mine'"),
     ("cache-location", "os.environ.setdefault('RELBENCH_CACHE_DIR', '/tmp/mine')"),
-    ("outside-snapshot", "root = os.environ['RELBENCH_ROLLING_ROOT']"),
+    ("outside-snapshot", "other = pd.read_parquet('../test_001_2010-01-01/rel-x/db/users.parquet')"),
+    ("test-label-read", "y_test = test_df['label']"),
+    ("fit-on-train-and-test", "encoder.fit_transform(pd.concat([train_df, test_df]))"),
     ("task-stats", "print(task.stats())"),
     ("download", "dataset = get_dataset(name, download=True)"),
     ("direct-fetch", "url = 'https://relbench.stanford.edu/data/rel-x.zip'"),
@@ -62,10 +64,11 @@ def test_every_matching_rule_is_reported_on_one_line():
     assert code == 1 and [(f["rule"], f["advisory"]) for f in findings] == [("unmasked-table", True), ("cache-location", False)]
 
 
-def test_the_loaders_default_is_the_violation_under_per_row_seed_time():
+def test_the_loaders_default_is_the_violation_under_per_row_seed_time_and_the_post_cutoff_row():
     default = diff_of("db = dataset.get_db()")
     assert run_scan("seed-time", diff=default)[0] == 1 and run_scan("seed-time", diff=default)[1][0]["rule"] == "default-load"
-    assert run_scan("frozen", diff=default) == (0, []) and run_scan("autocomplete", diff=default) == (0, [])
+    assert run_scan("frozen", diff=default) == (0, [])
+    assert run_scan("autocomplete", diff=default)[1][0]["rule"] == "truncated-load"
 
 
 def test_advisory_findings_alone_pass_with_the_verify_prefix():
@@ -89,7 +92,14 @@ def test_the_regime_decides_which_truncation_argument_is_the_violation():
     untruncated = diff_of("db = dataset.get_db(upto_test_timestamp=False)")
     assert run_scan("seed-time", diff=truncated)[0] == 1 and run_scan("frozen", diff=truncated)[0] == 0
     assert run_scan("frozen", diff=untruncated)[0] == 1 and run_scan("seed-time", diff=untruncated)[0] == 0
-    assert run_scan("autocomplete", diff=untruncated) == (0, []) and run_scan("autocomplete", diff=truncated) == (0, [])
+    # The post-cutoff-row regime keeps its later rows: the untruncated load is the required one.
+    assert run_scan("autocomplete", diff=untruncated) == (0, [])
+    assert run_scan("autocomplete", diff=truncated)[1][0]["rule"] == "truncated-load"
+
+
+def test_a_validation_fit_in_the_common_spelling_is_advisory():
+    code, findings = run_scan("frozen", diff=diff_of("model.fit(X_val, y_val)", "stacker.fit(valid_preds, valid_y)"))
+    assert code == 0 and [f["rule"] for f in findings] == ["fit-on-validation", "fit-on-validation"]
 
 
 def test_line_numbers_follow_the_hunk_through_context_lines():
@@ -158,6 +168,20 @@ def test_the_sanitizer_refuses_what_it_must_before_writing_anything(tmp_path, mo
         with pytest.raises(SystemExit) as caught:
             module.main()
         assert message in str(caught.value)
+
+
+def test_the_rolling_build_refuses_a_recommendation_task_and_a_single_timestamp_task(tmp_path):
+    """Both refusals come before any snapshot is written: a recommendation task
+    has no entity column for the per-tick tables, and a task with one
+    evaluation timestamp per split is the flat regime."""
+    module = sanitizer()
+    recommendation = module.RecommendationTask.__new__(module.RecommendationTask)
+    with pytest.raises(SystemExit, match="recommendation task"):
+        module.build_rolling(None, recommendation, "rel-x", "t", tmp_path)
+    single = module.AutoCompleteTask.__new__(module.AutoCompleteTask)
+    with pytest.raises(SystemExit, match="one evaluation timestamp"):
+        module.build_rolling(None, single, "rel-x", "t", tmp_path)
+    assert not any(tmp_path.iterdir())
 
 
 def test_the_sanitizer_coerces_a_text_boolean_target_and_refuses_other_strings():

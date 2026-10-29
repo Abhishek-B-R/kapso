@@ -848,7 +848,7 @@ concepts, 8 code examples, the tip sheet) was read and placed:
   and segmentation; the tip sheet's early stopping, the modality with the
   most value, a model per modality, and the meta-model rule; the
   pretrained-weights-or-fail rule; augmentation after the split.
-- **Kept, names only** in `references/hub-inventory.md`: the 28 hub
+- **Kept, names only** in `references/hub-inventory.md`: the 24 hub
   inventories by task type (speech, time series, graphs, question
   answering, translation, summarisation, generation, ranking, similarity,
   pose, depth and the rest), with the caveat that an inventory ages and
@@ -902,6 +902,76 @@ a missing root or a file that is not text (Codex 5, 6); `protect-prepared`
 is off setup (Codex 18); the zero-inflated median is the mixture's median
 (Codex 16); the grader reads `task.json` beside itself and emits the
 oriented score with the raw metric (Codex 13 of the plan review).
+
+**Closed in the second commit (predictive-modelling 0.3.0): the pages and
+the skills.** Every finding of both reviews by id (C = Codex, L = Claude),
+with where it went:
+
+| Id | Finding | Disposition |
+|---|---|---|
+| C1 | P1: `--source` does not bind the task-table cache | first commit: `open_from` replaces both registry cache directories; the three split files are required before anything is written |
+| C2 | P1: an autocomplete task's removed columns stay in the stored tables | first commit: dropped from the stored tables and reported |
+| C3 | P1: writable hardlinks into the pristine cache | first commit: real copies |
+| C4 | P1: `relbench-api` assumes cache wiring the harness never supplies | the skill rewritten: bind explicitly, through the registries' `cache_dir` in code or the variable exported to the copy in the shell; the task statement names the copy and the evaluation binds the program's run |
+| C5 | P1: the scanner's classification (the default load, a multiline call, first match wins) | first commit: every matching rule per line, `default-load` under per-row seed time; a call split over lines is named as the scan's limit, which is why verification also reads the code |
+| C6 | P1: tree mode scans the staged tooling, passes a missing root, replaces bad bytes | first commit: the staged directories excluded, a missing root refused, a file that is not text refused; this commit adds virtual environments, installed packages and `.kapso` to the exclusions (L26) |
+| C7 | P1: an explanatory sentence as the validity boundary; diff-only verification | the verification page rewritten: the whole candidate in tree mode, the auditor establishes the data flow over the diff and the inherited code, a safety sentence is evidence to assess, an unresolved check is named and never passed |
+| C8 | P1: the full validation-chain safeguard lost | guardrails: the whole chain (features, selectors, calibrators, thresholds, early stopping, stackers, weights) never saw validation labels; `cv-protocol`: the official number is not a tuning target, a replayed row whose window closes after a fold's origin stays out of that fold; the auditor checks the chain |
+| C9 | P1: label determinism legal from timestamps alone | practice 11: point-in-time availability, permitted-column provenance and target lineage before any such feature is kept; a published bar is a reason to audit, not evidence; the sibling method is a hypothesis |
+| C10 | P2: the evaluator's invocation contract inside `temporal-protocol` | the regime fixes only what a snapshot holds and which training rows it offers; the invocation shape, the snapshot's further contents, where predictions go and the seed instant's inclusion are read from the task statement |
+| C11 | P2: autocomplete missing from the protocol; the API skill contradicts the scan | the third regime (a post-cutoff row with a blanked target) in `temporal-protocol`; `relbench-api` gives the loader argument per regime and the scan's rule under each |
+| C12 | P2: flat tables and users' own databases routed unconditionally | every page routes by situation ("when the data is a relational database with a temporal cutoff", "when that reference is a relbench dataset"); the sanitized copy is a contract with the script as its relbench implementation (L30); the scan's shape-neutral rules serve a flat task with the auditor as its gate (L17); a proposal names the practice it rests on, from any skill |
+| C13 | P2: a budget fraction, dated bins, empirical cutoffs, campaign memories, "hours" | the stage follows from whether a full-data run fits the per-run time; recency binned on the task's time scale; "below 0.95" is "weakly, by the campaign's own spread"; the panel sized to its measured agreement; fine-tuning eligible when the forward folds can resolve its gain; the anecdotes and the simulation share removed; "when a fine-tune costs hours of the budget" |
+| C14 | P2: the preferences spread and duplicated | one owner per policy: the gate, the folds and the slice reading in `cv-protocol`, the blend in `ensembling`, the evidence in `relational-feature-practices` citing both; the pages keep one-line consequences naming the skill; feedback weighs a wider matrix against the complexity it costs |
+| C15 | P2: rank averaging prescribed where it changes the prediction's meaning; OOF for every blend | `ensembling`: the blend fits the metric (a mean on the metric's scale, a rank average for ranking metrics, a fitted meta-model measured against the plain combination); out-of-fold predictions required for a fitted blend only |
+| C16 | P2: the MAE hurdle recipe | first commit: the mixture's median |
+| C17 | P2: a drift diagnostic as an automatic scoring override | `cv-protocol`: examine completeness and shift, choose the windows that represent the test population, report both readings and say why when they disagree, rescore comparable candidates when the task's evaluator changes |
+| C18 | P2: setup mounts the hook that refuses its own output | first commit: `protect-prepared` off setup |
+| C19 | P2: the web rule and the model-fetch workflow disagree | setup downloads the pinned weights under `prepared/models/` and records each local path; implementation loads from it; the native web tools are denied by the new `deny-web` hook (L27); both hooks' reasons name the domain's rule |
+| C20 | P2: hub access treated as permission to train on companion data | `hf-model-fetch`: the three permissions are separate questions; companion data screened for overlap, near-duplicates, the temporal cutoff and the licence; the size by measured memory; revisions pinned |
+| C21 | P2: softened absolutes that remain absolutes | `task-type-playbooks`: TF-IDF earns a seat to measure, all layers by default, progressive resizing as the design to measure against several sizes, epochs decided by early stopping, dimensionality a measurement; `tabular-modeling`: the GPU histogram when the card is free; the pretrained-weight rule applies to the chosen backbone |
+| C22 | P2: the reference code keeps task assumptions and contradicts its skill | the eight examples rewritten: the task's parameters named at the top (paths, class count, metric, the pinned model path, the split's caveat), early stopping on the validation loss in the transformer and tree examples, truncation delimited as the example's scope with the chunking rule cited, the vectoriser fitted on training rows only |
+| C23 | P2: EDA suppresses warnings and overgeneralises the sample | `eda-discipline`: the noise off and the warnings on; the blocks grow when evidence warrants; the sample inside the split, group and time boundaries, stratified or range-spanning; install quietly |
+| C24 | P2: living-document persistence assumed | `living-documents`: the directory the task statement names (`$KAPSO_SHARED_CACHE_DIR` in a Kapso campaign), created only when absent, every entry headed by its task and version, one append per entry |
+| C25 | P2: useful retiring prose omitted | feedback: a provided baseline is reproduced under the current data before it is trusted; verification: the published bar converted to the metric's units; `cv-protocol` and the auditor: folds grouped by the repeated unit; ideation: re-tuning is an idea when the parent's measurement says tuning is where the gain is; practice 8: the rows covered are logged |
+| C26 | P2: "every graph node placed" unsupported by the inventory | the pose weights beside the keypoint models, the speech recogniser and the 3D route placed; the test stubs, the fork-only section and the single-language forks dropped; the retrieval model labelled as retrieval; the plan's count corrected to 24 inventories |
+| C27 | P2: the sanitizer advertises refusals and reporting it lacks | first commit: the marker, the sanitized-source refusal, every table reported, the prerequisite stated; this commit: one report shape and the rolling refusals (L23, L24, L25) |
+| C28 | P3: the AST's input confused | the audio section: each checkpoint's processor turns the waveform into what the model consumes; the sampling rate and preprocessing from the checkpoint |
+| L1 | P1: the shared artifact directory named six times, defined nowhere | `living-documents` names it (`$KAPSO_SHARED_CACHE_DIR` in a Kapso campaign, the directory the task statement names for shared artifacts); the guardrails read it from the task statement; the runner's brief names it (change 11) |
+| L2 | P1: validation is one finite sample and not a tuning target | the first section of `cv-protocol` and the first guardrail |
+| L3 | P2: a runner-private variable and directory in the scan's rules | the rule is written against the sanitizer's own naming: a sibling `(val|test)_NNN_` snapshot path or a `..` out of the snapshot |
+| L4 | P2: an evaluator's assembly file in the sanitizer | kept, named for what it is: the rows' positions in the task's official test table, for whatever evaluation assembles per-tick predictions |
+| L5 | P2: `relbench-api` asserts an environment fact, and the scan punishes the fix | in code the registries' `cache_dir` binds the copy with no variable at all; the variable is exported in the shell, which the scan does not read; an assignment of it in code stays the violation |
+| L6 | P2: split leakage other than temporal | `cv-protocol` folds by the repeated unit; the auditor's list; setup profiles the unit and the domain statement records it |
+| L7 | P2: the calibration gap to the public measurement | `cv-protocol`, feedback and implementation's reading |
+| L8 | P3: early stopping on the loss; the pose names; the published bar's units | the playbook's standing rule; the inventory; verification step 3 and the domain statement's units |
+| L9 | P2: implementation routes every task through the library | conditional on the data reference being a relbench dataset |
+| L10 | P2: verification's checklist in one benchmark's vocabulary | step 1 conditional on a relational benchmark database; step 2, the auditor, is the gate for any other shape |
+| L11 | P3: ideation restates the lean | one line naming the axis and citing the skill for the evidence |
+| L12 | P3: the stage rule referenced, never stated | ideation: the stage follows from whether a full-data run fits the per-run time the task gives; setup records it |
+| L13 | P3: recency bins assume a multi-year database | terciles of the recency distribution on the task's time scale |
+| L14 | P2: trees on the CPU as an absolute | `tabular-modeling`: the networks get a contended card; otherwise measure the GPU histogram |
+| L15 | P3: gradual unfreezing recommended over full fine-tuning | all layers by default; unfreezing worth measuring on a small set; full freezing not |
+| L16 | P3: test fixtures and forks in the inventory | dropped |
+| L17 | P2: the scan is a silent pass on a flat task | the shape-neutral rules (a test label read, a fit on train and test together, a validation fit as an advisory); the rest is the auditor's, and the skill says so |
+| L18 | P2: autocomplete as a regime the protocol does not define | the third regime, named the same on the CLI and in the domain statement |
+| L19 | P3: the validation-fit spelling; tree mode's description | the pattern widened to the common spellings; the skill names the exclusions |
+| L20 | P3: the gate, the OOF rule and the blend rule in three places | one owner each; the practices skill cites them |
+| L21 | P3: installation output forbidden, installation never prescribed | "install what is missing at the top of the program, quietly" |
+| L22 | P2: the weights can never be loaded | setup downloads them under `prepared/models/`; implementation loads from the pinned path |
+| L23 | P3: a `getattr` fallback that cannot fire | `task.num_eval_timestamps` |
+| L24 | P3: three report shapes under one key | one shape: `tables` of `{rows, pristine_rows}`, `removed_columns`, `blanked`, `test_table`, `snapshots` |
+| L25 | P3: a rolling recommendation task crashes | refused with the reason, before anything is written |
+| L26 | P3: tree mode reads a vendored library | `.kapso`, the virtual environments, `site-packages` and `node_modules` excluded |
+| L27 | P2: the stated web rule is not the enforced one | `hooks/deny-web` (PreToolUse on `WebSearch|WebFetch`) on implementation and verification |
+| L28 | P3: the refusal names a convention this harness lacks | it names the shared artifact directory |
+| L29 | P3: the delegate cites a page it is not staged with | "Check this list" |
+| L30 | P2: a user's own database cannot use the script | the copy's contract in library-free terms; the script as its implementation for a relbench dataset; setup verifies or builds by the contract |
+| L31 | P2: the Kaggle gap (L17, L9, L6, L7) | closed by those |
+| L32 | P3: `kapso deploy` has nothing to run | the description says the domain stops at the candidate; deployment is the engine's bundled targets |
+| L33 | P3: two provenance phrases a user cannot resolve | "from a hand-written knowledge graph of past competitions" |
+
+**Change 8's inventory (IOAI into competitive-programming), for the record:**
 
 | Source | Destination |
 |---|---|

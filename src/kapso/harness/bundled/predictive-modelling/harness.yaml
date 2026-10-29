@@ -1,7 +1,7 @@
 schema_version: 1
 name: predictive-modelling
-version: 0.2.0
-description: Structured prediction with a test set that never trains, cross-validation discipline, leakage as the failure that voids, features before architectures, ensembling last.
+version: 0.3.0
+description: Structured prediction with a test set that never trains, cross-validation discipline, leakage as the failure that voids, features before architectures, ensembling last; the domain stops at the candidate (deployment is the engine's bundled targets).
 
 environment:
   python: requirements.txt
@@ -15,11 +15,11 @@ modules:
   implementation:
     skills: [relational-feature-practices, temporal-protocol, relbench-api, living-documents, leakage-scan, cv-protocol, task-type-playbooks, tabular-modeling, ensembling, eda-discipline]
     agents: [leakage-auditor]
-    hooks: [protect-prepared, deny-web-fetch]
+    hooks: [protect-prepared, deny-web-fetch, deny-web]
   verification:
     skills: [leakage-scan, temporal-protocol]
     agents: [leakage-auditor]
-    hooks: [protect-prepared, deny-web-fetch]
+    hooks: [protect-prepared, deny-web-fetch, deny-web]
   feedback:
     skills: [cv-protocol, ensembling]
     hooks: [protect-prepared]

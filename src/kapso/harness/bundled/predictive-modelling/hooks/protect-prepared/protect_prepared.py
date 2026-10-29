@@ -32,9 +32,9 @@ print(json.dumps({
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
         "permissionDecisionReason": (
-            f"{', '.join(touched)} is under prepared/, which is read-only: the pinned snapshot is what "
-            "makes attempts comparable. Write derived data under your own directory, "
-            "for example features/."
+            f"{', '.join(touched)} is under prepared/, which is read-only: the pinned copy is what "
+            "makes attempts comparable. Write derived data in the shared artifact directory the "
+            "task statement names, or under your own directory in the workspace."
         ),
     }
 }))

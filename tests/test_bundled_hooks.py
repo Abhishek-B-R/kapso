@@ -57,6 +57,14 @@ def test_deny_web_fetch_lets_other_commands_through():
         assert run_hook(PREDICTIVE, "deny-web-fetch", "deny_web_fetch.py", {"tool_name": "Bash", "tool_input": {"command": command}}) == {}
 
 
+@pytest.mark.parametrize("tool", ["WebSearch", "WebFetch"])
+def test_deny_web_denies_the_native_web_tools_with_this_domains_reason(tool):
+    decision = run_hook(PREDICTIVE, "deny-web", "deny_web.py", {"tool_name": tool, "tool_input": {"query": "x"}})
+    output = decision["hookSpecificOutput"]
+    assert output["permissionDecision"] == "deny"
+    assert output["permissionDecisionReason"].startswith(f"{tool} is off in implementation and verification")
+
+
 def test_the_manifest_puts_each_hook_where_its_rule_applies():
     """The prepared copy is read-only in every build module after setup (the
     setup session is the one that writes it); the web is off where a
@@ -68,3 +76,4 @@ def test_the_manifest_puts_each_hook_where_its_rule_applies():
     for module in ("ideation", "implementation", "verification", "feedback"):
         assert "protect-prepared" in hooks[module], module
     assert {module for module, listed in hooks.items() if "deny-web-fetch" in listed} == {"implementation", "verification"}
+    assert {module for module, listed in hooks.items() if "deny-web" in listed} == {"implementation", "verification"}

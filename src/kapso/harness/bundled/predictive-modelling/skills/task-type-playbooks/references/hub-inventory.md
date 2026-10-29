@@ -1,21 +1,18 @@
 # Hub inventories by task type
 
-Starting points from the graph the benchmark shipped, names only: a hub inventory ages,
-so verify each on the hub in setup (the hf-model-fetch skill) and size the choice to the
-task's compute. A name here is a place to start, not a recommendation measured on your task.
+Starting points from a hand-written knowledge graph of past competitions, names only: a
+hub inventory ages, so verify each on the hub in setup (the hf-model-fetch skill) and size
+the choice to the task's compute. A name here is a place to start, not a recommendation
+measured on your task; test stubs and single-language forks were left out.
 
 
 ## Text-to-Speech
 
 `facebook/mms-tts-eng`, `facebook/mms-tts-swh`, `facebook/mms-tts-vie`
 
-## Text-to-Audio
-
-`chuubjak/vits-tts-thai`, `sil-ai/senga-nt-asr-inferred-force-aligned-speecht5-MAT`, `sil-ai/wsg-chapter-audio-dataset-force-aligned-speecht5`, `sil-ai/senga-nt-asr-inferred-force-aligned-speecht5-MAT-ACT`, `Shabdobhedi/speecht5_finetuned_Bengali_Shabdobhedii`, `Marvis-AI/marvis-tts-100m-v0.2-MLX-6bit`, `Omarrran/turkish_finetuned_speecht5_tts`
-
 ## Automatic Speech Recognition
 
-`MahmoudAshraf/mms-300m-1130-forced-aligner`, `facebook/wav2vec2-base-960h`, `openai/whisper-small`
+`openai/whisper-large-v3-turbo`, `openai/whisper-small`, `facebook/wav2vec2-base-960h`, `MahmoudAshraf/mms-300m-1130-forced-aligner`
 
 ## Audio-to-Audio
 
@@ -39,7 +36,7 @@ task's compute. A name here is a place to start, not a recommendation measured o
 
 ## Document Question Answering
 
-`impira/layoutlm-document-qa`, `magorshunov/layoutlm-invoices`, `impira/layoutlm-invoices`, `2KKLabs/Kaleidoscope_large_v1`, `VesleAnne/VesleAnne`, `2KKLabs/Kaleidoscope_small_v1`, `TusharGoel/LayoutLMv2-finetuned-docvqa`, `aslessor/layoutlm-invoices`, `Quantumhash/Quantum_Doc_QA`, `TusharGoel/LiLT-Document-QA`
+`impira/layoutlm-document-qa`, `magorshunov/layoutlm-invoices`, `impira/layoutlm-invoices`, `2KKLabs/Kaleidoscope_large_v1`, `2KKLabs/Kaleidoscope_small_v1`, `TusharGoel/LayoutLMv2-finetuned-docvqa`, `aslessor/layoutlm-invoices`, `TusharGoel/LiLT-Document-QA`
 
 ## Depth Estimation
 
@@ -47,23 +44,23 @@ task's compute. A name here is a place to start, not a recommendation measured o
 
 ## Object Detection
 
-`microsoft/table-transformer-structure-recognition`, `microsoft/table-transformer-detection`, `facebook/detr-resnet-50`, `hustvl/yolos-small`, `microsoft/table-transformer-structure-recognition-v1.1-all`, `PekingU/rtdetr_r101vd_coco_o365`, `hustvl/yolos-tiny`, `PekingU/rtdetr_r50vd_coco_o365`, `TahaDouaji/detr-doc-table-detection`, `ustc-community/dfine-small-obj365`
+The YOLO detection weights from ultralytics (`yolo11s`, `yolo11m`, `yolo11l`), and on the hub: `microsoft/table-transformer-structure-recognition`, `microsoft/table-transformer-detection`, `facebook/detr-resnet-50`, `hustvl/yolos-small`, `microsoft/table-transformer-structure-recognition-v1.1-all`, `PekingU/rtdetr_r101vd_coco_o365`, `hustvl/yolos-tiny`, `PekingU/rtdetr_r50vd_coco_o365`, `TahaDouaji/detr-doc-table-detection`, `ustc-community/dfine-small-obj365`
 
 ## Image Segmentation
 
-`CIDAS/clipseg-rd64-refined`, `ZhengPeng7/BiRefNet`, `jonathandinu/face-parsing`, `nvidia/segformer-b0-finetuned-ade-512-512`, `facebook/mask2former-swin-large-cityscapes-semantic`, `briaai/RMBG-1.4`, `briaai/RMBG-2.0`, `ZhengPeng7/BiRefNet_HR`, `mattmdjaga/segformer_b2_clothes`, `facebook/mask2former-swin-tiny-coco-instance`
+The YOLO segmentation weights from ultralytics (`yolo11s-seg`, `yolo11m-seg`, `yolo11l-seg`), and on the hub: `CIDAS/clipseg-rd64-refined`, `ZhengPeng7/BiRefNet`, `jonathandinu/face-parsing`, `nvidia/segformer-b0-finetuned-ade-512-512`, `facebook/mask2former-swin-large-cityscapes-semantic`, `briaai/RMBG-1.4`, `briaai/RMBG-2.0`, `ZhengPeng7/BiRefNet_HR`, `mattmdjaga/segformer_b2_clothes`, `facebook/mask2former-swin-tiny-coco-instance`
 
 ## Image-to-Text
 
-`Salesforce/blip-image-captioning-large`, `microsoft/trocr-base-printed`, `U4R/StructTable-base`, `trl-internal-testing/tiny-Qwen2_5_VLForConditionalGeneration`, `vikp/texify`, `microsoft/trocr-base-handwritten`, `trl-internal-testing/tiny-LlavaForConditionalGeneration`, `Riksarkivet/trocr-base-handwritten-hist-swe-2`, `microsoft/trocr-small-printed`
+`Salesforce/blip-image-captioning-large`, `microsoft/trocr-base-printed`, `U4R/StructTable-base`, `vikp/texify`, `microsoft/trocr-base-handwritten`, `Riksarkivet/trocr-base-handwritten-hist-swe-2`, `microsoft/trocr-small-printed`
 
 ## Image-to-Image
 
 `caidas/swin2SR-classical-sr-x2-64`
 
-## Text-to-Video
+## Text-Video Retrieval
 
-`Searchium-ai/clip4clip-webvid150k`
+`Searchium-ai/clip4clip-webvid150k` (retrieval of videos by text, not generation)
 
 ## Mask Generation
 
@@ -73,9 +70,9 @@ task's compute. A name here is a place to start, not a recommendation measured o
 
 `zxhezexin/openlrm-mix-base-1.1`, `depth-anything/DA3-BASE`
 
-## Keypoint Detection
+## Keypoint Detection and Pose
 
-`usyd-community/vitpose-plus-base`, `usyd-community/vitpose-base-simple`, `magic-leap-community/superpoint`, `usyd-community/vitpose-plus-large`, `ETH-CVG/lightglue_superpoint`, `usyd-community/vitpose-plus-small`, `ETH-CVG/lightglue_disk`, `stanfordmimi/synthpose-vitpose-base-hf`, `usyd-community/vitpose-base`
+The YOLO pose weights from ultralytics (`yolo11s-pose`, `yolo11m-pose`, `yolo11l-pose`), and on the hub: `usyd-community/vitpose-plus-base`, `usyd-community/vitpose-base-simple`, `magic-leap-community/superpoint`, `usyd-community/vitpose-plus-large`, `ETH-CVG/lightglue_superpoint`, `usyd-community/vitpose-plus-small`, `ETH-CVG/lightglue_disk`, `stanfordmimi/synthpose-vitpose-base-hf`, `usyd-community/vitpose-base`
 
 ## Question Answering
 
@@ -91,7 +88,7 @@ task's compute. A name here is a place to start, not a recommendation measured o
 
 ## Text Generation
 
-`openai-community/gpt2`, `Gensyn/Qwen2.5-0.5B-Instruct`, `trl-internal-testing/tiny-Qwen2ForCausalLM-2.5`, `distilbert/distilgpt2`, `Qwen/Qwen2.5-Coder-0.5B-Instruct`, `Qwen/Qwen2.5-0.5B-Instruct`
+`openai-community/gpt2`, `Gensyn/Qwen2.5-0.5B-Instruct`, `distilbert/distilgpt2`, `Qwen/Qwen2.5-Coder-0.5B-Instruct`, `Qwen/Qwen2.5-0.5B-Instruct`
 
 ## Fill-Mask
 

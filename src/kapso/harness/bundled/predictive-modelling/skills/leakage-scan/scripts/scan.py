@@ -1,11 +1,12 @@
-"""Static leakage scan for a time-cut prediction task.
+"""Static leakage scan for a prediction task.
 
 Two modes over one rule table. `--diff` reads a unified diff on stdin and
 scans the added lines (an attempt's own change, before its evaluation);
 `--tree DIR` scans every Python file the candidate owns under a directory
 (a delivered candidate, whole, for the final audit), leaving out what the
 engine staged beside it (the hosts' skill and settings directories, the
-evaluation directory, the data directory, version control). Every rule
+evaluation directory, the data directory, version control) and what a
+candidate installed (virtual environments, site packages). Every rule
 that matches a line is reported, one JSON finding per match on stdout:
 the file, the line, the rule, the concern and the line itself. A
 violation exits 1; an advisory finding alone exits 0 and is prefixed
@@ -14,6 +15,9 @@ model) and illegal for the other (the model that produces validation
 predictions), so it is traced, not condemned. The scan reads one line at
 a time: a call split over several lines is a line of its own, which is
 why verification also reads the code (the leakage-auditor delegate).
+
+The shape-neutral rules apply to every task; the library rules are the
+relational benchmark library's own traps and say nothing on a flat table.
 
     git diff main...HEAD | python3 scan.py --diff --regime frozen|seed-time|autocomplete
     python3 scan.py --tree . --regime frozen
@@ -25,28 +29,41 @@ import sys
 from pathlib import Path
 
 REGIMES = ("frozen", "seed-time", "autocomplete")
-STAGED_DIRECTORIES = {".agents", ".claude", ".codex", ".git", "kapso_evaluation", "kapso_datasets", "prepared", "__pycache__"}
+STAGED_DIRECTORIES = {
+    ".agents", ".claude", ".codex", ".git", ".kapso", "kapso_evaluation", "kapso_datasets", "prepared",
+    "__pycache__", ".venv", "venv", "site-packages", "node_modules",
+}
 
 # (rule, pattern, concern, advisory)
 RULES = [
+    # Shape-neutral: any prediction task.
+    ("test-label-read",
+     r"test[^\n]{0,40}\[\s*[\"'](label|labels|target|targets|y)[\"']\s*\]|sample_submission[^\n]{0,60}\[\s*[\"'](label|labels|target|targets|y)[\"']\s*\]",
+     "reads a label column from the test data or a sample submission", False),
+    ("fit-on-train-and-test",
+     r"\.fit(_transform)?\(\s*(pd\.)?concat\([^\n]*test|\.fit(_transform)?\([^\n]*(train[^\n]{0,30}test|test[^\n]{0,30}train)",
+     "fits a transform on training and test rows together", False),
+    ("train-val-mixing",
+     r"(concatenate|concat|hstack|vstack|np\.r_)[^\n]{0,80}(train[^\n]{0,30}val|val[^\n]{0,30}train)|train_?val_?(idx|index|indices|rows)",
+     "train+val mixing: confirm the validation-prediction chain is pre-refit (the two-model contract)", True),
+    ("fit-on-validation",
+     r"\.fit\([^\n]{0,60}(val_|_val\b|valid_|_valid\b)(y|label|labels|target|targets)?",
+     "a fit that names validation data: confirm it is the test-predicting chain", True),
+    # The relational benchmark library's traps.
     ("unmasked-test-table", r"mask_input_cols\s*=\s*False[^\n]*test|test[^\n]*mask_input_cols\s*=\s*False",
      "reads the test table with its input masks off (test labels)", False),
     ("unmasked-table", r"mask_input_cols\s*=\s*False",
      "reads a task table with its input masks off: legal on train and val, confirm which split", True),
     ("removed-columns", r"removed_cols", "reads the columns the sanitizer removed (the target and what derives it)", False),
     ("cache-location", r"RELBENCH_CACHE_DIR[\"']?\s*[\]\)]?\s*=[^=]|environ\.setdefault\(\s*[\"']RELBENCH_CACHE_DIR",
-     "overrides the library's cache location: the prepared copy is the only cache", False),
-    ("outside-snapshot", r"RELBENCH_ROLLING_ROOT|rolling_caches", "reaches outside the staged tick snapshot", False),
+     "overrides the library's cache location: the sanitized copy is the only cache", False),
+    ("outside-snapshot", r"(^|[/\"'\s])\.\.[/\\](?:\.\.[/\\])*(?:[A-Za-z0-9_-]*[/\\])*(val|test)_\d{3}_|[/\\](val|test)_\d{3}_[0-9-]+[/\\]",
+     "reaches into another tick's snapshot: each invocation sees its own", False),
     ("task-stats", r"task\.stats\s*\(", "probes the task tables' statistics on a sanitized copy", False),
-    ("download", r"download\s*=\s*True", "downloads the dataset: the prepared copy is complete and read-only", False),
+    ("download", r"download\s*=\s*True", "downloads the dataset: the sanitized copy is complete and read-only", False),
     ("direct-fetch", r"relbench\.stanford\.edu|\bpooch\b", "fetches the benchmark's files directly", False),
     ("private-builder", r"_get_table\s*\(", "calls a private table builder", False),
     ("pristine-cache", r"\.cache[/\\]relbench", "touches the pristine library cache path", False),
-    ("train-val-mixing",
-     r"(concatenate|concat|hstack|vstack|np\.r_)[^\n]{0,80}(train[^\n]{0,30}val|val[^\n]{0,30}train)|train_?val_?(idx|index|indices|rows)",
-     "train+val mixing: confirm the validation-prediction chain is pre-refit (the two-model contract)", True),
-    ("fit-on-validation", r"\.fit\([^\n]{0,60}val_(y|label|labels|target|targets)",
-     "a fit that names validation labels: confirm it is the test-predicting chain", True),
 ]
 REGIME_RULES = {
     "frozen": [("untruncated-load", r"upto_test_timestamp\s*=\s*False",
@@ -55,7 +72,8 @@ REGIME_RULES = {
                    "truncates the per-tick snapshot at the static cutoff: the trap the temporal protocol names", False),
                   ("default-load", r"get_db\s*\(\s*\)",
                    "loads the database with the loader's default, which truncates at the static cutoff under per-row seed time", False)],
-    "autocomplete": [],
+    "autocomplete": [("truncated-load", r"upto_test_timestamp\s*=\s*True|get_db\s*\(\s*\)",
+                      "truncates the database whose post-cutoff rows are the rows to predict", False)],
 }
 FILE_HEADER = re.compile(r"^\+\+\+ (?:b/)?(.+)$")
 HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
@@ -85,8 +103,8 @@ def added_lines(diff):
 
 def candidate_files(root: Path):
     """Every Python file the candidate owns under `root`: the engine's staged
-    directories and version control are left out. A root that does not
-    exist is an error, not an empty scan."""
+    directories, version control and installed packages are left out. A root
+    that does not exist is an error, not an empty scan."""
     if not root.is_dir():
         raise SystemExit(f"no directory to scan at {root}")
     for path in sorted(root.rglob("*.py")):

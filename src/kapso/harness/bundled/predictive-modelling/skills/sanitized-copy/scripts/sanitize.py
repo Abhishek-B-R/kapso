@@ -24,7 +24,8 @@ With --rolling, one snapshot per evaluation tick (the per-row seed-time
 regime): tables truncated at the tick; a training table of every window
 closed by the tick, relabelled from the snapshot itself; a test table of
 that tick's rows; an empty, schema-correct validation table; the rows'
-positions in the official split for the grader's assembly.
+positions in the task's official test table, for whatever evaluation
+assembles per-tick predictions.
 
     python3 sanitize.py --dataset <name> --task <name> --source <library cache> --out prepared/cache [--rolling]
 
@@ -127,7 +128,7 @@ def build_flat(dataset, task, task_kwargs, dataset_name, task_name, source: Path
     out_task = out / dataset_name / "tasks" / task_name
     out_task.mkdir(parents=True)
     copy_database(src_dataset_dir / "db", out_db)
-    report = {"tables": {}, "removed_columns": [], "blanked": None}
+    report = {"tables": {}, "removed_columns": [], "blanked": None, "test_table": None, "snapshots": None}
     if isinstance(task, AutoCompleteTask):
         entity_table, target_col = task_kwargs["entity_table"], task_kwargs["target_col"]
         removed = [(table, column) for table, column in task_kwargs.get("remove_columns", [])]
@@ -149,7 +150,8 @@ def build_flat(dataset, task, task_kwargs, dataset_name, task_name, source: Path
                     report["removed_columns"].append(f"{table_name}.{column}")
             save_table(table_file, table)
         for table_file in sorted(out_db.glob("*.parquet")):
-            report["tables"][table_file.stem] = len(pd.read_parquet(table_file, columns=[]))
+            pristine_rows = len(pd.read_parquet(src_dataset_dir / "db" / table_file.name, columns=[]))
+            report["tables"][table_file.stem] = {"pristine_rows": pristine_rows, "rows": len(pd.read_parquet(table_file, columns=[]))}
     else:
         db = dataset.get_db(upto_test_timestamp=True)
         for table_name, table in db.table_dict.items():
@@ -174,7 +176,9 @@ def build_flat(dataset, task, task_kwargs, dataset_name, task_name, source: Path
 
 
 def build_rolling(dataset, task, dataset_name, task_name, out: Path):
-    if getattr(task, "num_eval_timestamps", 1) <= 1:
+    if isinstance(task, RecommendationTask):
+        raise SystemExit(f"{dataset_name}/{task_name} is a recommendation task: the rolling build handles entity tasks only")
+    if task.num_eval_timestamps <= 1:
         raise SystemExit(f"{dataset_name}/{task_name} has one evaluation timestamp per split: not a rolling task")
     delta = task.timedelta
     time_col, entity_col = task.time_col, task.entity_col
@@ -208,8 +212,9 @@ def build_rolling(dataset, task, dataset_name, task_name, out: Path):
                   pkey_col=None, time_col=time_col).save(str(task_dir / "val.parquet"))
             np.save(task_dir / "indices.npy", rows.index.to_numpy())
             count += 1
-    return {"snapshots": count, "val_ticks": int(splits["val"].df[time_col].nunique()),
-            "test_ticks": int(splits["test"].df[time_col].nunique())}
+    return {"tables": {}, "removed_columns": [], "blanked": None, "test_table": None,
+            "snapshots": {"count": count, "val_ticks": int(splits["val"].df[time_col].nunique()),
+                          "test_ticks": int(splits["test"].df[time_col].nunique())}}
 
 
 def main():

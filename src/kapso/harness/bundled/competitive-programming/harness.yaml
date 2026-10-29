@@ -1,6 +1,6 @@
 schema_version: 1
 name: competitive-programming
-version: 0.2.0
+version: 0.2.1
 description: Timed contests scored by an official scorer or leaderboard, heuristic optimisation and machine-learning olympiad tasks alike, with a submission quota, ship-early-then-improve, and a report with every submission.
 
 environment:
