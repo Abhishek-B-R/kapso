@@ -32,6 +32,8 @@ def test_the_rubrics_carry_the_designs_dimensions_by_name():
         for dimension in SUITE["tests"][test]["judge"]["dimensions"]:
             assert f"**{dimension}**" in text, (rubric, dimension)
     assert "findings the user did not know, with evidence" in (judge.RUBRICS / "s2.md").read_text()
+    # The not-annoying clause reads the step's own line budget, which the judge's material states (gather_materials).
+    assert "no message longer than the step's own line budget" in (judge.RUBRICS / "s2.md").read_text()
     assert "a loader that ingests" in (judge.RUBRICS / "s1.md").read_text()
 
 

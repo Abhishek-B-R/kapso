@@ -68,8 +68,9 @@ required steps per host, its run-level bars and its judge; per step its
 kind and its budgets (the limits from `docs/plans/kapso-plugin-skills.md`,
 at the rubric's caps); the knobs every driver reads (the persona's vendor
 and model per host, the turn cap, the judge's route and passes, the
-builds' budgets, the injections' sizes, the machines' lifetimes, the
-fixture manifests' hashes). A timeline's sampling cadence is the engine
+builds' budgets, the injections' sizes, the waits, the trigger bar and
+its Codex sandbox; the machine cap is derived from the step budgets). A
+timeline's sampling cadence is the engine
 config's `budget.checkpoint_heartbeat_seconds`, read through
 `load_config`, never copied.
 

@@ -117,11 +117,5 @@
   "hosts": {"claude_code": {"model": "claude-opus-5-5"}, "codex": {"model": "gpt-6-astra"}},
   "turn_timeout": 1800,
   "triggers": {"bar": 0.9, "codex_sandbox": "read-only"},
-  "fixtures": {
-    "churn-first-build": "b4685e5dcdd6a5a778ed1828121d0f72e6e6c52cc07f5cff29a864318f7ecd5e",
-    "fraud-no-evaluator": "9279bea5b768519ba51e89c7eab504973ba7942273e8ed8b4d2ed406bb731409",
-    "trading": "e5a7bd756ed3a82a1a3ca536fa1f8a338d829e1dc8112c3b660af2ab99d72745",
-    "pipeline-dbt": "60040372f7caf292206375711784277ef875a12cd26a1404f0fe63bcfe7dfe68"
-  },
   "released": {"version": "0.7.10"}
 }

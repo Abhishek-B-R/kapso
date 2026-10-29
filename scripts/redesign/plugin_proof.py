@@ -902,8 +902,12 @@ def step_triggers(ctx: Context) -> Dict[str, Any]:
     # the machine needs another (GCP's image cannot start bwrap); the step
     # notes it, so a verdict on an unsandboxed session is read as such.
     sandbox = f" --sandbox {ctx.triggers_sandbox}" if ctx.host.name == "codex" and ctx.triggers_sandbox else ""
-    main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main{sandbox}", cwd=ctx.clone, timeout=10800, check=False)
-    holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1{sandbox}", cwd=ctx.clone, timeout=3600, check=False)
+    # The two suites share the step's own budget: the main cases take most
+    # of it, the ten held-out cases a quarter (a run past it reads as the
+    # step's failure on minutes, never an unbounded subprocess).
+    budget = step_seconds("triggers")
+    main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main{sandbox}", cwd=ctx.clone, timeout=budget, check=False)
+    holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1{sandbox}", cwd=ctx.clone, timeout=budget // 4, check=False)
     artifacts = []
     for label, run in (("main", main), ("holdout", holdout)):
         out_dir = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""
