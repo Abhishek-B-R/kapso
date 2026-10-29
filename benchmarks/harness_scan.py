@@ -2,9 +2,9 @@
 # competition or problem, and pins no quota, deadline, score or hardware
 # number on its pages and skills — the domain stays the domain's and a task's
 # facts stay in the task statement. Benchmark tooling, not a core module: the
-# vocabulary is the benchmarks' own data, dependency-free (RelBench's names
-# from task_specs.py, ALE's problem roster from problems.py, MLE's competition
-# ids and IOAI's competition slugs as committed data files), plus the names
+# vocabulary is the benchmarks' own data, dependency-free (RelBench's databases
+# and task names, MLE's competition ids and IOAI's competition slugs as
+# committed data files, ALE's reported problems from problems.py), plus the names
 # of the benchmarks and libraries themselves with a decision per word: a
 # platform's name is domain vocabulary everywhere, a data library's name is
 # permitted on a skill (its API is what the skill teaches) and a constant on
@@ -22,10 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterator, List, Tuple
 
-from benchmarks.ale.problems import LITE_PROBLEMS
-from benchmarks.relbench.task_specs import DATASET_NOTES, NATIVE_DATASETS, PRIMARY_METRIC_OVERRIDES, SIZE_TIER
+from benchmarks.ale.problems import REPORTED_PROBLEMS
 
 BENCHMARKS_ROOT = Path(__file__).resolve().parent
+RELBENCH_NAMES = BENCHMARKS_ROOT / "relbench" / "data" / "datasets.json"
 MLE_COMPETITIONS = BENCHMARKS_ROOT / "mle" / "data" / "competitions.json"
 IOAI_COMPETITIONS = BENCHMARKS_ROOT / "ioai2026" / "data" / "competitions.json"
 
@@ -63,7 +63,9 @@ SPREAD_UNITS = ("se", "sd", "sigma", "std", "standard")   # "2 SE" is a threshol
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 _NUMBER = re.compile(r"^\d+(\.\d+)?%?$")
 _TOKEN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.%-]*")
-SCANNED = ("instructions/*.md", "agents/*.md", "skills/*/SKILL.md")
+# The manifest (its description is prose `kapso harness list` prints) and a
+# skill's references are read as well; scripts and the environment file are not.
+SCANNED = ("harness.yaml", "instructions/*.md", "agents/*.md", "skills/*/SKILL.md", "skills/*/references/*.md")
 
 
 @dataclass(frozen=True)
@@ -91,19 +93,15 @@ def vocabulary() -> Dict[str, str]:
     competition and problem names (never), the named benchmarks and
     libraries (their decision)."""
     words: Dict[str, str] = {}
-    relbench_names = set(NATIVE_DATASETS) | set(SIZE_TIER) | set(DATASET_NOTES)
-    for task in PRIMARY_METRIC_OVERRIDES:
-        dataset, _, name = task.partition("/")
-        relbench_names |= {dataset, name, task}
-    for name in sorted(relbench_names) + list(LITE_PROBLEMS) + _names_in(MLE_COMPETITIONS) + _names_in(IOAI_COMPETITIONS):
+    for name in _names_in(RELBENCH_NAMES) + list(REPORTED_PROBLEMS) + _names_in(MLE_COMPETITIONS) + _names_in(IOAI_COMPETITIONS):
         words[name.lower()] = NEVER
     words.update(NAMED_WORDS)
     return words
 
 
 def scanned_files(root: Path) -> List[Path]:
-    """The pages and the skills' bodies: not scripts, not references, not
-    the manifest, not the environment file."""
+    """The manifest, the pages, the skills' bodies and their references:
+    not scripts, not the environment file."""
     return sorted(path for pattern in SCANNED for path in root.glob(pattern))
 
 
@@ -170,15 +168,18 @@ def scan(root: Path, words: Dict[str, str]) -> List[Finding]:
     }
     findings: List[Finding] = []
     for path in scanned_files(root):
-        on_page = path.parent.name != path.parent.parent.name and path.name != "SKILL.md"
+        on_page = "skills" not in path.relative_to(root).parts
         for number, raw in prose_lines(path.read_text(encoding="utf-8")):
+            # The number rule reads the raw line (a file named after a score
+            # word must not blind it); the vocabulary reads the line with the
+            # harness's own names blanked.
+            findings += _number_findings(path, number, raw)
             line = _blank_own_names(raw, names)
             for word, decision in words.items():
                 if decision == SKILL_ONLY and not on_page:
                     continue
                 if patterns[word].search(line):
                     findings.append(Finding(path, number, word, decision))
-            findings += _number_findings(path, number, line)
     return findings
 
 

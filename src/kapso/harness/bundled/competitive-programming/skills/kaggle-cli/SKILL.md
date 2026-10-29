@@ -20,7 +20,7 @@ develop locally, submit the file, record it, poll the score. The rest is
 the code-competition path.
 
 ```
-the pages           kaggle competitions pages <C> --page-name <name> --content
+the pages           kaggle competitions pages -c <C> --page-name <name> --content
 the standings       kaggle competitions leaderboard <C> --show
 list, download      kaggle competitions files <C>; kaggle competitions download <C> -p data/   (then unzip)
 push the kernel     kaggle kernels push -p kernel/                 (prints the version number: record it)

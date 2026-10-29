@@ -64,10 +64,11 @@ def main() -> None:
         return
     recorded = [entry for entry in submissions
                 if isinstance(entry, dict) and entry.get("competition") == contest["competition"]
-                and isinstance(entry.get("submission_id"), str) and entry["submission_id"]]
+                and isinstance(entry.get("submission_id"), str) and entry["submission_id"]
+                and entry.get("status") != "rejected"]
     if not recorded:
-        block(f"No submission yet: {ledger_path} records none for {contest['competition']} with a submission id. Ship "
-              "the insurance submission and record it before finishing.")
+        block(f"No submission yet: {ledger_path} records none for {contest['competition']} with a submission id "
+              "that was not rejected. Ship the insurance submission and record it before finishing.")
         return
     sys.exit(0)
 

@@ -1,9 +1,11 @@
 """The abstraction scan's committed vocabularies still match their
-registries: MLE's competition ids (the mlebench registry), ALE's lite
-roster (the ale_bench library), RelBench's datasets (the relbench registry)
-and IOAI's competition slugs (the Kaggle registry, with the account's
-credentials). Each skips when its registry is absent — the gate test over
-the harnesses never does (docs/plans/redesign/wp8-harness-ports.md change 16)."""
+registries: MLE's competition ids (the mlebench registry), ALE's reported
+problems (the ale_bench library), RelBench's databases and task names (the
+relbench registry, and the runner's own maps) and IOAI's competition slugs
+(the Kaggle registry, with the account's credentials). Each skips when its
+registry is absent — the gate test over the harnesses never does, since the
+scan imports no benchmark library (docs/plans/redesign/wp8-harness-ports.md
+change 16)."""
 
 import json
 import subprocess
@@ -11,9 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.ale.problems import LITE_PROBLEMS
-from benchmarks.harness_scan import IOAI_COMPETITIONS, MLE_COMPETITIONS
-from benchmarks.relbench.task_specs import NATIVE_DATASETS, SIZE_TIER
+from benchmarks.ale.problems import REPORTED_PROBLEMS
+from benchmarks.harness_scan import IOAI_COMPETITIONS, MLE_COMPETITIONS, RELBENCH_NAMES
 
 KAGGLE_CREDENTIALS = Path.home() / ".kaggle" / "kaggle.json"
 
@@ -25,15 +26,20 @@ def test_mle_competition_ids_match_the_registry():
     assert data["lite"] == sorted(mlebench.registry.get_lite_competition_ids())
 
 
-def test_ale_lite_problems_are_the_librarys():
+def test_ale_reported_problems_are_the_librarys():
     ale_bench = pytest.importorskip("ale_bench")
-    assert set(LITE_PROBLEMS) <= set(ale_bench.list_problem_ids())
+    assert set(REPORTED_PROBLEMS) <= set(ale_bench.list_problem_ids())
 
 
-def test_relbench_datasets_match_the_registry():
+def test_relbench_names_match_the_registry_and_the_runners_maps():
     datasets = pytest.importorskip("relbench.datasets")
-    registered = set(datasets.dataset_registry) if hasattr(datasets, "dataset_registry") else set(datasets.get_dataset_names())
-    assert set(NATIVE_DATASETS) <= registered and set(SIZE_TIER) <= registered
+    tasks = pytest.importorskip("relbench.tasks")
+    task_specs = pytest.importorskip("benchmarks.relbench.task_specs")
+    data = json.loads(RELBENCH_NAMES.read_text())
+    assert set(data["datasets"]) <= set(datasets.get_dataset_names())
+    assert set(data["datasets"]) == set(task_specs.NATIVE_DATASETS) == set(task_specs.SIZE_TIER) == set(task_specs.DATASET_NOTES)
+    assert set(data["tasks"]) == {name for dataset in data["datasets"] for name in tasks.get_task_names(dataset)}
+    assert {task.partition("/")[2] for task in task_specs.PRIMARY_METRIC_OVERRIDES} <= set(data["tasks"])
 
 
 def test_ioai_competition_slugs_resolve_on_kaggle():

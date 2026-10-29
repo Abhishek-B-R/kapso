@@ -5,6 +5,7 @@ as a fact for the Brief, and a directory's layout as the Brief lists it."""
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -38,8 +39,6 @@ def stage_evaluation(suite: Path, work_dir: Path, settings: Dict[str, object]) -
     """The provided grader with the task's settings beside it, under the
     archive root; written the same way every time, so a resume's fingerprint
     of the evaluation directory holds."""
-    import json
-
     target = work_dir / "evaluation"
     if target.exists():
         shutil.rmtree(target)

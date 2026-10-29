@@ -81,6 +81,7 @@ benchmark:
   run_defaults:
     hours: 2.0
     node_expansion: 8
+    iterations: 20
   # No per-phase fractions, and NO finalization reserve: every run to date
   # banked a public score long before any wall, while the reserve killed
   # lanes mid-round (5 of 8 in run 5) and starved the feedback sessions to

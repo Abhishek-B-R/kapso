@@ -364,12 +364,17 @@ def test_kernel_slots_fails_loud_without_its_config(tmp_path):
 
 def test_classify_submit_output_reads_text_not_exit_codes():
     # Verified live 2026-08-02: the kaggle CLI exits 0 even on a rejected
-    # submission, so the output text is the only signal.
+    # submission, so the output text is the only signal. The bare number is
+    # not one (the review's finding: a progress bar's 400k and a message's
+    # local=0.4003 both carry it); what the CLI did not confirm is pending.
     assert classify_submit_output("", "403 Client Error: Forbidden for url: "
                                   ".../CreateCodeSubmission") == "rejected-403"
     assert classify_submit_output("400 Client Error: Bad Request", "") == "rejected-400"
-    assert classify_submit_output("", "") == "accepted"
-    assert classify_submit_output("Successfully submitted", "") == "accepted"
+    assert classify_submit_output("", "error: argument command: invalid choice") == "rejected-error"
+    assert classify_submit_output("Successfully submitted to Spooky", "") == "accepted"
+    assert classify_submit_output("100%|██████████| 400k/400k [00:01<00:00]", "") == "pending"
+    assert classify_submit_output("submission: nb-svm local=0.4003 [kapso-ab12]", "") == "pending"
+    assert classify_submit_output("", "") == "pending"
 
 
 def test_kernels_run_since_treats_not_found_as_empty(tmp_path):

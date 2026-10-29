@@ -40,7 +40,7 @@ from kapso.handles import Budget, Solution
 from kapso.kapso import Kapso
 
 from benchmarks.ale.context import build_brief
-from benchmarks.ale.problems import LITE_PROBLEMS
+from benchmarks.ale.problems import REPORTED_PROBLEMS
 from benchmarks.common import stage_evaluation, write_runtime_config
 
 load_dotenv()
@@ -56,8 +56,8 @@ SEED_LIST = "seeds.txt"
 
 
 def list_problems(lite_only: bool) -> None:
-    problems = LITE_PROBLEMS if lite_only else ale_bench.list_problem_ids()
-    title = "ALE-Bench lite problems" if lite_only else "All ALE-Bench problems"
+    problems = REPORTED_PROBLEMS if lite_only else ale_bench.list_problem_ids()
+    title = "The ALE-Bench problems the reported result covers" if lite_only else "All ALE-Bench problems"
     print(f"\n{'=' * 60}\n{title} ({len(problems)} total)\n{'=' * 60}")
     for problem_id in sorted(problems):
         print(f"  • {problem_id}")
@@ -213,7 +213,7 @@ def main() -> None:
     parser.add_argument("--experience", type=str, default=None,
                         help="Comma-separated sources to serve: mine, a bank path or git reference, an index name")
     parser.add_argument("--list", action="store_true", help="List all problems")
-    parser.add_argument("--lite", action="store_true", help="List the lite problems")
+    parser.add_argument("--lite", action="store_true", help="List the problems the reported result covers")
     args = parser.parse_args()
 
     if args.list or args.lite:

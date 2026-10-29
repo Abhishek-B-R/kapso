@@ -22,6 +22,7 @@ import fcntl
 import hashlib
 import json
 import secrets
+import re
 import shutil
 import subprocess
 import sys
@@ -33,16 +34,27 @@ METADATA = "kernel-metadata.json"
 TOKEN_PREFIX = "kapso-"
 
 
+_CLIENT_ERROR = re.compile(r"\b(400|403) Client Error\b")
+_ERROR_LINE = re.compile(r"(?m)^(?:ERROR|error):")
+SUCCESS = "Successfully submitted"
+
+
 def classify_submit_output(stdout: str, stderr: str) -> str:
-    """One label per submit attempt, from the CLI's text."""
+    """One label per submit attempt from the CLI's text (its exit code
+    carries no signal on every version): the success phrase is accepted; an
+    HTTP client error is that rejection (the phrase, never the bare number,
+    which a progress bar or the message's local score also carries); a line
+    that opens with an error is a rejection; anything else is pending, to
+    be settled from the submissions list by the token in the message."""
     blob = stdout + stderr
-    if "403" in blob:
-        return "rejected-403"
-    if "400" in blob:
-        return "rejected-400"
-    if "Error" in blob or "error:" in blob:
+    if SUCCESS in blob:
+        return "accepted"
+    status = _CLIENT_ERROR.search(blob)
+    if status:
+        return f"rejected-{status.group(1)}"
+    if _ERROR_LINE.search(blob):
         return "rejected-error"
-    return "accepted"
+    return "pending"
 
 
 def sha256_of(path: Path) -> str:
@@ -106,11 +118,12 @@ def main() -> None:
     verdict = classify_submit_output(completed.stdout, completed.stderr)
     entry["verdict"] = verdict
     entry["output"] = (completed.stdout + completed.stderr).strip()
-    if verdict != "accepted":
+    rejected = verdict.startswith("rejected")
+    if rejected:
         entry["status"] = "rejected"
     append_entry(ledger_path, entry)
     print(json.dumps(entry, indent=2))
-    if verdict != "accepted":
+    if rejected:
         sys.exit(2)
 
 

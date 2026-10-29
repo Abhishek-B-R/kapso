@@ -23,7 +23,7 @@ from ale_bench.result import JudgeResult
 from kapso.handles import Brief
 from kapso.harness import BUNDLED_ROOT
 from benchmarks.ale.context import SCORER_COMMAND, build_brief
-from benchmarks.ale.problems import LITE_PROBLEMS
+from benchmarks.ale.problems import REPORTED_PROBLEMS
 from benchmarks.ale.runner import baseline_program
 
 REPO_ROOT = Path(__file__).parents[1]
@@ -69,8 +69,8 @@ class TestBrief:
         assert "maximize: higher is better" in text
 
 
-def test_the_lite_roster_is_the_reported_ten():
-    assert len(LITE_PROBLEMS) == 10 and "ahc039" in LITE_PROBLEMS and "ahc002" not in LITE_PROBLEMS
+def test_the_reported_problems_are_the_ten():
+    assert len(REPORTED_PROBLEMS) == 10 and "ahc039" in REPORTED_PROBLEMS and "ahc002" not in REPORTED_PROBLEMS
 
 
 def test_the_seeded_baseline_compiles_and_prints_the_example_output(tmp_path):

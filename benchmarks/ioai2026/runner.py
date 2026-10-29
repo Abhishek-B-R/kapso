@@ -125,9 +125,11 @@ def stage_contest_root(task_dir: str, competition: str, higher_is_better: bool,
     shutil.copy2(os.path.join(task_dir, RULES_NAME), os.path.join(root, RULES_NAME))
     with open(os.path.join(root, kernel_slots.CONFIG_NAME), "w") as f:
         json.dump(kernel_slots_limits, f, indent=2)
-    stale_ledger = os.path.join(root, kernel_slots.LEDGER_NAME)
-    if os.path.isfile(stale_ledger):
-        os.remove(stale_ledger)
+    # A relaunch starts its ledgers afresh: a submission of an earlier
+    # launch is not this campaign's insurance.
+    for stale_ledger in (os.path.join(root, kernel_slots.LEDGER_NAME), os.path.join(root, LEDGER)):
+        if os.path.isfile(stale_ledger):
+            os.remove(stale_ledger)
     with open(os.path.join(root, "contest.json"), "w") as f:
         json.dump({
             "competition": competition,
@@ -279,18 +281,27 @@ def submission_matches_template(candidate_path: str, template_path: str) -> bool
     return all(c[0] == t[0] for c, t in zip(candidate[1:], template[1:]))
 
 
+_CLIENT_ERROR = re.compile(r"\b(400|403) Client Error\b")
+_ERROR_LINE = re.compile(r"(?m)^(?:ERROR|error):")
+SUCCESS = "Successfully submitted"
+
+
 def classify_submit_output(stdout: str, stderr: str) -> str:
-    """One label per submit attempt; the CLI's exit code carries no signal on
-    every version, so the output text is the discriminator. "accepted" means
-    no rejection signature; anything else is the signature found."""
+    """One label per submit attempt from the CLI's text (its exit code
+    carries no signal on every version): the success phrase is accepted; an
+    HTTP client error is that rejection (the phrase, never the bare number,
+    which a progress bar or the message's local score also carries); a line
+    that opens with an error is a rejection; anything else is pending, to
+    be settled from the submissions list by the token in the message."""
     blob = stdout + stderr
-    if "403" in blob:
-        return "rejected-403"          # version invalid OR no session capacity
-    if "400" in blob:
-        return "rejected-400"          # wrong endpoint/modality for this comp
-    if "Error" in blob or "error:" in blob:
+    if SUCCESS in blob:
+        return "accepted"
+    status = _CLIENT_ERROR.search(blob)
+    if status:
+        return f"rejected-{status.group(1)}"
+    if _ERROR_LINE.search(blob):
         return "rejected-error"
-    return "accepted"
+    return "pending"
 
 
 def submit_kernel_output(kaggle_bin: str, competition: str, ref: str,
@@ -316,8 +327,8 @@ def submit_kernel_output(kaggle_bin: str, competition: str, ref: str,
         verdict = classify_submit_output(proc.stdout, proc.stderr)
         attempts.append({"version": version, "verdict": verdict,
                          "output": (proc.stdout + proc.stderr).strip()})
-        if verdict == "accepted":
-            return version, attempts
+        if verdict in ("accepted", "pending"):
+            return version, attempts          # pending: made, to be settled from the list
     return None, attempts
 
 
@@ -575,7 +586,8 @@ def main():
     parser.add_argument("--hours", type=float, default=None,
                         help="Run wall-clock hours (default: config run_defaults.hours)")
     parser.add_argument("--guard-minutes", type=int, default=None)
-    parser.add_argument("--iterations", type=int, default=20)
+    parser.add_argument("--iterations", type=int, default=None,
+                        help="Budget.experiments (default: config run_defaults.iterations)")
     parser.add_argument("--coding-agent", default=None,
                         help="The host every role without a cli of its own runs on "
                              "(default: the config's search_strategy.params.host, codex here)")
@@ -620,6 +632,7 @@ def main():
     statement = open(statement_path, encoding="utf-8").read()
     run_defaults = mode_cfg["run_defaults"]
     hours = args.hours if args.hours is not None else run_defaults["hours"]
+    iterations = args.iterations if args.iterations is not None else run_defaults["iterations"]
     node_expansion = (args.node_expansion if args.node_expansion is not None
                       else run_defaults["node_expansion"])
 
@@ -703,7 +716,7 @@ def main():
     print(f"budget={budget_minutes} min (guard={guard_minutes} min, "
           f"harvest window={harvest_window} min, "
           f"finalization reserve={reserve_minutes:.0f} min), "
-          f"iterations<={args.iterations}")
+          f"iterations<={iterations}")
     print(f"session caps: ideation={session_timeouts['ideation_timeout']}s "
           f"implementation={session_timeouts['implementation_timeout']}s")
 
@@ -716,22 +729,20 @@ def main():
             kapso.load_experience(reference.strip())
     budget = Budget(
         minutes=budget_minutes,
-        experiments=args.iterations,
+        experiments=iterations,
         usd=args.cost_budget,
         reserve_minutes=reserve_minutes if reserve_minutes > 0 else None,
     )
-    try:
-        solution = kapso.build(
-            brief,
-            evaluation=str(EVALUATION_SUITE),
-            data=contest_root,
-            output=os.path.join(task_dir, "kapso_campaign"),
-            budget=budget,
-            resume=args.resume,
-            coding_agent=args.coding_agent,
-        )
-    finally:
-        print("\n=== campaign done ===")
+    solution = kapso.build(
+        brief,
+        evaluation=str(EVALUATION_SUITE),
+        data=contest_root,
+        output=os.path.join(task_dir, "kapso_campaign"),
+        budget=budget,
+        resume=args.resume,
+        coding_agent=args.coding_agent,
+    )
+    print("\n=== campaign done ===")
 
     summary: Dict[str, object] = {
         "root": root,
