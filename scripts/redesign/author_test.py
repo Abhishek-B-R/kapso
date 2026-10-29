@@ -33,7 +33,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
-from plugin_proof import SUITE, ClaudeHost, CodexHost, record_step  # noqa: E402
+from plugin_proof import SUITE, ClaudeHost, CodexHost, codex_session_note, record_step  # noqa: E402
 from s1_cold_engineer import CLAUDE_COLD, CODEX_COLD  # noqa: E402
 import judge as judge_module  # noqa: E402
 
@@ -233,7 +233,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "pins": {"suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "pages": GUIDE_PAGES, "example": EXAMPLE,
                  "guide_sha256": hashlib.sha256(guide_text(driver.clone).encode("utf-8")).hexdigest()},
         "user": {"kind": "scripted", "card": None, "interventions": ["the author holds only the guide pages, the reference and the trading example; it may not run kapso; the driver runs check and classifies the guesses"], "events": [], "pushback": None},
-        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [], "transcripts": [],
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [note for note in [codex_session_note()] if note], "transcripts": [],
     }
     if args.grade:
         record = grade(record, driver.out, driver.clone, SUITE["judge"])

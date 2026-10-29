@@ -715,7 +715,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "package": {"version": RELEASED if args.package == "released" else "branch", "wheel_sha256": hashlib.sha256(Path(args.wheel).read_bytes()).hexdigest() if args.wheel else "-", "released": args.package == "released"},
         "pins": {"wheel_sha256": hashlib.sha256(Path(args.wheel).read_bytes()).hexdigest() if args.wheel else "-", "suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest()},
         "user": {"kind": "scripted", "card": None, "interventions": ["the task views: the repositories' own READMEs; the prerequisite campaigns built by the driver; the second one killed at its writer"], "events": [], "pushback": None},
-        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [], "transcripts": [],
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [note for note in [plugin_proof.codex_session_note()] if note], "transcripts": [],
     }
     selected = args.steps.split(",") if args.steps else list(STEP_NAMES)
     if args.start:

@@ -49,11 +49,21 @@ def test_a_scored_runner_up_is_not_a_rejection_but_a_void_is():
     assert facts["scored_not_delivered"] == [{"branch": "generic_exp_1", "score": 0.84}]
     assert facts["what was rejected and why"] == [{"node": 3, "branch": "generic_exp_2", "reason": "rejected: judged not valid", "evidence": ["the judge said so"]}]
     assert facts["what was voided and on what evidence"] == [{"node": 4, "branch": "generic_exp_3", "reason": "void: integrity error on kapso_evaluation/evaluate.py", "evidence": ["hash mismatch"]}]
+    assert facts["campaign_holds"] == {"void": True, "rejection": True}
+    # The engine's own semantics decide: the entry's attempt carries an
+    # integrity error when the integrity check voided it, whatever the
+    # reason's first word; the same wording on an attempt without one is
+    # the judge's rejection.
     engine_wording = {"node": 0, "branch": "generic_exp_0", "reason": "rejected: Provided evaluation integrity check failed (changed: evaluate.py)", "evidence": ["$ python3 kapso_evaluation/evaluate.py"]}
+    node_zero = next(attempt for attempt in trace["attempts"] if attempt.get("node") == 0)
+    node_zero["evaluation"]["integrity_error"] = "Provided evaluation integrity check failed (changed: evaluate.py)"
     trace["voided"] = [engine_wording]
     facts = s4.fact_sheet(trace, labels=False)
     assert facts["what was voided and on what evidence"] == [engine_wording], "the integrity failure is the void, whatever the engine's first word"
-    assert facts["what was rejected and why"].startswith("nothing rejected")
+    assert facts["what was rejected and why"].startswith("nothing rejected") and facts["campaign_holds"] == {"void": True, "rejection": False}
+    node_zero["evaluation"]["integrity_error"] = None
+    facts = s4.fact_sheet(trace, labels=False)
+    assert facts["what was rejected and why"] == [engine_wording] and facts["campaign_holds"] == {"void": False, "rejection": True}
 
 
 def test_labels_in_history_reads_the_delivered_commits_own_ancestry(tmp_path):

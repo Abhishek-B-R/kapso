@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
 import judge as judge_module  # noqa: E402
-from plugin_proof import SUITE, ClaudeHost, CodexHost, record_step, shell_step  # noqa: E402
+from plugin_proof import SUITE, ClaudeHost, CodexHost, codex_session_note, record_step, shell_step  # noqa: E402
 from s1_cold_engineer import CLAUDE_COLD, CODEX_COLD, plugin_proof_rows, session_init, is_cold  # noqa: E402
 
 QUESTIONS = [
@@ -81,14 +81,21 @@ def fact_sheet(trace: Dict[str, Any], labels: Optional[bool]) -> Dict[str, Any]:
     winner = attempts.get(delivered.get("branch")) if delivered else None
     voided = trace.get("voided") or []
     # The trace's `voided` holds both: an integrity/harness void and a
-    # judge rejection, each with its reason. Split them by substance, so
-    # the two questions get distinct keys: the engine words an integrity
-    # failure "rejected: Provided evaluation integrity check failed
-    # (changed: evaluate.py)" (s4-claude-1), and a void it is — the design's
-    # "voided on the hash evidence"; a judge's "not valid" is the rejection.
+    # judge rejection, each with its reason. Split them by the engine's own
+    # semantics, not by the reason's words: the entry's attempt carries
+    # `evaluation.integrity_error` when the integrity check voided it (the
+    # design's "voided on the hash evidence"), and none when the judge
+    # rejected it. The engine words an integrity void "rejected: Provided
+    # evaluation integrity check failed (changed: evaluate.py)" (s4-claude-1),
+    # which a classification by words had to know. An entry whose attempt
+    # the trace does not hold is read by its reason's first word.
+    by_node = {attempt.get("node"): attempt for attempt in trace["attempts"]}
+
     def is_void(entry: Dict[str, Any]) -> bool:
-        reason = str(entry.get("reason", "")).lower()
-        return reason.startswith("void") or "integrity" in reason
+        attempt = by_node.get(entry.get("node"))
+        if attempt is not None:
+            return bool((attempt.get("evaluation") or {}).get("integrity_error"))
+        return str(entry.get("reason", "")).lower().startswith("void")
     voids = [entry for entry in voided if is_void(entry)]
     rejections = [entry for entry in voided if not is_void(entry)]
     # What the dollar figure covers: the sessions whose runs carry no cost
@@ -121,6 +128,9 @@ def fact_sheet(trace: Dict[str, Any], labels: Optional[bool]) -> Dict[str, Any]:
                          "sessions_without_a_cost": {host: unpriced.count(host) for host in sorted(set(unpriced))} or "none: every session priced"},
         "safe to merge": merge_facts,
         "scored_not_delivered": runners_up,
+        # What the campaign holds for the design's admission ("a campaign
+        # with a void and a rejection"): the run's bars read both.
+        "campaign_holds": {"void": bool(voids), "rejection": bool(rejections)},
     }
 
 
@@ -160,7 +170,12 @@ class S4:
         facts = fact_sheet(trace, labels_in_history(self.campaign, delivered_commit))
         (self.out / "judge" / "fact-sheet.md").write_text(render_sheet(facts), encoding="utf-8")
         artifacts = [self.artifact("trace.txt", text.stdout), self.artifact("trace.json", data.stdout), self.artifact("fact-sheet.json", json.dumps(facts, indent=2))]
-        return shell_step("fact-sheet", True, artifacts, (time.monotonic() - started) / 60, ["the fact sheet extracted from the trace and the branch's history; checked by hand once; under judge/, never in the reader's directory"])
+        holds = facts["campaign_holds"]
+        step = shell_step("fact-sheet", True, artifacts, (time.monotonic() - started) / 60,
+                          ["the fact sheet extracted from the trace and the branch's history; checked by hand once; under judge/, never in the reader's directory",
+                           f"the campaign holds a void: {holds['void']}; a judge rejection: {holds['rejection']} (the design reads on a campaign with both; the run's bars say which it had)"])
+        step["metrics"] = {"campaign_has_void": int(holds["void"]), "campaign_has_rejection": int(holds["rejection"])}
+        return step
 
     def step_reading(self, host_name: str) -> Dict[str, Any]:
         reading = self.out / "work" / f"reading-{host_name}"
@@ -169,14 +184,24 @@ class S4:
         reading.mkdir(parents=True)
         shutil.copy(self.out / "artifacts" / "trace.txt", reading / "trace.txt")
         shutil.copytree(self.campaign, reading / "campaign", symlinks=True, ignore=shutil.ignore_patterns("judge"))
-        host = ClaudeHost(CLAUDE_COLD) if host_name == "claude_code" else CodexHost(CODEX_COLD)
+        # The readers are the suite's (`readers`: the model per host, the
+        # Codex effort), on the cold argv the cold engineer uses.
+        reader = SUITE["readers"][host_name]
+        host = ClaudeHost(CLAUDE_COLD, model=reader["model"]) if host_name == "claude_code" else CodexHost(CODEX_COLD, model=reader["model"], effort=reader.get("effort"))
         transcript = self.out / "transcripts" / f"reading-{host_name}.jsonl"
         turn = host.turn(reading, PROMPT, None, transcript)
         init = session_init(plugin_proof_rows(transcript)) if host_name == "claude_code" else None
         sheet = (self.out / "judge" / "fact-sheet.md").read_text(encoding="utf-8")
         (self.out / "judge" / f"reading-{host_name}.md").write_text(f"# The reader's answers ({host_name})\n\n{turn.text}\n\n{sheet}", encoding="utf-8")
+        # Coldness is proved from Claude Code's init event; a Codex stream
+        # carries none, so for that reader it is reported as not established
+        # (on a fresh machine no earlier session exists, which the record's
+        # machine says), never passed.
+        notes = ["graded by the judge against the fact sheet (the s4 rubric); the metrics filled by --grade",
+                 f"the reader: {reader['model']}" + (f" at effort {reader['effort']}" if reader.get("effort") else ""),
+                 "coldness: " + ("proved from the init event" if init else "not established (a Codex stream has no init event); the machine is fresh")]
         step = record_step(f"reading-{host_name}", [turn], bool(turn.text.strip()) and (init is None or is_cold(init)),
-                           [self.artifact(f"reading-{host_name}.txt", turn.text)], ["graded by the judge against the fact sheet (the s4 rubric); the metrics filled by --grade"], kind="reading")
+                           [self.artifact(f"reading-{host_name}.txt", turn.text)], notes, kind="reading")
         step["metrics"] = {"correct": None, "cold": is_cold(init) if init else None}
         return step
 
@@ -217,20 +242,40 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--machine", default=os.uname().nodename)
     parser.add_argument("--advisory", default=None)
     parser.add_argument("--grade", action="store_true", help="read the judge's block into the record's metrics")
+    parser.add_argument("--rederive", action="store_true", help="read the fact sheet's metrics again from the archived trace (the classification changed); runs nothing")
     parser.add_argument("--steps", default=None)
     args = parser.parse_args(argv)
     driver = S4(args)
     record_file = driver.out / "record.json"
     started = datetime.now(timezone.utc)
     record = json.loads(record_file.read_text()) if record_file.exists() else {
-        "test": "S4", "host": "claude_code", "machine": args.machine, "run_id": f"S4-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
+        "test": "S4", "host": "claude_code", "machine": args.machine, "run_id": f"S4-{'+'.join(args.readers.split(','))}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
         "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1] if shutil.which("kapso") else "-", "wheel_sha256": "-"},
         "pins": {"suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "campaign": str(driver.campaign)},
         "user": {"kind": "scripted", "card": None, "interventions": ["the fact sheet extracted by the driver and checked by hand; the readers see the trace and the campaign only"], "events": [], "pushback": None},
-        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [], "transcripts": [],
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [note for note in [codex_session_note()] if note], "transcripts": [],
     }
     if args.grade:
         record = grade(record)
+        record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        print(json.dumps(record["metrics"]))
+        return 0
+    if args.rederive:
+        # The fact sheet's metrics read again from the archived trace and
+        # the reader's campaign copy (the classification changed to the
+        # engine's own semantics; the rendered sheet the readers were judged
+        # against holds the same six answers, so the judge is not run again).
+        trace = json.loads((driver.out / "artifacts" / "trace.json").read_text(encoding="utf-8"))
+        campaign_copy = driver.out / "work" / "reading-claude_code" / "campaign"
+        facts = fact_sheet(trace, labels_in_history(campaign_copy, (trace.get("delivered") or {}).get("commit")))
+        (driver.out / "artifacts" / "fact-sheet.json").write_text(json.dumps(facts, indent=2), encoding="utf-8")
+        holds = facts["campaign_holds"]
+        for step in record["steps"]:
+            if step["name"] == "fact-sheet":
+                step["metrics"] = {"campaign_has_void": int(holds["void"]), "campaign_has_rejection": int(holds["rejection"])}
+                step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("the campaign holds")],
+                                 f"the campaign holds a void: {holds['void']}; a judge rejection: {holds['rejection']} (re-read 2026-10-29 by the engine's own semantics)"]
+        record["metrics"] = {**record.get("metrics", {}), "campaign_has_void": int(holds["void"]), "campaign_has_rejection": int(holds["rejection"])}
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
         print(json.dumps(record["metrics"]))
         return 0
@@ -241,6 +286,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"== {name}", flush=True)
         step = driver.step_fact_sheet() if name == "fact-sheet" else driver.step_reading(name.split("-", 1)[1])
         record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]
+        if name == "fact-sheet":
+            record["metrics"] = {**record.get("metrics", {}), **step.get("metrics", {})}
         record["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         record["transcripts"] = sorted(f"transcripts/{path.name}" for path in (driver.out / "transcripts").glob("*.jsonl"))
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")

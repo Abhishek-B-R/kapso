@@ -285,10 +285,12 @@ def parse_codex_stream(stdout: str, sid: str):
 class ClaudeHost:
     name = "claude_code"
 
-    def __init__(self, extra_argv: Sequence[str] = ()):
+    def __init__(self, extra_argv: Sequence[str] = (), model: Optional[str] = None):
         # What a driver adds to every turn: the cold engineer's session runs
-        # plugin-free, server-free and web-free through these.
+        # plugin-free, server-free and web-free through these. The model is
+        # the suite's host model unless a role names its own (S4's readers).
         self.extra_argv = list(extra_argv)
+        self.model = model or CLAUDE_MODEL
 
     def command(self, verb: str, args: str = "") -> str:
         return f"/kapso:{verb} {args}".strip()
@@ -298,7 +300,7 @@ class ClaudeHost:
         # The turn's deadline is the `timeout` command's: a turn that
         # overstays ends with exit 124 and its stream so far, and the round
         # goes on with what it has.
-        argv = ["timeout", str(TURN_TIMEOUT), "claude", "-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "--model", CLAUDE_MODEL, *self.extra_argv]
+        argv = ["timeout", str(TURN_TIMEOUT), "claude", "-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "--model", self.model, *self.extra_argv]
         argv += ["--resume", sid] if session else ["--session-id", sid]
         started = time.monotonic()
         run = subprocess.run(argv, input=prompt, capture_output=True, text=True, cwd=str(cwd))
@@ -313,15 +315,19 @@ class ClaudeHost:
 class CodexHost:
     name = "codex"
 
-    def __init__(self, extra_argv: Sequence[str] = ()):
+    def __init__(self, extra_argv: Sequence[str] = (), model: Optional[str] = None, effort: Optional[str] = None):
         self.extra_argv = list(extra_argv)
+        self.model = model or CODEX_MODEL
+        self.effort = effort   # a role's reasoning effort (S4's reader); None leaves the CLI's own
 
     def command(self, verb: str, args: str = "") -> str:
         return f"${CODEX_SKILL.get(verb, 'kapso')} {verb if verb not in CODEX_SKILL else ''} {args}".replace("  ", " ").strip()
 
     def turn(self, cwd: Path, prompt: str, session: Optional[str], transcript: Path) -> Turn:
         last = cwd / ".proof-last.txt"
-        argv = ["timeout", str(TURN_TIMEOUT), "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "danger-full-access", "-C", str(cwd), "-m", CODEX_MODEL, "-o", str(last), *self.extra_argv]
+        argv = ["timeout", str(TURN_TIMEOUT), "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "danger-full-access", "-C", str(cwd), "-m", self.model, "-o", str(last), *self.extra_argv]
+        if self.effort:
+            argv += ["-c", f'model_reasoning_effort="{self.effort}"']
         if session:
             argv += ["resume", session, "-"]
         else:

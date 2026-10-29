@@ -27,7 +27,7 @@
     },
     "S4": {
       "required_steps": {"claude_code": ["fact-sheet", "reading-claude_code", "reading-codex"], "codex": ["fact-sheet", "reading-claude_code", "reading-codex"]},
-      "bars": {"readers_correct_min": {"min": 6}},
+      "bars": {"readers_correct_min": {"min": 6}, "campaign_has_void": {"min": 1}, "campaign_has_rejection": {"min": 1}},
       "judge": {"rubric": "s4", "dimensions": ["what won", "why", "what was voided and on what evidence", "what was rejected and why", "what it cost", "safe to merge"], "scale": [0, 1], "bar": 1}
     },
     "S5": {
@@ -110,7 +110,7 @@
     "turn_cap": 8
   },
   "judge": {"vendor": "gemini", "model": "vertex_ai/gemini-4-argon", "passes": 2, "vertex_project": "gen-lang-client-0664337543", "vertex_location": "global"},
-  "readers": {"claude_code": {"model": "claude-opus-5"}, "codex": {"model": "gpt-6-astra", "effort": "medium"}},
+  "readers": {"claude_code": {"model": "claude-opus-5-5"}, "codex": {"model": "gpt-6-astra", "effort": "medium"}},
   "builds": {"prerequisite": {"minutes": 60, "experiments": 3}, "s6": {"minutes": 60, "experiments": 3}, "s5": {"minutes": 40, "experiments": 2}, "second_engineer": {"minutes": 30, "experiments": 2}, "churn": {"minutes": 60, "experiments": 3}, "fraud": {"minutes": 10, "experiments": 1}, "pause": {"minutes": 60, "experiments": 1}, "probe": {"minutes": 10, "experiments": 1}},
   "waits": {"campaign_grace_minutes": 15, "trace_and_stop_seconds": 120},
   "injections": {"provider_limit_count": 3, "tmpfs_mb": 64, "enrichment_port": 8765},
