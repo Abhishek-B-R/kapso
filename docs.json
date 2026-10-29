@@ -89,14 +89,10 @@
             ]
           },
           {
-            "group": "Trajectory learning",
+            "group": "Learn",
             "pages": [
-              "docs/learning/overview",
-              "docs/learning/bank",
-              "docs/learning/pipeline",
-              "docs/learning/graders",
-              "docs/learning/serving",
-              "docs/learning/development"
+              "docs/learn/what-learn-produces",
+              "docs/learn/development-mode"
             ]
           },
           {
@@ -162,7 +158,7 @@
     },
     {
       "source": "/docs/evolve/cognitive-memory",
-      "destination": "/docs/learning/overview"
+      "destination": "/docs/learn/what-learn-produces"
     },
     {
       "source": "/docs/evolve/budget-aware-experimentation",
@@ -267,6 +263,30 @@
     {
       "source": "/docs/evolve/resuming-runs",
       "destination": "/docs/build/resume-and-budgets"
+    },
+    {
+      "source": "/docs/learning/overview",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/bank",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/serving",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/pipeline",
+      "destination": "/docs/learn/development-mode"
+    },
+    {
+      "source": "/docs/learning/graders",
+      "destination": "/docs/learn/development-mode"
+    },
+    {
+      "source": "/docs/learning/development",
+      "destination": "/docs/learn/development-mode"
     }
   ],
   "footer": {
