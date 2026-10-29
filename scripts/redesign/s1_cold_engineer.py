@@ -28,6 +28,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -52,13 +53,74 @@ TASKS = [
     {"number": 5, "restore": "campaign-prereq", "clear_learning": True, "goal": "lessons learned from the campaign at ./campaign-prereq (start the learn; it runs on its own)", "verb": "learn", "evidence": "learn-status"},
     {"number": 6, "restore": "campaign-killed", "goal": "the campaign at ./campaign-killed was interrupted before it finished; continue it from where it stopped", "verb": "resume", "evidence": "resumed"},
 ]
+# The counted verb's shapes on each surface, per package: the branch's
+# `build` is 0.7.10's `evolve` (its resume `evolve --resume`); deploy and
+# learn keep their names. The released arm is counted in its own verbs — a
+# table that knew only the new names counted nothing the baseline ran and
+# published a first-try figure that was the detector's, not the product's.
 VERB_PATTERNS = {
-    "build": {"cli": re.compile(r"\bkapso\s+build\b(?!.*--resume)"), "python": re.compile(r"\.build\(")},
-    "deploy": {"cli": re.compile(r"\bkapso\s+deploy\b"), "python": re.compile(r"\.deploy\(")},
-    "learn": {"cli": re.compile(r"\bkapso\s+learn\b"), "python": re.compile(r"\.learn\(")},
-    "resume": {"cli": re.compile(r"\bkapso\s+build\b.*--resume"), "python": re.compile(r"\.build\(.*resume\s*=\s*True")},
+    "branch": {
+        "build": {"cli": re.compile(r"^kapso\s+build\b(?!.*--resume)"), "python": re.compile(r"\.build\(")},
+        "deploy": {"cli": re.compile(r"^kapso\s+deploy\b"), "python": re.compile(r"\.deploy\(")},
+        "learn": {"cli": re.compile(r"^kapso\s+learn\b"), "python": re.compile(r"\.learn\(")},
+        "resume": {"cli": re.compile(r"^kapso\s+build\b.*--resume"), "python": re.compile(r"\.build\(.*resume\s*=\s*True")},
+    },
+    "released": {
+        "build": {"cli": re.compile(r"^kapso\s+evolve\b(?!.*--resume)"), "python": re.compile(r"\.evolve\(")},
+        "deploy": {"cli": re.compile(r"^kapso\s+deploy\b"), "python": re.compile(r"\.deploy\(")},
+        "learn": {"cli": re.compile(r"^kapso\s+learn\b"), "python": re.compile(r"\.learn\(")},
+        "resume": {"cli": re.compile(r"^kapso\s+evolve\b.*--resume"), "python": re.compile(r"\.evolve\(.*resume")},
+    },
 }
-NOT_COUNTED = re.compile(r"--help|\bkapso\s+doctor\b|\bkapso\s+--version\b|\bkapso\s+watch\b|\bkapso\s+trace\b")
+NOT_COUNTED = re.compile(r"--help|^kapso\s+doctor\b|^kapso\s+--version\b|^kapso\s+watch\b|^kapso\s+trace\b")
+# A command's segments: what runs between `&&`, `||`, `;`, `|` and
+# newlines (a `bash -lc '...'` wrapper opened first), each stripped of
+# leading variable assignments and wrappers, so a segment's first word is
+# the program it invokes — a `sed` over the docs that mentions `kapso
+# build` is a search, never an execution.
+WRAPPERS = ("nohup", "sudo", "env", "exec")
+SHELL_WRAPPER = re.compile(r"^(?:/bin/)?(?:ba)?sh\s+-lc\s+(['\"])(.*)\1\s*$", re.S)
+
+
+def command_segments(command: str) -> List[str]:
+    wrapped = SHELL_WRAPPER.match(command.strip())
+    if wrapped:
+        command = wrapped.group(2)
+    segments = []
+    for raw in re.split(r"&&|\|\||;|\||\n", command):
+        words = raw.strip().split()
+        while words and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]) or words[0] in WRAPPERS or (words[0] == "timeout" and len(words) > 1)):
+            words = words[2:] if words[0] == "timeout" else words[1:]
+        if words:
+            segments.append(" ".join(words))
+    return segments
+
+
+def invocations(command: str, program: str) -> List[str]:
+    """The segments of a command that invoke `program` (by its name or by a
+    path ending in it), each as `<program> <args>`."""
+    found = []
+    for segment in command_segments(command):
+        words = segment.split()
+        if words[0] == program or words[0].endswith("/" + program):
+            found.append(" ".join([program, *words[1:]]))
+    return found
+
+
+def counted(command: str, verb: str, surface: str, sandbox: Path, package: str) -> bool:
+    """Whether a shell command executes the counted verb on the surface: on
+    the command line a kapso invocation carrying the verb (help, doctor,
+    watch and trace never count); in Python a python invocation running a
+    script whose text carries the call."""
+    pattern = VERB_PATTERNS[package][verb][surface]
+    if surface == "cli":
+        return any(pattern.search(call) and not NOT_COUNTED.search(call) for call in invocations(command, "kapso"))
+    for call in (*invocations(command, "python"), *invocations(command, "python3")):
+        for script in re.findall(r"(\S+\.py)\b", call):
+            path = sandbox / script
+            if path.is_file() and pattern.search(path.read_text(encoding="utf-8", errors="replace")):
+                return True
+    return False
 COMPREHENSION = (
     "You have used this package for six tasks in this directory. Answer in one short paragraph each, from what you ran and saw: "
     "(1) what did the build call do and what did it return? (2) what did the deploy call do and what did it return? "
@@ -145,13 +207,12 @@ def is_cold(init: Dict[str, Any]) -> Optional[bool]:
 
 
 # ----------------------------------------------------------- the metrics
-def executions(rows: Sequence[dict], verb: str, surface: str, sandbox: Path) -> List[Dict[str, Any]]:
+def executions(rows: Sequence[dict], verb: str, surface: str, sandbox: Path, package: str = "branch") -> List[Dict[str, Any]]:
     """The counted verb's executions in a session, in order, each with
-    whether it errored: on the command line a Bash call whose command
-    carries the verb; in Python a Bash call running a script whose text
-    carries the call. Help, doctor, watch, trace, reads and searches are
-    never counted."""
-    pattern = VERB_PATTERNS[verb][surface]
+    whether it errored: on the command line a Bash call that invokes kapso
+    with the verb (the package's own: 0.7.10's `evolve` for the released
+    arm); in Python a Bash call running a script whose text carries the
+    call. Help, doctor, watch, trace, reads and searches are never counted."""
     found: List[Dict[str, Any]] = []
     pending: Dict[str, Dict[str, Any]] = {}
     for row in rows:
@@ -160,15 +221,7 @@ def executions(rows: Sequence[dict], verb: str, surface: str, sandbox: Path) -> 
                 if block.get("type") != "tool_use" or block.get("name") != "Bash":
                     continue
                 command = block.get("input", {}).get("command", "")
-                text = command
-                if surface == "python":
-                    scripts = re.findall(r"\b(\S+\.py)\b", command)
-                    text = "\n".join((sandbox / script).read_text(encoding="utf-8", errors="replace") for script in scripts if (sandbox / script).is_file())
-                    if not re.search(r"\bpython3?\b", command):
-                        continue
-                if NOT_COUNTED.search(command):
-                    continue
-                if pattern.search(text):
+                if counted(command, verb, surface, sandbox, package):
                     entry = {"command": command, "errored": None}
                     pending[block["id"]] = entry
                     found.append(entry)
@@ -182,15 +235,7 @@ def executions(rows: Sequence[dict], verb: str, surface: str, sandbox: Path) -> 
             # Codex's shape: the command and its exit status in one row.
             item = row["item"]
             command = item.get("command", "")
-            run_text = command
-            if surface == "python":
-                scripts = re.findall(r"\b(\S+\.py)\b", command)
-                run_text = "\n".join((sandbox / script).read_text(encoding="utf-8", errors="replace") for script in scripts if (sandbox / script).is_file())
-                if not re.search(r"\bpython3?\b", command):
-                    continue
-            if NOT_COUNTED.search(command):
-                continue
-            if pattern.search(run_text):
+            if counted(command, verb, surface, sandbox, package):
                 exit_code = item.get("exit_code")
                 errored = (exit_code not in (0, None)) or _looks_errored(item.get("aggregated_output") or "")
                 found.append({"command": command, "errored": errored})
@@ -199,6 +244,35 @@ def executions(rows: Sequence[dict], verb: str, surface: str, sandbox: Path) -> 
 
 def _looks_errored(text: str) -> bool:
     return bool(re.search(r"Traceback \(most recent call last\)|^Error:|error: ", text, re.M))
+
+
+class EvidenceWatcher:
+    """Samples a predicate while a session runs and keeps the first time
+    it held; `stop` ends the sampling and takes one last look, so the
+    launch clock stops at the evidence, not after the turn."""
+
+    def __init__(self, predicate: Callable[[], bool], every: float = 2.0):
+        self.predicate, self.every = predicate, every
+        self.held_at: Optional[float] = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            if self.predicate():
+                self.held_at = time.time()
+                return
+            self._stop.wait(self.every)
+
+    def stop(self) -> Optional[float]:
+        self._stop.set()
+        self._thread.join()
+        if self.held_at is None and self.predicate():
+            self.held_at = time.time()
+        return self.held_at
 
 
 def attempt_metrics(found: Sequence[Dict[str, Any]], evidence: bool, started: float, evidence_at: Optional[float]) -> Dict[str, Any]:
@@ -418,7 +492,6 @@ class S1:
             "its documentation is under ./docs (start at docs/index.mdx and docs/installation.mdx). Read only what is in this directory; use no web. "
             f"The task: {task['goal']}. Do it {how}. When it is done, say in one line what you ran and what came back."
         )
-        started = time.time()
         for leftover in (self.sandbox / task["evidence"],) if task["evidence"].startswith("campaign-") else ():
             if leftover.exists():
                 self.shell(f"kapso build --output {leftover} --stop", check=False)
@@ -427,17 +500,29 @@ class S1:
             self._restore(task["restore"])
         if task.get("clear_learning"):
             for status in self.sandbox.glob("**/learning/status"):
-                shutil.rmtree(status, ignore_errors=True)
+                if status.is_dir():
+                    shutil.rmtree(status)
+        # The clock starts after the driver's own setup and stops at the
+        # first moment the evidence holds, sampled while the session runs
+        # (the Interface's "from the session's first event to the evidence");
+        # the step's minutes are the turn's wall clock, which the attempt's
+        # budget bounds (the host's own duration figure is not it).
+        watcher = EvidenceWatcher(lambda: evidence_of(task, self.sandbox, self.sandbox / "campaign-prereq"))
+        started = time.time()
+        watcher.start()
         turn, transcript = self.turn(name, prompt)
+        turn_minutes = (time.time() - started) / 60
+        evidence_at = watcher.stop()
         rows = plugin_proof_rows(transcript)
-        found = executions(rows, task["verb"], surface, self.sandbox)
-        evidence = evidence_of(task, self.sandbox, self.sandbox / "campaign-prereq")
-        metrics = attempt_metrics(found, evidence, started, time.time() if evidence else None)
-        scripts = sorted({script for entry in found for script in re.findall(r"\b(\S+\.py)\b", entry["command"]) if (self.sandbox / script).is_file()}) if surface == "python" else []
+        found = executions(rows, task["verb"], surface, self.sandbox, self.args.package)
+        evidence = evidence_at is not None
+        metrics = attempt_metrics(found, evidence, started, evidence_at)
+        scripts = sorted({script for entry in found for script in re.findall(r"(\S+\.py)\b", entry["command"]) if (self.sandbox / script).is_file()}) if surface == "python" else []
         metrics["scripts"] = scripts
         metrics["commands"] = [entry["command"] for entry in found] if surface == "cli" else []
         artifacts = [self.artifact(f"{name}-answer.txt", turn.text), self.artifact(f"{name}-executions.json", json.dumps(found, indent=2))]
         step = record_step(name, [turn], bool(evidence), artifacts, kind="attempt")
+        step["minutes"] = round(turn_minutes, 1)
         step["metrics"] = metrics
         return step
 
@@ -459,24 +544,92 @@ class S1:
         return record_step("comprehension", [turn], bool(turn.text.strip()), artifacts, ["the answers and the key handed to the judge (the s1 rubric); --grade reads the comprehension dimension into comprehension_correct"], kind="reading")
 
     def step_flow_counts(self, record: Dict[str, Any]) -> Dict[str, Any]:
-        started = time.monotonic()
-        # Per task, so a filename reused across tasks is not conflated; the
-        # bar is per flow (one task's path), so report the longest.
-        per_task_lines, per_task_commands, detail = {}, {}, {}
-        for step in record["steps"]:
-            if step.get("kind") != "attempt":
-                continue
-            metrics = step.get("metrics", {})
-            if metrics.get("scripts"):
-                per_task_lines[step["name"]] = python_lines(self.sandbox, metrics["scripts"])
-            if metrics.get("commands"):
-                per_task_commands[step["name"]] = len(metrics["commands"])
-            detail[step["name"]] = {"scripts": metrics.get("scripts", []), "commands": metrics.get("commands", [])}
-        metrics = {"python_lines": max(per_task_lines.values(), default=0), "cli_commands": max(per_task_commands.values(), default=0)}
-        step = shell_step("flow-counts", True, [self.artifact("flow-counts.json", json.dumps({**metrics, "per_task_python_lines": per_task_lines, "per_task_cli_commands": per_task_commands, "detail": detail}, indent=2))], (time.monotonic() - started) / 60,
-                          ["python_lines and cli_commands are the longest single task's flow (the bar is per flow); the per-task figures are kept; a script read in its final state is a known limit when a filename is reused within a task"])
+        return flow_counts(record, self.sandbox, self.artifact)
+
+
+def flows_text(record: Dict[str, Any], sandbox: Path) -> str:
+    """The engineer's flows as the judge reads them: per attempt, the
+    script(s) the counted executions ran (their text, with the code-line
+    count) or the commands run, beside the attempt's own figures — the
+    material for "the flows fit the design's lengths" and "nothing needed
+    the docs do not say", which the comprehension answers alone could not
+    carry."""
+    lines = ["# The engineer's flows (what the counted executions ran)", ""]
+    for step in record["steps"]:
+        if step.get("kind") != "attempt":
+            continue
+        metrics = step.get("metrics", {})
+        lines.append(f"## {step['name']}: first try {metrics.get('first_try')}, wrong calls {metrics.get('wrong_calls')}, executions {metrics.get('executions')}, evidence {metrics.get('evidence')}")
+        for script in metrics.get("scripts", []):
+            path = sandbox / script
+            text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else "(the script is not in the archive)"
+            lines += [f"script {script} ({python_lines(sandbox, [script])} code lines):", "", *["    " + line for line in text.splitlines()], ""]
+        for command in metrics.get("commands", []):
+            lines.append(f"command: {command}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def flow_counts(record: Dict[str, Any], sandbox: Path, artifact: Callable[[str, str], str]) -> Dict[str, Any]:
+    """The two counts the design names, per task (a filename reused across
+    tasks is not conflated; the bar is per flow, so the longest task's
+    figure is the metric), with the flows artifact the judge reads."""
+    started = time.monotonic()
+    per_task_lines, per_task_commands, detail = {}, {}, {}
+    for step in record["steps"]:
+        if step.get("kind") != "attempt":
+            continue
+        metrics = step.get("metrics", {})
+        if metrics.get("scripts"):
+            per_task_lines[step["name"]] = python_lines(sandbox, metrics["scripts"])
+        if metrics.get("commands"):
+            per_task_commands[step["name"]] = len(metrics["commands"])
+        detail[step["name"]] = {"scripts": metrics.get("scripts", []), "commands": metrics.get("commands", [])}
+    metrics = {"python_lines": max(per_task_lines.values(), default=0), "cli_commands": max(per_task_commands.values(), default=0)}
+    step = shell_step("flow-counts", True, [artifact("flow-counts.json", json.dumps({**metrics, "per_task_python_lines": per_task_lines, "per_task_cli_commands": per_task_commands, "detail": detail}, indent=2)),
+                                           artifact("flows.md", flows_text(record, sandbox))], (time.monotonic() - started) / 60,
+                      ["python_lines and cli_commands are the longest single task's flow (the bar is per flow); the per-task figures are kept; a script read in its final state is a known limit when a filename is reused within a task"])
+    step["metrics"] = metrics
+    return step
+
+
+def regrade(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
+    """Every attempt's executions and metrics read again from the archived
+    transcript and sandbox — the patterns or the parsing changed (the
+    released arm had been counted under the branch's verbs, and a search
+    over the docs had counted as a run) — with the observed facts kept as
+    recorded: the evidence and the launch clock were measured then, under
+    that driver's clock (its own start to after the turn), and cannot be
+    read from the archive. The flow counts and the flows artifact are
+    rewritten, the run metrics recomputed, and the record says so."""
+    package = "released" if record.get("package", {}).get("released") else "branch"
+    sandbox = out / "sandbox"
+    for step in record["steps"]:
+        if step.get("kind") != "attempt":
+            continue
+        number, surface = int(step["name"][4]), step["name"].split("-", 1)[1]
+        task = next(entry for entry in TASKS if entry["number"] == number)
+        rows = plugin_proof_rows(out / "transcripts" / f"{step['name']}.jsonl")
+        found = executions(rows, task["verb"], surface, sandbox, package)
+        old = step.get("metrics", {})
+        metrics = attempt_metrics(found, bool(old.get("evidence")), 0.0, None)
+        metrics["minutes_to_launch"] = old.get("minutes_to_launch")
+        metrics["scripts"] = sorted({script for entry in found for script in re.findall(r"(\S+\.py)\b", entry["command"]) if (sandbox / script).is_file()}) if surface == "python" else []
+        metrics["commands"] = [entry["command"] for entry in found] if surface == "cli" else []
         step["metrics"] = metrics
-        return step
+        (out / "artifacts" / f"{step['name']}-executions.json").write_text(json.dumps(found, indent=2), encoding="utf-8")
+        step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("re-read")],
+                         "re-read 2026-10-29 from the archived transcript under the package's own verbs and true invocations; the evidence and the launch clock as observed then (that driver's clock: its start to after the turn)"]
+
+    def artifact(name: str, text: str) -> str:
+        (out / "artifacts" / name).write_text(text, encoding="utf-8")
+        return f"artifacts/{name}"
+
+    record["steps"] = [step for step in record["steps"] if step["name"] != "flow-counts"] + [flow_counts(record, sandbox, artifact)]
+    record["metrics"] = {**record.get("metrics", {}), **run_metrics(record)}
+    record["notes"] = [*[note for note in record.get("notes", []) if not note.startswith("re-graded")],
+                       "re-graded 2026-10-29: the executions, flow counts and run metrics re-read from the archive (each attempt's note says how); the judge run again over the comprehension answers and the flows"]
+    return record
 
 
 def plugin_proof_rows(transcript: Path) -> List[dict]:
@@ -490,7 +643,11 @@ def run_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
     counts = next((step["metrics"] for step in record["steps"] if step["name"] == "flow-counts"), {})
     return {
         "first_try_count": sum(1 for step in attempts if step["metrics"]["first_try"]),
-        "errors_led_to_fix": (sum(1 for step in errored if step["metrics"]["error_led_to_fix"]) / len(errored)) if errored else 1.0,
+        # The one-step rule over the attempts that errored; None when none
+        # did (the bar names `errored_calls` as what exercises it, and the
+        # report says "not exercised" rather than printing a vacuous pass).
+        "errored_calls": len(errored),
+        "errors_led_to_fix": (sum(1 for step in errored if step["metrics"]["error_led_to_fix"]) / len(errored)) if errored else None,
         "wrong_calls_max": max((step["metrics"]["wrong_calls"] for step in attempts), default=0),
         "comprehension_correct": record.get("metrics", {}).get("comprehension_correct"),
         "python_lines": counts.get("python_lines"),
@@ -531,8 +688,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--steps", default=None)
     parser.add_argument("--from", dest="start", default=None)
     parser.add_argument("--grade", action="store_true", help="read the judge's block into comprehension_correct (on the development box)")
+    parser.add_argument("--regrade", action="store_true", help="read every attempt's executions again from the archived transcripts and sandbox (the patterns changed), rewrite the counts and the run metrics")
     args = parser.parse_args(argv)
     record_file = Path(args.out).resolve() / "record.json"
+    if args.regrade:
+        record = regrade(json.loads(record_file.read_text()), Path(args.out).resolve())
+        record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        print(json.dumps(record["metrics"]))
+        return 0
     if args.grade:
         record = grade(json.loads(record_file.read_text()))
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")

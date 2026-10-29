@@ -170,7 +170,7 @@ judge_and_report() {   # on the development box, over the fetched record; the re
   if [ -n "$RUBRIC" ]; then
     local inputs=()
     case "$TEST" in
-      s1)     inputs=(--inputs artifacts/comprehension-answers.txt) ;;
+      s1)     inputs=(--inputs artifacts/comprehension-answers.txt artifacts/flows.md) ;;   # the answers with the key, and the flows the engineer wrote
       s4)     inputs=(--inputs judge/reading-claude_code.md judge/reading-codex.md) ;;
       author) inputs=(--inputs artifacts/write-harness.md) ;;
     esac

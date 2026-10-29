@@ -26,7 +26,7 @@ spec.loader.exec_module(s1)
 
 def test_the_task_table_and_the_suite_agree_on_the_steps():
     assert [task["number"] for task in s1.TASKS] == [1, 2, 3, 4, 5, 6]
-    assert all(task["verb"] in s1.VERB_PATTERNS for task in s1.TASKS)
+    assert all(task["verb"] in s1.VERB_PATTERNS["branch"] and task["verb"] in s1.VERB_PATTERNS["released"] for task in s1.TASKS)
     assert s1.STEP_NAMES == s1.SUITE["tests"]["S1"]["required_steps"]["claude_code"]
 
 
@@ -158,8 +158,13 @@ def test_the_two_counts_and_the_run_metrics(tmp_path):
         {"name": "task2-cli", "kind": "attempt", "metrics": {"first_try": False, "wrong_calls": 1, "error_led_to_fix": False}},
         {"name": "flow-counts", "kind": "shell", "metrics": {"python_lines": 9, "cli_commands": 5}},
     ], "metrics": {"comprehension_correct": 1.0}}
-    assert s1.run_metrics(record) == {"first_try_count": 1, "errors_led_to_fix": 0.5, "wrong_calls_max": 2, "comprehension_correct": 1.0, "python_lines": 9, "cli_commands": 5}
+    assert s1.run_metrics(record) == {"first_try_count": 1, "errored_calls": 2, "errors_led_to_fix": 0.5, "wrong_calls_max": 2, "comprehension_correct": 1.0, "python_lines": 9, "cli_commands": 5}
     assert set(s1.SUITE["tests"]["S1"]["bars"]) >= {"wrong_calls_max", "comprehension_correct"}
+    # No errored call: the one-step rule is not exercised (None), and the
+    # suite's bar names errored_calls as what exercises it.
+    clean = {"steps": [record["steps"][0], record["steps"][3]], "metrics": {}}
+    assert s1.run_metrics(clean)["errors_led_to_fix"] is None and s1.run_metrics(clean)["errored_calls"] == 0
+    assert s1.SUITE["tests"]["S1"]["bars"]["errors_led_to_fix"]["exercised_by"] == "errored_calls"
 
 
 def test_grade_projects_the_comprehension_dimension_into_the_metric():
@@ -210,3 +215,40 @@ def test_the_prerequisite_campaign_is_built_in_the_packages_own_verb():
     assert branch.startswith("kapso build ") and "--detach" in branch and "--budget-minutes 60 --budget-experiments 3" in branch
     assert released.startswith("nohup kapso ") and released.split()[2] != "build" and "-f kapso-brief.md" in released and released.endswith("&")
     assert "-o /sb/campaign-prereq -i 3 --time-budget-minutes 60" in released and "--initial-repo repo" in released
+
+
+def test_an_execution_is_an_invocation_of_the_packages_own_verb_never_a_search_that_mentions_it(tmp_path):
+    # s1-claude-1 had counted a `sed` over the docs as task 2's first run,
+    # and the released arm ran 0.7.10's `evolve` without a single counted
+    # execution — the headline comparison was the detector's. A command
+    # counts when one of its segments invokes kapso with the verb (wrappers
+    # and variable assignments stripped, a `bash -lc` opened); the released
+    # arm is read under its own verbs.
+    searches = _stream([("sed -n '1,40p' docs/reference/cli.mdx | grep 'kapso build'", False), ("grep -rn 'kapso build' docs", False), ("echo kapso build --help", False)])
+    assert s1.executions(searches, "build", "cli", tmp_path) == []
+    wrapped = _stream([("cd task && KAPSO_HOME=/tmp nohup kapso build --brief kapso-brief.md --output ../campaign-1 --detach", False)])
+    assert len(s1.executions(wrapped, "build", "cli", tmp_path)) == 1
+    assert s1.invocations("/bin/bash -lc 'cd task && ./venv/bin/python run.py'", "python") == ["python run.py"]
+    released = _stream([("kapso evolve -f kapso-brief.md -o campaign-1 -i 1", False), ("kapso build --brief b.md --output c", True)])
+    assert [entry["command"][:12] for entry in s1.executions(released, "build", "cli", tmp_path, package="released")] == ["kapso evolve"]
+    assert s1.executions(released, "build", "cli", tmp_path, package="branch")[0]["command"].startswith("kapso build")
+    assert s1.executions(_stream([("kapso evolve -o c --resume", False)]), "resume", "cli", tmp_path, package="released")
+    (tmp_path / "old.py").write_text("from kapso import Kapso\nsolution = Kapso().evolve('task/kapso-brief.md', output='campaign-1')\n")
+    assert len(s1.executions(_stream([("./venv/bin/python old.py", False)]), "build", "python", tmp_path, package="released")) == 1
+    assert s1.executions(_stream([("./venv/bin/python old.py", False)]), "build", "python", tmp_path, package="branch") == []
+    assert s1.executions(_stream([("python -c 'from kapso import Kapso; Kapso().build(1)'", False)]), "build", "python", tmp_path) == [], "a one-liner is not a script"
+
+
+def test_the_flows_artifact_carries_each_attempts_script_or_commands_for_the_judge(tmp_path):
+    (tmp_path / "run_build.py").write_text("from kapso import Kapso\n# the brief\nsolution = Kapso().build('b')\n")
+    record = {"steps": [
+        {"name": "task1-python", "kind": "attempt", "metrics": {"first_try": True, "wrong_calls": 0, "executions": 1, "evidence": True, "scripts": ["run_build.py"], "commands": []}},
+        {"name": "task1-cli", "kind": "attempt", "metrics": {"first_try": False, "wrong_calls": 1, "executions": 2, "evidence": True, "scripts": [], "commands": ["kapso build --brief b", "kapso build --brief b --repo r"]}},
+    ]}
+    text = s1.flows_text(record, tmp_path)
+    assert "## task1-python: first try True, wrong calls 0, executions 1, evidence True" in text
+    assert "script run_build.py (2 code lines):" in text and "    solution = Kapso().build('b')" in text
+    assert "command: kapso build --brief b --repo r" in text
+    written = {}
+    step = s1.flow_counts(record, tmp_path, lambda name, body: written.setdefault(name, body) and f"artifacts/{name}")
+    assert step["metrics"] == {"python_lines": 2, "cli_commands": 2} and "flows.md" in written and step["artifacts"] == ["artifacts/flow-counts.json", "artifacts/flows.md"]
