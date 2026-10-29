@@ -5,7 +5,8 @@
 - package: 0.8.0.dev1 (-)
 - started: 2026-10-28T10:37:00+00:00  finished: 2026-10-28T10:42:25+00:00
 - user: scripted
-- pins: suite_sha256 c3842709d398, pages ['docs/harne, example examples/har, guide_sha256 78fa1323c934
+- pins: suite_sha256 c3842709d398, pages ['docs/harnesses/write.mdx', 'docs/harnesses/index.mdx', 'docs/reference/harness.mdx', 'docs/harnesses/example-trading.mdx'], example examples/harnesses/trading, guide_sha256 78fa1323c934
+- suite: re-derived under suite d4341e638fec; the run pinned c3842709d398 (a changed suite changes the verdict, never the record)
 
 | step | messages | questions | minutes | longest message | completed | artifacts | verdict |
 |---|---|---|---|---|---|---|---|
@@ -16,7 +17,7 @@
 | structural_gaps | 0 | {"max": 0} | pass |
 | check_green | 1 | {"min": 1} | pass |
 
-Judge: gemini vertex_ai/gemini-4-argon via litellm vertex_ai, 2 pass(es), bar 1 (the worst item binds)
+Judge: gemini vertex_ai/gemini-4-argon via litellm vertex_ai, 2 pass(es), bar 1 (the worst eligible item binds; a step's `judged` list in the suite says which dimensions it is scored on)
 
 | dimension | per-pass worst item | adjudicated items | final | verdict |
 |---|---|---|---|---|

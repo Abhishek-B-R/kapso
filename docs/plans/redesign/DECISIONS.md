@@ -2305,3 +2305,53 @@ second user (`s2-claude-second-1`) launched the served build with the
 bank's two cards but no status file ever appeared within its wait and
 the driver of that run did not archive the campaign's log; the driver
 now archives the log and the status, and the rerun says what happened.
+
+## WP9: the fresh machines' Codex roles run on the owner's device-auth session (2026-10-29)
+
+The plan said every Codex role on a fresh machine would wait for credit
+on the machine's API key and that the Codex arms would run on the
+development box, marked advisory, until then. What was built instead,
+from `s1-claude-1` on (411b230e): `fresh_machine.sh` pushes the owner's
+device-auth ChatGPT session (`~/.codex-semantic/auth.json`, over ssh
+stdin only) to each machine at install, and the S2 driver copies it to
+the second engineer's Unix user, so every arm ran on a fresh machine and
+no record carries the advisory mark. The cost: a personal login copied
+to throwaway VMs and a second user's home, revocable by any copy's
+refresh — re-logged before a wave, verified by the preflight's one-token
+call, the machines deleted after the fetch. The runner now writes
+`~/.codex/SOURCE` beside the pushed session and every driver copies it
+into its record's notes, so a run on the borrowed session says so; the
+runs before that mark were on the same session, said in the sub-plan.
+
+## WP9 S2 judge: a step is scored on the dimensions it can give evidence for (2026-10-29)
+
+The design's five dimensions at 4 or above, with the worst item binding,
+made the bar unreachable on steps the design made terse: `watch` is
+budgeted two messages of eight lines ("how the campaign is going, in a
+few lines"), and a report with nothing to be proactive about scores 1 on
+`proactive` by the rubric's own rule ("no evidence scores 1"), binding
+the run. The suite now lists per conversation step the dimensions it is
+judged on (`judged`: watch, session-brief, harness-export,
+experience-share, learn and campaign-tools are scored on clear, not
+annoying, engaging and return on attention; every other step on all
+five), the worst eligible item binds, and the judge adjudicates no
+ineligible pair. A harness reading of the design, recorded for the owner
+to confirm or widen: the design's words are "every dimension at 4 or
+above", and the choice here is which steps a dimension is a fair question
+of. The Codex host's terseness stays a finding where the step invites a
+finding.
+
+## WP9 S5: the two-message bar is the driver's construction; truthfulness is read sample by sample (2026-10-29)
+
+The run-level bar `user_messages_max ≤ 2` could not fail: the driver
+sends at most two messages by construction and a class not handled
+within them reads false on its own predicate. The bar is gone (the count
+stays as information). Truthfulness is now held sample by sample — the
+shown verdict against the liveness the sampler observed beside it, on the
+samples between one and two heartbeats after the injection — and an
+injection with no sample in that window is counted unobserved, where the
+bar wants none; the two partial arms had one each, hidden by the ratio.
+Retention after a resume compares the attempts' identities and reads
+"not exercised" when none had landed before the kill (the early staging
+makes that the usual case): the claim the records support is the
+campaign's continuation, said as such.

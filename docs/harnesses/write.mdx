@@ -82,7 +82,7 @@ A module with a page or any attachment has content. The setup session and the ve
 
 ## Skills
 
-A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs under it (the example keeps them in a `scripts/` directory). Those two keys are all `check` reads; any other front-matter key (the example's `metadata`, say) is left to the host, and the engine reads nothing else there. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
+A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs under it (the example keeps them in a `scripts/` directory). Those two keys are all `check` reads; the host reads the rest, and one other key the engine does read: a deployment target's `metadata.run_kinds` (the example's `paper-trading` skill carries it), which `deploy` reads and refuses when malformed — see the deploy page. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
 
 ```markdown
 ---
@@ -95,7 +95,7 @@ Run the scan on the attempt's diff; a hit is a finding with its file and line:
     git diff main...HEAD | python3 $KAPSO_HARNESS_ROOT/skills/lookahead-scan/scripts/scan.py
 ```
 
-`KAPSO_HARNESS_ROOT` is set in every staged session and names the harness directory, so a script is run where it lives. Name each skill on its module's own page — the directory name, literally, anywhere in that page's text is what `check` looks for; a mention on `guardrails.md` does not count — since it warns on one the module's page never mentions: a session that is never told about a skill does not look for it.
+`KAPSO_HARNESS_ROOT` is set in every staged session and names the harness directory, so a script is run where it lives. Name each skill on its module's own page — the directory name, literally, anywhere in that page's text is what `check` looks for; a module with no page of its own is read on `guardrails.md`, and only then does a mention there count — since it warns on one the page it reads never mentions: a session that is never told about a skill does not look for it.
 
 ## Servers
 
@@ -165,7 +165,7 @@ A file hook reads both shapes, as the trading harness's `protect-prepared` and `
 
 ## Environment
 
-`environment.python` names a requirements file: one requirement per line in pip's form (`numpy`, `numpy==2.1.0`, `numpy>=2.0`, an environment marker if needed; `#` comments, blank lines and `-r`-style option lines are skipped; a line that is not a requirement is an error). `check` reads each against `python3` on PATH, the interpreter the harness's own commands name — a bare name needs the package installed, a specifier needs the installed version inside it — and reports what is missing or too old, with the `python3 -m pip install` line. `environment.commands` are programs that must be on PATH, `environment.gpu` asks for an NVIDIA GPU. A program a hook or a server runs is checked without being listed. Nothing is installed by the engine: a need is reported by `check`, printed by `kapso harness list`, and refused by a verb whose modules need it.
+`environment.python` names a requirements file: one requirement per line in pip's form (`numpy`, `numpy==2.1.0`, `numpy>=2.0`, an environment marker if needed; `#` comments, blank lines and `-r`-style option lines are skipped; a line that is not a requirement stops `check` with pip's own parse error). `check` reads each against `python3` on PATH, the interpreter the harness's own commands name — a bare name needs the package installed, a specifier needs the installed version inside it — and reports what is missing or too old, with the `python3 -m pip install` line. `environment.commands` are programs that must be on PATH, `environment.gpu` asks for an NVIDIA GPU. A program a hook or a server runs is checked without being listed. Nothing is installed by the engine: a need is reported by `check`, printed by `kapso harness list`, and refused by a verb whose modules need it.
 
 ## Check, run, read
 

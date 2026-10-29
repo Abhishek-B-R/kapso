@@ -56,19 +56,23 @@ one bounded exception: a sentence in `plugin/skills/*/SKILL.md`,
 shows wrong, when one sentence settles it and the package is merged; never
 engine code.
 
-**The owner's action this package needs.** The fresh machine's Codex API
+**The Codex login the machines run on.** The fresh machine's Codex API
 key (`openai-api-key` in Secret Manager) answers the models listing and
 refuses a response with `credit_balance_exhausted` (probed 2026-10-27
-08:18 UTC). Every Codex role on a fresh machine waits for credit on that
-key or a second key: S1's Codex engineer, S2's Codex host and the persona
-when Claude Code hosts, S4's Codex reader, the author test's Codex author,
-and the learn's grader roles (`graders.crew.report_writer` and `assessor`
-run on Codex). Until then those arms run on the development box under the
-owner's own Codex login, as WP7's Codex half did by the owner's decision,
-and are marked **advisory** in every record and report: the design forbids
-the development box for smoothness numbers, and an advisory arm proves
-the flow, not its smoothness. The fresh-machine arms that need Codex are
-reported incomplete, with this reason, until the credit exists.
+08:18 UTC), so every Codex role on a fresh machine — S1's Codex engineer,
+S2's Codex host and the persona when Claude Code hosts, S4's Codex
+reader, the author test's Codex author, the learn's grader roles — runs
+on the owner's device-auth ChatGPT session instead: `fresh_machine.sh`
+pushes its `auth.json` to each machine at install (and `plugin_proof`
+copies it to the second engineer's Unix user), writes `~/.codex/SOURCE`
+beside it, and every driver copies that line into its record's notes
+(DECISIONS 2026-10-29; the runs before that mark were on the same
+session, said in their records below). The arms therefore ran on fresh
+machines, not on the development box; **advisory** is the development
+box's mark alone (`--advisory`), and no run in this round carries it.
+The cost of the path is the owner's: the session is a personal login
+copied to throwaway VMs, and a refresh by any copy can revoke the
+others (the Risks).
 
 ## Interface
 
@@ -90,9 +94,11 @@ reported incomplete, with this reason, until the credit exists.
 - **The record, second shape** (`tests/semantic/README.md`): `test`, `host`,
   `machine`, `advisory` (true when an arm ran on the development box, with
   the reason), `run_id` (`<test>-<host>-<UTC stamp>`, immutable: a rerun
-  is a new record, never a replacement), `pins` (`wheel_sha256`,
-  `source_rev`, `plugin_rev`, `docs_rev`, `cli_versions`,
-  `fixture_manifest_sha256`, `suite_sha256`, `config_sha256`), `user`
+  is a new record, never a replacement), `pins` (what the driver pinned:
+  `suite_sha256` always, `wheel_sha256` where a wheel was installed, and
+  the test's own — the campaign read, the grid's cadence and the builds'
+  budget, the guide's hash; the CLI versions are in the machine's install
+  log under the run directory), `user`
   (`kind` scripted or persona, `card`, `card_sha256`, `vendor`, `model`,
   `effort`, `prompt_sha256`, `interventions`: the driver's out-of-band
   acts named per step), `steps` each with `name`, `kind` (`conversation`,
@@ -174,7 +180,9 @@ reported incomplete, with this reason, until the credit exists.
   reported **unjudged**, the hard metrics stand and the judged bar is
   "not established": acceptance blocked, never a weaker judge. The
   rubrics as files under `tests/semantic/rubrics/`: `s2.md` (the design's
-  five dimensions, verbatim), `s4.md` (six questions: Q1, Q3, Q4, Q5
+  five dimensions; the not-annoying clause reads the step's own line
+  budget, which the judge's material states beside the exchange; a step's
+  `judged` list in the suite says which dimensions it is scored on), `s4.md` (six questions: Q1, Q3, Q4, Q5
   scored against the fact sheet's extracted facts; Q2 and Q6 on two tests,
   every cited fact checks out against the record and the conclusion names
   its evidence), `s1.md` (the comprehension key per verb and the three
@@ -339,8 +347,8 @@ reported incomplete, with this reason, until the credit exists.
   with one small call), provisions the machine with the test's
   `KAPSO_FRESH_MAX_RUN`, installs the wheel built from the branch and the
   fixtures' dependency venv first on PATH (numpy, pandas, scikit-learn,
-  duckdb, dbt-core, dbt-duckdb at the examples' pins), records the CLI
-  versions, runs the test under an immutable run id, archives (below),
+  duckdb, dbt-core, dbt-duckdb at the examples' pins), keeps the CLI
+  versions in the install log, runs the test under an immutable run id, archives (below),
   verifies the archive is fetched, deletes the machine, judges on the
   development box, renders the report under `tests/semantic/reports/`;
   `--advisory` runs on the development box under a fresh Linux user with
@@ -579,14 +587,17 @@ run"):**
   on the machines, the learns of S6 and S2 completed on both hosts with
   two cards each, the Codex roles on the device-auth session that stands
   in for the credit.
-- **S1: met, one bar unmet by decision.** `s1-claude-1`: first try 10 of
-  12 against 9, every error to its fix in one step, no wrong call, the
+- **S1: met, one bar unmet by decision.** `s1-claude-1`, re-read under
+  the package's own verbs and true invocations (2026-10-29): first try 9
+  of 12 against 9, the one errored call fixed in one step, the
   comprehension key 7 of 7, the CLI flow in 2 commands, the judge's names
-  dimension passing; the Python flow 16 lines against 12, the judge's
-  lengths dimension failing on the same cause, kept as a finding and not
-  a loosened bar (DECISIONS 2026-10-27). The released baseline
-  `s1-released-2` beside it: first try 1 of 12, comprehension 0 of 7, its
-  unsupported verbs said in the engineer's own words.
+  and docs dimensions passing over the answers and the flows; the Python
+  flow 16 lines against 12, the judge's lengths dimension failing on the
+  same cause, kept as a finding and not a loosened bar (DECISIONS
+  2026-10-27). The released baseline `s1-released-2` beside it, re-read
+  the same way: first try 6 of 12 (not the 1 first written), two errored
+  calls neither fixed in one step, comprehension 0 of 7, a 30-line flow,
+  its unsupported verbs said in the engineer's own words.
 - **S2: met with caveats, three of them the owner's call.** Every
   required step is true on a clean run of its host (`s2-claude-3` 19 of
   25, `s2-codex-5` 17 of 24, the targeted arms for the rows those left
@@ -608,9 +619,12 @@ run"):**
   writing. The fresh-machine arms ran on both hosts, marked in each record
   as running the Codex roles on the device-auth session rather than the
   persona's own credit.
-- **S4: met.** `s4-claude-1`: both readers 6 of 6 in both passes, on the
-  S5 tampering campaign with its integrity void and its rejected attempt,
-  once the fact sheet filed a void by its substance.
+- **S4: met on the readings, half met on the campaign.** `s4-claude-1`:
+  both readers 6 of 6 in both passes, once the fact sheet filed a void by
+  the engine's own semantics; the campaign held the integrity void and no
+  judge rejection (the report's `campaign_has_rejection` bar reads FAIL),
+  and no archived campaign holds both — the Codex reader's coldness is
+  reported as not established, the machine being fresh.
 - **S5: met.** Across `s5-claude-5` to `s5-claude-7` every one of the six
   classes was handled as designed with at most two user messages, the
   shown state truthful within a heartbeat on every sampled timeline, the
@@ -639,10 +653,14 @@ run"):**
 
 ## Risks
 
-- **The Codex credit is the owner's.** Every Codex role on a fresh machine
-  waits for it; the advisory arms on the development box prove the flow,
-  not its smoothness, and are marked so in the records. S2 proper on the
-  fresh machine cannot complete for either host until then.
+- **The Codex login is the owner's device-auth session.** Every Codex role
+  on a fresh machine runs on a copy of the owner's personal ChatGPT login
+  (the API key has no credit): the copy sits on a throwaway VM and in a
+  second Unix user's home for the served build, and a token refresh by
+  any copy can revoke the others. The mitigation is the runner's: the
+  session is re-logged before a wave, verified by a one-token call in the
+  preflight, and never pushed through a command line (ssh stdin only);
+  the machines are deleted after the fetch.
 - **The persona's variance and its blind spots.** A model user is never
   bored and says "go" too readily; the pushback check planted in the task
   view tells a persona that reads from one that nods, and the arm is
@@ -809,7 +827,9 @@ local (5.72 h, about $0.77). Report `tests/semantic/reports/s1-claude-1.md`.
 
 **Verdict: FAIL**, each cause recorded as a fix or a finding:
 
-- `comprehension_correct` 1.0, `wrong_calls` 0, `first_try` 10/≥9 — the
+- `comprehension_correct` 1.0, `wrong_calls` at most 1 (one errored call,
+  fixed in one step), `first_try` 9/≥9 (re-read 2026-10-29 under true
+  invocations: a `sed` over the docs had counted as task 2's first run) — the
   engineer read the tool correctly from the docs alone.
 - **The grading tail was broken on first real contact** (commit
   `dc3d0a8b`): the judge's summary read the model reply's `scores` key, not
@@ -847,13 +867,25 @@ $0.53. Report `tests/semantic/reports/s1-released-2.md`. **Verdict: FAIL**
 
 | | released 0.7.10 (`s1-released-2`) | the new stack (`s1-claude-1`) |
 |---|---|---|
-| first-try launches of twelve | 1 (task5-python) | 10 |
+| first-try launches of twelve | 6 | 9 |
 | launched at all | 6 (tasks 1, 2, 5-python, 6-cli) | 10 in the record, 11 real (the task6-cli resume) |
 | minutes to launch, tasks 1–2 | 10.8 / 15.6 / 13.2 / 17.2 | 9.5 / 11.2 / 20.6 / 12.9 |
 | comprehension, 7 facts | 0 | 7 |
 | judge: names / lengths / docs | 0 / 0 / 0 | 1 / 0 / 1 |
-| python_lines / cli_commands | 24 / 1 | 16 / 2 |
-| wrong calls | 0 | 0 |
+| python_lines / cli_commands | 30 / 2 | 16 / 2 |
+| errored calls, fixed in one step | 2, neither | 1, yes |
+
+Both columns re-read from the archives on 2026-10-29 (the review's
+finding): the first grading had counted the released arm under the
+branch's verbs — none of its `kapso evolve` runs counted, and its one
+"first try" was `learn`, the verb both packages share — and had counted
+a `sed` over the docs as a run of the new stack. Under the package's own
+verbs and true invocations the baseline launched six of twelve first try
+against the new stack's nine; the judge, re-run over the answers and the
+flows as one material, reads the baseline's comprehension at 0 of 7
+against 7 and its flows as 30 lines against 16. The `minutes to launch`
+column is the earlier clock (the driver's start to after the turn); the
+driver now stops it at the first sampled moment the evidence holds.
 
 What the released tool made the engineer believe, in its own words: "I
 couldn't find a call named build. The build step was `Kapso.evolve()`";
@@ -1042,12 +1074,24 @@ one of the six classes has been handled as designed.
 The campaign `s5-claude-6` tampered with (attempt one's evaluator edited in
 its session clone and the attempt integrity-rejected; attempt two delivered
 at 0.8512, goal achieved; $5.71 over 29 minutes), staged onto a fresh
-machine with `kapso trace`'s text; a cold Claude reader (`claude-opus-5`,
-proved cold from its session init) and a cold Codex reader (`gpt-6-astra`)
+machine with `kapso trace`'s text; a cold Claude reader (`claude-opus-5-5`
+— the hosts table's model, which the reader ran on while the suite's
+`readers` entry said `claude-opus-5`; the driver now reads `readers` and
+the entry says what ran) proved cold from its session init, and a Codex
+reader (`gpt-6-astra`) whose coldness a Codex stream cannot prove (no
+init event; the record says "not established", the machine was fresh),
 answered the six questions in a minute each; the Gemini judge graded them
-against the fact sheet twice. **PASS: both readers 6 of 6 in both passes**
+against the fact sheet twice. **Both readers 6 of 6 in both passes**
 (report `tests/semantic/reports/s4-claude-1.md`; 0.16 h of machine) — after
-one correction to the fact sheet, not to the readers. The first grading
+one correction to the fact sheet, not to the readers. The campaign holds
+the integrity void and no judge rejection (the engine's "rejected:
+Provided evaluation integrity check failed" is the void; its
+`rejected_candidates: 1` counts that same attempt), so the design's
+"a campaign with a void and a rejection" is half met: the report's
+`campaign_has_rejection` bar reads FAIL, and no archived campaign holds
+both (the one judge rejection in the archives, `s5-claude-7`'s
+killed-session campaign, has no void). A campaign with both is the
+owner's to choose or the next round's to produce. The first grading
 read 5 and 4: the sheet had filed the integrity failure under "rejected"
 and said "nothing voided", because the engine words that void "rejected:
 Provided evaluation integrity check failed (changed: evaluate.py)", and it
@@ -1115,10 +1159,17 @@ sampler writes its terminal row), so the Codex arm will carry a real gap
 series. The bar as written (lessons cited, both builds scored) passed; the
 gap bar was vacuous here and says so in the record.
 
-**`s6-codex-1`, the Codex-host round on the fixed driver** (2026-10-29,
+**`s6-codex-1`, a second Claude-host round on the fixed driver** (2026-10-29,
 TOKEN3, the learn on Opus; 2.95 h of machine, about $0.40; report
-`tests/semantic/reports/s6-codex-1.md`): **PASS, 4 of 4 steps**, and this
-time the pair sits on a real grid. Build one, served nothing: node 0 at
+`tests/semantic/reports/s6-codex-1.md`). It was launched as the Codex
+host's round and first written up here as such; the review read the
+record: the runner had dropped the host and the driver built the Claude
+host whatever it was given, so this pair ran on Claude Code (the record
+says `host: claude_code`). The driver now takes `--host`, the campaigns
+run on that coding agent and a review step on that host must name a
+served card (DECISIONS); the Codex host's own round is `s6-codex-2`,
+below. As a second Claude-host pair the round stands: **PASS, 4 of 4
+steps**, and this time the pair sits on a real grid. Build one, served nothing: node 0 at
 0.8501 in 15.8 min, `goal_achieved`. The learn, 115 min, banked two cards
 (a correct specification beating capacity when the functional form is
 recoverable; the hold-out's noise bounding evaluator spending once gains
@@ -1243,8 +1294,11 @@ build-empty-wish, harness-new (2 messages, 1 question, 5.1 min),
 harness-probe, learn, experience-share, harness-improve, campaign-session
 isolation, the Codex rules probe. False: watch (every predicate held; the
 persona asked a third question at the two-turn cap), **triggers 4 of 18 per
-skill and 0 of 10 holdout — the first run's figures exactly** (deterministic,
-and clean of 429s: 2 of 178 runs met one), review (the host wrote "no
+skill and 0 of 10 holdout — the first run's figures exactly**, which the
+review traced to the machine, not the host: 153 of the 356 main runs and
+all 10 holdout runs died in codex's sandbox before any skill could be
+read (`bwrap: loopback: Failed RTM_NEWADDR`; re-graded 2026-10-29 as
+not established; the finding below and `s2-codex-triggers-1`), review (the host wrote "no
 winner was delivered … 0.0041 short of 0.85 … the target remains unmet" of
 a campaign with no branch, words the detector did not know and now does;
 re-read, both predicates hold), deploy (nothing delivered to deploy),
@@ -1254,9 +1308,15 @@ asked instead of answering) and second-engineer-build (no card to serve).
 The judge: clear 4 and not annoying 4 pass; **proactive 1, engaging 1,
 return on attention 1 fail** — the Codex host's answers are right and
 terse (build-pause, campaign-tools, experience-share, learn, session-brief
-and watch at proactive 1–2: the state said, the next step never offered)
+and watch at proactive 1–2: the state said; the next step offered on two
+of the six — the pause answer gave the watch, inbox and reply commands,
+the learn answer the watch and serving lines — and absent on the rest)
 where the Claude host's ran 4–5 on the same steps; a product finding for
-the Codex host's skill wording, under "Findings for later packages".
+the Codex host's skill wording, under "Findings for later packages". The
+suite now judges `proactive` and `return on attention` only on the steps
+whose intent invites a finding (a step's `judged` list; DECISIONS
+2026-10-29), so a two-line state report no longer binds the run on what
+it was budgeted not to do; the re-judged verdicts are below.
 
 **`s2-claude-3`** (the clean Claude run under the derived cap, 2026-10-28
 21:06 to 00:48, token-5, the persona on `gpt-5.6-sol`, the learn on Opus;
@@ -1308,30 +1368,48 @@ its `fetched/out`.
 
 **From the live S2 round (2026-10-28, both hosts on fresh machines):**
 
-- **Deploy parity fails on a delivery that trains at load.** On both hosts
-  the deployed call's answer for the proof row differed from the delivered
-  prediction (Claude 0.9838 vs 0.9871; Codex 0.9776 vs its own): the churn
-  fixture's `predict.py` fits its models when it loads, so the deployment
-  re-fits them and the figures drift. Parity, as WP5 defines it, needs a
-  frozen artifact; the fraud brief asks for one ("deliver it frozen"), the
-  churn brief does not. Either the deploy adapter freezes what it serves,
-  or a brief that wants a deployable result says so — WP5's call.
-- **Codex 0.165 on a fresh machine triggers the plugin's skills implicitly
-  in 4 of 18 cases per skill** (holdout 0/10), where WP7's round on the
-  development box's codex 0.153 passed the same probe and the Claude host
-  passes it at 19–20 of 20. A Codex skill-discovery change between those
-  versions is the prime suspect; WP7's domain. Checked against the day's
-  429 storms on `gpt-6-astra`: of `s2-codex-1`'s 188 trigger runs only 4
-  met a 429, and 137 of the 138 failed runs were clean sessions (exit 0,
-  18–42 s) that loaded no skill — the miss is the host's, not the limit's.
-- **An exported skill was not loaded when asked.** The export itself was
-  right on both hosts (the skills, delegates and `.mcp.json` placed, the
-  hooks and module pages left behind with the reason), but in the plain
-  session that followed, the Claude host answered a question about the
-  backtesting skill from memory, drifted, and the persona's "load the
-  skill and cite its path" went unresolved — the judge's lowest scores of
-  the round. What a plugin session does with an exported skill directory
-  is WP7's and WP10's to look at.
+- **Deploy parity fails because the serving adapter changes the
+  prediction's transform.** On both hosts the deployed call's answer for
+  the proof row differed from the delivered prediction (Claude 0.9838 vs
+  0.9871; Codex 0.9776 vs its own). The Claude archive says why in the
+  host's own words: the delivered `predict.py` ranks each score against
+  the other rows of the same batch, which cannot work for one row, so the
+  adapter the deploy session wrote "ranks against the training scores
+  instead, so a row gets the same score whether it's sent alone or in a
+  batch" — and the regenerated batch predictions were byte-identical to
+  the delivered file. That is a semantic change the session made to serve
+  single rows, not a re-fit's randomness (the review's reading, corrected
+  from the first draft here). Parity, as WP5 defines it, holds only when
+  what is served computes what was evaluated: either the deploy skill
+  forbids a transform change and asks for a batch-equivalent call, or a
+  brief that wants a deployable result says what one call must equal —
+  WP5's call.
+- **The Codex trigger suite cannot run in codex's sandbox on the fresh
+  machine.** `s2-codex-5`'s 4 of 18 per skill was first written here as
+  a discovery regression; the sessions' own words say otherwise: 153 of
+  its 356 main runs and all 10 holdout runs reported `bwrap: loopback:
+  Failed RTM_NEWADDR: Operation not permitted` — codex-cli 0.165's
+  read-only sandbox cannot start on the GCP image — announced the skill
+  they meant to read and could not read it (re-graded 2026-10-29 under
+  the runner's sandbox classification: 7 of 89 cases established, the
+  rest not established, never a miss). The runner now probes the sandbox
+  once, classifies such runs as the machine's failure, and on that image
+  runs the trigger sessions unsandboxed by the runner's word (`--sandbox
+  danger-full-access`, said in the record); the suite re-ran that way
+  (`s2-codex-triggers-1`, below). Whether the plugin's skills trigger on
+  codex 0.165 is answered by that run, not by the first one.
+- **An exported skill's session answered the question but did not
+  satisfy the persona.** The export itself was right on both hosts (the
+  skills, delegates and `.mcp.json` placed, the hooks and module pages
+  left behind with the reason). The first draft here said the Claude host
+  "answered from memory without loading the skill"; the transcript shows
+  `Skill({"skill": "backtesting"})` and "Launching skill: backtesting"
+  before the answer — the skill was loaded — and the persona's "load the
+  skill and cite its path" was never sent because the exchange had one
+  turn (the review's reading, corrected). The driver's exchange cap is now
+  the step's own budget (two messages), so the follow-up is answered; on
+  `s2-claude-3` the skill loaded and the persona was done in one. No
+  product finding stands here.
 - **The Claude host's build conversations run long and, twice, did not
   launch.** Its `build-pause` reply was 19 and 15 lines against a 12-line
   budget; on the fraud fixture it spent its four messages revising the
