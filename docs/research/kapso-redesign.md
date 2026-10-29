@@ -80,7 +80,12 @@ experience = kapso.learn(solution)
 ## 6. Open items
 
 - The TL;DR: iterate until it reads right, then replace the README section
-  and the PyPI summary.
+  and the PyPI summary. Draft 2 stands on the README, `docs/index.mdx` and
+  the PyPI summary since 2026-10-29 (WP10), with three adaptations the
+  claims lint or a fact forced: "judge" left out of the module list, the
+  harness sentence cut to the two harnesses that ship plus the examples'
+  trading harness, "ready to deploy" for "deployed" (deploy is its own
+  verb). The next draft replaces it on all three in one change.
 - The tags: four, in the one-liner's order.
 - The entrance when there is no evaluation (the engine proposes one, the
   judge checks it is fair): keep the three-case design from

@@ -84,7 +84,7 @@ Edits: `docs/` (pages, `docs.json`, `docs/README.md`), `README.md`, `examples/` 
 | 11 | P2: redirects cannot carry a fragment | no link used an anchor into the retired Learn pages; the rule stands for the deferred condensation |
 | 12 | P3: phrase the listing clause by `.mintignore` | the test reads the tree; `.mintignore` excludes nothing today |
 | 13 | P1: `judge` 96 times; the list is positioning copy | the list in two sections: everywhere, and the front pages only for `judge` and `trust` (change 2) |
-| 14 | P1: the first run needs the owner's one-liner | the one-liner and heading reworded by the builder and flagged to the owner to veto |
+| 14 | P1: the first run needs the owner's one-liner | the builder's own wording was vetoed by the direction document: the owner pointed at `docs/research/kapso-redesign.md` (2026-10-29, "use that doc as the direction for updating the docs and story telling"); its one-liner is the README's heading and the PyPI summary, its TL;DR is What is Kapso on the README and `docs/index.mdx`, adapted only where the lint or a fact forced it: "judge" left out of the module list (a front-page word out), the harness list cut to the two that ship plus the examples' trading harness, "ready to deploy" for "deployed" (deploy is its own verb) |
 | 15 | P2: a `text` fence is prose | done (change 4): text and md fences are prose for the words-out rule |
 | 16 | P1: the table allow-list is false of today's pages | the rule reads a table's header for its source column and the paragraph's provenance words; change 8 fixes the IOAI page from WP8's record |
 | 17 | P2: the examples' READMEs in rule 2's scope | done (change 4), with "expected" and "not measured" markers allowed |

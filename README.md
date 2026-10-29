@@ -1,7 +1,7 @@
 <h1 align="center">Kapso</h1>
 
-<h4 align="center">Campaigns that optimize AI and data objectives</h4>
-<p align="center"><sub>and learn from every experience</sub></p>
+<h4 align="center">Turn coding-agent output into verified outcomes, not review debt</h4>
+<p align="center"><sub>plug in the harness for your domain, set the goal, every step traced</sub></p>
 
 <p align="center">
   <a href="https://docs.leeroo.com/docs">Learn more</a> ·
@@ -58,9 +58,11 @@
 
 ## What is KAPSO?
 
-Kapso runs campaigns that optimize AI and data objectives, with coding agents doing the work and an evaluator keeping the score. State an objective and it runs a campaign: it designs candidate solutions, has coding agents implement them, measures how far each one is from the objective, and keeps refining the closest until the objective is met. The result ships to your infrastructure.
+Coding agents burn tokens and hand back diffs you have to review. Kapso runs them differently. You plug in a harness for your domain and set a goal; it works the goal until it is met, measuring every attempt with an evaluation the agents cannot touch and keeping every step on record. What comes back is a verified outcome: the branch that met the goal, the evaluation that proved it, ready to deploy as running software.
 
-Kapso learns from every experience. When a campaign ends, it studies its own work: which ideas closed the distance to the objective, which did not, and under what conditions. Each finding is kept as a lesson with the evidence that earned it, and a lesson stays trusted only as long as it keeps holding up. Kapso also reads outside your walls, repositories and papers, and folds what it finds into the same knowledge hub. Every new campaign begins from that hub, so it starts with what earlier work already established, about the problem and about your systems.
+A harness teaches Kapso one kind of work: how to propose, build, measure and deploy there, and the tools it needs. Two ship with Kapso, predictive modelling and competitive programming; the examples carry a trading harness, and you write your own for anything with an evaluation.
+
+It learns from experience, and the lessons carry their receipts: one rule per card, the condition it applies under, the measured effect from each run that tested it, a reliability score with its rationale.
 
 Kapso is an open-source Python framework by [Leeroo](https://leeroo.com), published on PyPI as [`leeroo-kapso`](https://pypi.org/project/leeroo-kapso/).
 
