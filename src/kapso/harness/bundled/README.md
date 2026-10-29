@@ -1,8 +1,19 @@
 # Bundled harnesses
 
 A harness in this directory loads by name: `kapso build --harness <name>`,
-`Kapso().load_harness("<name>")`. The harness ports (WP8 of the redesign,
-`docs/research/harness-ports.md`) fill it; until then `kapso harness list`
-says none ship, and a harness is loaded by path or by repository
-reference (`docs/research/onboarding.md`). The worked example lives under
+`Kapso().load_harness("<name>")`, the brief's `Harness` line; `kapso harness
+list` prints each one under `bundled` with what this machine lacks for it.
+Each is a complete harness in the package's own grammar, written from the
+benchmarks the engine was measured on (docs/research/harness-ports.md, the
+ports of docs/plans/redesign/wp8-harness-ports.md), and holds no task: the
+benchmark runners under `benchmarks/` supply the task material and launch a
+build with the harness.
+
+| Harness | Domain | Written from |
+|---|---|---|
+| `predictive-modelling` | structured prediction: a test set that never trains, cross-validation discipline, leakage as the failure that voids, features before architectures, ensembling last; relational databases with a temporal cutoff as the situation its skills name | RelBench (the measured practices, the temporal protocol, the leakage audit), then MLE-bench |
+
+The gate runs `check` over every directory here at the packaged page budget
+and fails on a warning (`tests/test_bundled_harnesses.py`), and scans each
+for a benchmark constant. The worked example for writing one lives under
 `examples/harnesses/trading/`.

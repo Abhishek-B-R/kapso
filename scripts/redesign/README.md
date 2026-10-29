@@ -36,6 +36,23 @@ runs and the semantic suite.
 wheel sha256, install log, run logs, deletion line). It is gitignored except
 for the files a sub-plan cites as evidence.
 
+## benchmark_machine.sh
+
+The fresh machine's shape for a benchmark reproduction
+(`docs/plans/redesign/wp8-harness-ports.md`): a GPU where the benchmark
+needs one, the wheel and the benchmark tree at this commit, the
+benchmark's own stack in one virtual environment with the engine (the
+candidates' code runs in the handler's interpreter).
+
+| | |
+|---|---|
+| kinds | `create <id> gpu`: a spot `a2-highgpu-1g` (one A100 40 GB, the project's only GPU quota) on `common-cu129-ubuntu-2204-nvidia-580` with a 300 GB disk, tried over `us-central1-a`, `-b`, `-f` (`KAPSO_BENCH_GPU_ZONES`); `create <id> cpu`: an `e2-standard-8` on Ubuntu 24.04 with Docker, for the heuristic-optimisation scorer |
+| labels | `purpose=kapso-bench,run=<run-id>,kind=gpu|cpu`; `status` lists them |
+| lifetime | `--max-run-duration 14h` (`KAPSO_BENCH_MAX_RUN`) with `--instance-termination-action DELETE`; a spot preemption deletes the machine too, so a long arm leans on the engine's checkpoint and the archive is fetched as the arm goes |
+| install | `install <id> <wheel> <benchmark>`: `benchmark_machine_install.sh` over ssh makes `~/bench/venv` with the wheel, `benchmarks/<benchmark>/requirements.txt` and the benchmark's modelling stack, unpacks `benchmarks/__init__.py` and `benchmarks/<benchmark>` into `~/bench`, installs Node 22 with the two CLIs; the secrets as `fresh_machine.sh` pushes them, plus the device-auth Codex session with its `~/.codex/SOURCE` marker |
+| run | `run <id> "<command>"` sources the secrets, puts the venv on PATH and runs the command from `~/bench`; tee'd to `runs/<id>/run-N.log` |
+| fetch, delete | as `fresh_machine.sh`; the deletion line bills at the kind's hourly estimate (`GPU_HOURLY_USD`, `CPU_HOURLY_USD`) |
+
 ## semantic.sh
 
 ```

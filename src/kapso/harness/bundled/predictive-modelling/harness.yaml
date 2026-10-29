@@ -1,0 +1,27 @@
+schema_version: 1
+name: predictive-modelling
+version: 0.1.0
+description: Structured prediction with a test set that never trains, cross-validation discipline, leakage as the failure that voids, features before architectures, ensembling last.
+
+environment:
+  python: requirements.txt
+
+modules:
+  setup:
+    skills: [sanitize-cache, temporal-protocol, relbench-api, living-documents]
+    hooks: [protect-prepared]
+  ideation:
+    skills: [relational-feature-practices, temporal-protocol, living-documents]
+    hooks: [protect-prepared]
+  implementation:
+    skills: [relational-feature-practices, temporal-protocol, relbench-api, living-documents, leakage-scan, cv-protocol]
+    agents: [leakage-auditor]
+    hooks: [protect-prepared, deny-web-fetch]
+  verification:
+    skills: [leakage-scan, temporal-protocol]
+    agents: [leakage-auditor]
+    hooks: [protect-prepared, deny-web-fetch]
+  feedback:
+    skills: [cv-protocol]
+    hooks: [protect-prepared]
+  learning: {}
