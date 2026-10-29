@@ -20,7 +20,7 @@ the arm scripts leave it: `arm.log` (the step timestamps and the
 deletion line), `fetched/bench/runs/<name>/campaign/.kapso/` (the launch
 record and the sessions) and the benchmark's final report. The step's
 metrics are what those files evidence: the score, the sessions by kind,
-the skills opened, the hooks fired, the delegates' reports, the cards
+the skills staged, the hooks mounted and fired, the delegates' reports, the cards
 served, the cost, the machine hours and the tokens per model. The
 run-level bars read the record's metrics; the scan runs live over the
 bundled trees and the harness hashes are compared with the pins, so a
@@ -89,14 +89,18 @@ def _campaign_dir(run_dir: Path) -> Path:
 
 def _session_facts(campaign: Path) -> Dict[str, Any]:
     """What the sessions' records evidence: the sessions by module, the
-    pages and skills staged into them, the hooks fired by outcome where the
-    host reports them (Claude Code; Codex reports none), the bank tool
+    pages and skills staged into them (staged, not opened: what the host
+    loaded is not in the record), the hooks mounted and the hooks fired by
+    outcome where the host reports them (Claude Code; Codex reports none,
+    so a Codex arm evidences a hook by its effect, the ledger's token on
+    every submission), the bank tool
     calls, the delegates with a report, the Claude cost, the tokens per
     model, and the raw `kaggle competitions submit` commands seen in the
     streams (the hook's business; the ledger says what went through)."""
     modules: Counter = Counter()
     pages: set = set()
     skills: set = set()
+    mounted: set = set()
     hooks: Counter = Counter()
     bank_tools: Counter = Counter()
     delegates = 0
@@ -109,6 +113,7 @@ def _session_facts(campaign: Path) -> Dict[str, Any]:
         modules[str(record.get("module"))] += 1
         pages.update(str(p) for p in record.get("pages") or [])
         skills.update(str(s) for s in record.get("skills") or [])
+        mounted.update(str(h) for h in record.get("hooks") or [])
         for run in record.get("runs", []):
             for hook in run.get("hooks") or []:
                 hooks[f"{hook.get('name') or hook.get('event')}:{hook.get('outcome')}"] += 1
@@ -130,7 +135,8 @@ def _session_facts(campaign: Path) -> Dict[str, Any]:
                 if _SUBMIT.search(line) and '"command"' in line and "submit.py" not in line:
                     attempts += 1
     return {
-        "sessions": dict(modules), "pages": sorted(pages), "skills": sorted(skills), "hooks_fired": dict(hooks),
+        "sessions": dict(modules), "pages": sorted(pages), "skills_staged": sorted(skills),
+        "hooks_mounted": sorted(mounted), "hooks_fired": dict(hooks),
         "bank_tools": dict(bank_tools), "delegates": delegates, "delegate_reports": reports,
         "claude_cost_usd": round(cost, 2), "tokens": {model: dict(counts) for model, counts in tokens.items()},
         "shell_submit_attempts": attempts,
@@ -189,6 +195,8 @@ def _score(step: str, run_dir: Path) -> Dict[str, Any]:
             # A submission without the procedure's token in its message went around the procedure.
             "shell_submits": sum(1 for s in submissions if "[kapso-" not in str(s.get("description") or "")),
             "ioai_final": final, "delivered": data.get("solution", {}).get("score"),
+            # A score with no delivered candidate is not what the step's bar means.
+            "ioai_candidate_delivered": int(data.get("solution", {}).get("branch") is not None),
             "stopped_reason": data.get("solution", {}).get("stopped_reason"),
             "campaign_cost_usd": data.get("solution", {}).get("cost_usd"),
         }
@@ -253,6 +261,7 @@ def rederive(record_dir: Path) -> Dict[str, Any]:
         score = by_name["arm-ioai"]["metrics"].get("ioai_public_score")
         metrics["ioai_public_score_above_median"] = int(score is not None and score > float(arms["ioai_median"]))
         metrics["ioai_shell_submits"] = by_name["arm-ioai"]["metrics"]["shell_submits"]
+        metrics["ioai_candidate_delivered"] = by_name["arm-ioai"]["metrics"]["ioai_candidate_delivered"]
     stamps = [s for s in steps if not s.get("deferred")]
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
@@ -263,7 +272,8 @@ def rederive(record_dir: Path) -> Dict[str, Any]:
         "user": {"kind": "scripted"},
         "started": arms.get("started", now), "finished": now,
         "steps": steps, "metrics": metrics, "judge": None,
-        "notes": [f"re-derived {now} from the arm archives under scripts/redesign/runs/; {len(stamps)} of {len(STEP_NAMES)} steps run"],
+        "notes": [f"re-derived {now} from the arm archives under scripts/redesign/runs/; {len(stamps)} of {len(STEP_NAMES)} steps run"]
+        + [str(note) for note in arms.get("notes", [])],
         "transcripts": [],
     }
 

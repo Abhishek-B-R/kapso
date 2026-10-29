@@ -2373,7 +2373,7 @@ harness's playbook skill says how to pull the cards for a statement's
 twist and names no problem. If a later package wants the book searched by
 embedding, the same bank ingests then.
 
-## WP8: the abstraction scan is a gate test with the benchmarks' vocabularies, not a `check` rule (2026-10-29)
+## WP8: the abstraction scan is a gate test with the benchmarks' vocabularies, not a `check` rule (2026-10-29; superseded on the scan's home by the entry "the abstraction scan is benchmark tooling, not `check`" below: it lives at `benchmarks/harness_scan.py`, not under `src/kapso/harness/`)
 
 The plan asked for the scan "run by `check` for shipped harnesses".
 `check` is domain-agnostic and reads one harness; it cannot know which
@@ -2723,3 +2723,26 @@ the candidate's output, so `ExperimentSession.commit_folder` adds it with
 `git add -f`: a candidate's ignore rules, the task's or the session's own,
 do not reach it. Found by the arm, fixed in WP8; engine code outside the
 package's scope, so noted here.
+
+## A one-line skill fix after the freeze bumps the harness version; the record names the version each arm ran on (2026-10-29)
+
+The pull-request review found the `kaggle-cli` skill's pages line wrong for
+the CLI the machines install (the swap's preflight log shows the bare form
+rejected and the session recovering with `-c`). The line is fixed and
+`competitive-programming` is 0.3.1; the arms ran on 0.3.0, which differs
+by that line only, and the S3 record says so beside each arm. The frozen
+row in the sub-plan is re-pinned to 0.3.1: the bar "no harness edit after
+the freeze" guards silent drift, and a named, one-line change with its
+version bump is the opposite of silent.
+
+## The MLE in-loop score is the candidate's own hold-out number; the owner's call whether the grader owns the split (2026-10-29)
+
+The review's finding 5: the MLE grader validates the submission's format
+and takes the score the candidate prints on its own stratified hold-out,
+so the search optimises a self-report that only the verifier and the
+final private grade contradict. The plan's earlier decision (the held-out
+score stays the search signal) stands for this package; the Acceptance
+now says the number is self-reported and what checks it. Making the
+grader own the split (deterministic hold-out ids from `task.json`, the
+predictions scored by the grader) is the owner's call for a later
+package.

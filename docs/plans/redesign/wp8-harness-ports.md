@@ -63,25 +63,25 @@ package's `bundled/` holding a manifest.
 **The trees.**
 
 ```text
-predictive-modelling/                       competitive-programming/
+predictive-modelling/  (0.3.2)              competitive-programming/  (0.3.1)
 ├── harness.yaml                            ├── harness.yaml
 ├── requirements.txt  (the scripts' own)    ├── (no environment file: the hooks are stdlib)
 ├── instructions/  guardrails setup         ├── instructions/  guardrails setup
 │   ideation implementation                 │   ideation implementation
 │   verification feedback learning          │   verification feedback learning
-├── skills/                                 ├── skills/
-│   sanitized-copy (scripts/sanitize.py)    │   heuristic-patterns
-│   temporal-protocol                       │   cpp-performance
-│   relational-feature-practices (eleven)   │   scorer-cli
-│   relbench-api (tensor frames folded in)  │   kaggle-cli
-│   living-documents  cv-protocol           │   contest-preflight
-│   leakage-scan (scripts/scan.py)          │   contest-economics
-│   task-type-playbooks  hf-model-fetch     │   olympiad-playbook
-│   ensembling  tabular-modeling            ├── agents/ score-auditor
-│   eda-discipline                          │           submission-auditor
+├── skills/  (twelve)                       ├── skills/  (thirteen; six shared with the other)
+│   cv-protocol  eda-discipline             │   contest-economics  contest-preflight
+│   ensembling  hf-model-fetch              │   cpp-performance  cv-protocol
+│   leakage-scan (scripts/scan.py)          │   eda-discipline  ensembling
+│   living-documents                        │   heuristic-patterns  hf-model-fetch
+│   relational-feature-practices (eleven)   │   kaggle-cli  olympiad-playbook
+│   relbench-api (tensor frames folded in)  │   scorer-cli  tabular-modeling
+│   sanitized-copy (scripts/sanitize.py)    │   task-type-playbooks
+│   tabular-modeling  task-type-playbooks   ├── agents/ score-auditor
+│   temporal-protocol                       │           submission-auditor
 ├── agents/ leakage-auditor                 └── hooks/ require-scorer-run
 └── hooks/ protect-prepared  deny-web-fetch            deny-shell-submit
-                                                       require-insurance
+           deny-web                                    require-insurance
 ```
 
 No server on either harness: the Kaggle session-pool ticket office stays
@@ -723,7 +723,7 @@ that is still evidence.
     | Harness | Version | Hash (the whole directory) |
     |---|---|---|
     | `predictive-modelling` | 0.3.2 | `f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3` |
-    | `competitive-programming` | 0.3.0 | `f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1` |
+    | `competitive-programming` | 0.3.1 | `1241d8cc1d821226584a7d6b95f2dfa5e6e514efed35da5f926b90b5e9256183` (re-pinned after the review's finding 9: 0.3.0, `f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1`, ran the arms and the swaps and differs by one line of the kaggle-cli skill; DECISIONS, 2026-10-29) |
 19. **The smoke arms, then the full arms**, one machine per arm, the band
     or baseline preregistered under Acceptance, the archives copied to the
     bucket: RelBench on `gpu4` (twelve hours, the four lanes the recorded
@@ -737,19 +737,27 @@ that is still evidence.
     in parallel on distinct logins — RelBench three hours on one A100
     with the four lanes, MLE three hours, ALE three hours, IOAI two
     hours — each record stating its budget beside the recorded one; the
-    acceptance reads "at the arm's budget".
+    acceptance reads "at the arm's budget". Standing 2026-10-29 under
+    Acceptance: three steps run, three running, one deferred.
 20. **S3 in the suite** and the author test again: the `s3` entry and
     `s3_ports.py --rederive`, `tests/semantic/reports/s3-1.md`; the author
     test re-run on both hosts after the guide fixes with the driver's
     prompt excluding the bundled harnesses (its condition is the guide,
     the design and the trading example only), the guess log classified
-    and recorded here.
+    and recorded here. Done 2026-10-29 for the record (`d7fce019`, the
+    `s3` entry and `s3_ports.py`; `reports/s3-1.md` re-derived with the
+    deferred steps visible); the author test's re-run is owed after the
+    arms.
 21. **The docs' sentences.** `docs/harnesses/use.mdx` names the two bundled
     harnesses; `docs/harnesses/write.mdx` says the scan exists and what
     `check` leaves to it; the reference's bundled-name row shows a real
     name; each harness's README says what it ships and where it came from.
+    Done 2026-10-29 (`9af07766`; the reference's row fixed after the
+    review's finding 6).
 22. **The pull-request review.** Cross-model, the findings fixed or
-    answered here; the status rows.
+    answered here; the status rows. Done 2026-10-29 for the Claude half
+    (twenty-two findings, the table under Review); the Codex half after
+    the arms, whose machines hold the login.
 
 ## Tests
 
@@ -828,12 +836,42 @@ that is still evidence.
     valid public score above the competition's median with zero shell
     submits and the pulled cards named; it establishes a baseline and the
     record says so.
-  Every arm: pages in the prompts, skills opened, the delegate's reports,
-  hooks fired, the cards served; the MLE port required no RelBench-shaped
-  change to the harness, or the change was a page sentence and the guide
-  gained the rule.
+  Every arm: pages in the prompts, skills staged, the delegate's reports,
+  hooks mounted and, where the host reports them (Claude Code; Codex
+  reports none, so the ledger's token on every submission is the hook's
+  evidence there), fired; the cards served; the MLE port required no
+  RelBench-shaped change to the harness, or the change was a page sentence
+  and the guide gained the rule. The MLE in-loop score is the candidate's
+  own hold-out number, which the verifier and the final private grade
+  check and nothing in the loop computes (DECISIONS, 2026-10-29).
 - The task swaps at zero harness edits after any fix, the runner edits
-  listed; the two Kaggle swaps' quota cost recorded.
+  listed; the Kaggle swap's quota cost recorded.
+- **Standing, 2026-10-29 19:15Z** (the record `tests/semantic/reports/s3-1.md`,
+  re-derived from `scripts/redesign/runs/s3-1/arms.json`, names each step
+  as run or deferred; a required step deferred fails the run, which the
+  merge rests on only as far as the steps below say):
+  - `scan`: zero hits over both trees, live at re-derivation.
+  - `swap-relbench` (`s3-relbench-swap-1`, rel-event/user-attendance, two
+    hours): ran clean, zero harness edits, one experiment delivered, test
+    MAE 0.2298 (val 0.2385); the leakage scan's one advisory finding kept.
+  - `swap-kaggle` (`s3-kaggle-swap-1`, spooky-author-identification through
+    the IOAI preflight and runner under predictive-modelling, two hours):
+    ran clean, four ledger submissions, best public log loss 0.30161, two
+    experiments, no shell submit.
+  - `arm-ioai` (`s3-ioai-1`): the tooling established, the score a replay
+    of the account's own earlier kernel, no candidate delivered; the
+    step's bar now includes a delivered candidate and the arm fails it.
+  - `swap-ale` (`s3-ale-swap-ahc011-1`): the campaign ended at 18:10Z; the
+    final report (the private cases) was computing at the time of writing.
+  - `arm-ale` (`s3-ale-2`), `arm-relbench` (`s3-relbench-2`), `arm-mle`
+    (`s3-mle-4`): running, their first attempts having died on the two
+    engine faults and the evaluator fault recorded under What the arms
+    found; recorded as they land, before the merge.
+  - `swap-ioai`: deferred to the owner (the open practice competitions
+    need their rules accepted in a browser).
+  - The author test's re-run on both hosts: owed; it waits for the arms,
+    since a fresh machine's copy of the Codex login would refresh the
+    token the arms' machines hold.
 - The author test at zero structural guesses on both hosts after the
   guide fixes, with the bundled harnesses excluded from its inputs.
 - The IOAI bank: two verified copies of the backup, a verdict per entry
@@ -1187,6 +1225,43 @@ both reviews by id (K = Codex, M = Claude), with where it went:
 | the port mapping's `kernel-slots` server | not a server: the runner's CLI (a decision in DECISIONS) |
 | the port mapping's copied ML skills | `task-type-playbooks`, `cv-protocol`, `ensembling`, `eda-discipline` copied by directory, with a gate test that each copy is identical to its source |
 
+### The pull-request review (Claude half, 2026-10-29)
+
+`scripts/redesign/runs/wp8-pr-review/brief.md` on `1801fccf`, the Claude
+reviewer only (the Codex login the arms' machines carry must not be
+refreshed from the development box while they run). Twenty-two findings
+(two P1, eight P2, twelve P3), answered in two commits: A (`690e8277`,
+the code) and B (this one: the record, the pages, the plan).
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | P1: the scan imported RelBench's names through a module that imports the library, so the gate errored at collection on CI | the names are committed data (`benchmarks/relbench/data/datasets.json`, from the registry); the vocabulary test holds the file to the registry and to the runner's maps under its skip (A) |
+| 2 | P1: three of nine S3 steps recorded while the Acceptance read as if all ran | the record re-derived with the deferred steps visible; the Acceptance carries the standing per step; MASTER's row says what the merge rests on (B) |
+| 3 | P2: a live submission ledgered as rejected on a bare 400/403 in the output | the classifier reads the CLI's phrases; anything unconfirmed is pending, settled from the list; the harvest probe treats pending as made (A) |
+| 4 | P2: the sanitizer's skip took the leakage scan's tests with it | the sanitizer tests in their own module (A) |
+| 5 | P2: the MLE in-loop score is self-reported and unverifiable in the loop | the owner's call, recorded in DECISIONS; the Acceptance says what checks it (B) |
+| 6 | P2: the reference's bundled-name example resolves to nothing | `predictive-modelling` (B) |
+| 7 | P2: the retired handler seams in three pages; the names gate not extended | the sentences and rows removed; `min_iteration_seconds_insured`, `deliverable_ready_reserve_seconds`, `problem_handler.honor_agent_stop`, `use_knowledge_graph`, `fetch_huggingface_models`, `--no-kg` in the gate; `finalize_run_selection` is live code and the three knowledge flags appear in tests' negative assertions, so they stay out (B) |
+| 8 | P2: PROVENANCE.md names open questions it never defines | it does, in the first pass's sections it carries at its end; the preamble now points there and defines the bank and reserve sets, in the file and its renderer (B) |
+| 9 | P2: the Kaggle skill's pages line wrong for the installed CLI | fixed; competitive-programming 0.3.1, the frozen row re-pinned with the note (A, B) |
+| 10 | P2: a local import in `benchmarks/common.py` | at the top (A) |
+| 11 | P3: the plan's trees stale | redrawn as committed (B) |
+| 12 | P3: two decision entries on the scan's home, the earlier unmarked | marked superseded (B) |
+| 13 | P3: the S3 step budgets pre-amendment | re-pinned to the arms' budgets (B) |
+| 14 | P3: "skills opened" and hooks fired on a Codex arm | `skills_staged`, `hooks_mounted` beside `hooks_fired`; the Acceptance says what a Codex arm evidences (B) |
+| 15 | P3: the IOAI arm delivered nothing and its audit was empty | both in the note; a delivered candidate is part of the step's bar (B) |
+| 16 | P3: the RelBench brief's schema heading | qualified: the library's database, what the copy keeps (B) |
+| 17 | P3: the scan skips the manifest and the references; own names blanked before the number rule | both scanned; the number rule reads the raw line (A) |
+| 18 | P3: a try/finally around the IOAI build | removed (A) |
+| 19 | P3: `LITE_PROBLEMS` is the reported ten | `REPORTED_PROBLEMS`, the `--lite` label (A) |
+| 20 | P3: an earlier launch's ledger satisfies the insurance gate | the ledger starts afresh at staging; the gate wants a non-rejected entry (A) |
+| 21 | P3: the suite file reformatted whole in the S3 commit | said in the pull request's body |
+| 22 | P3: the IOAI runner's experiment cap hard-coded | `run_defaults.iterations` (A) |
+
+Clean, per the reviewer: the two harnesses as domain harnesses, the
+engine facts the pages assert, the hooks, the runners, the bank
+extension, the two engine fixes, the tests, the docs sentences.
+
 ### What the arms found in the engine (2026-10-29)
 
 - **A separator inside an event's text cut the event** (`s3-relbench-1`,
@@ -1227,7 +1302,11 @@ both reviews by id (K = Codex, M = Claude), with where it went:
   median" is met by a replay, not a cold start, and the record says so. A
   clean reading needs a Kaggle account that never entered the competition,
   or the radar practice competition with its rules accepted in a browser,
-  which only the owner can do.
+  which only the owner can do. The campaign delivered no candidate
+  (`branch: null`, the budget exhausted after one experiment) and the
+  static audit found no kernel folder under the task directory
+  (`audit: {}`); the step's bar includes a delivered candidate since the
+  review, and this arm fails it.
 - **The Kaggle swap ran clean** (`s3-kaggle-swap-1`, spooky-author-identification
   through the IOAI preflight and runner under the predictive-modelling
   harness, two hours): four submissions through the ledger, best public

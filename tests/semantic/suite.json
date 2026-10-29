@@ -381,6 +381,9 @@
         },
         "ioai_shell_submits": {
           "max": 0
+        },
+        "ioai_candidate_delivered": {
+          "min": 1
         }
       },
       "judge": null
@@ -726,15 +729,15 @@
     },
     "arm-relbench": {
       "kind": "build",
-      "minutes": 750
+      "minutes": 240
     },
     "arm-mle": {
       "kind": "build",
-      "minutes": 1470
+      "minutes": 240
     },
     "arm-ale": {
       "kind": "build",
-      "minutes": 420
+      "minutes": 240
     },
     "arm-ioai": {
       "kind": "build",
@@ -742,15 +745,15 @@
     },
     "swap-relbench": {
       "kind": "build",
-      "minutes": 120
+      "minutes": 150
     },
     "swap-ale": {
       "kind": "build",
-      "minutes": 240
+      "minutes": 150
     },
     "swap-kaggle": {
       "kind": "build",
-      "minutes": 120
+      "minutes": 150
     },
     "swap-ioai": {
       "kind": "build",

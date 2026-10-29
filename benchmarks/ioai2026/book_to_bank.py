@@ -277,7 +277,10 @@ def render_pass(rows: List[Dict[str, Any]], stamp: datetime) -> str:
         "third-party payload under `solution/`, and our own files with their class (a derivative of "
         "a copied file carries its licence; a reimplementation is ours — idea only, no copied code, "
         "cited; a byproduct is not shipped). The first pass's verdict column is carried whole; its "
-        "open questions (OQ-n) qualify a verdict and are the owner's to answer.",
+        "open questions (OQ-n) qualify a verdict and are the owner's to answer. They are defined under "
+        "\"Open questions for a human\" at the end of this file, beside the first pass's reading of the "
+        "organizers' rules. A row's set is the first pass's: `bank` rows were converted to cards, `reserve` "
+        "rows are kept in this table and not converted.",
         "",
         "## Summary",
         "",

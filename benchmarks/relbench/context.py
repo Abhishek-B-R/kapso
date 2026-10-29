@@ -303,7 +303,9 @@ def build_brief(
         DATASET_NOTES[spec.dataset_name],
         "\n## Task definition\n" + task_definition(task, spec),
         "\n## Label statistics\n" + label_lines,
-        "\n## Database schema (the sanitized copy)\n" + describe_database(db, dataset),
+        "\n## Database schema (the library's database: the sanitized copy keeps these tables with the "
+        "columns the task definition lists as removed dropped, and truncated at the test cutoff in the "
+        "frozen regime)\n" + describe_database(db, dataset),
         "\n## Data\n"
         f"The sanitized copy of the database and the task tables is at `{sanitized_copy}` "
         "(read-only; the evaluation binds your program's run to it through "
