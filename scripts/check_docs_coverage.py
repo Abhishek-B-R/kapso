@@ -7,8 +7,10 @@ add a command or a public method and the docs build fails until it is written
 up.
 
 Reads argparse subparser names out of the `kapso.cli` package (one module per
-verb) and public method names out of kapso.py, then checks each one appears
-in the matching reference page. Text presence is a deliberately shallow test
+verb), public method names out of kapso.py and the plugin's command files
+under plugin/commands/, then checks each one appears in the matching page:
+the CLI and API references, and the plugin page, which is the one copy of
+the commands' table. Text presence is a deliberately shallow test
 — it cannot tell whether the prose is any good, only whether the surface was
 acknowledged at all, which is the failure that actually happened.
 """
@@ -22,6 +24,8 @@ CLI_PACKAGE = REPO / "src" / "kapso" / "cli"
 API_SOURCE = REPO / "src" / "kapso" / "kapso.py"
 CLI_DOC = REPO / "docs" / "reference" / "cli.mdx"
 API_DOC = REPO / "docs" / "reference" / "kapso-api.mdx"
+PLUGIN_COMMANDS = REPO / "plugin" / "commands"
+PLUGIN_DOC = REPO / "docs" / "coding-agent-skills.mdx"
 
 # Each entry maps the argparse variable holding a subparser group to the
 # command prefix its names appear under in the docs.
@@ -54,6 +58,14 @@ def subcommands(source: str, variable: str) -> list[str]:
     return sorted(set(re.findall(pattern, source)))
 
 
+def plugin_commands(directory: Path) -> list[str]:
+    """The plugin's commands: one Markdown file per command, named `/kapso:<stem>` on the page."""
+    files = sorted(directory.glob("*.md"))
+    if not files:
+        raise FileNotFoundError(f"expected command files under {directory}")
+    return [file.stem for file in files]
+
+
 def public_methods(source: str) -> list[str]:
     found = re.findall(r"\n    def ([a-z][a-zA-Z_]*)\(", source)
     return [name for name in found if not name.startswith("_")]
@@ -64,6 +76,7 @@ def main() -> int:
     api_source = read(API_SOURCE)
     cli_doc = read(CLI_DOC)
     api_doc = read(API_DOC)
+    plugin_doc = read(PLUGIN_DOC)
 
     missing: list[str] = []
     checked = 0
@@ -79,14 +92,19 @@ def main() -> int:
         if name not in api_doc:
             missing.append(f"{API_DOC.name} does not mention `{name}`")
 
+    for name in plugin_commands(PLUGIN_COMMANDS):
+        checked += 1
+        if f"/kapso:{name}" not in plugin_doc:
+            missing.append(f"{PLUGIN_DOC.name} does not mention `/kapso:{name}`")
+
     if missing:
         print(f"Reference docs are missing {len(missing)} of {checked} public names:\n")
         for line in missing:
             print(f"  {line}")
-        print("\nDocument the new surface in docs/reference/, then rerun.")
+        print("\nDocument the new surface in docs/reference/ (a plugin command on docs/coding-agent-skills.mdx), then rerun.")
         return 1
 
-    print(f"Reference covers all {checked} public commands and methods.")
+    print(f"Reference covers all {checked} public commands, methods and plugin commands.")
     return 0
 
 
