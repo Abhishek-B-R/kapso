@@ -909,6 +909,9 @@ that is still evidence.
     (2026-10-29: no Kaggle account will be set up; the open practice
     competitions need their rules accepted in a browser); the step
     definition stays for a later run.
+  - No further attempt runs on any benchmark before the release (the
+    owner, 2026-10-29): the arms and the swaps above stand as recorded,
+    the six-hour RelBench attempt being the last run.
   - The author test's re-run on both hosts: owed; it waits for the arms,
     since a fresh machine's copy of the Codex login would refresh the
     token the arms' machines hold.

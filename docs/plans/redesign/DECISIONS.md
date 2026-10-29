@@ -2766,11 +2766,14 @@ the task file, the held-out predictions scored by the grader) is the
 first item after the release; changing it now would cost a day and a
 rerun of the MLE arm without changing what is reported.
 
-## The six-hour RelBench attempt is the last (2026-10-29, the owner)
+## The six-hour RelBench attempt is the last run on any benchmark (2026-10-29, the owner)
 
 After the three-hour quick arm on one GPU with four lanes finished one
 iteration under the finishing cut and delivered no candidate, a six-hour
 attempt on the same shape (`s3-relbench-4`) was launched. The owner: no
 further attempt after this one. Whatever it shows goes into the record
 as the RelBench arm's reading for the release, with the three-hour
-attempt kept in the notes.
+attempt kept in the notes. The same holds for the other benchmarks:
+the MLE and ALE quick arms, the IOAI arm and the three swaps stand as
+recorded, and no further attempt runs on any of them before the
+release.
