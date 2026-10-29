@@ -80,3 +80,19 @@ def test_a_session_that_ends_without_the_artifact_has_its_last_words_in_the_line
     frame._run_role = lambda role, prompt, cwd: SimpleNamespace(output="", error=None, refused=False, success=True)
     with pytest.raises(FileNotFoundError, match="saying nothing; ended without writing it, saying nothing"):
         frame._run_role_for_artifact("report_writer", "write the report", tmp_path, tmp_path / "report.md")
+
+
+def test_the_codex_sandbox_default_has_one_source_across_the_adapter_and_the_worker_launcher():
+    # The learning crews' Codex roles run in the adapter's default sandbox;
+    # the update frame's workers run codex exec directly, and their launcher
+    # had its own copy of the literal — the drift Rule 1 exists to kill.
+    import inspect
+
+    from kapso.execution.coding_agents.adapters import codex_agent
+    from kapso.learning import update_frame
+
+    assert codex_agent.DEFAULT_SANDBOX == "danger-full-access"
+    assert 'spec.get("sandbox", DEFAULT_SANDBOX)' in inspect.getsource(codex_agent.CodexCodingAgent.__init__)
+    source = inspect.getsource(update_frame)
+    assert 'worker.get("sandbox", DEFAULT_SANDBOX)' in source and "--sandbox {sandbox}" in source
+    assert "--sandbox danger-full-access" not in source, "the literal is the adapter's, never copied here"

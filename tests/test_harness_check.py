@@ -329,3 +329,13 @@ def test_a_required_field_left_empty_is_a_finding(harness):
     assert report.manifest is None and [f.message for f in report.failures] == ["version must be a non-empty string"]
     edit(harness / "harness.yaml", "name: trading", "name: null")
     assert "name None must match [a-z0-9][a-z0-9-]*" in [f.message for f in check(harness).failures]
+
+
+def test_a_page_without_a_trailing_newline_counts_its_last_line(harness):
+    # The guide promises a warning at forty-one lines and up; a count of
+    # newlines read a 41-line page with no trailing newline as 40.
+    page = harness / "instructions" / "guardrails.md"
+    page.write_text("\n".join(f"rule {number}" for number in range(1, 42)), encoding="utf-8")   # 41 lines, no trailing newline
+    assert any("41" in str(warning) or "lines" in str(warning) for warning in check(harness, page_warning_lines=40).warnings)
+    page.write_text("\n".join(f"rule {number}" for number in range(1, 41)), encoding="utf-8")   # 40 lines
+    assert not [warning for warning in check(harness, page_warning_lines=40).warnings if "guardrails.md" in str(warning) and "lines" in str(warning)]
