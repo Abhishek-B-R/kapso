@@ -246,3 +246,14 @@ def test_an_archived_run_is_re_read_where_the_archive_allows(tmp_path):
     assert kept["full-disk"]["attempts_kept"] is True and kept["full-disk"]["truthful"] is None, "the truthfulness verdict stays as recorded"
     assert kept["killed-writer"]["names_class"] and kept["killed-writer"]["names_fix"]
     assert out["metrics"]["truthfulness_unobserved"] == 1 and out["steps"][0]["notes"][-1].startswith("re-read 2026-10-29")
+
+
+def test_a_score_after_the_reply_may_land_on_the_paused_node_itself():
+    # The campaign pauses on node 0 before it scores; after the reply node 0
+    # scores. A rule on node identity alone read that as nothing new
+    # (s5-claude-8's missing-key class); the comparison is of scores.
+    before = {0: None}
+    assert s5.scored_after(before, [{"node": 0, "evaluation": {"score": 0.85}}])
+    assert s5.scored_after(before, [{"node": 0, "evaluation": {"score": None}}, {"node": 1, "evaluation": {"score": 0.8}}])
+    assert not s5.scored_after({0: 0.84}, [{"node": 0, "evaluation": {"score": 0.84}}]), "a score the record held before the reply is not one after it"
+    assert not s5.scored_after(before, [{"node": 0, "evaluation": {"score": None}}])
