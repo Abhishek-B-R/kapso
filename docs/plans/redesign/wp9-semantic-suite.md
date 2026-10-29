@@ -1048,6 +1048,27 @@ sampler writes its terminal row), so the Codex arm will carry a real gap
 series. The bar as written (lessons cited, both builds scored) passed; the
 gap bar was vacuous here and says so in the record.
 
+**`s6-codex-1`, the Codex-host round on the fixed driver** (2026-10-29,
+TOKEN3, the learn on Opus; 2.95 h of machine, about $0.40; report
+`tests/semantic/reports/s6-codex-1.md`): **PASS, 4 of 4 steps**, and this
+time the pair sits on a real grid. Build one, served nothing: node 0 at
+0.8501 in 15.8 min, `goal_achieved`. The learn, 115 min, banked two cards
+(a correct specification beating capacity when the functional form is
+recoverable; the hold-out's noise bounding evaluator spending once gains
+fall below the noise floor). Build two, served that bank: both cards read
+and both load-bearing, two scored observations in 40 min, delivered
+0.8497. The comparison: build one's score lands at 16 minutes, build two's
+first at 20, so build two is behind at five checkpoints and the gap, once
+both define it, is −0.0004 at every point to the end — the bootstrap
+standard error on this hold-out is 0.010, so the two deliveries are the
+same score, and the served build reached it four minutes later. The
+design's bar (a non-negative gap at every common point) is **unmet on this
+pair, reported with the numbers** as the acceptance allows; across the two
+rounds the bank's cards were read and found load-bearing both times and
+the served build arrived at the fixture's goal once quicker and once
+slower. At this budget on this fixture, with the first attempt already at
+the goal, experience shows in what the sessions read, not in the score.
+
 ### author, Codex host — run `author-codex-1` (2026-10-28)
 
 On the guide after the four Claude rounds: 35 guesses, 0 structural gaps,
