@@ -1,23 +1,28 @@
-"""The benchmark runners' solve paths (docs/plans/redesign/wp4-config.md,
-change 11): each runner is entered through its own path with the
-provider boundary stubbed (the sessions and the inference client) over
-the real resolver, factory, staging, orchestrator and record, and what
-the campaign resolves to is pinned to the former mode's values: the
-roles, the inbox, the reserve and the session deadlines. A runner that
-shapes its settings to the run writes a runtime file that resolves as an
-override file, and the campaign runs on that file."""
+"""The benchmark runners' solve paths on the facade's build()
+(docs/plans/redesign/wp8-harness-ports.md, changes 11 to 14): each runner
+is entered through its own path on the real facade with the engine's
+boundary stubbed (the sessions, the inference client, the judge, the
+preflight, `solve()`), and what the campaign resolves to is pinned: the
+harness in the launch record, the staged evaluation's settings, the runtime
+file's shared cache, the budget's mapping, the seeded candidate, the former
+mode's roles. The IOAI runner keeps its own path until change 14."""
 
 import argparse
 import json
 import sys
 import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import kapso.execution.orchestrator as orchestrator_module
+import kapso.kapso as kapso_module
 from kapso.core.config import ConfigError, load_config, read_yaml
 from kapso.execution.orchestrator import OrchestratorAgent
+from kapso.handles import Brief
+from kapso.harness import load as harness_load
+from tests.handles_support import solve_result
 from tests.harness_support import FakeLLM, FakeProblemHandler, NoopAgent
 
 # The packaged codex host, which every benchmark's implementation runs on.
@@ -26,9 +31,7 @@ FROZEN_CLOCK = 1_700_000_000.0
 
 
 class FakeBenchmarkHandler(FakeProblemHandler):
-    """A benchmark's handler without its data: the runner's path after
-    the campaign reads a final evaluation and, for RelBench, the task's
-    directories."""
+    """A benchmark's handler without its data (the IOAI runner's path)."""
 
     def __init__(self, work_dir=None, shared_cache_dir=None):
         self.work_dir = work_dir
@@ -36,9 +39,6 @@ class FakeBenchmarkHandler(FakeProblemHandler):
 
     def final_evaluate(self, path, **kwargs):
         return {"evaluated": str(path)}
-
-    def apply_bank_intro(self, intro):
-        self.intro = intro
 
 
 @pytest.fixture
@@ -57,86 +57,18 @@ def entered(monkeypatch, tmp_path):
     return calls
 
 
-def facts(role):
-    """A resolved role, as a tuple a snapshot reads at a glance."""
-    return (role.cli, role.model, role.effort, role.timeout, role.web)
-
-
-def no_signal(monkeypatch, runner):
-    """The runner's SIGTERM handler, kept off the test process."""
-    monkeypatch.setattr(runner, "signal", types.SimpleNamespace(signal=lambda *args: None, SIGTERM=15))
-
-
-def test_mle_runner_enters_the_campaign_with_the_former_mode(entered, monkeypatch):
-    pytest.importorskip("mlebench")
-    from benchmarks.mle import runner
-
-    seen = {}
-
-    def handler(competition_id, fetch_huggingface_models):
-        seen["fetch_huggingface_models"] = fetch_huggingface_models
-        return FakeBenchmarkHandler()
-
-    monkeypatch.setattr(runner, "MleBenchHandler", handler)
-    result = runner.solve_competition("spooky-author-identification", max_iterations=3)
-    (orchestrator, kwargs), = entered
-    assert orchestrator.config_path == runner.CONFIG_PATH and kwargs == {"experiment_max_iter": 3}
-    assert seen == {"fetch_huggingface_models": True}
-    strategy = orchestrator.search_strategy
-    # Ideation on Claude Code with the packaged model; implementation and
-    # the judge on codex with the mode's deadlines; the web on.
-    assert facts(strategy.ideation_role) == ("claude_code", "claude-opus-5", None, None, True)
-    assert facts(strategy.implementation_role) == (*CODEX, 14400.0, True)
-    assert facts(strategy.judge_role) == (*CODEX, 900.0, True)
-    assert strategy.params["ideation"]["gates"] == ["research", "experiment_history", "repo_memory"]
-    assert strategy.params["implementation"]["gates"] == ["research", "repo_memory"]
-    assert strategy.params["gate_failure_policy"] == "skip"
-    assert strategy.inbox_settings["enabled"] is False
-    assert orchestrator.budget_spec.finalization_reserve_seconds is None
-    assert orchestrator._config_budget["min_iteration_seconds"] == 60
-    assert result["private_evaluation"] == {"evaluated": strategy.workspace.workspace_dir}
-
-
-def test_ale_runner_enters_the_campaign_with_the_former_mode(entered, monkeypatch):
-    pytest.importorskip("ale_bench")
-    from benchmarks.ale import runner
-
-    monkeypatch.setattr(runner, "AleBench", lambda problem_id: FakeBenchmarkHandler())
-    result = runner.solve_problem("ahc039", max_iterations=2)
-    (orchestrator, kwargs), = entered
-    assert orchestrator.config_path == runner.CONFIG_PATH and kwargs == {"experiment_max_iter": 2}
-    strategy = orchestrator.search_strategy
-    assert facts(strategy.ideation_role) == ("claude_code", "claude-opus-5", None, None, True)
-    assert facts(strategy.implementation_role) == (*CODEX, 7200.0, True)
-    assert facts(strategy.judge_role) == (*CODEX, 900.0, True)
-    assert strategy.params["ideation"]["gates"] == ["research", "experiment_history", "repo_memory"]
-    assert strategy.inbox_settings["enabled"] is False
-    assert read_yaml(runner.CONFIG_PATH)["benchmark"] == {"use_knowledge_graph": False}
-    assert result["problem_id"] == "ahc039" and result["private_evaluation"] == {"evaluated": strategy.workspace.workspace_dir}
-
-
-def test_relbench_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, tmp_path):
-    """The runner's solve path on the real facade with the engine's boundary
-    stubbed (docs/plans/redesign/wp8-harness-ports.md, change 11): the
-    harness in the launch record, the staged evaluation's task.json and the
-    oriented direction, the runtime file's shared cache, the budget's
-    mapping, the seeded baseline, and the former mode's roles on the
-    orchestrator the campaign was entered on."""
-    pytest.importorskip("relbench")
-    import kapso.kapso as kapso_module
-    from kapso.handles import Brief
-    from kapso.harness import load as harness_load
-    from benchmarks.relbench import runner
-    from benchmarks.relbench.task_specs import ENTITY_REGRESSION, TaskSpec
-    from tests.handles_support import solve_result
-
+def facade_entered(monkeypatch, tmp_path):
+    """The facade's build() with the engine's boundary stubbed: every
+    session a NoopAgent, the inference client fake, no judge, no preflight,
+    no registry, the harness's prerequisites this machine's business; the
+    orchestrator `solve()` was entered on and its arguments are recorded,
+    and the delivery runs on an empty result."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(orchestrator_module.CodingAgentFactory, "create", staticmethod(lambda config: NoopAgent(config)))
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self: object())
     monkeypatch.setattr(kapso_module, "run_preflight", lambda *a, **k: None)
     monkeypatch.setattr(kapso_module, "register_campaign", lambda *a, **k: None)
-    # The bundled harness's prerequisites are this machine's business, not the test's.
     monkeypatch.setattr(harness_load.Harness, "missing_for", lambda self, modules: [])
     entered = []
     result = solve_result(stopped_reason="budget_exhausted")
@@ -147,6 +79,134 @@ def test_relbench_runner_builds_on_the_facade_with_the_bundled_harness(monkeypat
         return result
 
     monkeypatch.setattr(OrchestratorAgent, "solve", solve)
+    return entered
+
+
+def launch_record(workspace):
+    return json.loads((workspace / ".kapso" / "launch.json").read_text())
+
+
+def facts(role):
+    """A resolved role, as a tuple a snapshot reads at a glance."""
+    return (role.cli, role.model, role.effort, role.timeout, role.web)
+
+
+def no_signal(monkeypatch, runner):
+    """The runner's SIGTERM handler, kept off the test process."""
+    monkeypatch.setattr(runner, "signal", types.SimpleNamespace(signal=lambda *args: None, SIGTERM=15))
+
+
+def test_mle_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, tmp_path):
+    """Change 12: the competition's data prepared under the archive root, the
+    staged grader's task.json with the direction, the caps and the floor,
+    no data directory (the Brief names the data by path), the seeded
+    baseline, the bundled harness, the former mode's roles."""
+    pytest.importorskip("mlebench")
+    from benchmarks.mle import runner
+
+    entered = facade_entered(monkeypatch, tmp_path)
+    competition = SimpleNamespace(
+        id="spooky-author-identification", name="Spooky Author Identification", competition_type="simple",
+        description="# Overview\n\nWho wrote it?", grader=SimpleNamespace(is_lower_better=True),
+    )
+    monkeypatch.setattr(runner.registry, "get_competition", lambda competition_id: competition)
+
+    def fake_prepare(competition, data_dir):
+        data_dir.mkdir(parents=True, exist_ok=True)
+        (data_dir / "sample_submission.csv").write_text("id,EAP,HPL,MWS\nid1,0.4,0.3,0.3\n")
+        return data_dir
+
+    monkeypatch.setattr(runner, "prepare_data", fake_prepare)
+    monkeypatch.setattr(runner, "build_brief", lambda *a, **k: Brief(objective="Kaggle competition spooky", measured_by="held-out log loss, lower is better"))
+    reports = []
+    monkeypatch.setattr(runner, "final_report", lambda work_dir, competition_, solution: reports.append((work_dir, solution)) or {"final": "report"})
+    args = argparse.Namespace(competition="spooky-author-identification", iterations=3, coding_agent=None,
+                              workspace=str(tmp_path / "workspace"), resume=False, harness=None, experience=None)
+    assert runner.solve_competition(args) == {"final": "report"}
+    (orchestrator, kwargs), = entered
+    assert kwargs["experiment_max_iter"] == 3 and kwargs["time_budget_minutes"] is None
+    work_dir = tmp_path / "tmp" / "mle" / "spooky-author-identification"
+    assert json.loads((work_dir / "evaluation" / "task.json").read_text()) == {
+        "competition_id": "spooky-author-identification", "higher_is_better": False, "data_dir": str(work_dir / "data"),
+        "full_timeout": 28800, "debug_timeout": 1200, "floor_score": 1000000000.0,
+    }
+    assert (work_dir / "evaluation" / "grader.py").is_file()
+    launch = launch_record(tmp_path / "workspace")
+    assert launch["harness"]["name"] == "predictive-modelling" and launch["data_dir"] is None
+    assert launch["eval_dir"] == str(work_dir / "evaluation") and launch["experiments"] == 3
+    assert (tmp_path / "workspace" / "main.py").read_text().startswith('"""Baseline candidate seeded into every MLE-bench')
+    (reported_work_dir, delivered), = reports
+    assert reported_work_dir == work_dir and delivered.harness.name == "predictive-modelling"
+    strategy = orchestrator.search_strategy
+    assert orchestrator.config_path == str(work_dir / ".kapso_runtime" / "config.yaml")
+    assert str(strategy.shared_cache_dir) == str(work_dir / "shared_cache")
+    # Ideation on Claude Code with the packaged model; implementation and
+    # the judge on codex with the mode's deadlines; the web on.
+    assert facts(strategy.ideation_role) == ("claude_code", "claude-opus-5", None, None, True)
+    assert facts(strategy.implementation_role) == (*CODEX, 14400.0, True)
+    assert facts(strategy.judge_role) == (*CODEX, 900.0, True)
+    assert strategy.params["ideation"]["gates"] == ["research", "experiment_history", "repo_memory", "bank"]
+    assert strategy.params["implementation"]["gates"] == ["research", "repo_memory", "bank"]
+    assert strategy.params["gate_failure_policy"] == "skip"
+    assert strategy.inbox_settings["enabled"] is False
+    assert orchestrator._provided_evaluation_manifest
+
+
+def test_ale_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, tmp_path):
+    """Change 13: the task root with the public seeds as the data, the staged
+    grader's task.json with the direction from the problem's metadata, the
+    runs and the floor, the seeded baseline printing the example output,
+    the contest harness, the former mode's roles."""
+    pytest.importorskip("ale_bench")
+    from ale_bench.data import ProblemType, ScoreType
+    from benchmarks.ale import runner
+
+    entered = facade_entered(monkeypatch, tmp_path)
+    problem = SimpleNamespace(
+        metadata=SimpleNamespace(problem_id="ahc039", title="Fishing", problem_type=ProblemType.BATCH, score_type=ScoreType.MINIMIZE),
+        example_output="1 2\n3 4\n",
+    )
+    seeds = SimpleNamespace(public=[1, 2, 3], private=[4, 5])
+    standings = SimpleNamespace(standings_scores=[(1, 100), (2, 50), (3, 0)])
+    monkeypatch.setattr(runner, "load_problem", lambda problem_id, lite_version: (problem, seeds, standings, None, None))
+    monkeypatch.setattr(runner, "build_brief", lambda *a, **k: Brief(objective="AHC problem ahc039", measured_by="the public cases' total, lower is better"))
+    reports = []
+    monkeypatch.setattr(runner, "final_report", lambda work_dir, problem_id, num_workers, solution: reports.append((work_dir, problem_id, num_workers)) or {"final": "report"})
+    args = argparse.Namespace(problem="ahc039", iterations=2, coding_agent=None, workspace=str(tmp_path / "workspace"),
+                              resume=False, harness=None, experience=None)
+    assert runner.solve_problem(args) == {"final": "report"}
+    (orchestrator, kwargs), = entered
+    assert kwargs["experiment_max_iter"] == 2
+    work_dir = tmp_path / "tmp" / "ale" / "ahc039"
+    assert json.loads((work_dir / "evaluation" / "task.json").read_text()) == {
+        "problem_id": "ahc039", "higher_is_better": False, "runs": 4, "num_workers": 25, "floor_score": 1000000000000000000,
+    }
+    assert (work_dir / "task_root" / "seeds.txt").read_text() == "1\n2\n3\n"
+    launch = launch_record(tmp_path / "workspace")
+    assert launch["harness"]["name"] == "competitive-programming" and launch["data_dir"] == str(work_dir / "task_root")
+    assert (tmp_path / "workspace" / "kapso_datasets" / "seeds.txt").read_text() == "1\n2\n3\n"
+    baseline = (tmp_path / "workspace" / "main.cpp").read_text()
+    assert 'R"KAPSO(1 2\n3 4)KAPSO"' in baseline and "int main()" in baseline
+    assert reports == [(work_dir, "ahc039", 25)]
+    strategy = orchestrator.search_strategy
+    assert facts(strategy.ideation_role) == ("claude_code", "claude-opus-5", None, None, True)
+    assert facts(strategy.implementation_role) == (*CODEX, 7200.0, True)
+    assert facts(strategy.judge_role) == (*CODEX, 900.0, True)
+    assert strategy.params["ideation"]["gates"] == ["research", "experiment_history", "repo_memory", "bank"]
+    assert strategy.inbox_settings["enabled"] is False
+    assert orchestrator._provided_evaluation_manifest
+
+
+def test_relbench_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, tmp_path):
+    """Change 11: the harness in the launch record, the staged evaluation's
+    task.json and the oriented direction, the runtime file's shared cache,
+    the budget's mapping, the seeded baseline, and the former mode's roles
+    on the orchestrator the campaign was entered on."""
+    pytest.importorskip("relbench")
+    from benchmarks.relbench import runner
+    from benchmarks.relbench.task_specs import ENTITY_REGRESSION, TaskSpec
+
+    entered = facade_entered(monkeypatch, tmp_path)
     # The task's material: no library download, no copy built, the Brief and
     # the final report as fakes; the runner's staging and launch are real.
     spec = TaskSpec(
@@ -185,7 +245,7 @@ def test_relbench_runner_builds_on_the_facade_with_the_bundled_harness(monkeypat
     assert orchestrator.config_path == str(runtime)
     assert load_config(str(runtime))["search_strategy"]["params"]["shared_cache_dir"] == str(work_dir / "shared_cache")
     # The launch record: the bundled harness, the brief, the directories, the budget.
-    launch = json.loads((tmp_path / "workspace" / ".kapso" / "launch.json").read_text())
+    launch = launch_record(tmp_path / "workspace")
     assert launch["harness"]["name"] == "predictive-modelling" and launch["brief"]["objective"].startswith("RelBench rel-f1")
     assert launch["eval_dir"] == str(work_dir / "evaluation") and launch["data_dir"] == str(runner.STARTER_KIT)
     assert launch["minutes"] == 120.0 and launch["experiments"] == 4

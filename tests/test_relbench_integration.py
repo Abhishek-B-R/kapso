@@ -23,6 +23,7 @@ from kapso.core.config import load_config, read_yaml
 from kapso.execution.evaluation_archive import label_run_of_record
 from kapso.handles import Brief
 from kapso.harness import BUNDLED_ROOT
+from benchmarks.common import stage_evaluation
 from benchmarks.relbench import scoring
 from benchmarks.relbench.context import build_brief
 from benchmarks.relbench.task_specs import (
@@ -454,7 +455,7 @@ def _governed_head(work_dir):
     its fingerprint and the directory."""
     from kapso.execution import evaluation_archive_sandbox as sandbox
 
-    source = scoring.stage_evaluation(GENERIC_EVAL_DIR, work_dir, {
+    source = stage_evaluation(GENERIC_EVAL_DIR, work_dir, {
         "dataset": "rel-f1", "task": "driver-position", "primary_metric": "mae",
         "higher_is_better": False, "work_dir": str(work_dir), "full_timeout": 300,
         "debug_timeout": 300, "cache_dir": str(RELBENCH_CACHE), "rolling_root": None,

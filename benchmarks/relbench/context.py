@@ -11,9 +11,6 @@ carries no standing guidance.
 from __future__ import annotations
 
 import inspect
-import os
-import shutil
-import subprocess
 import textwrap
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -22,6 +19,7 @@ import pandas as pd
 
 from kapso.handles import Brief
 
+from benchmarks.common import compute_facts, resources
 from benchmarks.relbench.task_specs import (
     AUTOCOMPLETE_BINARY,
     DATASET_NOTES,
@@ -260,38 +258,6 @@ def data_access_rules(spec: TaskSpec, hosted_model_api: str) -> List[str]:
             "handed; reaching for another tick's snapshot or the rolling root is a leak."
         )
     return rules
-
-
-def compute_facts() -> Dict[str, object]:
-    """This machine: the GPU by name, the CPUs, the memory."""
-    has_gpu = (
-        shutil.which("nvidia-smi") is not None
-        and subprocess.run(["nvidia-smi", "-L"], capture_output=True).returncode == 0
-    )
-    gpu_name = ""
-    if has_gpu:
-        probe = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
-            capture_output=True, text=True,
-        )
-        if probe.returncode == 0 and probe.stdout.strip():
-            gpu_name = probe.stdout.strip().splitlines()[0].strip()
-    mem_gb = 0
-    meminfo = Path("/proc/meminfo")
-    if meminfo.is_file():
-        for line in meminfo.read_text().splitlines():
-            if line.startswith("MemTotal"):
-                mem_gb = int(line.split()[1]) // (1024 * 1024)
-    return {"has_gpu": has_gpu, "gpu_name": gpu_name, "num_cpus": os.cpu_count() or 0, "mem_gb": mem_gb}
-
-
-def resources(compute: Dict[str, object]) -> str:
-    if compute["has_gpu"]:
-        detail = f" ({compute['gpu_name']})" if compute["gpu_name"] else ""
-        gpu = f"a dedicated CUDA GPU{detail}, pinned per lane through CUDA_VISIBLE_DEVICES"
-    else:
-        gpu = "no GPU"
-    return f"Hardware: {gpu}; ~{compute['num_cpus']} CPUs; ~{compute['mem_gb']} GB RAM."
 
 
 # ---------------------------------------------------------------------------

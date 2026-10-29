@@ -30,7 +30,6 @@ from kapso.execution.evaluation_archive import select_final
 from benchmarks.relbench.task_specs import TaskSpec, coerce_boolean_target
 
 SANITIZED_MARKER = "SANITIZED.json"
-TASK_FILE = "task.json"
 FINAL_REPORT = "final_report.json"
 SCAN_SCRIPT = Path("skills") / "leakage-scan" / "scripts" / "scan.py"
 
@@ -76,21 +75,6 @@ def ensure_sanitized_copy(
     subprocess.run(command, check=True)
     meta.write_text(json.dumps(want, indent=2) + "\n")
     return out
-
-
-def stage_evaluation(suite: Path, work_dir: Path, settings: Dict[str, object]) -> Path:
-    """The provided grader with the task's settings beside it, under the
-    archive root; written the same way every time, so a resume's fingerprint
-    of the evaluation directory holds."""
-    target = work_dir / "evaluation"
-    if target.exists():
-        shutil.rmtree(target)
-    target.mkdir(parents=True)
-    for item in sorted(suite.iterdir()):
-        if item.is_file():
-            shutil.copy2(item, target / item.name)
-    (target / TASK_FILE).write_text(json.dumps(settings, indent=2, sort_keys=True) + "\n")
-    return target
 
 
 def provided_file_digests(evaluation_dir: Path) -> Dict[str, str]:

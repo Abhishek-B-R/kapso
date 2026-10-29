@@ -14,7 +14,8 @@ pytest.importorskip("relbench")
 from benchmarks.relbench.campaign import (CPU_LOCAL_QUEUE, CPU_SAFE_DATASETS,
                                           PROTOCOL_SENSITIVE_TASKS, ROI_QUEUE,
                                           ROLLING_VERIFIED, run_one, select_tasks)
-from benchmarks.relbench.runner import write_runtime_config
+from benchmarks.common import write_runtime_config
+from benchmarks.relbench.runner import CONFIG_PATH
 
 
 def test_queue_integrity():
@@ -62,7 +63,7 @@ def test_a_campaign_task_is_budget_bound(capsys):
 def test_the_runtime_file_carries_the_shared_cache_over_the_override(tmp_path):
     """The task's shared cache is a strategy parameter, so it lives in a
     file; the budget is build()'s argument and the file leaves it alone."""
-    path = write_runtime_config(tmp_path / "shared", tmp_path)
+    path = write_runtime_config(CONFIG_PATH, tmp_path / "shared", tmp_path)
     config = yaml.safe_load(Path(path).read_text())
     assert config["search_strategy"]["params"]["shared_cache_dir"] == str(tmp_path / "shared")
     assert config["budget"]["minutes"] == 600 and config["benchmark"]["work_root"] == "tmp/relbench"

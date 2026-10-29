@@ -2538,3 +2538,23 @@ user's decision the Brief states as a rule. The candidate-facing starter kit
 reads the task's identity from `kapso_evaluation/task.json` and the copy
 from the variable the evaluation sets for the run, so the runner exports no
 environment of its own.
+
+## WP8: the MLE and ALE graders are registered, their baselines take the floor, and a large dataset stays by path (2026-10-29)
+
+The plan's "the grader directory per competition" is a provided evaluation
+the maintainer registers (the two override files enable it, as RelBench's
+does): a provided suite without a maintainer is only a script the sessions
+run themselves, and the score of record would be self-reported. The
+maintainer's calibration needs a runnable candidate, so each runner seeds
+a baseline that completes a fast run and reports the floor: MLE's writes
+the sample submission unchanged and prints the override file's floor
+score; ALE's prints the problem's example output and fails the cases, which
+is the floor under the contest's all-or-nothing rule. The floors are the
+override files' `benchmark.floor_scores`, the worst value of either
+direction. MLE's competition data is not passed as `data=`: the engine
+tracks `kapso_datasets/` in the workspace's git and copies it per session,
+which a dataset of gigabytes cannot bear, so the data stays under the
+archive root by absolute path, named in the Brief (ALE's task root, the
+seed list, is small and is `data=`). The MLE description rides verbatim
+(the LLM cleaning step is gone) and the hub search is the harness's
+`hf-model-fetch` skill in setup.

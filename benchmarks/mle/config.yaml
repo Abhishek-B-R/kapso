@@ -1,8 +1,12 @@
 # MLE-Bench: an override file over the packaged config. The engine's
 # settings are at the top level; the runner's own are under `benchmark:`.
+# The runner writes a runtime copy with the competition's shared cache and
+# launches the facade's build() on it with the bundled predictive-modelling
+# harness.
 #
 # Usage:
-#   python -m benchmarks.mle.runner --competition <id> [--no-kg] [--coding-agent <cli>]
+#   python -m benchmarks.mle.runner --competition <id> [-i N] [--workspace DIR] [--resume]
+#       [--harness REF] [--experience REFS] [--coding-agent <cli>]
 
 # Benchmark harness: nobody is at the keyboard, so a session never asks a
 # person and never pauses.
@@ -16,9 +20,12 @@ search_strategy:
     host: codex
     ideation:
       cli: claude_code
-      gates: [research, experiment_history, repo_memory]
+      gates: [research, experiment_history, repo_memory, bank]
     implementation:
-      gates: [research, repo_memory]
+      gates: [research, repo_memory, bank]
+      # One experiment = implement + run the registered full evaluation
+      # (the candidate's debug run, then its full run under
+      # `benchmark.timeouts`) inside the session.
       timeout: 14400
     judge:
       timeout: 900
@@ -30,10 +37,29 @@ search_strategy:
       BASH_DEFAULT_TIMEOUT_MS: "1800000"
       BASH_MAX_TIMEOUT_MS: "14400000"
 
+# The provided grader is registered by the maintainer, whose calibration
+# runs the seeded baseline's --debug mode; it must fit the debug cap.
+evaluation_maintainer:
+  enabled: true
+  timeout: 1800
+  calibration_timeout_seconds: 1200
+  max_change_requests: 3
+
 # The runner's own settings (benchmarks/mle/runner.py reads these; the
 # engine never does).
 benchmark:
-  # Let the handler fetch candidate HuggingFace models for the competition.
-  fetch_huggingface_models: true
-  # Whether the runner serves the knowledge graph (--no-kg forces off).
-  use_knowledge_graph: true
+  # The archive root: <work_root>/<competition>/ holds the prepared data,
+  # the staged evaluation, the shared cache and the final report.
+  work_root: tmp/mle
+  # The candidate's caps in seconds: one full training run, and the
+  # --debug run that gates the pipeline.
+  timeouts:
+    full: 28800
+    debug: 1200
+  # The score the seeded baseline reports, the worst value of either
+  # direction: the floor every real candidate beats.
+  floor_scores:
+    higher_is_better: 0.0
+    lower_is_better: 1000000000.0
+  # Packages a candidate may not import: incompatible with the environment.
+  forbidden_packages: [torchaudio, mmcv, openmem, faiss, pcdet]

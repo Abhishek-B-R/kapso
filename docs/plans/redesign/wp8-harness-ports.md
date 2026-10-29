@@ -554,6 +554,26 @@ that is still evidence.
     the stage rule reads verified in the smoke arm (the evaluation
     output's budget notes), or raised to WP4/WP6 as a finding. Tests as
     for RelBench, with `mlebench` skipped when absent.
+    Done (2026-10-29): `data/generic_eval/grader.py` runs the candidate
+    (the debug mode as the gate, then the full mode), validates
+    `final_submission.csv` with the competition's validator and reads the
+    held-out `<score>`, oriented; the maintainer registers it (the
+    override file enables the maintainer, as RelBench's does) and its
+    calibration runs the seeded baseline, which writes the sample
+    submission and reports the floor score of the override file's
+    `benchmark.floor_scores`; `context.py` builds the Brief from the
+    competition's published description, the prepared data's layout, the
+    contract, the held-out protocol, the caps and the forbidden packages
+    (the LLM cleaning of the description and the hub search are gone: the
+    description rides verbatim, the harness's `hf-model-fetch` skill
+    searches the hub in setup); the data stays by absolute path under the
+    archive root, not as `data=` (the engine tracks `kapso_datasets/` in
+    the workspace's git and copies it per session, which a dataset of
+    gigabytes cannot bear: a decision in DECISIONS); the knowledge graph
+    file and the handler are deleted; `benchmarks/common.py` holds what
+    the runners share (the runtime file, the staged evaluation, the
+    compute, a directory's layout). The stage rule's budget notes are
+    left to the smoke arm (change 19).
 13. **The ALE runner on `build()`.** The task root it writes (statement,
     the scorer wrapper over the `ale_bench` session, the seeds, the
     baseline) as `data=`, the grader over the public cases averaged over
@@ -562,6 +582,23 @@ that is still evidence.
     rank percentage, performance), `maximize` derived from the problem's
     metadata rather than the lite dictionary, the prose retired. Tests as
     above; one real scorer invocation in the smoke arm.
+    Done (2026-10-29): `data/generic_eval/grader.py` opens the
+    benchmark's own session and judges `main.cpp` on the public cases,
+    `fast` once and `full` over `benchmark.runs`, the mean total oriented
+    and the floor for a submission with a failed case (the all-or-nothing
+    rule, now the task's: in the Brief and the manifest, not the
+    harness); its `--scores results/scores.json` mode is the candidates'
+    scorer procedure, writing the per-seed file the harness's scorer-cli
+    skill describes and the finish hook accepts; the task root is the
+    public seed list (`kapso_datasets/seeds.txt`); the seeded baseline
+    prints the example output and takes the floor, so the maintainer's
+    calibration has a runnable candidate; `maximize` from the problem's
+    `score_type`; the contestants from the standings' length; the lite
+    roster in `problems.py` without the library; the private evaluation
+    and the rating in the runner's final report in the contest's units.
+    The runner's per-campaign session is gone: every grader run opens
+    its own session (the resource limits of the library's session are
+    not the campaign's budget), which the smoke arm times.
 14. **The IOAI runner on `build()`.** The preflight stays and writes the
     task root (statement, `RULES.md`'s content as task rules, the
     submission procedure, the ledger path, the session-pool limits from

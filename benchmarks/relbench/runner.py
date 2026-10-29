@@ -26,7 +26,6 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Optional
 
-import yaml
 from dotenv import load_dotenv
 from relbench.tasks import get_task_names
 from relbench.utils import get_relbench_cache_dir
@@ -36,8 +35,9 @@ from kapso.handles import Budget, Solution
 from kapso.harness import BUNDLED_ROOT
 from kapso.kapso import Kapso
 
+from benchmarks.common import stage_evaluation, write_runtime_config
 from benchmarks.relbench.context import build_brief
-from benchmarks.relbench.scoring import ensure_sanitized_copy, final_report, pristine_task, stage_evaluation
+from benchmarks.relbench.scoring import ensure_sanitized_copy, final_report, pristine_task
 from benchmarks.relbench.task_specs import NATIVE_DATASETS, resolve_spec
 
 load_dotenv()
@@ -59,20 +59,6 @@ def list_tasks() -> None:
         for name in get_task_names(dataset):
             print(f"    • {name}")
     print()
-
-
-def write_runtime_config(shared_cache_dir: Path, work_dir: Path) -> Path:
-    """The per-run override file: this benchmark's own file with the task's
-    shared cache over it. The orchestrator loads config from disk, so a
-    runtime value must live in a file; the file is an override over the
-    packaged defaults, as the benchmark's own is."""
-    config = read_yaml(str(CONFIG_PATH))
-    config["search_strategy"]["params"]["shared_cache_dir"] = str(shared_cache_dir)
-    runtime_dir = work_dir / ".kapso_runtime"
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    runtime_path = runtime_dir / "config.yaml"
-    runtime_path.write_text(yaml.safe_dump(config, sort_keys=False))
-    return runtime_path
 
 
 def solution_summary(solution: Solution) -> Dict[str, object]:
@@ -135,7 +121,7 @@ def solve_task(args) -> dict:
         task, spec, sanitized_copy, rolling_root, shared_cache_dir, settings["hosted_model_api"],
     )
 
-    kapso = Kapso(config=str(write_runtime_config(shared_cache_dir, work_dir)))
+    kapso = Kapso(config=str(write_runtime_config(CONFIG_PATH, shared_cache_dir, work_dir)))
     kapso.load_harness(args.harness or BUNDLED_HARNESS)
     for reference in (args.experience or "").split(","):
         if reference.strip():

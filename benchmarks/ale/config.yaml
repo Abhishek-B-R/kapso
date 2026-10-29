@@ -1,8 +1,12 @@
 # ALE-Bench: an override file over the packaged config. The engine's
 # settings are at the top level; the runner's own are under `benchmark:`.
+# The runner writes a runtime copy with the problem's shared cache and
+# launches the facade's build() on it with the bundled
+# competitive-programming harness.
 #
 # Usage:
-#   python -m benchmarks.ale.runner --problem <id> [--coding-agent <cli>]
+#   python -m benchmarks.ale.runner --problem <id> [-i N] [--workspace DIR] [--resume]
+#       [--harness REF] [--experience REFS] [--coding-agent <cli>]
 
 # Benchmark harness: nobody is at the keyboard, so a session never asks a
 # person and never pauses.
@@ -16,9 +20,9 @@ search_strategy:
     host: codex
     ideation:
       cli: claude_code
-      gates: [research, experiment_history, repo_memory]
+      gates: [research, experiment_history, repo_memory, bank]
     implementation:
-      gates: [research, repo_memory]
+      gates: [research, repo_memory, bank]
       timeout: 7200
     judge:
       timeout: 900
@@ -30,8 +34,27 @@ search_strategy:
       BASH_DEFAULT_TIMEOUT_MS: "1800000"
       BASH_MAX_TIMEOUT_MS: "7200000"
 
+# The provided grader is registered by the maintainer, whose calibration
+# runs the seeded baseline once over the public cases.
+evaluation_maintainer:
+  enabled: true
+  timeout: 1800
+  calibration_timeout_seconds: 1200
+  max_change_requests: 3
+
 # The runner's own settings (benchmarks/ale/runner.py reads these; the
 # engine never does).
 benchmark:
-  # Whether the runner serves the knowledge graph.
-  use_knowledge_graph: false
+  # The archive root: <work_root>/<problem>/ holds the task root, the
+  # staged evaluation, the shared cache and the final report.
+  work_root: tmp/ale
+  # The official scorer's runs per full evaluation: a randomised solution
+  # is a noisy measurement, and the score of record is the mean.
+  runs: 4
+  # The judge's parallel case workers.
+  num_workers: 25
+  # The score a submission with a failed case takes, the worst value of
+  # either direction: the contest's all-or-nothing rule.
+  floor_scores:
+    higher_is_better: 0
+    lower_is_better: 1000000000000000000

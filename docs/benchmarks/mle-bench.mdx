@@ -42,12 +42,12 @@ PYTHONPATH=. python -m benchmarks.mle.runner \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-c, --competition` | Competition ID | Required |
-| `-i, --iterations` | Max experiment iterations | 20 |
+| `-i, --iterations` | `Budget.experiments` | the config's `budget.experiments` |
 | `-d, --coding-agent` | The host every role without a `cli` of its own runs on | `codex`, the override file's `host` |
-| `--no-kg` | Disable knowledge graph | Enabled |
-| `--list` | List all competitions | - |
-| `--lite` | List lite competitions | - |
-| `--list-agents` | List coding agents | - |
+| `--harness` | A harness reference | the bundled `predictive-modelling` |
+| `--experience` | Comma-separated experience sources to serve | none |
+| `--workspace` / `--resume` | The campaign directory / continue the campaign in it | a fresh directory |
+| `--list` / `--lite` | List competitions | - |
 
 ## Configuration
 
@@ -65,41 +65,47 @@ search_strategy:
     host: codex
     ideation:
       cli: claude_code
-      gates: [research, experiment_history, repo_memory]
+      gates: [research, experiment_history, repo_memory, bank]
     implementation:
-      gates: [research, repo_memory]
+      gates: [research, repo_memory, bank]
       timeout: 14400
     judge:
       timeout: 900
+evaluation_maintainer:
+  enabled: true
 benchmark:
-  fetch_huggingface_models: true
-  use_knowledge_graph: true
+  work_root: tmp/mle
+  timeouts: {full: 28800, debug: 1200}
+  floor_scores: {higher_is_better: 0.0, lower_is_better: 1000000000.0}
+  forbidden_packages: [torchaudio, mmcv, openmem, faiss, pcdet]
 ```
 
 <Note>
-The handler supplies the official evaluation: solutions are scored by `mlebench` grading rather than agent-built evaluation.
+The runner launches `build()` with the bundled `predictive-modelling` harness. The provided
+grader, registered by the evaluation maintainer, runs each candidate's `main.py` (the debug
+mode as the gate, then the full mode), validates `final_submission.csv` with the
+competition's own validator and reads the held-out score the program reports: the score of
+record. The official grade on the private answers is computed once, after the campaign, on
+the delivered candidate.
 </Note>
 
-## Stages
+## Evaluation
 
-The handler automatically adjusts strategy based on budget progress:
-
-| Stage | Budget | Behavior |
-|-------|--------|----------|
-| **MINI TRAINING** | 0-20% | Sample training data (for datasets >30GB) |
-| **FULL TRAINING** | 20-80% | Train on complete dataset |
-| **FINAL ENSEMBLING** | 80-100% | Ensemble best models from history |
+1. The candidate holds back a stratified ten percent of the training data, trains nothing
+   on it, and prints its score under the competition's metric in `<score>` tags.
+2. `python main.py --debug` runs the whole pipeline on a small sample within the debug cap;
+   `python main.py` rewrites every prediction within the full cap; both write
+   `final_submission.csv` at the repository root, in the sample submission's format.
+3. After the campaign the runner grades the delivered candidate's file on the private
+   answers and writes `final_report.json` under `tmp/mle/<competition>/`.
 
 ## Output structure
 
-The agent generates:
-
 ```text
-experiment_workspace/{uuid}/
+<workspace>/
 ├── main.py                    # Entry point
-├── output_data_{branch}/
-│   ├── final_submission.csv   # Kaggle submission file
-│   └── checkpoints/           # Model checkpoints
+├── final_submission.csv       # Kaggle submission file, committed with the candidate
+├── kapso_evaluation/          # The provided grader and its task.json
 └── sessions/                  # Experiment branches
 ```
 
@@ -107,10 +113,10 @@ experiment_workspace/{uuid}/
 
 Generated code must:
 - Support `--debug` flag for fast testing
-- Write `final_submission.csv` in the output directory
+- Write `final_submission.csv` at the repository root
 - Print progress and metrics
 - Handle GPU efficiently (batch size, device selection)
-- Use early stopping and learning rate scheduling
+- Report the held-out score in `<score>` tags
 
 ## Competition types
 
@@ -120,13 +126,6 @@ Generated code must:
 | Image | `dogs-vs-cats-*`, `plant-pathology-*` |
 | Text | `spooky-author-identification`, `jigsaw-toxic-*` |
 | Audio | `mlsp-2013-birds` |
-
-## Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CUDA_DEVICE` | `0` | GPU device ID |
-| `MLE_SEED` | `1` | Random seed |
 
 ## Related
 
