@@ -69,7 +69,7 @@ Kapso is an open-source Python framework by [Leeroo](https://leeroo.com), publis
 | Pillar | Method | Description |
 |--------|--------|-------------|
 | [**Build**](https://docs.leeroo.com/docs/build/brief) | `.build()` | Run an experiment campaign that meets a brief: candidates implemented on their own branches, measured, the best kept and refined. |
-| [**Learn**](https://docs.leeroo.com/docs/learning/overview) | `.learn()` | Mine a finished campaign into your bank: evidence-priced lesson cards, each with its reliability and the measurements that earned it. |
+| [**Learn**](https://docs.leeroo.com/docs/learn/what-learn-produces) | `.learn()` | Mine a finished campaign into your bank: evidence-priced lesson cards, each with its reliability and the measurements that earned it. |
 | [**Experience**](https://docs.leeroo.com/docs/experience) | `.load_experience()` / `.add_experience()` | What a build is served: your bank, the hosted Leeroopedia gate, a bank your team shares, or a corpus ingested from a repository or a researched question. A build is served exactly what it loads. |
 | [**Deploy**](https://docs.leeroo.com/docs/deployment/overview) | `.deploy()` | Turn a solution into running software. Supports local execution, Docker containers, or cloud platforms like Modal. |
 
@@ -339,7 +339,7 @@ Each benchmark also has a documentation page covering how to run it, its CLI opt
   - [CLI reference](https://docs.leeroo.com/docs/reference/cli) — every command, flag and default
   - [Python API](https://docs.leeroo.com/docs/reference/kapso-api) — every public method on `Kapso`
   - [Configuration](https://docs.leeroo.com/docs/reference/configuration) — every key in `config.yaml`
-  - [Trajectory learning](https://docs.leeroo.com/docs/learning/overview) — the lesson bank, grading and serving
+  - [Trajectory learning](https://docs.leeroo.com/docs/learn/what-learn-produces) — the lesson bank, grading and serving
   - [Evolve](https://docs.leeroo.com/docs/evolve/overview) — how a campaign runs, and [what happens inside one experiment](https://docs.leeroo.com/docs/evolve/execution-flow)
   - [Knowledge graph](https://docs.leeroo.com/docs/knowledge/overview) — repositories and papers turned into searchable knowledge
   - [Deployment](https://docs.leeroo.com/docs/deployment/overview) — local, Docker, Modal and the other strategies

@@ -326,7 +326,7 @@ are doing and why; never launch a campaign the user did not ask for.
 - Resuming runs: https://docs.leeroo.com/docs/build/resume-and-budgets.md
 - The record: https://docs.leeroo.com/docs/build/trace.md
 - Evaluation: https://docs.leeroo.com/docs/build/evaluation.md
-- Learning: https://docs.leeroo.com/docs/learning/overview.md
+- Learning: https://docs.leeroo.com/docs/learn/what-learn-produces.md
 - Experience: https://docs.leeroo.com/docs/experience.md
 - Harnesses: https://docs.leeroo.com/docs/harnesses.md
 - Deploy: https://docs.leeroo.com/docs/deploy/targets.md

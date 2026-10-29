@@ -89,12 +89,8 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 
 **Trajectory learning**
 
-- [Overview](https://docs.leeroo.com/docs/learning/overview) — `docs/learning/overview.mdx`
-- [The lesson bank](https://docs.leeroo.com/docs/learning/bank) — `docs/learning/bank.mdx`
-- [The pipeline](https://docs.leeroo.com/docs/learning/pipeline) — `docs/learning/pipeline.mdx`
-- [Grading](https://docs.leeroo.com/docs/learning/graders) — `docs/learning/graders.mdx`
-- [Serving](https://docs.leeroo.com/docs/learning/serving) — `docs/learning/serving.mdx`
-- [Development regime](https://docs.leeroo.com/docs/learning/development) — `docs/learning/development.mdx`
+- [What learn produces](https://docs.leeroo.com/docs/learn/what-learn-produces) — `docs/learn/what-learn-produces.mdx`
+- [Development mode](https://docs.leeroo.com/docs/learn/development-mode) — `docs/learn/development-mode.mdx`
 
 **Research**
 

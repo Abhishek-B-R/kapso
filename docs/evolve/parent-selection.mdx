@@ -78,10 +78,7 @@ Checkpoint state includes `parent_policy`. Resume rejects a state whose saved
 policy differs from the configured policy. It also rejects parent node IDs that
 do not reference an earlier node and branch/node pairs that disagree.
 
-For compatibility, checkpoint state created before this field existed is
-interpreted as `best`, which was the historical behavior. The campaign-level
-configuration fingerprint provides an additional guard against changing
-strategy parameters during resume.
+The campaign-level configuration fingerprint guards against changing strategy parameters during a resume.
 
 ## Choosing a policy
 

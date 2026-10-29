@@ -11,7 +11,7 @@ Kapso is a set of pluggable components wired together by factories around a cent
 flowchart TB
     subgraph Entry["Entry Points"]
         API["Kapso API\n(src/kapso/kapso.py)"]
-        CLI["CLI\n(src/kapso/cli.py)"]
+        CLI["CLI\n(src/kapso/cli/, one module per verb)"]
         BENCH["Benchmarks\n(benchmarks/)"]
     end
 
@@ -97,7 +97,7 @@ All major components are created via factories and can be swapped via configurat
 
 ```mermaid
 flowchart LR
-    YAML["config.yaml"] --> MODE["Mode Config"]
+    YAML["config.yaml + one override file"] --> MODE["the resolved config"]
     MODE --> SS["search_strategy"]
     MODE --> CA["coding_agent"]
     MODE --> KS["knowledge_search"]

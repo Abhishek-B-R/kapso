@@ -18,9 +18,13 @@
    Headings are not paragraphs; a threshold written to one decimal is a
    rule, not a result.
 
-Scans every .mdx under docs/ and the repository README. Front matter,
-fenced blocks and inline code are not prose. A hit prints the file, the
-line and the rule; the exit status is the number of hits.
+Scans every .mdx under docs/, the repository README and the examples'
+READMEs. Front matter, code fences and inline code are not prose; a
+`text` or `md` fence is (a prompt the user pastes is the most-copied
+sentence on a page), for the words-out rule only. A target written as
+"expected" or "not measured" beside its number is not a result. A hit
+prints the file, the line and the rule; the exit status is the number of
+hits.
 """
 
 import re
@@ -42,31 +46,44 @@ _RESULT = re.compile(r"(?<![A-Za-z0-9_.-])(?:\d+\.\d{2,}|\d+(?:\.\d+)?%)(?![A-Za
 _FRONT_MATTER = re.compile(r"\A---\n.*?\n---\n", re.S)
 _INLINE_CODE = re.compile(r"`[^`\n]*`")
 _LINK_URL = re.compile(r"\]\([^)]*\)")
+_PROSE_FENCES = ("text", "md", "markdown", "")
+_EXPECTED = re.compile(r"\b(expected|not measured|target|asks for|toward)\b", re.IGNORECASE)
 
 
 def pages() -> List[Path]:
-    return [REPO / "README.md"] + sorted((REPO / "docs").rglob("*.mdx"))
+    return (
+        [REPO / "README.md"] + sorted((REPO / "docs").rglob("*.mdx"))
+        + sorted((REPO / "examples").glob("*/README.md")) + sorted((REPO / "examples" / "harnesses").glob("*/README.md"))
+    )
 
 
-def prose_paragraphs(text: str) -> Iterator[Tuple[int, str]]:
-    """(first line number, paragraph) for every prose paragraph: fenced
-    code dropped whole, inline code and link targets blanked, front matter
-    skipped."""
+def prose_paragraphs(text: str) -> Iterator[Tuple[int, Tuple[str, bool]]]:
+    """(first line number, (paragraph, in a prose fence)) for every prose
+    paragraph: code fences dropped whole, a text fence kept as prose,
+    inline code and link targets blanked, front matter skipped."""
     front = _FRONT_MATTER.match(text)
     offset = text[:front.end()].count("\n") if front else 0
     body = text[front.end():] if front else text
     in_fence = False
+    prose_fence = False
     paragraph: List[str] = []
     start = offset + 1
     for index, line in enumerate(body.split("\n"), start=offset + 1):
         if line.lstrip().startswith("```"):
-            in_fence = not in_fence
+            if in_fence:
+                in_fence = prose_fence = False
+                if paragraph:
+                    yield start, ("\n".join(paragraph), True)
+                    paragraph = []
+            else:
+                in_fence = True
+                prose_fence = line.strip()[3:].split(" ")[0].lower() in _PROSE_FENCES
             continue
-        if in_fence:
+        if in_fence and not prose_fence:
             continue
         if not line.strip():
             if paragraph:
-                yield start, "\n".join(paragraph)
+                yield start, ("\n".join(paragraph), in_fence)
                 paragraph = []
             continue
         if line.lstrip().startswith("#"):
@@ -75,7 +92,7 @@ def prose_paragraphs(text: str) -> Iterator[Tuple[int, str]]:
             start = index
         paragraph.append(_LINK_URL.sub("](url)", _INLINE_CODE.sub("`code`", line)))
     if paragraph:
-        yield start, "\n".join(paragraph)
+        yield start, ("\n".join(paragraph), in_fence)
 
 
 FRONT_PAGES = ("README.md", "docs/index.mdx")
@@ -115,7 +132,7 @@ def is_provenance_table_row(paragraph: str) -> bool:
 def number_claims(paragraph: str) -> List[str]:
     """The metric numbers in a paragraph with no provenance word in it."""
     lowered = paragraph.lower()
-    if any(word in lowered for word in PROVENANCE_WORDS) or is_provenance_table_row(paragraph):
+    if any(word in lowered for word in PROVENANCE_WORDS) or is_provenance_table_row(paragraph) or _EXPECTED.search(paragraph):
         return []
     hits = []
     for match in _RESULT.finditer(paragraph):
@@ -134,10 +151,12 @@ def scan(path: Path, lists: dict) -> List[str]:
     if str(path.relative_to(REPO)) in FRONT_PAGES:
         phrases += lists["front"]
     patterns = [(phrase, phrase_pattern(phrase)) for phrase in phrases]
-    for line_number, paragraph in prose_paragraphs(path.read_text(encoding="utf-8")):
+    for line_number, (paragraph, in_prose_fence) in prose_paragraphs(path.read_text(encoding="utf-8")):
         for phrase, pattern in patterns:
             if pattern.search(paragraph):
                 findings.append(f"{path.relative_to(REPO)}:{line_number}: words-out {phrase!r}")
+        if in_prose_fence:
+            continue                                   # a pasted prompt's numbers are its own
         for claim in number_claims(paragraph):
             findings.append(f"{path.relative_to(REPO)}:{line_number}: a number with no provenance: {claim}")
     return findings
