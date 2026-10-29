@@ -2287,3 +2287,21 @@ design wrote them; the owner's call is whether the skill's message is
 trimmed (a shorter "what is here", the protocol's five lines folded into
 the brief) or the build conversations' budget is fifteen. Not taken here
 because the budget is a design value, not a harness calibration.
+
+## WP9 S2 second engineer's served build: a budget in which an attempt can score (2026-10-29)
+
+The served build's budget was ten minutes and one experiment, and on
+the churn fixture a first attempt scores at about sixteen minutes (S6's
+build one: 15.8 minutes to its first scored observation at a sixty-minute
+budget). At ten minutes the acceptance line "the second engineer's served
+build scored" could not be met by construction, whatever the serving did.
+The suite's `builds.second_engineer` is now thirty minutes and two
+experiments, the step's budget forty-five minutes (the build and the
+driver's grace), and the machine cap derived from the suite grows by the
+difference. A calibration of the harness, not a design value: the design
+says "scored", not how long the second engineer may take; recorded here
+so the number is read as the suite's choice. The first arm on the fixed
+second user (`s2-claude-second-1`) launched the served build with the
+bank's two cards but no status file ever appeared within its wait and
+the driver of that run did not archive the campaign's log; the driver
+now archives the log and the status, and the rerun says what happened.
