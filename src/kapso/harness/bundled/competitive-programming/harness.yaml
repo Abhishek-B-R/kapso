@@ -1,0 +1,23 @@
+schema_version: 1
+name: competitive-programming
+version: 0.1.0
+description: Timed contests scored by an official scorer or leaderboard, heuristic optimisation and machine-learning olympiad tasks alike, with a submission quota, ship-early-then-improve, and a report with every submission.
+
+environment:
+  python: requirements.txt
+
+modules:
+  setup:
+    skills: [scorer-cli]
+  ideation:
+    skills: [heuristic-patterns]
+  implementation:
+    skills: [heuristic-patterns, cpp-performance, scorer-cli]
+    agents: [score-auditor]
+    hooks: [require-scorer-run]
+  verification:
+    skills: [scorer-cli]
+    agents: [score-auditor]
+  feedback:
+    skills: [heuristic-patterns]
+  learning: {}
