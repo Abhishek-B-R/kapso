@@ -26,12 +26,11 @@ import yaml
 from kapso.handles import Brief
 from benchmarks.ioai2026 import kernel_slots
 from benchmarks.ioai2026.context import PROCEDURE, build_brief
-from benchmarks.ioai2026.preflight import SPEC_PATH, build_prompt, validate_root
+from benchmarks.ioai2026.preflight import RULES_PATH, SPEC_PATH, build_prompt, validate_root
 from benchmarks.ioai2026.runner import (
     CONTEST_ROOT,
     EVALUATION_SUITE,
     LEDGER,
-    RULES_PATH,
     SUBMIT_PATH,
     audit_kernel,
     banked_kernel_refs,
@@ -510,6 +509,7 @@ def test_the_brief_is_the_statement_plus_the_campaigns_facts_and_the_rules(tmp_p
 def test_the_contest_root_carries_the_harness_conventions(tmp_path):
     task = tmp_path / "task"
     task.mkdir()
+    shutil.copy2(RULES_PATH, task / "RULES.md")                          # the preflight's pinned copy
     (task / CONTEST_ROOT).mkdir()
     (task / CONTEST_ROOT / kernel_slots.LEDGER_NAME).write_text("{}")   # a stale ticket ledger goes
     root = stage_contest_root(str(task), "ioai-practice-1", True, "2026-10-29T10:00:00+00:00", LIMITS)

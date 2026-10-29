@@ -290,6 +290,7 @@ def test_ioai_runner_builds_on_the_facade_with_the_contest_harness(monkeypatch, 
     (task / "dataset").mkdir(parents=True)
     (task / "dataset" / "statement.md").write_text("# Practice task\n\nPredict the label of every test row.\n")
     (task / "kaggle.json").write_text(json.dumps({"competition": "ioai-2026-ai-models-track-practice-task-1", "higher_is_better": True}))
+    (task / "RULES.md").write_text("# The organizers' rules\n\n- One GPU; no internet in the kernel.\n")   # the preflight's pinned copy
     # The clock frozen: the budget is the two hours, nothing spent.
     monkeypatch.setattr(runner, "time", types.SimpleNamespace(time=lambda: FROZEN_CLOCK))
     no_signal(monkeypatch, runner)

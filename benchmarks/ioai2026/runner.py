@@ -47,7 +47,7 @@ load_dotenv()
 
 BENCH_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = str(BENCH_DIR / "config.yaml")
-RULES_PATH = str(BENCH_DIR / "RULES.md")
+RULES_NAME = "RULES.md"             # the task's binding rules, pinned by the preflight
 SLOTS_PATH = str(BENCH_DIR / "kernel_slots.py")
 SUBMIT_PATH = str(BENCH_DIR / "submit.py")
 EVALUATION_SUITE = BENCH_DIR / "data" / "generic_eval"
@@ -116,12 +116,13 @@ def stage_contest_root(task_dir: str, competition: str, higher_is_better: bool,
                        window_start: str, kernel_slots_limits: dict) -> str:
     """The contest root: the descriptor, the procedure, the ticket office
     with its limits (a stale ledger from a previous launch would hold
-    phantom tickets, so it goes), and the organizers' rules, pinned."""
+    phantom tickets, so it goes), and the task's binding rules — the
+    preflight's pinned copy under the task."""
     root = os.path.join(task_dir, CONTEST_ROOT)
     os.makedirs(root, exist_ok=True)
     shutil.copy2(SUBMIT_PATH, os.path.join(root, "submit.py"))
     shutil.copy2(SLOTS_PATH, os.path.join(root, "kernel_slots.py"))
-    shutil.copy2(RULES_PATH, os.path.join(root, "RULES.md"))
+    shutil.copy2(os.path.join(task_dir, RULES_NAME), os.path.join(root, RULES_NAME))
     with open(os.path.join(root, kernel_slots.CONFIG_NAME), "w") as f:
         json.dump(kernel_slots_limits, f, indent=2)
     stale_ledger = os.path.join(root, kernel_slots.LEDGER_NAME)
@@ -596,7 +597,8 @@ def main():
     task_dir = os.path.join(root, "task")
     statement_path = os.path.join(task_dir, "dataset", "statement.md")
     kaggle_meta_path = os.path.join(task_dir, "kaggle.json")
-    for required in (statement_path, kaggle_meta_path):
+    rules_path = os.path.join(task_dir, RULES_NAME)
+    for required in (statement_path, kaggle_meta_path, rules_path):
         if not os.path.isfile(required):
             sys.exit(f"{required} missing — run preflight.py first")
     with open(kaggle_meta_path) as f:
@@ -690,7 +692,7 @@ def main():
         dataset_dir=Path(task_dir, "dataset"), artifacts_dir=Path(artifacts_dir),
         deadline_utc=campaign_deadline_utc, ledger_path=Path(contest_root, LEDGER),
         shared_root=Path(contest_root), pool_limits=knobs["kernel_slots"],
-        rules_text=open(RULES_PATH, encoding="utf-8").read(), shared_cache_dir=Path(shared_cache_dir),
+        rules_text=open(rules_path, encoding="utf-8").read(), shared_cache_dir=Path(shared_cache_dir),
     )
 
     print(f"root={root} competition={competition} K={node_expansion} hours={hours}")

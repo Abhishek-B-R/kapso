@@ -86,7 +86,7 @@ def validate_root(task_dir: str) -> str:
     return slug
 
 
-def run_preflight(task_brief: str, root: str) -> str:
+def run_preflight(task_brief: str, root: str, rules_source: str = RULES_PATH) -> str:
     root = os.path.abspath(root)
     task_dir = os.path.join(root, "task")
     dataset_dir = os.path.join(task_dir, "dataset")
@@ -106,10 +106,13 @@ def run_preflight(task_brief: str, root: str) -> str:
     with open(os.path.join(task_dir, "starter_prompt.txt"), "w",
               encoding="utf-8") as f:
         f.write(task_brief)
-    # Staged here as well as by the runner: the authoring agent is told these
-    # rules override the competition pages, so it has to be able to read them.
+    # The task's binding rules, pinned under the task: the authoring agent is
+    # told they override the competition pages, so it has to be able to read
+    # them, and the runner stages this copy into every contest root.
+    if not os.path.isfile(rules_source):
+        sys.exit(f"no rules file at {rules_source}")
     rules_path = os.path.join(task_dir, "RULES.md")
-    shutil.copy2(RULES_PATH, rules_path)
+    shutil.copy2(rules_source, rules_path)
 
     with open(CONFIG_PATH) as f:
         preflight_cfg = yaml.safe_load(f)["benchmark"]["preflight"]
@@ -166,8 +169,11 @@ def main():
                              "verbatim, or a competition URL")
     parser.add_argument("--root", required=True,
                         help="Run root to create (consumed by runner.py --root)")
+    parser.add_argument("--rules", default=RULES_PATH,
+                        help="The task's binding rules, a markdown file pinned under the task "
+                             "(default: the IOAI AI Models Track rules beside this script)")
     args = parser.parse_args()
-    run_preflight(args.task, args.root)
+    run_preflight(args.task, args.root, args.rules)
 
 
 if __name__ == "__main__":
