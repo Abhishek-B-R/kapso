@@ -10,7 +10,7 @@
     "wheel_sha256": "784a0136ef22d80230d6cb1da54d0b844eab0a46e922d7a591e5d44e616f99e8"
   },
   "pins": {
-    "suite_sha256": "8e63541c95d69e3d4a5a62a37fcbe27bc6e6a67e7a6de0df58247d7493ce98ce",
+    "suite_sha256": "3d3cafbd1cf9de66fcb1650a1894194f3f7d85119d16a9ba7af521ca7903d026",
     "wheel_sha256": "784a0136ef22d80230d6cb1da54d0b844eab0a46e922d7a591e5d44e616f99e8",
     "harness_predictive-modelling": "f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3",
     "harness_competitive-programming": "1241d8cc1d821226584a7d6b95f2dfa5e6e514efed35da5f926b90b5e9256183"
@@ -19,7 +19,7 @@
     "kind": "scripted"
   },
   "started": "2026-10-29T15:51:45Z",
-  "finished": "2026-10-29T19:50:30Z",
+  "finished": "2026-10-29T19:51:08Z",
   "steps": [
     {
       "name": "scan",
@@ -608,7 +608,7 @@
   },
   "judge": null,
   "notes": [
-    "re-derived 2026-10-29T19:50:30Z from the arm archives under scripts/redesign/runs/; 6 of 9 steps run",
+    "re-derived 2026-10-29T19:51:08Z from the arm archives under scripts/redesign/runs/; 6 of 9 steps run",
     "competitive-programming is pinned at 0.3.1; the arms and the swaps ran on 0.3.0 (f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1), which differs by one line of the kaggle-cli skill (the pages command's -c flag)",
     "three builds of the 0.8.0.dev1 wheel served the arms: 15:18Z (s3-ioai-1, s3-kaggle-swap-1, s3-relbench-swap-1, s3-ale-swap-ahc011-1), 17:08Z with the stream split (s3-relbench-2, s3-mle-4), 18:10Z with the ALE runner and run-folder fixes (s3-ale-2); the record's wheel is the last",
     "s3-ioai-1's public score is a replay of the Kaggle account's own earlier kernel for the competition, with no candidate delivered: the tooling is established, a cold start is not",

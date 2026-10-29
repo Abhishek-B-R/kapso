@@ -736,7 +736,7 @@
     },
     "arm-ale": {
       "kind": "build",
-      "minutes": 240
+      "minutes": 330
     },
     "arm-ioai": {
       "kind": "build",
@@ -748,7 +748,7 @@
     },
     "swap-ale": {
       "kind": "build",
-      "minutes": 150
+      "minutes": 240
     },
     "swap-kaggle": {
       "kind": "build",

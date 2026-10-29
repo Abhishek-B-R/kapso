@@ -869,7 +869,9 @@ that is still evidence.
     on the private cases the delivered candidate ranks 38 of 699
     (performance 2297), the judge reporting a time-limit excess on part of
     the private set; the final report took ninety minutes, the private set
-    running under the judge's containers on an eight-core machine. The
+    running under the judge's containers on an eight-core machine, so the
+    ALE steps' budgets in the suite include it (the swap 240 minutes, the
+    arm 330). The
     runner had died at its final report on the standings fault; the report
     came from `--final-eval-only` on the delivered workspace.
   - `arm-mle` (`s3-mle-4`, three hours on one A100, 19:48Z): a valid graded
