@@ -172,9 +172,9 @@ def test_ale_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, t
     monkeypatch.setattr(runner, "load_problem", lambda problem_id, lite_version: (problem, seeds, standings, None, None))
     monkeypatch.setattr(runner, "build_brief", lambda *a, **k: Brief(objective="AHC problem ahc039", measured_by="the public cases' total, lower is better"))
     reports = []
-    monkeypatch.setattr(runner, "final_report", lambda work_dir, problem_id, num_workers, solution: reports.append((work_dir, problem_id, num_workers)) or {"final": "report"})
+    monkeypatch.setattr(runner, "final_report", lambda work_dir, problem_id, num_workers, solution, standings_: reports.append((work_dir, problem_id, num_workers, standings_)) or {"final": "report"})
     args = argparse.Namespace(problem="ahc039", iterations=2, coding_agent=None, workspace=str(tmp_path / "workspace"),
-                              resume=False, harness=None, experience=None, time_budget_hours=None)
+                              resume=False, harness=None, experience=None, time_budget_hours=None, final_eval_only=False)
     assert runner.solve_problem(args) == {"final": "report"}
     (orchestrator, kwargs), = entered
     assert kwargs["experiment_max_iter"] == 2
@@ -188,7 +188,7 @@ def test_ale_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, t
     assert (tmp_path / "workspace" / "kapso_datasets" / "seeds.txt").read_text() == "1\n2\n3\n"
     baseline = (tmp_path / "workspace" / "main.cpp").read_text()
     assert 'R"KAPSO(1 2\n3 4)KAPSO"' in baseline and "int main()" in baseline
-    assert reports == [(work_dir, "ahc039", 25)]
+    assert reports == [(work_dir, "ahc039", 25, standings)]
     strategy = orchestrator.search_strategy
     assert facts(strategy.ideation_role) == ("claude_code", "claude-opus-5", None, None, True)
     assert facts(strategy.implementation_role) == (*CODEX, 7200.0, True)
@@ -196,6 +196,34 @@ def test_ale_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, t
     assert strategy.params["ideation"]["gates"] == ["research", "experiment_history", "repo_memory", "bank"]
     assert strategy.inbox_settings["enabled"] is False
     assert orchestrator._provided_evaluation_manifest
+
+
+def test_ale_runner_final_eval_only_reports_the_workspaces_solution_without_a_build(monkeypatch, tmp_path):
+    """A runner that died after the campaign (the first arms did, on the
+    session's standings) reports from the solution the workspace holds:
+    no facade entered, the loader's standings counted."""
+    pytest.importorskip("ale_bench")
+    from ale_bench.data import ProblemType, ScoreType
+    from benchmarks.ale import runner
+
+    entered = facade_entered(monkeypatch, tmp_path)
+    problem = SimpleNamespace(
+        metadata=SimpleNamespace(problem_id="ahc039", title="Fishing", problem_type=ProblemType.BATCH, score_type=ScoreType.MINIMIZE),
+        example_output="1 2\n3 4\n",
+    )
+    seeds = SimpleNamespace(public=[1, 2, 3], private=[4, 5])
+    standings = SimpleNamespace(standings_scores=[(1, 100), (2, 50)])
+    monkeypatch.setattr(runner, "load_problem", lambda problem_id, lite_version: (problem, seeds, standings, None, None))
+    monkeypatch.setattr(runner, "build_brief", lambda *a, **k: Brief(objective="AHC problem ahc039", measured_by="the public cases' total, lower is better"))
+    opened = SimpleNamespace(campaign=tmp_path / "workspace", branch="generic_exp_1")
+    monkeypatch.setattr(runner.Solution, "open", classmethod(lambda cls, path: opened))
+    reports = []
+    monkeypatch.setattr(runner, "final_report", lambda work_dir, problem_id, num_workers, solution, standings_: reports.append((solution, standings_)) or {"final": "report"})
+    args = argparse.Namespace(problem="ahc039", iterations=None, coding_agent=None, workspace=str(tmp_path / "workspace"),
+                              resume=False, harness=None, experience=None, time_budget_hours=None, final_eval_only=True)
+    assert runner.solve_problem(args) == {"final": "report"}
+    assert entered == [] and reports == [(opened, standings)]
+
 
 
 def test_relbench_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, tmp_path):

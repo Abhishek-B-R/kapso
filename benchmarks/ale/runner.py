@@ -3,6 +3,7 @@
 
     python -m benchmarks.ale.runner --problem <id> [-i N] [--workspace DIR] [--resume]
         [--harness REF] [--experience REFS] [--coding-agent CLI]
+    python -m benchmarks.ale.runner --problem <id> --workspace DIR --final-eval-only
     python -m benchmarks.ale.runner --list [--lite]
 
 The runner keeps the problem material and launches the engine: it loads the
@@ -109,10 +110,11 @@ def solution_summary(solution: Solution) -> Dict[str, object]:
     }
 
 
-def final_report(work_dir: Path, problem_id: str, num_workers: int, solution: Solution) -> Dict[str, object]:
+def final_report(work_dir: Path, problem_id: str, num_workers: int, solution: Solution, standings) -> Dict[str, object]:
     """The private cases once, on the delivered candidate's `main.cpp`, with
-    the rank and the performance the benchmark estimates; or the
-    no-candidate report."""
+    the rank and the performance the benchmark estimates against the
+    contest's standings (the loader's: a session refuses to hand them
+    out); or the no-candidate report."""
     report: Dict[str, object] = {"problem_id": problem_id, "solution": solution_summary(solution)}
     candidate = solution.campaign / SOLUTION
     if solution.branch is None:
@@ -125,7 +127,7 @@ def final_report(work_dir: Path, problem_id: str, num_workers: int, solution: So
         private_result, final_rank, final_performance = session.private_eval(
             candidate.read_text(encoding="utf-8"), code_language=LANGUAGE,
         )
-        contestants = len(session.standings.standings_scores)
+        contestants = len(standings.standings_scores)
         report["private_evaluation"] = {
             "private_score": private_result.overall_absolute_score,
             "judge_result": private_result.overall_judge_result.value,
@@ -164,27 +166,31 @@ def solve_problem(args) -> dict:
     shared_cache_dir.mkdir(exist_ok=True)
     brief = build_brief(problem, seeds.public, higher_is_better, runs, len(standings.standings_scores), shared_cache_dir)
 
-    kapso = Kapso(config=str(write_runtime_config(CONFIG_PATH, shared_cache_dir, work_dir)))
-    kapso.load_harness(args.harness or BUNDLED_HARNESS)
-    for reference in (args.experience or "").split(","):
-        if reference.strip():
-            kapso.load_experience(reference.strip())
-    solution = kapso.build(
-        brief,
-        evaluation=str(evaluation_dir),
-        data=str(task_root),
-        repo=None if args.resume else seeded_baseline(problem.example_output),
-        output=args.workspace,
-        budget=Budget(
-            minutes=args.time_budget_hours * 60 if args.time_budget_hours is not None else None,
-            experiments=args.iterations,
-        ),
-        resume=args.resume,
-        coding_agent=args.coding_agent,
-    )
+    if args.final_eval_only:
+        # The campaign ran already: the report on the solution the workspace holds.
+        solution = Solution.open(args.workspace)
+    else:
+        kapso = Kapso(config=str(write_runtime_config(CONFIG_PATH, shared_cache_dir, work_dir)))
+        kapso.load_harness(args.harness or BUNDLED_HARNESS)
+        for reference in (args.experience or "").split(","):
+            if reference.strip():
+                kapso.load_experience(reference.strip())
+        solution = kapso.build(
+            brief,
+            evaluation=str(evaluation_dir),
+            data=str(task_root),
+            repo=None if args.resume else seeded_baseline(problem.example_output),
+            output=args.workspace,
+            budget=Budget(
+                minutes=args.time_budget_hours * 60 if args.time_budget_hours is not None else None,
+                experiments=args.iterations,
+            ),
+            resume=args.resume,
+            coding_agent=args.coding_agent,
+        )
 
     print("\n" + "=" * 60 + "\nFinal Evaluation (the private cases, once)\n" + "=" * 60)
-    report = final_report(work_dir, args.problem, int(settings["num_workers"]), solution)
+    report = final_report(work_dir, args.problem, int(settings["num_workers"]), solution, standings)
     print(json.dumps(report, indent=2, default=str))
     return report
 
@@ -200,6 +206,8 @@ def main() -> None:
     parser.add_argument("-d", "--coding-agent", type=str, default=None, help="The host every session runs on (the config's when absent)")
     parser.add_argument("--workspace", type=str, default=None, help="The campaign directory (output=); needed to resume")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--final-eval-only", action="store_true",
+                        help="No campaign: the final report on the solution --workspace already holds")
     parser.add_argument("--time-budget-hours", type=float, default=None, help="Budget.minutes, in hours")
     parser.add_argument("--harness", type=str, default=None, help=f"A harness reference (default: the bundled {BUNDLED_HARNESS})")
     parser.add_argument("--experience", type=str, default=None,
@@ -213,6 +221,8 @@ def main() -> None:
         return
     if not args.problem:
         parser.error("--problem is required unless --list or --lite is given")
+    if args.final_eval_only and not args.workspace:
+        parser.error("--final-eval-only needs --workspace, the campaign directory the build wrote")
     if args.problem not in ale_bench.list_problem_ids():
         parser.error(f"unknown problem {args.problem!r}; --list prints the registry")
 
