@@ -529,7 +529,7 @@ re-measured a row:
 |---|---|---|---|
 | S1 (the new stack) | `s1-claude-1` | 5.72 | $0.77 |
 | S1 (the released baseline) | `s1-released-2` | 3.92 | $0.53 |
-| S2, Claude host | `s2-claude-1` 2.68, `s2-claude-2` 6.00 (lost at the cap), `s2-claude-3` 3.79; the targeted arms (inbox ×5, review ×2, propose, data-only) 5.69 | 18.2 | $2.44 |
+| S2, Claude host | `s2-claude-1` 2.68, `s2-claude-2` 6.00 (lost at the cap), `s2-claude-3` 3.79; the targeted arms (inbox ×5, review ×2, propose, data-only) 5.69; the second engineer's arms `s2-claude-second-1` 3.0, `-2` 3.54 | 24.7 | $3.31 |
 | S2, Codex host | `s2-codex-1` (fetched, no report), `s2-codex-4` 2.46 (stopped), `s2-codex-5` 4.31; the inbox arms 0.57; `s2-codex-triggers-1` 0.93 | 8.3 and the first run | about $1.20 |
 | S4 | `s4-claude-1` | 0.12 | $0.02 |
 | S5 | arms 1 to 4 (stopped early), `s5-claude-5` 1.21, `s5-claude-6` 2.72, `s5-claude-7` 4.14 | 8.1 and the first four | about $1.20 |
@@ -1479,6 +1479,22 @@ log, so the cause is unrecorded (the review's finding); the budget is
 now one an attempt can score in and the log is archived, and
 `s2-claude-second-2` re-measures it (below).
 
+**`s2-claude-second-2`** (the same arm on the fixed driver at the new
+budget, 2026-10-29 03:31 to 07:04, token-5; 3.54 h of machine, about
+$0.47; report `tests/semantic/reports/s2-claude-second-2.md`): the
+churn build, review, learn (126 minutes, inside its 150) and share true;
+the served build launched as the second user with the bank's three
+cards served and, with its log archived this time, the cause of the
+silent first run is on record — the engine's first commit in the
+campaign died with git's `fatal: empty ident name (for <proof2@…>)`:
+the second Unix user had no git identity, the launch receipt had already
+said "started", and no status file was ever written, so the driver
+waited its forty minutes on nothing. A person running kapso has a git
+identity, so the suite now gives the second user one and keeps the
+product finding (below): a build that dies after its receipt leaves a
+person watching a status that never comes. `s2-claude-second-3`
+re-measures the served build with the identity in place.
+
 **`s2-codex-triggers-1`** (the trigger suite alone on a fresh Codex
 machine, 2026-10-29 03:16 to 04:12, the sessions unsandboxed by the
 runner's word after the review traced the first run's miss to codex's
@@ -1582,6 +1598,17 @@ its `fetched/out`.
   imperative, or the tools surfaced in the prompt differently, is WP7's
   (the adapter) and WP3's (the serving intro); until then a Codex
   campaign is served experience it does not use.
+- **A build launched without a git identity dies after its receipt, and
+  nothing says so.** On `s2-claude-second-2` the second user's `kapso
+  build --detach` printed its receipt ("kapso build started in a session
+  of its own", the log and status paths) and the detached writer died in
+  the orchestrator's construction — the campaign's first commit, git's
+  "empty ident name" — before any status file existed, so `kapso watch`
+  had nothing to show and a person would wait on a status that never
+  comes. Two product calls: the doctor (WP1's preflight) should check
+  the git identity a build needs, and the detached writer should write a
+  failed status before it dies of anything (WP6's truthful record), as
+  it does for ENOSPC.
 - **Fable 5's safeguards and the mining prompt; codex-cli 0.165's
   workspace-write sandbox on a VM** — recorded in DECISIONS (S6).
 - **A build needs a Codex login even on the Claude host.** The second
