@@ -1198,6 +1198,40 @@ both reviews by id (K = Codex, M = Claude), with where it went:
   The arms relaunched from the rebuilt wheel as `s3-relbench-2` and
   `s3-mle-4`; the arms already running carry the old wheel and are
   relaunched if the same cut kills one.
+- **The ALE smoke died at the final report** (`s3-ale-smoke-1`, 17:29Z): the
+  runner read the contestants off `session.standings`, and the pinned
+  ALE-Bench (1.6.1) makes that property raise ("Accessing standings is not
+  allowed"). Fixed: the loader's standings, which the runner already held
+  for the brief, are threaded into `final_report`; `--final-eval-only`
+  reports on the solution a workspace holds, so a runner that dies after
+  its campaign is finished by hand (`scratchpad` `ale_finish.sh`). Test:
+  the final-eval-only path enters no facade.
+- **The ALE quick arm died inside its campaign** (`s3-ale-1`, ahc008, about
+  17:55Z, 1.5 h in): the implementation session added
+  `output_data_generic_exp_1/` to the repository's `.gitignore` beside its
+  own `results/` and `*.scores.json`, and the engine's commit of its run
+  folder at the session's close (`ExperimentSession.commit_folder`) failed
+  on the ignore rule, which killed the campaign before a solution was
+  delivered. Fixed: the run folder is added by force, since it is the
+  engine's record and a candidate's ignore rules do not apply to it
+  (DECISIONS.md, 2026-10-29). Relaunched as `s3-ale-2` from the rebuilt
+  wheel.
+- **The IOAI quick arm's score is a replay** (`s3-ioai-1`, timed-deps, one
+  lane, two hours, the bank served minus the task's own entry): the agent
+  found the Kaggle account's own August kernel for the competition on the
+  account, "stole the proven kernel", pushed once (public 1.00000 at
+  16:52Z, out-of-fold 0.7802) and stopped at 17:35Z with the budget
+  exhausted after one experiment. No shell submit (the ledger's token is
+  on the submission), the preflight, the contest root, the ledger, the
+  hooks and the runner all ran on the harness; but the bar "above the
+  median" is met by a replay, not a cold start, and the record says so. A
+  clean reading needs a Kaggle account that never entered the competition,
+  or the radar practice competition with its rules accepted in a browser,
+  which only the owner can do.
+- **The Kaggle swap ran clean** (`s3-kaggle-swap-1`, spooky-author-identification
+  through the IOAI preflight and runner under the predictive-modelling
+  harness, two hours): four submissions through the ledger, best public
+  log loss 0.30161 at 17:00Z, two experiments, no harness edit.
 - **The MLE quick arm died in the maintainer's calibration** (`s3-mle-1`,
   16:33Z, eight minutes in): the calibration run exited 2 with `existing
   evaluator snapshot is corrupt`. The line is printed by

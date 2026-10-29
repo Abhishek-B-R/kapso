@@ -2711,3 +2711,15 @@ and that, not a missing closing brace (a cut inside a string of code may
 well end on a brace), is the sign of a cut line. Found by the arm, fixed
 in WP8 (the arms run from the rebuilt wheel), noted here because it is
 engine code outside the package's scope.
+
+## The engine's run folder is committed by force (2026-10-29)
+
+The ALE quick arm's implementation session wrote the campaign's run folder
+(`output_data_<id>/`) into the repository's `.gitignore` beside its own
+build outputs, and the engine's commit of that folder at the session's
+close failed on the rule, which killed the campaign. The run folder is
+the engine's record (the scores, the artefacts the evaluation reads), not
+the candidate's output, so `ExperimentSession.commit_folder` adds it with
+`git add -f`: a candidate's ignore rules, the task's or the session's own,
+do not reach it. Found by the arm, fixed in WP8; engine code outside the
+package's scope, so noted here.
