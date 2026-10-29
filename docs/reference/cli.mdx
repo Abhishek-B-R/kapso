@@ -316,7 +316,7 @@ The report has seven sections:
 | Leaderboard | The top scored candidates in the campaign's own ranking, so minimize metrics and cost-aware selection order it as the campaign does, with each one's score, platform cost when cost is on, parent node, branch and idea |
 | Lineage | The campaign tree, the same rows `kapso watch --tree` draws |
 | What changed | `git diff --stat` of each leaderboard candidate against its parent branch |
-| Human input | Every [inbox](/docs/evolve/inbox) request, its state and the reply that answered it, verbatim |
+| Human input | Every [inbox](/docs/evolve/inbox) request, its state and the reply that answered it, with line breaks folded into one table row |
 | Outcomes | How many candidates ran, were scored, failed, were integrity-flagged and were cost-refused |
 
 A directory without a run checkpoint or a status file fails with an explicit error, and a corrupt state file raises.
