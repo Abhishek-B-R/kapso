@@ -41,9 +41,42 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 PLUGIN = ROOT / "plugin"
 EVALS = PLUGIN / "evals"
 ROLLOUTS = Path.home() / ".codex" / "sessions"
+SUITE_PATH = ROOT / "tests" / "semantic" / "suite.json"
+DEFAULT_SANDBOX = json.loads(SUITE_PATH.read_text(encoding="utf-8"))["triggers"]["codex_sandbox"]
 SKILL_FILE = re.compile(r"skills/([\w-]+)/SKILL\.md")
 SKILL_TAG = re.compile(r"<skill>\s*<name>([\w-]+)</name>")
 SKIPPED_KIND = "explicit"
+# A session whose sandbox never came up: codex's bwrap sandbox fails on a
+# machine without user-namespace networking ("bwrap: loopback: Failed
+# RTM_NEWADDR: Operation not permitted"), and the session announces the
+# skill it means to read and cannot read it. That is the machine's failure,
+# never a trigger miss; it is classified as such from the session's own
+# words (s2-codex-5: 123 of 138 failed runs said it).
+SANDBOX_FAILURE = re.compile(r"bwrap: [^\n\"\\]*")
+
+
+def sandbox_failure(stream_file: Path) -> Optional[str]:
+    """The sandbox failure a run reported, from its stderr and its stream
+    (the host repeats bwrap's line in its message), or None."""
+    for path in (stream_file.with_suffix(".err"), stream_file):
+        if path.is_file():
+            match = SANDBOX_FAILURE.search(path.read_text(encoding="utf-8", errors="replace"))
+            if match:
+                return match.group(0).strip()
+    return None
+
+
+def probe_sandbox(sandbox: str, out: Path) -> None:
+    """One session under the chosen sandbox before the suite runs: a
+    sandbox that cannot start fails every run the same way, so the suite
+    stops here with the fix named rather than grading a hundred broken runs."""
+    project = out / "work" / "sandbox-probe"
+    project.mkdir(parents=True, exist_ok=True)
+    probe = subprocess.run(["timeout", "180", "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", sandbox, "-C", str(project), "reply with the word ok"],
+                           capture_output=True, text=True, cwd=str(project))
+    failure = SANDBOX_FAILURE.search(probe.stderr + probe.stdout)
+    if failure:
+        raise RuntimeError(f"codex's {sandbox} sandbox does not start on this machine ({failure.group(0).strip()}); run with --sandbox danger-full-access and say so in the record")
 
 
 def cases(evals: Path = EVALS, tag: Optional[str] = None, pattern: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -146,7 +179,7 @@ def rollout_lines(thread: str, wait_seconds: float = 10.0) -> List[str]:
         time.sleep(0.5)
 
 
-def run_case(case: Dict[str, Any], run: int, out: Path, model: str, effort: str, timeout: int) -> Dict[str, Any]:
+def run_case(case: Dict[str, Any], run: int, out: Path, model: str, effort: str, timeout: int, sandbox: str) -> Dict[str, Any]:
     project = out / "work" / f"{case['name']}-{run}"
     if project.exists():
         shutil.rmtree(project)
@@ -158,7 +191,7 @@ def run_case(case: Dict[str, Any], run: int, out: Path, model: str, effort: str,
     # with exit 124 and its stream so far, and the suite goes on.
     with open(stream_file, "w", encoding="utf-8") as stream, open(stream_file.with_suffix(".err"), "w", encoding="utf-8") as err:
         completed = subprocess.run(
-            ["timeout", str(timeout), "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "-C", str(project),
+            ["timeout", str(timeout), "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", sandbox, "-C", str(project),
              "-m", model, "-c", f'model_reasoning_effort="{effort}"', case["prompt"]],
             stdout=stream, stderr=err, text=True, cwd=str(project),
         )
@@ -166,9 +199,11 @@ def run_case(case: Dict[str, Any], run: int, out: Path, model: str, effort: str,
     begun = any('"thread.started"' in line for line in lines)
     loaded = loaded_skills(lines, rollout_lines(thread_id(lines))) if begun else []
     graders = grade(case["graders"], loaded, begun)
+    environment = sandbox_failure(stream_file)
     return {
         "case": case["name"], "run": run, "exit": completed.returncode, "seconds": round(time.monotonic() - started, 1),
-        "started": begun, "loaded": loaded, "graders": graders, "passed": all(g["passed"] for g in graders),
+        "started": begun, "loaded": loaded, "graders": graders, "environment": environment,
+        "passed": environment is None and all(g["passed"] for g in graders),
     }
 
 
@@ -176,8 +211,8 @@ def report(results: List[Dict[str, Any]], skipped: List[str]) -> str:
     by_case: Dict[str, List[Dict[str, Any]]] = {}
     for result in results:
         by_case.setdefault(result["case"], []).append(result)
-    lines = ["| case | runs | passed | first read | loaded | read after |", "|---|---|---|---|---|---|"]
-    failed, read_after = 0, 0
+    lines = ["| case | runs | passed | first read | loaded | read after | sandbox failures |", "|---|---|---|---|---|---|---|"]
+    failed, read_after, environment = 0, 0, 0
     for name, runs in by_case.items():
         passed = sum(1 for r in runs if r["passed"])
         failed += passed < len(runs)
@@ -185,10 +220,13 @@ def report(results: List[Dict[str, Any]], skipped: List[str]) -> str:
         first = sorted({r["loaded"][0] for r in runs if r["loaded"]})
         later = sum(1 for r in runs for g in r["graders"] if g.get("read_after"))
         read_after += later > 0
-        lines.append(f"| {name} | {len(runs)} | {passed}/{len(runs)} | {', '.join(first) or '(none)'} | {', '.join(loaded) or '(none)'} | {later} |")
+        broken = sum(1 for r in runs if r.get("environment"))
+        environment += broken
+        lines.append(f"| {name} | {len(runs)} | {passed}/{len(runs)} | {', '.join(first) or '(none)'} | {', '.join(loaded) or '(none)'} | {later} | {broken} |")
     lines.append("")
     lines.append(f"{len(by_case) - failed} of {len(by_case)} cases passed every run; "
                  f"{read_after} case(s) read a forbidden skill after the expected one (a pass under the host's rule, a first read would have failed); "
+                 f"{environment} run(s) failed in the sandbox before any skill could be read (the machine's failure, not established, never a miss); "
                  f"{len(skipped)} explicit case(s) skipped (Codex's explicit form is `$kapso-<skill>`).")
     return "\n".join(lines)
 
@@ -200,7 +238,8 @@ def regrade(out: Path) -> int:
     graders = {case["name"]: case["graders"] for case in cases(tag=document["tag"])}
     for result in document["results"]:
         result["graders"] = grade(graders[result["case"]], result["loaded"], result.get("started", True))
-        result["passed"] = all(g["passed"] for g in result["graders"])
+        result["environment"] = sandbox_failure(out / "streams" / f"{result['case']}-{result['run']}.jsonl")
+        result["passed"] = result["environment"] is None and all(g["passed"] for g in result["graders"])
     (out / "results.json").write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     text = report(document["results"], document["skipped"])
     (out / "REPORT.md").write_text(text + "\n", encoding="utf-8")
@@ -216,6 +255,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--model", default="gpt-6-astra")
     parser.add_argument("--effort", default="medium")
     parser.add_argument("--timeout", type=int, default=600, help="seconds per run; a run that overstays ends with exit 124 and counts as it stands")
+    parser.add_argument("--sandbox", default=DEFAULT_SANDBOX, help="codex's sandbox for the sessions (the suite's triggers.codex_sandbox); a machine whose bwrap cannot start needs danger-full-access, said in the record")
     parser.add_argument("-j", "--jobs", type=int, default=2)
     parser.add_argument("--out", default=None)
     parser.add_argument("--regrade", default=None, help="a run's output directory: grade its results again, run nothing")
@@ -228,10 +268,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     skipped = [case["name"] for case in selected if SKIPPED_KIND in case["tags"]]
     selected = [case for case in selected if SKIPPED_KIND not in case["tags"]]
     jobs = [(case, run) for case in selected for run in range(1, args.runs + 1)]
+    probe_sandbox(args.sandbox, out)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(lambda job: run_case(job[0], job[1], out, args.model, args.effort, args.timeout), jobs))
+        results = list(pool.map(lambda job: run_case(job[0], job[1], out, args.model, args.effort, args.timeout, args.sandbox), jobs))
     (out / "results.json").write_text(json.dumps({
-        "model": args.model, "effort": args.effort, "runs": args.runs, "tag": args.tag,
+        "model": args.model, "effort": args.effort, "runs": args.runs, "tag": args.tag, "sandbox": args.sandbox,
         "skipped": skipped, "results": results,
     }, indent=1) + "\n", encoding="utf-8")
     text = report(results, skipped)

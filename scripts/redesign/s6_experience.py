@@ -43,14 +43,14 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
 import status_timeline  # noqa: E402
-from plugin_proof import SUITE, ClaudeHost, Context, UserMode, effective_config, learning_on, project_config, record_step, shell_step, status_of, wait_for  # noqa: E402
+from plugin_proof import SUITE, ClaudeHost, CodexHost, Context, UserMode, codex_session_note, effective_config, learning_on, project_config, record_step, shell_step, status_of, wait_for  # noqa: E402
 from status_timeline import heartbeat_seconds  # noqa: E402
 
 BUDGET = SUITE["builds"]["s6"]
 # The spread of this budget across the packages, recorded beside the pair
 # so one pair is read as a sample, not a verdict (structural provenance).
 SPREAD = "WP1/WP4/WP6/WP7 delivered 0.845, 0.847, 0.851 and nothing twice at this budget"
-STEP_NAMES = ["build-one", "learn-build-one", "build-two", "comparison"]
+STEP_NAMES = ["build-one", "learn-build-one", "build-two", "review-two", "comparison"]
 
 
 # --------------------------------------------------------- the pure core
@@ -160,7 +160,7 @@ def review(served: Dict[str, Any], gaps: Sequence[Tuple[float, Optional[float]]]
         f"Served sources: {', '.join(served['served_sources']) or 'none'}.",
         f"Cards the sessions read: {', '.join(served['read']) or 'none'}.",
         f"Cards the judge found load-bearing: {', '.join(served['load_bearing']) or 'none'}.",
-        f"Lessons cited (read or load-bearing): {served['cited']} of {len(served['lessons'])}.",
+        f"Lessons cited (load-bearing in an attempt): {served['cited']} of {len(served['lessons'])}.",
         f"Scored observations: build one {scored[0]}, build two {scored[1]}.",
         f"Spread at this budget: {SPREAD}.",
         "",
@@ -172,6 +172,20 @@ def review(served: Dict[str, Any], gaps: Sequence[Tuple[float, Optional[float]]]
     lines.append("")
     lines.append(f"Minimum gap where both define it: {'not established (no common scored point)' if minimum is None else f'{minimum:+.4f}'}.")
     return "\n".join(lines) + "\n"
+
+
+def card_named(answer: str, card: str) -> bool:
+    """Whether a review names a card: by its slug, or by its title's words
+    (the slug's words in order, at least the first five), case folded."""
+    text = " ".join(answer.lower().replace("-", " ").replace("_", " ").split())
+    slug = card.rsplit("/", 1)[-1].removesuffix(".md").lower()
+    words = [word for word in slug.replace("_", "-").split("-") if word]
+    if not words:
+        return False
+    if " ".join(words) in text:
+        return True
+    head = " ".join(words[:5])
+    return len(words) >= 5 and head in text
 
 
 def delivered_score(trace: Dict[str, Any]) -> Optional[float]:
@@ -199,10 +213,13 @@ def comparison_metrics(trace_one: Dict[str, Any], trace_two: Dict[str, Any], gap
 
 def run_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
     comparison = next((step for step in record["steps"] if step["name"] == "comparison"), None)
+    review = next((step for step in record["steps"] if step["name"] == "review-two"), None)
     if not comparison or not comparison.get("metrics"):
         return {}
     source = comparison["metrics"]
-    return {key: source.get(key) for key in ("gap_min", "lessons_cited", "scored_observations_min")}
+    metrics = {key: source.get(key) for key in ("gap_min", "lessons_cited", "scored_observations_min")}
+    metrics["review_names_served_cards"] = (review or {}).get("metrics", {}).get("review_names_served_cards")
+    return metrics
 
 
 # ------------------------------------------------------------ the bank
@@ -230,7 +247,12 @@ class S6:
         self.out = Path(args.out).resolve()
         self.work = self.out / "work"
         self.work.mkdir(parents=True, exist_ok=True)
-        self.ctx = Context(ClaudeHost(), self.clone, self.work, self.out, None, args.machine, learn_model=args.learn_model, user=UserMode("scripted", "claude_code"))
+        # The host is the coding agent the campaigns' sessions run on
+        # (`kapso build --coding-agent`) and the CLI the review runs in;
+        # the learn's crews are the config's, on either host.
+        self.host_name = args.host
+        host = ClaudeHost() if args.host == "claude_code" else CodexHost()
+        self.ctx = Context(host, self.clone, self.work, self.out, None, args.machine, learn_model=args.learn_model, user=UserMode("scripted", args.host))
         self.cadence = heartbeat_seconds() if args.cadence is None else args.cadence
         self.bank = self.out / "bank-one.git"
         self.samplers: Dict[str, subprocess.Popen] = {}
@@ -251,7 +273,8 @@ class S6:
         served = f" --experience {experience}" if experience else ""
         self.ctx.shell(
             f"kapso build --brief kapso-brief.md --repo . --evaluation evaluation --data data --output {campaign}{served} "
-            f"--budget-minutes {BUDGET['minutes']} --budget-experiments {BUDGET['experiments']} --config kapso-config.yaml --detach", cwd=project,
+            f"--budget-minutes {BUDGET['minutes']} --budget-experiments {BUDGET['experiments']} --config kapso-config.yaml "
+            f"--coding-agent {self.host_name} --detach", cwd=project,
         )
         wait_for(lambda: status_of(campaign) is not None, 300, every=5)
         timeline = self.out / "artifacts" / f"{name}-timeline.jsonl"
@@ -270,8 +293,8 @@ class S6:
         status = status_of(campaign) or {}
         artifacts = [self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2)), f"artifacts/{name}-timeline.jsonl"]
         step = shell_step(name, status.get("state") == "done" and scored_observations(trace) >= 1, artifacts, (time.monotonic() - started) / 60,
-                          [f"served: {experience or 'nothing'}", f"scored observations: {scored_observations(trace)}", SPREAD], kind="build")
-        step["metrics"] = {"scored_observations": scored_observations(trace), "delivered": (trace.get("delivered") or {}).get("score") if trace.get("delivered") else None}
+                          [f"served: {experience or 'nothing'}", f"the campaign's sessions on {self.host_name}", f"scored observations: {scored_observations(trace)}", SPREAD], kind="build")
+        step["metrics"] = {"scored_observations": scored_observations(trace), "delivered": delivered_score(trace)}
         return step
 
     def step_build_one(self) -> Dict[str, Any]:
@@ -304,7 +327,30 @@ class S6:
     def step_build_two(self) -> Dict[str, Any]:
         project = self.ctx.fixture("churn-first-build", "s6-build-two")
         project_config(project, {"learning": {"bank": {"local_path": str(self.out / "bank-two.git")}}})
+        self.ctx.state["s6_project_two"] = str(project)
+        self.ctx.save()
         return self._build("build-two", project, self.work / "s6-campaign-two", f"file://{self.bank}")
+
+    def step_review_two(self) -> Dict[str, Any]:
+        """The review skill on the host over build two: the host names the
+        served cards the campaign used, from the record. The design's
+        "named by the review" is this answer, checked against the trace's
+        own reading — a card named here that the trace shows read or
+        load-bearing — never the driver's own list."""
+        started = time.monotonic()
+        project = Path(self.ctx.state["s6_project_two"])
+        campaign = self.work / "s6-campaign-two"
+        served = served_and_used(self.trace(campaign))
+        prompt = (f"Review the finished Kapso campaign at {campaign}: which experience cards was it served, which of them did its sessions use, "
+                  "and did they pay? Name each card by its title or slug, in at most twenty lines.")
+        turns = self.ctx.converse("review-two", project, prompt, lambda text, index: None, max_turns=1)
+        answer = "\n".join(turn.text for turn in turns)
+        named = sorted(card for card in set(served["read"]) | set(served["load_bearing"]) if card_named(answer, card))
+        artifacts = [self.ctx.artifact("review-two.txt", answer)]
+        step = record_step("review-two", turns, bool(named), artifacts,
+                           [f"cards the review named, of those the trace shows read or load-bearing: {', '.join(named) or 'none'}"])
+        step["metrics"] = {"review_names_served_cards": len(named)}
+        return step
 
     def step_comparison(self) -> Dict[str, Any]:
         started = time.monotonic()
@@ -338,6 +384,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model (the token's window for the shipped one spent)")
     parser.add_argument("--cadence", type=float, default=None, help="the grid cadence; default: the engine config's budget.checkpoint_heartbeat_seconds")
+    parser.add_argument("--host", default="claude_code", choices=["claude_code", "codex"], help="the coding agent the campaigns' sessions run on, and the CLI the review runs in")
     parser.add_argument("--machine", default=os.uname().nodename)
     parser.add_argument("--advisory", default=None)
     parser.add_argument("--steps", default=None)
@@ -346,21 +393,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     record_file = driver.out / "record.json"
     started = datetime.now(timezone.utc)
     record = json.loads(record_file.read_text()) if record_file.exists() else {
-        "test": "S6", "host": "claude_code", "machine": args.machine, "run_id": f"S6-claude_code-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
+        "test": "S6", "host": args.host, "machine": args.machine, "run_id": f"S6-{args.host}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
         "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": "-"},
         "pins": {"suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "cadence_seconds": driver.cadence, "budget": BUDGET, "learn_model": args.learn_model},
         "user": {"kind": "scripted", "card": None, "interventions": ["both builds from the same seed, data, evaluator, config, models and machine; build one served nothing, build two served build one's banked experience"], "events": [], "pushback": None},
-        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [SPREAD], "transcripts": [],
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [SPREAD, *[note for note in [codex_session_note()] if note]], "transcripts": [],
     }
-    steps = {"build-one": driver.step_build_one, "learn-build-one": driver.step_learn_build_one, "build-two": driver.step_build_two, "comparison": driver.step_comparison}
+    steps = {"build-one": driver.step_build_one, "learn-build-one": driver.step_learn_build_one, "build-two": driver.step_build_two,
+             "review-two": driver.step_review_two, "comparison": driver.step_comparison}
     assert list(steps) == STEP_NAMES
     selected = args.steps.split(",") if args.steps else list(STEP_NAMES)
     for name in selected:
         print(f"== {name}", flush=True)
         step = steps[name]()
         record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]
-        if name == "comparison":
-            record["metrics"] = run_metrics(record)
+        record["metrics"] = run_metrics(record)
+        record["transcripts"] = sorted(f"transcripts/{path.name}" for path in (driver.out / "transcripts").glob("*.jsonl"))
         record["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
         print(json.dumps({key: value for key, value in step.items() if key != "notes"}), flush=True)

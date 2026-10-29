@@ -83,14 +83,28 @@ def test_the_run_metrics_aggregate_the_comparison_and_delivered_is_resolved_to_i
     assert metrics["gap_min"] == 0.04 and metrics["lessons_cited"] == 1 and metrics["scored_observations_min"] == 1 and metrics["behind_points"] == 2
     # The delivered score is resolved from the delivered branch's attempt, not a `score` field.
     assert metrics["delivered"] == {"build_one": 0.80, "build_two": 0.86}
-    record = {"steps": [{"name": "comparison", "metrics": metrics}], "metrics": {}}
-    assert s6.run_metrics(record) == {"gap_min": 0.04, "lessons_cited": 1, "scored_observations_min": 1}
+    record = {"steps": [{"name": "review-two", "metrics": {"review_names_served_cards": 2}}, {"name": "comparison", "metrics": metrics}], "metrics": {}}
+    assert s6.run_metrics(record) == {"gap_min": 0.04, "lessons_cited": 1, "scored_observations_min": 1, "review_names_served_cards": 2}
+    # Without the review step the bar's metric is absent, never a free pass.
+    assert s6.run_metrics({"steps": [{"name": "comparison", "metrics": metrics}], "metrics": {}})["review_names_served_cards"] is None
     none_two = {"attempts": [{"branch": "b", "evaluation": {"score": None}}], "delivered": None}
     assert s6.comparison_metrics(trace_one, none_two, gaps, served)["scored_observations_min"] == 0
 
 
 def test_the_steps_and_bars_match_the_suite():
-    assert s6.STEP_NAMES == s6.SUITE["tests"]["S6"]["required_steps"]["claude_code"]
-    # gap_min is reported, not a hard bar (the budget makes its sign noise); the gate is use and an observation.
-    assert set(s6.SUITE["tests"]["S6"]["bars"]) == {"lessons_cited", "scored_observations_min"}
+    assert s6.STEP_NAMES == s6.SUITE["tests"]["S6"]["required_steps"]["claude_code"] == s6.SUITE["tests"]["S6"]["required_steps"]["codex"]
+    # gap_min is reported, not a hard bar (the budget makes its sign noise); the gate is use, an observation, and the review naming a served card.
+    assert set(s6.SUITE["tests"]["S6"]["bars"]) == {"lessons_cited", "scored_observations_min", "review_names_served_cards"}
     assert s6.SUITE["steps"]["learn-build-one"]["kind"] == "build"
+    assert s6.SUITE["steps"]["review-two"]["kind"] == "conversation"
+
+
+def test_the_review_names_a_card_by_its_slug_or_its_title_words():
+    # The review skill answers in prose: a card named by its slug, or by its
+    # title's words in order (the first five at least), counts; a card the
+    # review never names does not, whatever the driver knows about it.
+    card = "correct-specification-beats-capacity-when-functional-form-is-recoverable"
+    assert s6.card_named("It used correct-specification-beats-capacity-when-functional-form-is-recoverable and ignored the other.", card)
+    assert s6.card_named("The card 'Correct specification beats capacity when the form is recoverable' paid: the attempt kept the log-odds form.", card)
+    assert not s6.card_named("Two cards were served; the sessions read neither.", card)
+    assert not s6.card_named("correct specification", card)   # a fragment is not a name

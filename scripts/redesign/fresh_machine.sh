@@ -78,7 +78,9 @@ cmd_install() {
   # credit-exhausted); push its auth.json rather than logging in with the key.
   # The session travels on ssh stdin only, never the command line.
   [ -f "$CODEX_SESSION" ] || { echo "no Codex session at $CODEX_SESSION" >&2; exit 1; }
-  cat "$CODEX_SESSION" | ssh_run "$name" "umask 077; mkdir -p ~/.codex && cat > ~/.codex/auth.json && echo 'codex: device-auth session installed'"
+  # ~/.codex/SOURCE says where the login came from; every driver copies it
+  # into its record's notes, so a run on this session is marked as such.
+  cat "$CODEX_SESSION" | ssh_run "$name" "umask 077; mkdir -p ~/.codex && cat > ~/.codex/auth.json && echo 'the device-auth ChatGPT session of the owner, pushed by fresh_machine.sh at $(date -u +%FT%TZ); no Codex credit of the run itself' > ~/.codex/SOURCE && echo 'codex: device-auth session installed'"
   echo "installed $(basename "$wheel") on $name"
 }
 

@@ -81,3 +81,27 @@ def test_a_load_is_a_read_that_succeeded():
         command("sed -n 1,80p .agents/skills/kapso-setup/SKILL.md"),
     ]
     assert codex_triggers.loaded_skills(stream, []) == ["kapso-setup"]
+
+
+def test_a_sandbox_that_never_started_is_the_machines_failure_not_a_miss(tmp_path):
+    # s2-codex-5 on GCP: 123 of 138 failed runs said "bwrap: loopback: Failed
+    # RTM_NEWADDR: Operation not permitted" — the session announced the skill
+    # and could not read it. Such a run is classified from its own words and
+    # is never a pass, never a miss: the bar is not established on it.
+    stream = tmp_path / "streams" / "build-c01-1.jsonl"
+    stream.parent.mkdir()
+    stream.write_text('{"type":"thread.started","thread_id":"t1"}\n', encoding="utf-8")
+    stream.with_suffix(".err").write_text("ERROR: bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted\n", encoding="utf-8")
+    assert codex_triggers.sandbox_failure(stream) == "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted"
+    clean = tmp_path / "streams" / "build-c01-2.jsonl"
+    clean.write_text('{"type":"thread.started","thread_id":"t2"}\n', encoding="utf-8")
+    assert codex_triggers.sandbox_failure(clean) is None
+    results = [
+        {"case": "build-c01", "run": 1, "started": True, "loaded": [], "graders": [{"name": "kapso-build", "count": 0, "passed": False}],
+         "environment": "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted", "passed": False},
+        {"case": "build-c01", "run": 2, "started": True, "loaded": ["kapso-build"], "graders": [{"name": "kapso-build", "count": 1, "passed": True}],
+         "environment": None, "passed": True},
+    ]
+    text = codex_triggers.report(results, [])
+    assert text.splitlines()[2].startswith("| build-c01 | 2 | 1/2 |") and text.splitlines()[2].endswith("| 0 | 1 |")
+    assert "1 run(s) failed in the sandbox before any skill could be read" in text

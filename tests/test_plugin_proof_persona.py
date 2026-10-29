@@ -212,3 +212,23 @@ def test_the_machine_cap_is_the_runs_own_length_from_the_suite():
     for test, hosts in proof.SUITE["tests"].items():
         for host in hosts["required_steps"]:
             assert proof.machine_hours(test, host).endswith("h")
+
+
+def test_the_trigger_bar_is_not_established_on_a_run_whose_sandbox_never_started(tmp_path):
+    # A Codex results file with one case passing every run and one run that
+    # failed in its sandbox (codex_triggers.sandbox_failure): the per-skill
+    # share reads as it stands, and the bar is not met — the machine's
+    # failure is counted apart from a miss, never folded into either side.
+    ok = {"name": "kapso-build", "count": 1, "passed": True}
+    results = {"results": [
+        {"case": "build-c01", "run": 1, "started": True, "loaded": ["kapso-build"], "graders": [ok], "environment": None, "passed": True},
+        {"case": "build-c01", "run": 2, "started": True, "loaded": ["kapso-build"], "graders": [ok], "environment": None, "passed": True},
+        {"case": "build-c02", "run": 1, "started": True, "loaded": [], "graders": [{"name": "kapso-build", "count": 0, "passed": False}],
+         "environment": "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted", "passed": False},
+    ]}
+    (tmp_path / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    verdict = proof.trigger_bar(tmp_path, "codex")
+    assert verdict["environment"] == 1 and verdict["met"] is False and verdict["per_skill"] == {"build": "1/2"}
+    results["results"][2].update({"environment": None, "loaded": ["kapso-build"], "graders": [ok], "passed": True})
+    (tmp_path / "results.json").write_text(json.dumps(results), encoding="utf-8")
+    assert proof.trigger_bar(tmp_path, "codex") == {"per_skill": {"build": "2/2"}, "false_positives": [], "environment": 0, "met": True}

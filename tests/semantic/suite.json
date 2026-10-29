@@ -36,8 +36,8 @@
       "judge": null
     },
     "S6": {
-      "required_steps": {"claude_code": ["build-one", "learn-build-one", "build-two", "comparison"], "codex": ["build-one", "learn-build-one", "build-two", "comparison"]},
-      "bars": {"lessons_cited": {"min": 1}, "scored_observations_min": {"min": 1}},
+      "required_steps": {"claude_code": ["build-one", "learn-build-one", "build-two", "review-two", "comparison"], "codex": ["build-one", "learn-build-one", "build-two", "review-two", "comparison"]},
+      "bars": {"lessons_cited": {"min": 1}, "scored_observations_min": {"min": 1}, "review_names_served_cards": {"min": 1}},
       "judge": null
     },
     "author": {
@@ -98,6 +98,7 @@
     "build-one": {"kind": "build", "minutes": 75},
     "learn-build-one": {"kind": "build", "minutes": 240},
     "build-two": {"kind": "build", "minutes": 75},
+    "review-two": {"kind": "conversation", "messages": 1, "questions": 0, "minutes": 10, "longest_message_lines": 20},
     "comparison": {"kind": "shell", "minutes": 2},
     "write": {"kind": "conversation", "messages": 6, "questions": 0, "minutes": 40, "longest_message_lines": 80}
   },
@@ -115,7 +116,7 @@
   "injections": {"provider_limit_count": 3, "tmpfs_mb": 64, "enrichment_port": 8765},
   "hosts": {"claude_code": {"model": "claude-opus-5-5"}, "codex": {"model": "gpt-6-astra"}},
   "turn_timeout": 1800,
-  "triggers": {"bar": 0.9},
+  "triggers": {"bar": 0.9, "codex_sandbox": "read-only"},
   "fixtures": {
     "churn-first-build": "b4685e5dcdd6a5a778ed1828121d0f72e6e6c52cc07f5cff29a864318f7ecd5e",
     "fraud-no-evaluator": "9279bea5b768519ba51e89c7eab504973ba7942273e8ed8b4d2ed406bb731409",

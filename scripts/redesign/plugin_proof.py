@@ -18,6 +18,7 @@ the standard library and PyYAML (the examples' python3 has it).
 
 import argparse
 import glob
+import hashlib
 import json
 import math
 import os
@@ -347,10 +348,12 @@ class UserMode:
 
 
 class Context:
-    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = _PAUSE_B["minutes"], user: Optional[UserMode] = None):
+    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = _PAUSE_B["minutes"], user: Optional[UserMode] = None,
+                 triggers_sandbox: Optional[str] = None):
         self.host, self.clone, self.work, self.out, self.wheel, self.machine = host, clone, work, out, wheel, machine
         self.learn_model = learn_model
         self.pause_minutes = pause_minutes
+        self.triggers_sandbox = triggers_sandbox   # the runner's word for a machine whose codex sandbox cannot start (None: the suite's)
         self.user = user or UserMode("scripted", host.name)
         self.state_file = out / "state.json"
         self.state: Dict[str, Any] = json.loads(self.state_file.read_text()) if self.state_file.exists() else {}
@@ -490,6 +493,14 @@ def learning_on(block: Any, model: str, replaced: str) -> Any:
     if isinstance(block, list):
         return [learning_on(item, model, replaced) for item in block]
     return model if block == replaced else block
+
+
+def codex_session_note() -> Optional[str]:
+    """What the machine's Codex login is, when the runner marked it
+    (fresh_machine.sh writes ~/.codex/SOURCE beside the session it pushed):
+    a record made on a borrowed session says so in its notes."""
+    marker = Path.home() / ".codex" / "SOURCE"
+    return f"codex login: {marker.read_text(encoding='utf-8').strip()}" if marker.is_file() else None
 
 
 def wait_for(predicate: Callable[[], bool], seconds: int, every: int = 10) -> bool:
@@ -794,8 +805,11 @@ def trigger_bar(out_dir: Path, host: str) -> Dict[str, Any]:
             if any(g["name"].startswith("not-") and not g["passed"] for run in runs for g in run["graders"]):
                 false_positives.append(name)
     per_skill = {skill: f"{sum(ok)}/{len(ok)}" for skill, ok in passed.items()}
-    met = bool(passed) and all(sum(ok) >= TRIGGER_BAR * len(ok) for ok in passed.values()) and not false_positives
-    return {"per_skill": per_skill, "false_positives": sorted(set(false_positives)), "met": met}
+    # A Codex run whose sandbox never started is the machine's failure
+    # (codex_triggers.sandbox_failure): the bar is not established on it.
+    environment = sum(1 for result in document.get("results", []) if result.get("environment")) if host != "claude_code" else 0
+    met = bool(passed) and all(sum(ok) >= TRIGGER_BAR * len(ok) for ok in passed.values()) and not false_positives and environment == 0
+    return {"per_skill": per_skill, "false_positives": sorted(set(false_positives)), "environment": environment, "met": met}
 
 
 def trigger_verdict(ctx: Context) -> Dict[str, Any]:
@@ -808,7 +822,7 @@ def trigger_verdict(ctx: Context) -> Dict[str, Any]:
         if result_file.is_file():
             verdict = trigger_bar(out_dir, ctx.host.name)
             verdicts.append(verdict["met"])
-            notes.append(f"{label}: {verdict['per_skill']}; cross-skill false positives: {verdict['false_positives'] or 'none'}")
+            notes.append(f"{label}: {verdict['per_skill']}; cross-skill false positives: {verdict['false_positives'] or 'none'}; runs whose sandbox never started (not established): {verdict['environment']}")
         else:
             verdicts.append(False)
             notes.append(f"{label}: the suite wrote no result file")
@@ -819,8 +833,12 @@ def trigger_verdict(ctx: Context) -> Dict[str, Any]:
 def step_triggers(ctx: Context) -> Dict[str, Any]:
     started = time.monotonic()
     which = "claude-triggers" if ctx.host.name == "claude_code" else "codex-triggers"
-    main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main", cwd=ctx.clone, timeout=10800, check=False)
-    holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1", cwd=ctx.clone, timeout=3600, check=False)
+    # Codex's sessions run under the suite's sandbox unless the runner says
+    # the machine needs another (GCP's image cannot start bwrap); the step
+    # notes it, so a verdict on an unsandboxed session is read as such.
+    sandbox = f" --sandbox {ctx.triggers_sandbox}" if ctx.host.name == "codex" and ctx.triggers_sandbox else ""
+    main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main{sandbox}", cwd=ctx.clone, timeout=10800, check=False)
+    holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1{sandbox}", cwd=ctx.clone, timeout=3600, check=False)
     artifacts = []
     for label, run in (("main", main), ("holdout", holdout)):
         out_dir = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""
@@ -828,7 +846,8 @@ def step_triggers(ctx: Context) -> Dict[str, Any]:
             artifacts.append(ctx.copy_artifact(Path(out_dir), f"triggers-{label}"))
         artifacts.append(ctx.artifact(f"triggers-{label}.log", run.stdout + run.stderr))
     verdict = trigger_verdict(ctx)
-    return shell_step("triggers", verdict["completed"], artifacts, (time.monotonic() - started) / 60, verdict["notes"])
+    notes = [*verdict["notes"], *([f"the Codex sessions ran under --sandbox {ctx.triggers_sandbox}, the runner's word for this machine"] if sandbox else [])]
+    return shell_step("triggers", verdict["completed"], artifacts, (time.monotonic() - started) / 60, notes)
 
 
 def step_harness_export(ctx: Context) -> Dict[str, Any]:
@@ -1384,6 +1403,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model instead of the shipped one (said in the record)")
     parser.add_argument("--pause-minutes", type=int, default=_PAUSE_B["minutes"], help="the injected pause campaign's budget (the suite's builds.pause.minutes); a slow box needs more than the default for its session to reach the ask")
     parser.add_argument("--recompute-triggers", action="store_true", help="read the trigger step's verdict again from its artifacts, run nothing")
+    parser.add_argument("--triggers-sandbox", default=None, help="codex's sandbox for the trigger sessions on a machine whose own cannot start (the runner's word; default: the suite's triggers.codex_sandbox)")
     parser.add_argument("--advisory", default=None, help="the reason this arm runs on the development box; the record is marked and never a fresh-machine acceptance")
     parser.add_argument("--user", default="scripted", help="who answers the host: scripted (the mechanical round) or persona:<card> (a card under tests/semantic/personas through the other vendor's CLI)")
     args = parser.parse_args(argv)
@@ -1392,7 +1412,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     work = Path(args.work).resolve() if args.work else out / "work"
     work.mkdir(parents=True, exist_ok=True)
     user = UserMode(args.user, host.name)
-    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model, args.pause_minutes, user)
+    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model, args.pause_minutes, user,
+                  triggers_sandbox=args.triggers_sandbox)
     test_name = "S2" if user.kind == "persona" else "S2-mechanical"
     record_file = out / "record.json"
     started = datetime.now(timezone.utc)
@@ -1401,9 +1422,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "test": test_name, "host": host.name, "machine": args.machine,
         "run_id": f"{test_name}-{host.name}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
         "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": wheel_sha256},
-        "pins": {"wheel_sha256": wheel_sha256},
+        "pins": {"wheel_sha256": wheel_sha256, "suite_sha256": hashlib.sha256(SUITE_PATH.read_bytes()).hexdigest()},
         "user": user.record(),
-        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [], "transcripts": [],
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [note for note in [codex_session_note()] if note], "transcripts": [],
     }
     if args.recompute_triggers:
         # The verdict's rule changed after the suite ran: the same evidence

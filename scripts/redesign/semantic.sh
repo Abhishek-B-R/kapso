@@ -63,9 +63,10 @@ if [ "$TEST" = s2 ]; then
   [ "$HOST" = claude_code ] && PERSONA_VENDOR=codex || PERSONA_VENDOR=claude_code
   [ "$PERSONA_VENDOR" = codex ] && NEEDS_CODEX_CREDIT=1
 fi
-# S5 drives the operating skill, so the plugin must be installed; S2
-# installs it itself as a step, and S1/S4/S6/author use cold sessions.
-[ "$TEST" = s5 ] && NEEDS_PLUGIN=1
+# S5 drives the operating skill and S6's review runs the review skill, so
+# the plugin must be installed for them; S2 installs it itself as a step,
+# and S1/S4/author use cold sessions.
+case "$TEST" in s5|s6) NEEDS_PLUGIN=1 ;; esac
 
 WHEEL_NAME=""   # the wheel's basename, set by build_wheel; on the machine it is /tmp/$WHEEL_NAME
 
@@ -79,7 +80,7 @@ driver_cmd() {
             echo "python3 scripts/redesign/s1_cold_engineer.py --clone \$PWD --out ~/out --host $HOST $wheel_flag" ;;
     s2)     echo "python3 scripts/redesign/plugin_proof.py --clone \$PWD --out ~/out --host $HOST --user persona:ml-engineer $wheel_flag" ;;
     s5)     echo "python3 scripts/redesign/s5_injections.py --clone \$PWD --out ~/out" ;;
-    s6)     echo "python3 scripts/redesign/s6_experience.py --clone \$PWD --out ~/out" ;;
+    s6)     echo "python3 scripts/redesign/s6_experience.py --clone \$PWD --out ~/out --host $HOST" ;;
     author) echo "python3 scripts/redesign/author_test.py --clone \$PWD --out ~/out --host $HOST" ;;
     s4)     echo "python3 scripts/redesign/s4_reading.py --clone \$PWD --out ~/out --campaign ~/tampering-campaign" ;;
   esac
@@ -101,23 +102,29 @@ pack_harness() {   # a partial checkout: the drivers, the suite, the fixtures, t
     -C "$RUN_DIR" released-docs
 }
 
-route_ok() {   # a real one-token generation on the host CLI, so a dead login stops us before provisioning
-  local cli="$1"
+route_ok() {   # a real one-token generation on a CLI, on the model the suite names for that role, so a dead login stops us before provisioning
+  local cli="$1" model="$2"
   if [ "$cli" = claude_code ]; then
-    claude -p "reply with the word ok" --model claude-fable-5 --output-format text >/dev/null 2>&1
+    claude -p "reply with the word ok" --model "$model" --output-format text >/dev/null 2>&1
   else
-    codex exec -m gpt-6-astra --sandbox read-only --skip-git-repo-check "reply with the word ok" >/dev/null 2>&1
+    codex exec -m "$model" --sandbox read-only --skip-git-repo-check "reply with the word ok" >/dev/null 2>&1
   fi
 }
 
 preflight() {
   echo "== preflight the routes" | tee "$RUN_DIR/preflight.log"
-  python3 "$HERE/judge.py" --preflight 2>&1 | tee -a "$RUN_DIR/preflight.log"   # the judge's Vertex route, a real call
-  route_ok "$HOST" || { echo "host $HOST: a one-token call did not answer; fix the login before provisioning" >&2; exit 3; }
-  echo "host $HOST: a one-token call answered" | tee -a "$RUN_DIR/preflight.log"
+  if [ -n "$RUBRIC" ]; then   # the judge's Vertex route, a real call; only a judged test needs it
+    python3 "$HERE/judge.py" --preflight 2>&1 | tee -a "$RUN_DIR/preflight.log"
+  fi
+  # The models are the suite's (hosts.<host>.model, user.persona.<host>.model), never a literal here.
+  local host_model persona_model
+  host_model="$(suite_get "['hosts']['$HOST']['model']")"
+  route_ok "$HOST" "$host_model" || { echo "host $HOST ($host_model): a one-token call did not answer; fix the login before provisioning" >&2; exit 3; }
+  echo "host $HOST ($host_model): a one-token call answered" | tee -a "$RUN_DIR/preflight.log"
   if [ -n "$PERSONA_VENDOR" ]; then
-    route_ok "$PERSONA_VENDOR" || { echo "persona $PERSONA_VENDOR: a one-token call did not answer" >&2; exit 3; }
-    echo "persona $PERSONA_VENDOR: a one-token call answered" | tee -a "$RUN_DIR/preflight.log"
+    persona_model="$(suite_get "['user']['persona']['$HOST']['model']")"
+    route_ok "$PERSONA_VENDOR" "$persona_model" || { echo "persona $PERSONA_VENDOR ($persona_model): a one-token call did not answer" >&2; exit 3; }
+    echo "persona $PERSONA_VENDOR ($persona_model): a one-token call answered" | tee -a "$RUN_DIR/preflight.log"
   fi
   if [ -n "$NEEDS_CODEX_CREDIT" ]; then
     # The credit is the device-auth ChatGPT session (the api key is credit
@@ -147,10 +154,12 @@ for req in ~/kapso-clone/examples/*/requirements.txt; do ~/env/bin/pip install -
 VENV
 }
 
-provision_plugin() {   # install the operating plugin the way a user does (S5 uses the skill, does not test installing it)
+provision_plugin() {   # install the operating plugin the way a user does (S5 and S6 use its skills, do not test installing it)
   [ -n "$NEEDS_PLUGIN" ] || return 0
   if [ "$HOST" = claude_code ]; then
     "$FRESH" run "$RUN_ID" "claude plugin marketplace add ~/kapso-clone && claude plugin install kapso@kapso"
+  else
+    "$FRESH" run "$RUN_ID" "codex plugin marketplace add ~/kapso-clone && codex plugin add kapso@kapso"
   fi
 }
 
@@ -165,16 +174,20 @@ judge_and_report() {   # on the development box, over the fetched record; the re
       s4)     inputs=(--inputs judge/reading-claude_code.md judge/reading-codex.md) ;;
       author) inputs=(--inputs artifacts/write-harness.md) ;;
     esac
-    python3 "$HERE/judge.py" "$fetched" --rubric "$RUBRIC" "${inputs[@]}" 2>&1 | tee "$RUN_DIR/judge.log"
+    # A judge or grade that does not complete leaves its failure in the
+    # record (judge.py persists a non-passing block first) and the report
+    # renders it as not established; neither stops the report.
+    python3 "$HERE/judge.py" "$fetched" --rubric "$RUBRIC" "${inputs[@]}" 2>&1 | tee "$RUN_DIR/judge.log" || echo "the judge did not complete; the report says so" >&2
     case "$TEST" in
-      s1)     python3 "$HERE/s1_cold_engineer.py" --out "$fetched" --grade ;;
-      s4)     python3 "$HERE/s4_reading.py" --out "$fetched" --grade ;;
-      author) python3 "$HERE/author_test.py" --out "$fetched" --clone "$ROOT" --grade ;;
+      s1)     python3 "$HERE/s1_cold_engineer.py" --out "$fetched" --grade || echo "the grade did not complete; the report says so" >&2 ;;
+      s4)     python3 "$HERE/s4_reading.py" --out "$fetched" --grade || echo "the grade did not complete; the report says so" >&2 ;;
+      author) python3 "$HERE/author_test.py" --out "$fetched" --clone "$ROOT" --grade || echo "the grade did not complete; the report says so" >&2 ;;
     esac
   fi
   local report="$REPORTS/$RUN_ID.md" status
   python3 "$ROOT/tests/semantic/report.py" "$fetched/record.json" "$report" && status=0 || status=$?
-  echo "report: $report (verdict exit $status)"
+  if [ "${DRIVER_STATUS:-0}" != 0 ] && [ "$status" = 0 ]; then status=1; fi   # a driver that crashed is never a pass
+  echo "report: $report (verdict exit $status; the driver exited ${DRIVER_STATUS:-0})"
   exit "$status"
 }
 
@@ -195,7 +208,8 @@ if [ -n "$ADVISORY" ]; then
   sudo chown -R "$USER_NAME:$USER_NAME" "$HOME_DIR"
   STAGE="mkdir -p ~/kapso-clone ~/out && tar -C ~/kapso-clone -xzf ~/harness.tgz && python3 -m venv ~/env && ~/env/bin/pip install -q '$HOME_DIR/$WHEEL_NAME' && for r in ~/kapso-clone/examples/*/requirements.txt; do ~/env/bin/pip install -q -r \$r; done"
   RUNCMD="[ -f ~/.token ] && set -a && . ~/.token && set +a; cd ~/kapso-clone && export PATH=~/env/bin:\$PATH && $(driver_cmd) --advisory '$ADVISORY' ${DRIVER_FLAGS[*]:-}"
-  sudo -u "$USER_NAME" -H bash -lc "$STAGE && $RUNCMD" 2>&1 | tee "$RUN_DIR/driver.log"
+  DRIVER_STATUS=0
+  sudo -u "$USER_NAME" -H bash -lc "$STAGE && $RUNCMD" 2>&1 | tee "$RUN_DIR/driver.log" || DRIVER_STATUS=$?
   mkdir -p "$RUN_DIR/fetched"
   sudo cp -r "$HOME_DIR/out" "$RUN_DIR/fetched/out"
   sudo chown -R "$(id -un):$(id -gn)" "$RUN_DIR/fetched"
@@ -226,7 +240,12 @@ if [ "$TEST" = s4 ]; then
   "$FRESH" run "$RUN_ID" "mkdir -p ~/tampering-campaign && tar -C ~/tampering-campaign --strip-components=1 -xzf /tmp/campaign.tgz"
   DRIVER_FLAGS=()
 fi
-"$FRESH" run "$RUN_ID" "cd ~/kapso-clone && export PATH=~/env/bin:\$PATH && $(driver_cmd) ${DRIVER_FLAGS[*]:-}"
+# The driver's exit is captured, never fatal here: whatever it wrote is
+# fetched, verified and reported before the machine goes — a crash's
+# evidence is the thing to keep, and the report says what is missing.
+DRIVER_STATUS=0
+"$FRESH" run "$RUN_ID" "cd ~/kapso-clone && export PATH=~/env/bin:\$PATH && $(driver_cmd) ${DRIVER_FLAGS[*]:-}" || DRIVER_STATUS=$?
+[ "$DRIVER_STATUS" = 0 ] || echo "the driver exited $DRIVER_STATUS; fetching what it wrote" >&2
 "$FRESH" fetch "$RUN_ID" '~/out'
 # fresh_machine.sh fetches into runs/<id>/fetched; the verified archive
 # lives under this run's directory. Move it, verify, and only then delete.

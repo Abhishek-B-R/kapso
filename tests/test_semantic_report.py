@@ -110,11 +110,11 @@ def test_the_bars_read_the_records_metrics(tmp_path):
     # gap_min is reported, not a bar: a negative gap no longer fails on its
     # own (the budget makes the sign noise); the gate is a cited lesson and
     # an observation.
-    below = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 0, "scored_observations_min": 1})
+    below = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 0, "scored_observations_min": 1, "review_names_served_cards": 1})
     assert not report.verdict(below, SUITE, tmp_path)["passed"] and report.verdict(below, SUITE, tmp_path)["bars"]["lessons_cited"] is False
-    met = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 2, "scored_observations_min": 1})
+    met = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 2, "scored_observations_min": 1, "review_names_served_cards": 1})
     assert report.verdict(met, SUITE, tmp_path)["passed"], "a negative gap_min alone does not fail the run"
-    absent = _record("S6", "claude_code", steps, metrics={"lessons_cited": 2})
+    absent = _record("S6", "claude_code", steps, metrics={"lessons_cited": 2, "review_names_served_cards": 1})
     result = report.verdict(absent, SUITE, tmp_path)
     assert not result["passed"] and result["bars"]["scored_observations_min"] is False
     assert "| lessons_cited | 2 |" in report.render(met, SUITE, tmp_path)
