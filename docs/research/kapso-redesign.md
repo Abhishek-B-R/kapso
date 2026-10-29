@@ -85,7 +85,9 @@ experience = kapso.learn(solution)
   claims lint or a fact forced: "judge" left out of the module list, the
   harness sentence cut to the two harnesses that ship plus the examples'
   trading harness, "ready to deploy" for "deployed" (deploy is its own
-  verb). The next draft replaces it on all three in one change.
+  verb), and "where the domain needs it, deploy" in the harness sentence
+  (neither bundled harness has a deployment module). The next draft
+  replaces it on all three in one change.
 - The tags: four, in the one-liner's order.
 - The entrance when there is no evaluation (the engine proposes one, the
   judge checks it is fair): keep the three-case design from

@@ -60,7 +60,7 @@
 
 Coding agents burn tokens and hand back diffs you have to review. Kapso runs them differently. You plug in a harness for your domain and set a goal; it works the goal until it is met, measuring every attempt with an evaluation the agents cannot touch and keeping every step on record. What comes back is a verified outcome: the branch that met the goal, the evaluation that proved it, ready to deploy as running software.
 
-A harness teaches Kapso one kind of work: how to propose, build, measure and deploy there, and the tools it needs. Two ship with Kapso, predictive modelling and competitive programming; the examples carry a trading harness, and you write your own for anything with an evaluation.
+A harness teaches Kapso one kind of work: how to propose, build, measure and, where the domain needs it, deploy there, and the tools it needs. Two ship with Kapso, predictive modelling and competitive programming; the examples carry a trading harness, and you write your own for anything with an evaluation.
 
 It learns from experience, and the lessons carry their receipts: one rule per card, the condition it applies under, the measured effect from each run that tested it, a reliability score with its rationale.
 

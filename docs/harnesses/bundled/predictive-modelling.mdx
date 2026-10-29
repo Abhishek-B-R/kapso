@@ -76,8 +76,8 @@ The brief's `Harness predictive-modelling` line and `kapso.load_harness("predict
 The benchmark runners run on it by default. Each keeps the task material (the download, the sanitized copy, the provided grader, the brief) and launches the build with this harness; `--harness` names another.
 
 ```bash
-python -m benchmarks.relbench.runner -s rel-f1 -t driver-position
-python -m benchmarks.mle.runner --competition <id>
+expert-relbench -s rel-f1 -t driver-position
+PYTHONPATH=. python -m benchmarks.mle.runner --competition <id>
 ```
 
 Related pages: [Use a harness](/docs/harnesses/use) · [Competitive programming](/docs/harnesses/bundled/competitive-programming) · [Write a harness](/docs/harnesses/write) · [Harness reference](/docs/reference/harness) · [RelBench](/docs/benchmarks/relbench) · [MLE-Bench](/docs/benchmarks/mle-bench)

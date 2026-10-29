@@ -1,16 +1,20 @@
 # The words-out list of docs/research/kapso-redesign.md ("Rules for every
 # public sentence"), matched case-insensitively as whole words in prose
-# (outside fenced and inline code). Two sections: [everywhere] applies to
-# every public page; [front] to the front pages only (README.md and
-# docs/index.mdx), because "judge" and "trust" are also the names of the
-# engine's feedback role and of a host's trust line, which the inner pages
-# must use when they describe them.
+# (outside fenced and inline code), an `s` or `ly` ending allowed, so
+# "long-running agent" covers the plural and "autonomous" the adverb.
+# tests/test_check_claims.py holds this file to the document's list. Two
+# sections: [everywhere] applies to every public page and manifest;
+# [front] to the front pages only (README.md and docs/index.mdx), because
+# "judge" and "trust" are also the names of the engine's feedback role and
+# of a host's trust line, which the inner pages must use when they
+# describe them.
 [everywhere]
 with a number
 applied research
 iteration engine
-long-running agents
+long-running agent
 self-improving
+self-improvement
 autonomous
 software factory
 team of agents

@@ -77,9 +77,9 @@ The task root the harness expects is the one its `contest-preflight` skill descr
 The benchmark runners build the task root and run on it by default; `--harness` names another:
 
 ```bash
-python -m benchmarks.ale.runner --problem <id>
-python -m benchmarks.ioai2026.preflight --task 'Solve the Kaggle competition <slug>. ...' --root ~/kaggle_run
-python -m benchmarks.ioai2026.runner --root ~/kaggle_run --hours 2
+PYTHONPATH=. python -m benchmarks.ale.runner --problem <id>
+PYTHONPATH=src:. python -m benchmarks.ioai2026.preflight --task 'Solve the Kaggle competition <slug>. ...' --root ~/kaggle_run
+PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root ~/kaggle_run --hours 2
 ```
 
 The ALE runner loads the problem through the benchmark's own library, writes the public seeds and the scorer into the task root, and judges the delivered candidate once on the private cases. The Kaggle preflight turns an organizer's starter prompt or a competition address into the run root, with the binding rules pinned beside the data; the runner writes the contest root beside it and, after the campaign, reads the score from the leaderboard.

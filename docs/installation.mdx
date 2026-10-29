@@ -338,7 +338,7 @@ I want to set up Kapso, the open-source experiment-campaign framework by Leeroo 
    Then load it. Ask me whether to also connect the docs: `claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp` or `codex mcp add kapso-docs --url https://docs.leeroo.com/mcp`.
 
 8. Finish with a short overview of what you can now do, and do not start a campaign until I give you a goal:
-   - run a build toward a measurable objective, in the background: kapso build --brief kapso-brief.md --repo . --evaluation <judge dir> --output ../<campaign> --detach
+   - run a build toward a measurable objective, in the background: kapso build --brief kapso-brief.md --repo . --evaluation <evaluation dir> --output ../<campaign> --detach
    - follow it: kapso watch ../<campaign> --follow; answer a pause (WAITING ON YOU): kapso inbox
    - bank what it taught: Kapso().learn("../<campaign>"); ship the winner: kapso deploy ../<campaign> --target local
 ```

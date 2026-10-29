@@ -7,7 +7,7 @@ keywords: ["Kapso", "coding agents", "verified outcomes", "harness", "experiment
 
 Coding agents burn tokens and hand back diffs you have to review. Kapso runs them differently. You plug in a harness for your domain and set a goal; it works the goal until it is met, measuring every attempt with an evaluation the agents cannot touch and keeping every step on record. What comes back is a verified outcome: the branch that met the goal, the evaluation that proved it, ready to deploy as running software.
 
-A harness teaches Kapso one kind of work: how to propose, build, measure and deploy there, and the tools it needs. Two ship with Kapso, predictive modelling and competitive programming; the examples carry a trading harness, and you write your own for anything with an evaluation.
+A harness teaches Kapso one kind of work: how to propose, build, measure and, where the domain needs it, deploy there, and the tools it needs. Two ship with Kapso, predictive modelling and competitive programming; the examples carry a trading harness, and you write your own for anything with an evaluation.
 
 It learns from experience, and the lessons carry their receipts: one rule per card, the condition it applies under, the measured effect from each run that tested it, a reliability score with its rationale.
 
@@ -57,7 +57,7 @@ The same from a shell: `kapso build --brief kapso-brief.md --evaluation evaluati
 
 <CardGroup cols={2}>
   <Card title="IOAI 2026" icon="trophy" href="/docs/benchmarks/ioai-2026">
-    Competing fully autonomously in the AI Model Track, Kapso scored 536.07 — above every one of the 471 human contestants — and took the IOAI² Grand Master Trophy, top 3 among all AI systems entered.
+    In two unattended sessions of the AI Model Track, Kapso scored 536.07, graded by the organizers on their hardware, above every one of the 471 human contestants, and took the IOAI² Grand Master Trophy, top 3 among all AI systems entered.
   </Card>
   <Card title="RelBench" icon="database" href="/docs/benchmarks/relbench">
     First on all three official leaderboards of Stanford's benchmark for predictive ML over relational data: classification, regression and recommendations, ahead of Stanford STAR's RT-J and KumoRFM-v2.
@@ -89,7 +89,7 @@ The [technical report](https://arxiv.org/abs/2601.21526) describes the system in
 | Orchestrator | Runs the experiment loop and tracks the budget |
 | Search strategy | Explores candidate solutions as a tree |
 | Coding agents | Pluggable implementers: Claude Code, Codex, Gemini, OpenHands, OSS Claude Code |
-| Evaluation feedback | Validates each evaluation against the brief and decides when to stop |
+| Feedback generator | Validates each evaluation against the brief and decides when to stop |
 | Evaluation registry | The evaluator versions a campaign measured with, provided or built, protected |
 | Lesson bank | Evidence-priced cards mined from finished campaigns |
 | Knowledge graph | Repository and research knowledge, searched over Weaviate and Neo4j |
