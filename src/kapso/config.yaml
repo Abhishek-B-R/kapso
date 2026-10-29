@@ -146,6 +146,10 @@ defaults:
     # One line per launched campaign, so `kapso inbox` with no campaign
     # can list every campaign waiting on a person.
     registry: "~/.kapso/campaigns.jsonl"
+  # `kapso report`: how many top candidates the leaderboard and its
+  # diff section list; --top overrides it for one run.
+  report:
+    leaderboard_size: 5
 
 # =============================================================================
 # Available configuration modes

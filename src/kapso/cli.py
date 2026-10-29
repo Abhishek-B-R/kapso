@@ -9,6 +9,7 @@
 #     learn     - Trajectory learning (store, mining, updating, grading)
 #     deploy    - Deploy solutions
 #     index_kg  - Index knowledge graph
+#     report    - Export a campaign as a Markdown summary
 #
 # Usage:
 #     kapso evolve --goal "Build a web scraper..."
@@ -16,6 +17,7 @@
 #     kapso learn import --subset docs/plans/learning/d1-subset.yaml
 #     kapso deploy --solution-path ./solution
 #     kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
+#     kapso report ./campaign -o report.md
 
 import argparse
 import json
@@ -40,6 +42,7 @@ load_dotenv(find_dotenv(usecwd=True))
 
 from kapso.kapso import Kapso, DeployStrategy, DEFAULT_CONFIG_PATH, DEFAULT_MAX_ITERATIONS
 from kapso.core.config import load_config, load_mode_config
+from kapso.execution.campaign_report import render_campaign_report
 from kapso.execution.inbox import list_registered_campaigns, render_requests
 from kapso.execution.run_checkpoint import RunCheckpointStore
 from kapso.core.preflight import (
@@ -735,6 +738,20 @@ def cmd_watch(args) -> None:
         time.sleep(interval)
 
 
+def cmd_report(args) -> None:
+    """`kapso report CAMPAIGN` — the campaign as shareable Markdown. Pure
+    reader: never writes into the campaign, makes no model calls."""
+    top = args.top
+    if top is None:
+        top = load_mode_config(args.config or DEFAULT_CONFIG_PATH)["report"]["leaderboard_size"]
+    report = render_campaign_report(args.campaign, top=top)
+    if args.output:
+        Path(args.output).write_text(report, encoding="utf-8")
+        print(f"Report written to {args.output}")
+        return
+    print(report, end="")
+
+
 def main():
     CodingAgentFactory.register_quiet_exit()
     # Main parser
@@ -750,6 +767,7 @@ Commands:
   index_kg   Index knowledge graph from wiki or JSON data
   watch      Watch a running evolve / learn / learn_knowledge operation
   inbox      What evolve is waiting on you for, and how to answer it
+  report     Export an evolve campaign as a shareable Markdown summary
   doctor     Check this machine is ready to run Kapso
 
 Examples:
@@ -1098,6 +1116,40 @@ Examples:
     )
 
     # =========================================================================
+    # REPORT command
+    # =========================================================================
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Export an evolve campaign as a shareable Markdown summary",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Render a finished or running campaign as Markdown: summary, "
+            "deliverable, leaderboard, lineage, what each leader changed, "
+            "human input and outcomes. Reads only the campaign's own files "
+            "and git history; writes nothing into it and makes no model calls."
+        ),
+        epilog="""
+Examples:
+  kapso report ./campaign                  # Markdown to stdout
+  kapso report ./campaign -o report.md     # write to a file
+  kapso report ./campaign --top 10         # leaderboard size
+""",
+    )
+    report_parser.add_argument("campaign", help="Campaign directory")
+    report_parser.add_argument(
+        "-o", "--output", type=str, default=None,
+        help="Write the report to this file instead of stdout",
+    )
+    report_parser.add_argument(
+        "--top", type=int, default=None,
+        help="Leaderboard size (default: report.leaderboard_size in the config)",
+    )
+    report_parser.add_argument(
+        "--config", type=str, default=None,
+        help="Config whose report.leaderboard_size sets the default (default: packaged config.yaml)",
+    )
+
+    # =========================================================================
     # BANK command (lesson-bank sharing)
     # =========================================================================
     bank_parser = subparsers.add_parser(
@@ -1198,13 +1250,15 @@ Examples:
         cmd_watch(args)
     elif args.command == "inbox":
         cmd_inbox(args)
+    elif args.command == "report":
+        cmd_report(args)
     elif args.command == "bank":
         cmd_bank(args)
     elif args.command == "doctor":
         cmd_doctor(args)
     else:
         parser.print_help()
-        print("\nError: Please specify a command (evolve, research, learn, deploy, index_kg, watch, inbox, bank, doctor)")
+        print("\nError: Please specify a command (evolve, research, learn, deploy, index_kg, watch, inbox, report, bank, doctor)")
         sys.exit(1)
 
 

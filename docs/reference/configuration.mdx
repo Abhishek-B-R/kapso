@@ -154,6 +154,8 @@ defaults:
     enabled: true
     stop_grace_seconds: 120
     registry: "~/.kapso/campaigns.jsonl"
+  report:
+    leaderboard_size: 5
 ```
 
 | Key | What it does | Shipped value |
@@ -164,6 +166,7 @@ defaults:
 | `inbox.enabled` | Let a blocked session ask you through the inbox and pause the campaign. See [the inbox](/docs/evolve/inbox) | `true` |
 | `inbox.stop_grace_seconds` | How long a session that asked gets to end its own turn before the adapter ends it | `120` |
 | `inbox.registry` | One line per launched campaign, so `kapso inbox` outside a campaign can list every one that waits | `~/.kapso/campaigns.jsonl` |
+| `report.leaderboard_size` | How many candidates `kapso report` lists in its leaderboard and diff section; `--top` overrides it for one run | `5` |
 
 ## modes
 
