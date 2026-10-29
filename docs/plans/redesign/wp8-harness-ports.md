@@ -866,10 +866,16 @@ that is still evidence.
     was not measured.
   - `swap-ale` (`s3-ale-swap-ahc011-1`): the campaign ended at 18:10Z; the
     final report (the private cases) was computing at the time of writing.
-  - `arm-ale` (`s3-ale-2`), `arm-relbench` (`s3-relbench-2`), `arm-mle`
-    (`s3-mle-4`): running, their first attempts having died on the two
-    engine faults and the evaluator fault recorded under What the arms
-    found; recorded as they land, before the merge.
+  - `arm-mle` (`s3-mle-4`, three hours on one A100, 19:48Z): a valid graded
+    log loss of 0.2271 on the private answers, silver, at the recorded
+    population's best (0.230, 0.247, 0.284) and under the bronze bar
+    (0.294); two experiments, the delivered candidate the second; the
+    first attempt died on the evaluator the setup session wrote.
+  - `arm-ale` (`s3-ale-2`) and `arm-relbench` (`s3-relbench-3`): running,
+    their earlier attempts having died on the two engine faults recorded
+    under What the arms found (the RelBench arm twice: the stream split,
+    then the run folder on a wheel that predated its fix); recorded as
+    they land, before the merge.
   - `swap-ioai`: dropped from the release's required steps by the owner
     (2026-10-29: no Kaggle account will be set up; the open practice
     competitions need their rules accepted in a browser); the step
