@@ -145,3 +145,29 @@ def test_update_windows_changed_files_across_calls_within_the_budget(
     assert result["summary"] == "S3"
     assert result["sections"]["opt.a"]["claims"][0]["statement"] == "new a"
     assert result["sections"]["opt.c"]["claims"][0]["statement"] == "new c"
+
+
+def test_update_lists_a_deleted_file_as_deleted(tmp_path: Path) -> None:
+    # A changed file missing from a call's contents is another call's to
+    # refresh, so the call that carries a deleted file has to say it is gone.
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    llm = SequenceLLM(
+        [json.dumps({"summary": "S", "sections": {}, "removed_sections": ["opt.gone"]})]
+    )
+
+    infer_repo_model_update(
+        llm=llm,
+        repo_root=str(repo_root),
+        repo_map={"files": []},
+        previous_model={
+            "summary": "Old",
+            "sections": {"opt.gone": _cites("gone.py", "gone")},
+        },
+        diff_summary="gone.py | 100 ----",
+        changed_files=["gone.py"],
+    )
+
+    prompt = llm.calls[0]["messages"][0]["content"]
+    payload = prompt.split("CHANGED FILE CONTENTS (with line numbers")[1]
+    assert "=== FILE: gone.py (deleted) ===" in payload

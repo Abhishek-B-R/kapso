@@ -21,12 +21,13 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Tuple
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_config
+from kapso.core.config import load_platform_defaults
 from kapso.core.prompt_loader import load_prompt, render_prompt
 
-# Changed-file text one update call may carry (config: repo_memory).
-UPDATE_PAYLOAD_MAX_CHARS = load_config(str(PLATFORM_CONFIG_PATH))["repo_memory"][
-    "update_payload_max_chars"
+# Changed-file text one update call may carry; a run's own config
+# overrides it through the strategy params.
+UPDATE_PAYLOAD_MAX_CHARS = load_platform_defaults()["search_strategy"]["params"][
+    "repo_memory_update_payload_max_chars"
 ]
 _FILE_SEPARATOR = "\n\n"
 
@@ -249,7 +250,7 @@ def _build_toc_from_sections(sections: Dict[str, Any]) -> List[Dict[str, str]]:
     return toc
 
 
-def _format_file_payload(file_blobs: List[Tuple[str, str]]) -> str:
+def _format_file_payload(file_blobs: List[Tuple[str, Optional[str]]]) -> str:
     """
     Format line-numbered file blobs (see `_read_numbered_text`) into a payload.
 
@@ -258,25 +259,29 @@ def _format_file_payload(file_blobs: List[Tuple[str, str]]) -> str:
           1| first line
           2| second line
           ...
+
+    A deleted file (content None) is listed as `=== FILE: path (deleted) ===`.
     """
     parts = []
     for path, content in file_blobs:
-        if content:
+        if content is None:
+            parts.append(f"=== FILE: {path} (deleted) ===")
+        elif content:
             parts.append(f"=== FILE: {path} ===\n{content}")
     return _FILE_SEPARATOR.join(parts)
 
 
 def _window_file_blobs(
-    file_blobs: List[Tuple[str, str]],
+    file_blobs: List[Tuple[str, Optional[str]]],
     max_payload_chars: int,
-) -> List[List[Tuple[str, str]]]:
+) -> List[List[Tuple[str, Optional[str]]]]:
     """
     Group file blobs into batches whose formatted payload fits the budget.
 
     A file is never split: the model must see every line it re-cites, so a
     file larger than the budget still goes whole, in a batch of its own.
     """
-    batches: List[List[Tuple[str, str]]] = [[]]
+    batches: List[List[Tuple[str, Optional[str]]]] = [[]]
     batch_chars = 0
     for blob in file_blobs:
         blob_chars = len(_format_file_payload([blob])) + len(_FILE_SEPARATOR)
@@ -593,11 +598,12 @@ def infer_repo_model_update(
     windowed: one call per batch of whole files, each patching the model the
     previous call produced and validated against that batch's files.
     """
-    changed_blobs: List[Tuple[str, str]] = []
+    changed_blobs: List[Tuple[str, Optional[str]]] = []
     for rel in changed_files:
         abs_path = os.path.join(repo_root, rel)
-        # A deleted file has no text, but sections citing it are still checked.
-        content = ""
+        # A changed file missing from a call's contents belongs to another
+        # call, so the call that carries a deleted file has to say so.
+        content = None
         if os.path.exists(abs_path):
             content = _read_numbered_text(abs_path)
         changed_blobs.append((rel, content))
