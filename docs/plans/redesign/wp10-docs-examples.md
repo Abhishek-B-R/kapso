@@ -12,12 +12,12 @@ The docs site reads as `docs/plans/docs-and-examples-redesign.md` lays it out: t
 
 ### What this package exposes
 
-- **The navigation** (`docs.json`): tab Documentation with the groups Start, Build, Harnesses, Experience, Deploy, Learn, How it works, Benchmarks; tab API Reference with Python API, CLI, Config, Brief format, Harness formats, Experience, Plugin commands. Every page path retired by a merge is in `docs.json`'s `redirects` to its new home, so a link that worked yesterday lands on the page that absorbed it.
+- **The navigation** (`docs.json`): tab Documentation with the groups Start, Build, Harnesses, Experience, Deploy, Learn, How it works, Benchmarks; tab API Reference with Python API, CLI, Config, Brief format, Harness formats, Experience (the plugin's commands stay on the plugin page, the one copy). Every page path retired by a merge is in `docs.json`'s `redirects` to its new home, so a link that worked yesterday lands on the page that absorbed it.
 - **The Learn group**: `docs/learn/what-learn-produces.mdx` (cards with receipts: the card, its reliability states, how a campaign becomes a lesson, serving as an introduction with the three tools) and `docs/learn/development-mode.mdx` (the pipeline's four stages, the graders' two layers and the gauntlet, the promotion gates and codify), condensed from today's six learning pages, whose paths redirect.
 - **The How-it-works group**: today's fifteen `docs/evolve/*` pages, in one flat group, after a truth pass (the CLI package named as it is, the resolved config in place of a mode layer, no "both shipped modes", no compatibility paragraph). `build/trace` stays in Build. The condensation to four pages is deferred (Not in scope).
 - **The Harnesses group**: `docs/harnesses/bundled/predictive-modelling.mdx` and `docs/harnesses/bundled/competitive-programming.mdx` (what each ships, where it came from, the modules and skills, the hooks, how to run a task on it), placed between Use and Write.
 - **The reference**: no new page; `check_docs_coverage.py` learns the plugin commands as a surface (the file list under `plugin/commands/`) and reads them off `docs/coding-agent-skills.mdx`'s table, the one copy.
-- **The examples**: `examples/full-loop/` (today's `ml_model_development`, renamed; the README in the four sections saying "not recorded yet"; `run.py` the twelve-line build, review, learn, build again with experience, deploy; `run_full_loop.py`, `resume_full_loop.py`, `run_cli_inference_smoke.py` and `e2e/` deleted with their rows in `tests/test_config_resolution.py` and `.gitignore`); the four domain examples renamed to the design's names (`gpu-kernels`, `torch-performance`, `prompt-harness`, `agent-scaffold`); `examples/README.md` the one table with minutes, the one command and whether a result is recorded per row, `pipeline-dbt` in it, the four domain examples marked "runs today; its evaluator sits inside repo/; its harness is a follow-up"; `tests/test_examples_drivers.py`: every `examples/*/run.py` compiles, holds at most twelve lines of code, and names only flags and keywords the CLI and the API expose.
+- **The examples**: `examples/full-loop/` (today's `ml_model_development`, renamed; the README in the four sections saying "not recorded yet"; `run.py` the twelve-line build, review, learn, build again with experience, deploy; `run_full_loop.py`, `resume_full_loop.py`, `run_cli_inference_smoke.py` and `e2e/` deleted with their rows in `tests/test_config_resolution.py` and `.gitignore`); the four domain examples renamed to the design's names (`gpu-kernels`, `torch-performance`, `prompt-harness`, `agent-scaffold`); `examples/README.md` the one table with minutes, the one command and whether a result is recorded per row, `pipeline-dbt` in it, the four domain examples marked "runs today; its evaluator sits inside repo/; its harness is a follow-up"; `tests/test_examples_drivers.py`: every `examples/*/run.py` compiles, holds at most twelve lines of code and passes only keywords the API exposes; every `kapso` line the examples' READMEs show parses against the CLI.
 - **The lints**: `scripts/check_claims.py`, two rules over the public pages (`docs/**/*.mdx`, `README.md`, `examples/*/README.md`): a phrase of the words-out list (`scripts/words_out.txt`, from `docs/research/kapso-redesign.md`'s rules for every public sentence) in prose fails — the list in two sections, phrases out everywhere and phrases out on the front pages only (`judge` and `trust`, which are also the engine's role and a host's trust line that the inner pages must name); prose is everything outside code fences and inline code, and a `text` or `md` fence is prose; a result (two or more decimals, or a percentage) beside a metric word with no provenance in its paragraph fails, provenance being a word naming who ran it, on what or when, a row of a table whose header names its source, or a target marked expected or not measured; headings are not prose and a one-decimal threshold is a rule, not a result. Wired into `.github/workflows/docs.yml` beside the drift check, with the workflow triggering on every file the checks guard.
 
 ### What this package consumes
@@ -39,7 +39,7 @@ Edits: `docs/` (pages, `docs.json`, `docs/README.md`), `README.md`, `examples/` 
 7. **Start and Experience named per the design**: `agent-access` merged into `coding-agent-skills` as "Kapso in your coding agent" with a redirect, keeping the docs MCP server lines per host and the `llms.txt` rendition; the Experience pages' sidebar titles per the design. Done 2026-10-29: the plugin page is "Kapso in your coding agent" with the docs server's three install lines and the Markdown rendition as a section, `agent-access` deleted behind a redirect (the navigation test pins it), the README's link moved; the Experience sidebar reads What experience is, Your bank on a build, Leeroopedia and indexes, Share a bank, with a Provenance section on the overview.
 8. **The benchmark pages' provenance**: one paragraph per table saying who ran it, on what and when, from WP8's records. Done 2026-10-29: RelBench (the leaderboard submission of 2026-08-26, the July-August campaigns on A100 machines, the official evaluator), MLE-bench (the official submission's three runs: the model, the budget, the machine, the grader), ALE-Bench (one run per problem under its time budget with the official scorer; no date survives, said so), IOAI 2026 (the organizers' scoring on their hardware during the two sessions).
 9. **The examples**: `full-loop` from `ml_model_development` with its old drivers deleted, the four renames, the table, `tests/test_examples_drivers.py`. Done 2026-10-29: `full-loop/run.py` is the loop in twelve lines of code (build, the review, learn, the bank loaded, build again, deploy to `local`) and its README says the loop from the shell and "not recorded yet"; the three old drivers, `e2e/`, their config-test rows and the ignore line are gone, as are five broken gitlinks (old run outputs once committed as submodule entries with no repository behind them); the four renames; `examples/README.md` is the one table with a Result column; the root README's table follows; the drivers' test holds every `run.py` to twelve lines and the API's keywords and every example to a brief, a README and a driver.
-10. **The docs checks green** (`mint validate`, `broken-links`, coverage, snippets, GEO, claims) and the gate; the pull-request review (cross-model), answered here; the rebase onto `redesign` once WP8 merges; the merge.
+10. **The docs checks green** (`mint validate`, `broken-links`, coverage, snippets, GEO, claims) and the gate; the pull-request review (cross-model), answered here; the rebase onto `redesign` once WP8 merges; the merge. In progress 2026-10-29: the checks and the gate green on every commit; the Claude half of the review answered (the table below); the Codex half, the rebase and the merge follow the arms.
 
 ## Tests
 
@@ -98,6 +98,55 @@ Edits: `docs/` (pages, `docs.json`, `docs/README.md`), `README.md`, `examples/` 
 | 25 | P2: `plugin-commands` would duplicate the plugin page | dropped; the coverage check reads the plugin page (change 6) |
 | 26 | P1: one day is three short | the cut taken: the condensation deferred, `record-and-trace` not written; two days |
 | 27 | P2: built on WP8's branch | moved to `wp10-docs-examples` before the second commit |
+
+### The pull-request review (Claude half, 2026-10-29)
+
+`scripts/redesign/runs/wp10-pr-review/brief.md` on `291b27e3`'s parent
+(`2f63e924`), the Claude reviewer only: the Codex login the arms' machines
+carry must not be refreshed from the development box while they run, so
+the Codex half runs after the arms, before the merge. Thirty-two findings
+(two P1, sixteen P2, fourteen P3), answered in three commits: A
+(`291b27e3`), B1 (`798e9df8`), B2 (the navigation and the tests).
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | P1: the marketplace manifest kept the retired tagline, outside the lint | fixed; the lint scans the manifests' strings (A) |
+| 2 | P1: the ALE provenance paragraph named the public scorer for ratings that come from the private cases | fixed (A) |
+| 3 | P2: "fully autonomously" on the index; the lint matched whole phrases | reworded; an `s` or `ly` ending is the phrase (A) |
+| 4 | P2: the IOAI page's front matter contradicted its body; front matter outside the lint | fixed; title, sidebar title, description and keywords are prose for rule 1 (A) |
+| 5 | P2: the benchmarks' READMEs outside the lint | in the lint's pages, with the harnesses' index and the plugin's skills; the hits fixed (A) |
+| 6 | P2: Context7's description and its `kapso evolve` rule | fixed (A) |
+| 7 | P2: rule 2 switched off by the product's name, by one "toward" per paragraph, by two-decimal results | provenance words are who/when only, matched whole; a target or a rule is read beside its number; one decimal counts (A) |
+| 8 | P2: a paragraph running into a fence skipped rule 2 | flushed on the fence's open (A) |
+| 9 | P2: "Evaluation feedback" a third name for the feedback generator | the generator's name; no alias rule, since "judge" is the role's name on the inner pages (A) |
+| 10 | P2: the legacy stop vote and `stopped_reason` list | the clause dropped; the reasons the code assigns (B1) |
+| 11 | P2: the groups not in the design's order | Start, Build, Harnesses, Experience, Deploy, Learn, How it works, Benchmarks (B2) |
+| 12 | P2: the graders' role-to-model table lost | restored on development mode from `learning.graders.crew` (B1) |
+| 13 | P2: MLE-bench facts no record holds | held to what the pull request carries (A) |
+| 14 | P2: RelBench's date and issue unrecorded; hardware generalised | verified on the board's entry (date 2026-08-26T10:05:08Z, issue 393) and worded so; the hardware claim dropped (A) |
+| 15 | P2: the IOAI attempts are not in the directory linked | reworded to the campaign's ledger and the directory's procedure (A) |
+| 16 | P2: the examples' command lines parsed by nothing | every `kapso` line the examples' READMEs show parses in the drivers' test; the helpers shared with the plugin's test (B2) |
+| 17 | P2: `--evaluation <judge dir>` in the setup prompt | fixed (A) |
+| 18 | P2: `full-loop` off its harness | the brief names `predictive-modelling`; the evaluator stays in the repository, with the Change-it line on protecting it (B1) |
+| 19 | P3: `words_out.txt` a copy of the document's list | a test holds the file to the document's bullet (A) |
+| 20 | P3: a card's title called its hero | fixed (B1) |
+| 21 | P3: the evidence verdicts listed wrong | the ledger's tokens, `spawn` included (B1) |
+| 22 | P3: Harvest against Import | Import on both pages, the harvest named once (B1) |
+| 23 | P3: labels that no longer match | fixed (B1) |
+| 24 | P3: front pages linking through redirects | fixed (B1) |
+| 25 | P3: the add page's sidebar title | "Add a bank, Leeroopedia, an index" (B1) |
+| 26 | P3: small facts dropped | the tolerance and the tools' selectors restored; `memory.explain()`, the serving directory's listing and the probe's cost clause accepted as cuts: the reference pages hold them (B1) |
+| 27 | P3: nothing binds the mirror | `scripts/docs_mirror.py` renders it from `docs.json`; the navigation test and a CI step hold it (B2) |
+| 28 | P3: outcomes asserted beside "not recorded yet" | the targets as targets, the baselines as the reader's measurement (B1) |
+| 29 | P3: the TL;DR says a harness teaches deployment | "where the domain needs it, deploy", noted in the direction document (A) |
+| 30 | P3: the parent-policy default on an old checkpoint | outside this package's ownership (`src/`); a follow-up on `redesign` after the merges: raise on a checkpoint with no `parent_policy` |
+| 31 | P3: the Interface lines against what shipped | fixed (B2) |
+| 32 | P3: the runner lines without their prefixes | fixed (A) |
+
+Clean, per the reviewer: the bundled pages against their sources, every
+config value the Learn pages quote, the condensation's bookkeeping, the
+redirects, the renames, the coverage check's plugin surface, the plugin
+page's merge, the learning claim-safety rule, CLAUDE.md on the diff.
 
 ### Decisions taken (How it works ships as it is, with a truth pass; the plugin page is the one copy of its commands; the four domain examples are renamed, not re-harnessed; 2026-10-29)
 

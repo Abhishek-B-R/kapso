@@ -24,6 +24,7 @@ on:
       - 'scripts/check_docs_geo.py'
       - 'scripts/check_claims.py'
       - 'scripts/words_out.txt'
+      - 'scripts/docs_mirror.py'
       - 'src/kapso/cli/**'
       - 'src/kapso/kapso.py'
       - '.github/workflows/docs.yml'
@@ -41,6 +42,7 @@ on:
       - 'scripts/check_docs_geo.py'
       - 'scripts/check_claims.py'
       - 'scripts/words_out.txt'
+      - 'scripts/docs_mirror.py'
       - 'src/kapso/cli/**'
       - 'src/kapso/kapso.py'
       - '.github/workflows/docs.yml'
@@ -96,3 +98,6 @@ jobs:
       # buys the number at the cost of the prose.
       - name: Check the GEO rules
         run: python3 scripts/check_docs_geo.py
+
+      - name: Check the navigation mirror
+        run: python3 scripts/docs_mirror.py --check

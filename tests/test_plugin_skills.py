@@ -15,6 +15,7 @@ import yaml
 
 from kapso.cli import build_parser
 from kapso.cli.learn import normalize_argv
+from tests.kapso_lines import PLACEHOLDER, fenced_bash_lines, inline_lines
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS = ROOT / "plugin" / "skills"
@@ -22,7 +23,6 @@ COMMANDS = ROOT / "plugin" / "commands"
 DESCRIPTION_CAP = 1024          # the skills spec's; Claude Code lists the first 1,536 characters
 BODY_CAP = {"kapso": 350}       # lines; every other skill 500
 DEFAULT_BODY_CAP = 500
-PLACEHOLDER = re.compile(r"<[^>]+>")
 
 
 def skill_dirs():
@@ -34,32 +34,6 @@ def front_matter(path: Path):
     assert text.startswith("---\n"), path
     head, body = text[4:].split("\n---\n", 1)
     return yaml.safe_load(head), body
-
-
-def fenced_bash_lines(text: str):
-    """The `kapso …` lines of the fenced bash blocks, continuation lines
-    joined, comments and prompts stripped."""
-    lines = []
-    for block in re.findall(r"```(?:bash|sh)\n(.*?)```", text, re.S):
-        joined = block.replace("\\\n", " ")
-        for raw in joined.splitlines():
-            line = raw.split("#", 1)[0].strip()
-            if line.startswith("$ "):
-                line = line[2:]
-            if line.startswith("kapso "):
-                lines.append(line)
-    return lines
-
-
-def inline_lines(text: str):
-    """The `kapso …` lines written inline in backticks, when they are
-    commands rather than mentions of a verb: a verb and a flag on the
-    line, no placeholder in angle brackets, no ellipsis."""
-    lines = []
-    for line in re.findall(r"`(kapso [^`]+)`", text):
-        if "--" in line and not line.split()[1].startswith("--") and "<" not in line and "…" not in line and line not in lines:
-            lines.append(line)
-    return lines
 
 
 def kapso_lines():

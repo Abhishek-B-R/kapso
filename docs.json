@@ -56,6 +56,29 @@
             ]
           },
           {
+            "group": "Experience",
+            "pages": [
+              "docs/experience/index",
+              "docs/experience/use",
+              "docs/experience/add",
+              "docs/experience/share"
+            ]
+          },
+          {
+            "group": "Deploy",
+            "pages": [
+              "docs/deploy/targets",
+              "docs/deploy/write-a-target-skill"
+            ]
+          },
+          {
+            "group": "Learn",
+            "pages": [
+              "docs/learn/what-learn-produces",
+              "docs/learn/development-mode"
+            ]
+          },
+          {
             "group": "How it works",
             "pages": [
               "docs/evolve/overview",
@@ -73,29 +96,6 @@
               "docs/evolve/feedback-generator",
               "docs/evolve/experiment-lifecycle",
               "docs/evolve/repo-memory"
-            ]
-          },
-          {
-            "group": "Experience",
-            "pages": [
-              "docs/experience/index",
-              "docs/experience/use",
-              "docs/experience/add",
-              "docs/experience/share"
-            ]
-          },
-          {
-            "group": "Learn",
-            "pages": [
-              "docs/learn/what-learn-produces",
-              "docs/learn/development-mode"
-            ]
-          },
-          {
-            "group": "Deploy",
-            "pages": [
-              "docs/deploy/targets",
-              "docs/deploy/write-a-target-skill"
             ]
           },
           {

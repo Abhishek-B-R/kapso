@@ -41,7 +41,8 @@ https://www.kaggle.com/competitions/spaceship-titanic/data into `repo/data/`.
 loaded, build again, deploy. The same loop from the shell:
 
 ```bash
-kapso build --brief kapso-brief.md --repo repo --output campaign --detach && kapso watch campaign --follow
+kapso build --brief kapso-brief.md --repo repo --output campaign --detach
+kapso watch campaign --follow
 kapso trace campaign
 kapso learn campaign
 kapso build --brief kapso-brief.md --repo repo --output campaign-2 --experience mine --detach
