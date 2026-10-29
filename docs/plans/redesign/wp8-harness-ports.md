@@ -716,6 +716,14 @@ that is still evidence.
     the one account with their quota cost recorded.
 18. **The versions frozen.** Both harnesses' versions and hashes pinned
     here; the archive of every arm carries them.
+    Done (2026-10-29), the tree as committed after change 16; the swaps
+    and the arms run on these, and an edit to either harness after this
+    point is a finding that re-pins the row:
+
+    | Harness | Version | Hash (the whole directory) |
+    |---|---|---|
+    | `predictive-modelling` | 0.3.2 | `f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3` |
+    | `competitive-programming` | 0.3.0 | `f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1` |
 19. **The smoke arms, then the full arms**, one machine per arm, the band
     or baseline preregistered under Acceptance, the archives copied to the
     bucket: RelBench on `gpu4` (twelve hours, the four lanes the recorded
