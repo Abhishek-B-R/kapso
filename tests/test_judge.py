@@ -209,3 +209,13 @@ def test_a_test_whose_rubric_rules_on_several_inputs_at_once_gets_them_as_one_it
     assert "(file artifacts/comprehension-answers.txt)\nL1: the answers" in materials["inputs"]["text"] and "(file artifacts/flows.md)\nL1: # flows" in materials["inputs"]["text"]
     separate = judge.gather_materials(tmp_path, {"test": "S4", "steps": []}, ["artifacts/flows.md"], tmp_path / "judge", SUITE)
     assert list(separate) == ["flows"] and separate["flows"]["files"] == ["artifacts/flows.md"], "a test without combined_inputs judges each input alone"
+
+
+def test_a_quote_that_is_only_a_fence_is_on_its_line_when_the_line_is_that_fence():
+    # The judge cites the fenced brief as "a brief the host quotes back"
+    # by quoting the fence line itself; folded to nothing it matched
+    # nothing, and three re-judges died on the second slip.
+    lines = ["L1: Here is the brief:", "L2: ```", "L3: objective: churn", "L4: ```"]
+    assert judge.quote_on(lines, "2", "```")
+    assert not judge.quote_on(lines, "1", "```"), "a fence quoted against a prose line is a misquote"
+    assert not judge.quote_on(lines, "2", ""), "an empty quote is evidence of nothing"

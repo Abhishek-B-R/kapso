@@ -211,8 +211,14 @@ def quote_on(lines: Sequence[str], label: str, quote: str) -> bool:
         return " ".join(re.sub(r"[*`~]", "", text).split())
     wanted = folded(quote)
     first = folded(lines[number - 1])
+    if not wanted:
+        # A quote that is nothing but marks (a fence line, cited as the brief
+        # the host quoted back) is on its line when the line is that exact
+        # mark; an empty quote matches nothing (three re-judges died on it).
+        raw = re.sub(r"^L\d+:\s?", "", lines[number - 1]).strip()
+        return bool(raw) and quote.strip() == raw
     window = " ".join([first, *(folded(line) for line in lines[number:])])
-    start = window.find(wanted) if wanted else -1
+    start = window.find(wanted)
     return 0 <= start < len(first)   # it begins on the cited line, whatever it runs on to
 
 
