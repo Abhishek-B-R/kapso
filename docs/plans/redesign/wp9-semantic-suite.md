@@ -570,6 +570,73 @@ campaign on the Claude host reports $4 to $6 per hour of sessions.
 - The gate is green; the docs checks pass; MASTER's row written, its
   size corrected.
 
+**Status against these lines (2026-10-29, from the records under "Proof
+run"):**
+
+- **The learn of WP7's archive: met.** The development-box learn banked
+  twelve cards (four insights, eight procedures) with the Codex grader
+  crew, and the two repairs are pinned in `tests/test_learning_repairs.py`;
+  on the machines, the learns of S6 and S2 completed on both hosts with
+  two cards each, the Codex roles on the device-auth session that stands
+  in for the credit.
+- **S1: met, one bar unmet by decision.** `s1-claude-1`: first try 10 of
+  12 against 9, every error to its fix in one step, no wrong call, the
+  comprehension key 7 of 7, the CLI flow in 2 commands, the judge's names
+  dimension passing; the Python flow 16 lines against 12, the judge's
+  lengths dimension failing on the same cause, kept as a finding and not
+  a loosened bar (DECISIONS 2026-10-27). The released baseline
+  `s1-released-2` beside it: first try 1 of 12, comprehension 0 of 7, its
+  unsupported verbs said in the engineer's own words.
+- **S2: met with caveats, three of them the owner's call.** Every
+  required step is true on a clean run of its host (`s2-claude-3` 19 of
+  25, `s2-codex-5` 17 of 24, the targeted arms for the rows those left
+  false), each false row traced in the record to a fix, a finding or a
+  calibration. The caveats: the Claude host's build and review
+  conversations run 13 to 20 lines against the 12-line budget, the
+  skill's prescribed message against the design's budget (DECISIONS
+  2026-10-28, the owner's call); the judge's clear and not-annoying
+  dimensions pass at 4 on both hosts while proactive, engaging and return
+  on attention fail on the worst item (the deploy conversation with
+  nothing to deploy on the Claude host; the right, terse answers on the
+  Codex host), a finding on the Codex host's skill wording and the owner's
+  call on whether terseness binds; the deployed call's parity "differs" on
+  both hosts where a delivery existed, the delivery re-fitting at load
+  (WP5's call); the learn-complete step outrun on the Codex host
+  (DECISIONS 2026-10-28); the second engineer's served build died at the
+  engine's preflight on the clean run for want of a Codex login, a
+  finding, and is re-measured by `s2-claude-second-1`, running at this
+  writing. The fresh-machine arms ran on both hosts, marked in each record
+  as running the Codex roles on the device-auth session rather than the
+  persona's own credit.
+- **S4: met.** `s4-claude-1`: both readers 6 of 6 in both passes, on the
+  S5 tampering campaign with its integrity void and its rejected attempt,
+  once the fact sheet filed a void by its substance.
+- **S5: met.** Across `s5-claude-5` to `s5-claude-7` every one of the six
+  classes was handled as designed with at most two user messages, the
+  shown state truthful within a heartbeat on every sampled timeline, the
+  one request naming its variable and never a value, the resumed campaigns
+  continuing from their checkpoints, the seeded bank intact after every
+  injection; the clean arm met every bar, its one false row the
+  engineer's slip on a class arm 6 had passed.
+- **S6: met in the acceptance's second form.** `s6-claude-5` on the Claude
+  host: the pair on the common grid with the spread, the cards read,
+  load-bearing and named by the review, the gap vacuous at one scored
+  observation each and said so; `s6-codex-1` on the Codex host with the
+  grid fix: a real grid, both cards read and load-bearing, the gap −0.0004
+  at every common point, the bar reported unmet with the numbers.
+- **The author test: met.** `author-claude-4` and `author-codex-2` on the
+  guide after four rounds of fixes: `check` green, zero structural gaps,
+  zero contradictions, the four judge dimensions passing, the fixes
+  committed; every round's counts in the record beside WP2's.
+- **`semantic.sh`: met.** Each test runs from one line, the routes
+  preflighted, the archive fetched and verified before the machine's
+  deletion, the report rendered with the verdict the runner's exit
+  carries; every report cited here is committed under its immutable id.
+- **The gate, the docs checks, MASTER's row: met.** 1967 passed on the
+  full gate (two live Codex tests deselected, as CI does);
+  `check_docs_coverage.py` and `check_docs_geo.py` green on the branch;
+  MASTER's WP9 row written, its size L.
+
 ## Risks
 
 - **The Codex credit is the owner's.** Every Codex role on a fresh machine

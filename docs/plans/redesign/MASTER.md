@@ -46,7 +46,7 @@ and what proves it done.
 | 6 | Observability | `kapso trace` text and `--json`; `doctor --json`; the registry's liveness filter; the harness in the status header; hook decisions, delegate reports and verification evidence in the record from both CLIs' transcripts | `src/kapso/cli/trace.py`, `doctor.py`, `watch.py`, the record writers | 1, 2 | M |
 | 7 | Plugin | the `plugin/` tree, manifests, launcher, marketplace files; the commands; the six skills with sidecars; session-start brief; delegation tools; skill lab re-run; the authoring interview | `plugin/`, `.claude-plugin/`, `.agents/plugins/` | 1, 2, 3, 6 | L |
 | 8 | Harness ports | `predictive-modelling` from RelBench then MLE; `competitive-programming` from ALE then IOAI; banks; cross-checks (per `initial-harnesses-plan.md`; parked until the owner says go) | `src/kapso/harnesses/`, `benchmarks/` runners | 2, 3, 4 | XL |
-| 9 | Semantic suite | fixtures (the examples), persona cards, the simulated-user driver, the judge, the report; S1 to S6; GCP provisioning | `tests/semantic/`, `scripts/redesign/` | 0; each S on its WP | M, spread |
+| 9 | Semantic suite | fixtures (the examples), persona cards, the simulated-user driver, the judge, the report; S1 to S6; GCP provisioning | `tests/semantic/`, `scripts/redesign/` | 0; each S on its WP | L |
 | 10 | Docs and examples | the new navigation and pages; examples as tasks on harnesses; the drift check and the two lints (per `docs-and-examples-redesign.md`) | `docs/`, `docs.json`, `examples/`, `scripts/` | each section on its WP | L, spread |
 | 11 | Release | version, changelog and release notes, PyPI, the docs site, the marketplace tag; the full semantic suite as the gate | | all | S |
 
