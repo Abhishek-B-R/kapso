@@ -48,8 +48,7 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 - [What is Kapso](https://docs.leeroo.com/docs) — `docs/index.mdx`
 - [Install Kapso and verify your setup with kapso doctor](https://docs.leeroo.com/docs/installation) — `docs/installation.mdx`
 - [Your first build](https://docs.leeroo.com/docs/first-build) — `docs/first-build.mdx`
-- [Docs in your coding agent](https://docs.leeroo.com/docs/agent-access) — `docs/agent-access.mdx`
-- [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills) — `docs/coding-agent-skills.mdx`
+- [Kapso in your coding agent](https://docs.leeroo.com/docs/coding-agent-skills) — `docs/coding-agent-skills.mdx`
 
 **Build**
 
@@ -91,8 +90,8 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 **Experience**
 
 - [What experience is](https://docs.leeroo.com/docs/experience) — `docs/experience/index.mdx`
-- [Use experience](https://docs.leeroo.com/docs/experience/use) — `docs/experience/use.mdx`
-- [Add a source](https://docs.leeroo.com/docs/experience/add) — `docs/experience/add.mdx`
+- [Your bank on a build](https://docs.leeroo.com/docs/experience/use) — `docs/experience/use.mdx`
+- [Leeroopedia and indexes](https://docs.leeroo.com/docs/experience/add) — `docs/experience/add.mdx`
 - [Share a bank](https://docs.leeroo.com/docs/experience/share) — `docs/experience/share.mdx`
 
 **Learn**

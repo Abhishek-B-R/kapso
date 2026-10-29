@@ -55,3 +55,5 @@ def test_the_pages_the_design_retired_redirect():
         assert sources[f"/docs/learning/{name}"] == "/docs/learn/what-learn-produces"
     for name in ("pipeline", "graders", "development"):
         assert sources[f"/docs/learning/{name}"] == "/docs/learn/development-mode"
+    # The Start page the plugin page absorbed.
+    assert sources["/docs/agent-access"] == "/docs/coding-agent-skills"

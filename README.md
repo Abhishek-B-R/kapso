@@ -346,7 +346,7 @@ Each benchmark also has a documentation page covering how to run it, its CLI opt
   - [Knowledge graph](https://docs.leeroo.com/docs/knowledge/overview) — repositories and papers turned into searchable knowledge
   - [Deployment](https://docs.leeroo.com/docs/deployment/overview) — local, Docker, Modal and the other strategies
   - [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills) — the commands, the skills and the MCP server for Claude Code, Codex and Cursor
-- **From your coding agent**: the docs run an MCP server at `https://docs.leeroo.com/mcp`, and every page is served as Markdown — see [llms.txt](https://docs.leeroo.com/llms.txt) and [Docs in your coding agent](https://docs.leeroo.com/docs/agent-access).
+- **From your coding agent**: the docs run an MCP server at `https://docs.leeroo.com/mcp`, and every page is served as Markdown — see [llms.txt](https://docs.leeroo.com/llms.txt) and [Kapso in your coding agent](https://docs.leeroo.com/docs/coding-agent-skills).
   ```bash
   claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp   # Claude Code
   codex mcp add kapso-docs --url https://docs.leeroo.com/mcp              # Codex CLI

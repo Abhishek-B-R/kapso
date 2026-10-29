@@ -1,7 +1,7 @@
 ---
-title: "Install the Kapso plugin in Claude Code, Codex or Cursor"
-sidebarTitle: "The Kapso plugin"
-description: "One plugin gives your coding agent the whole of Kapso: ten commands, six skills that set it up, state an objective and its evaluation, author a harness, operate and diagnose a campaign and review a finished run, and an MCP server that serves the session your experience and the campaign verbs as tools."
+title: "Kapso in your coding agent: the plugin for Claude Code, Codex and Cursor"
+sidebarTitle: "Kapso in your coding agent"
+description: "One plugin gives Claude Code, Codex or Cursor the whole of Kapso: ten commands, six skills that set it up, state an objective and its evaluation, author a harness, operate and diagnose a campaign and review a finished run, an MCP server that serves a session its tools, and the docs themselves through their own server."
 keywords: ["Kapso plugin", "Claude Code plugin", "Codex plugin", "Cursor plugin", "kapso-mcp", "/kapso:build", "/kapso:setup", "coding agent Kapso"]
 ---
 
@@ -107,6 +107,39 @@ codex mcp add kapso -- kapso-mcp --experience mine:all
 
 `--experience` replaces the config's list for that session; an empty string loads nothing. The one operating skill, [`plugin/skills/kapso/SKILL.md`](https://github.com/Leeroo-AI/kapso/blob/main/plugin/skills/kapso/SKILL.md), is also what an agent reading the repository is told to start from.
 
+## The docs in the same agent
+
+The plugin gives the agent the procedures; the documentation gives it the facts. The site runs a Model Context Protocol server at `https://docs.leeroo.com/mcp` that exposes search and retrieval over every published page, so an agent can look up a configuration key or a flag and quote the [CLI reference](/docs/reference/cli) or the [Python API](/docs/reference/kapso-api) at the release you installed. The server is read-only and needs no key.
+
+<Tabs>
+  <Tab title="Claude Code">
+    ```bash
+    claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp
+    ```
+    Then, in a session, ask about Kapso as you normally would. Claude Code calls the server when a question needs the docs.
+  </Tab>
+  <Tab title="Codex CLI">
+    ```bash
+    codex mcp add kapso-docs --url https://docs.leeroo.com/mcp
+    ```
+    The entry lands in `~/.codex/config.toml` and is shared by the Codex CLI and IDE extension.
+  </Tab>
+  <Tab title="Cursor">
+    Add the server to `~/.cursor/mcp.json` (or the project's `.cursor/mcp.json`):
+    ```json
+    {
+      "mcpServers": {
+        "kapso-docs": { "url": "https://docs.leeroo.com/mcp" }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Every page is also served as plain Markdown, the form agents fetch on their own: `https://docs.leeroo.com/llms.txt` lists every page with its title and description, `https://docs.leeroo.com/llms-full.txt` holds the whole site in one file, and `.md` appended to any page address (or `Accept: text/markdown`) returns that page alone. Paste a page address into a session and the agent reads the Markdown, not the rendered HTML.
+
+Kapso itself drives Claude Code and Codex as the engine that implements each experiment inside a campaign. That is the other direction, described under [coding agents in Kapso](/docs/evolve/coding-agents).
+
 ## Measured
 
 The operating skill was first measured on Kapso 0.4.x, the same prompts with and without it on three hosts; the [findings log](https://github.com/Leeroo-AI/kapso/blob/main/docs/plans/coding-agent-skill-findings.md) has the tables and every product defect the runs turned up. This release's plugin is measured by its trigger suite (`claude plugin eval plugin` on Claude Code, `scripts/redesign/plugin_round.sh codex-triggers` on Codex) and by the proof round recorded in `docs/plans/redesign/wp7-plugin.md`.
@@ -114,8 +147,8 @@ The operating skill was first measured on Kapso 0.4.x, the same prompts with and
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Docs in your coding agent" icon="plug" href="/docs/agent-access">
-    The docs MCP server and the Markdown rendition
+  <Card title="Your first build" icon="rocket" href="/docs/first-build">
+    A campaign in ten minutes, on the churn example
   </Card>
   <Card title="Installation" icon="download" href="/docs/installation">
     The package, the coding-agent CLIs, and `kapso doctor`
@@ -128,6 +161,6 @@ The operating skill was first measured on Kapso 0.4.x, the same prompts with and
   </Card>
 </CardGroup>
 
-Related pages: [Docs in your coding agent](/docs/agent-access) · [Installation](/docs/installation) · [Experience](/docs/experience) · [CLI reference](/docs/reference/cli)
+Related pages: [Your first build](/docs/first-build) · [Installation](/docs/installation) · [Experience](/docs/experience) · [CLI reference](/docs/reference/cli)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).
