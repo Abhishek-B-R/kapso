@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from kapso.execution.coding_agents.base import CodingResult
-from kapso.execution.coding_agents.transcripts import digest_stream
+from kapso.execution.coding_agents.transcripts import digest_stream, stream_lines
 
 EXIT_SUCCESS = "success"
 EXIT_ERROR = "error"
@@ -189,12 +189,14 @@ def _cost_of_run(cumulative: Optional[float], runs: list, cli_session_id: Option
 
 
 def _appended_lines(recorder: RunRecorder):
+    """The stream's lines from the recorder's offset, split on the newline
+    alone (`stream_lines`); the last keeps no newline when a kill cut it."""
     if recorder.stream_path is None or not recorder.stream_path.exists():
         return []
     with open(recorder.stream_path, "rb") as handle:
         handle.seek(recorder.offset)
         text = handle.read().decode("utf-8", errors="replace")
-    return text.splitlines(keepends=True)
+    return stream_lines(text)
 
 
 def _utcnow() -> str:

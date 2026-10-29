@@ -9,7 +9,9 @@ Lines that are not events (merged stderr, the CLI's own text, warnings)
 are skipped, as the adapters' parsers skip them; an event-shaped line
 that does not parse raises, since the stream is evidence, except the
 slice's last line when a kill cut it mid-event, which is skipped and
-noted."""
+noted. A stream splits into lines on the newline alone (`stream_lines`):
+an event is one newline-terminated line, and its text may hold the
+other separators `str.splitlines` cuts at."""
 import json
 import re
 from collections import Counter, defaultdict
@@ -67,25 +69,36 @@ def _empty() -> Dict[str, Any]:
     }
 
 
-def _events(lines: Iterable[str], head: str):
-    kept = [raw.strip() for raw in lines]
-    for index, line in enumerate(kept):
-        if not line.startswith(head):
-            continue
-        if index == len(kept) - 1 and truncated(line):
-            continue
-        yield json.loads(line)
+def stream_lines(text: str) -> List[str]:
+    """A stream's lines, each with its newline, split on the newline alone:
+    an event is one newline-terminated line whose text may hold the
+    separators `str.splitlines` cuts at (a line separator in a web
+    result's title once cut a Codex event in two). The last line keeps no
+    newline when a kill cut it."""
+    pieces = text.split("\n")
+    lines = [piece + "\n" for piece in pieces[:-1]]
+    if pieces[-1]:
+        lines.append(pieces[-1])
+    return lines
 
 
-def truncated(line: str) -> bool:
+def events(lines: Iterable[str], head: str):
+    """The events among the lines, parsed; the line a kill cut is skipped."""
+    for raw in lines:
+        line = raw.strip()
+        if line.startswith(head) and not truncated(raw):
+            yield json.loads(line)
+
+
+def truncated(raw: str) -> bool:
     """Whether an event-shaped line is cut: a host killed mid-write leaves
-    its last line without the object's closing brace."""
-    return line.startswith("{") and not line.endswith("}")
+    its last line without its newline."""
+    return raw.lstrip().startswith("{") and not raw.endswith("\n")
 
 
 def _cut_tail(lines: Iterable[str]) -> List[str]:
     """The note for a slice whose last line a kill cut."""
-    kept = [raw.strip() for raw in lines]
+    kept = list(lines)
     if kept and truncated(kept[-1]):
         return [TRUNCATED_LINE]
     return []
@@ -131,7 +144,7 @@ def digest_claude(lines: Iterable[str]) -> Dict[str, Any]:
     delegate_uses: Dict[str, Dict[str, Any]] = {}      # tool_use_id -> {name, background}
     results: Dict[str, str] = {}                       # tool_use_id -> result text
     duration_ms = 0
-    for event in _events(lines, CLAUDE_EVENT_HEAD):
+    for event in events(lines, CLAUDE_EVENT_HEAD):
         kind = event.get("type")
         if kind == "system":
             subtype = event.get("subtype")
@@ -284,7 +297,7 @@ def digest_codex(lines: Iterable[str]) -> Dict[str, Any]:
     gates: Dict[str, Counter] = defaultdict(Counter)
     delegates: List[Dict[str, Any]] = []
     files: Set[str] = set()
-    for event in _events(lines, CODEX_EVENT_HEAD):
+    for event in events(lines, CODEX_EVENT_HEAD):
         kind = event.get("type")
         if kind == "thread.started":
             digest["cli_session_id"] = event.get("thread_id")
