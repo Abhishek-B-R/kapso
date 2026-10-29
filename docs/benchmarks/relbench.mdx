@@ -37,26 +37,29 @@ RelBench baseline, at 9.3 mean MAP over the same ten tasks.
 
 ## How Kapso runs it
 
-Each experiment in the tree search is implemented by the coding agent on a git branch and
-then evaluated by `RelBenchHandler`:
+The runner launches `build()` with the bundled `predictive-modelling` harness: the Brief
+carries the task's facts (the schema, the label-generating code, the regime, the
+prediction contract, the rules), the harness carries the discipline (the sanitized copy,
+the temporal protocol, the leakage scan and auditor, the measured practices), and the
+provided grader scores every experiment:
 
-1. The candidate's `main.py` runs against a **sanitized, read-only RelBench cache**:
-   the database is physically truncated at the test cutoff (or, for autocomplete,
-   post-cutoff target values are blanked), and the test task table carries only entity
-   ids and timestamps — test labels are physically absent from the candidate's process.
+1. The candidate's `main.py` runs against a **sanitized, read-only copy** of the database
+   built by the harness's sanitizer: the database is physically truncated at the test
+   cutoff (or, for autocomplete, post-cutoff target values are blanked and the derived
+   columns removed), and the test task table carries only entity ids and timestamps —
+   test labels are physically absent from the candidate's process.
 2. The candidate writes `val_predictions.npy` and `test_predictions.npy` to
    `$KAPSO_RUN_DATA_DIR` (contract validated: shapes, dtypes, ranges).
-3. The handler computes **official validation metrics** — the search score — and
-   computes test metrics privately (quarantined until `final_evaluate`).
-4. `final_evaluate` picks the best-by-validation run, audits its code for forbidden
-   access patterns, and writes a leaderboard-ready `final_report.json`.
+3. The grader computes the **official validation metrics** — the search score, oriented
+   so that higher is better — and archives every full run; test metrics are never
+   computed in the loop.
+4. After the campaign the runner selects among the archive's registered finals, scores
+   the winner **once** on test, runs the harness's leakage scan over its code, and writes
+   `final_report.json`.
 
-This is exactly the RelBench protocol: tune on validation, report test once.
+This is exactly the RelBench protocol: select on validation, report test once.
 
-The problem context injected into ideation includes the database schema, the task's
-label-generating SQL, and per-family playbooks (temporal GNNs, censored SQL feature
-engineering + GBDT, repeat-behavior recommendation heuristics, hybrid rankers).
-A starter kit of contract helpers — environment and task loading, prediction saving and
+A starter kit of contract helpers — task loading from the copy, prediction saving and
 validation, method choice entirely the agent's — is seeded into every workspace under
 `kapso_datasets/`.
 
@@ -82,10 +85,13 @@ PYTHONPATH=. python -m benchmarks.relbench.runner \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-s, --dataset` / `-t, --task` | RelBench dataset/task | Required |
-| `-i, --iterations` | Max search iterations | 20 |
+| `-i, --iterations` | `Budget.experiments` | the config's `budget.experiments` |
+| `--time-budget-hours` | `Budget.minutes`, in hours | the config's `budget.minutes` |
 | `-d, --coding-agent` | The host every role without a `cli` of its own runs on | `codex`, the override file's `host` |
-| `--target-val` | Early-stop validation bar | none |
-| `--rebuild-cache` | Rebuild the sanitized data cache | cached |
+| `--harness` | A harness reference | the bundled `predictive-modelling` |
+| `--experience` | Comma-separated experience sources to serve | none |
+| `--workspace` / `--resume` | The campaign directory / continue the campaign in it | a fresh directory |
+| `--rebuild-cache` | Build the sanitized copy again | reused under its marker |
 
 ## Setup
 

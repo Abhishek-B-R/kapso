@@ -42,6 +42,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as parquet
 from relbench.base import AutoCompleteTask, RecommendationTask, Table
 from relbench.datasets import dataset_registry
 from relbench.tasks import task_registry
@@ -80,6 +81,11 @@ def coerce_boolean_target(table, target_col):
         raise ValueError(f"target column {target_col!r} holds non-boolean strings {sorted(unknown)}")
     table.df[target_col] = lowered.map(BOOLEAN_TARGET_MAP).astype(int)
     return table
+
+
+def row_count(path: Path) -> int:
+    """A parquet file's row count from its metadata, without reading a column."""
+    return int(parquet.read_metadata(str(path)).num_rows)
 
 
 def copy_database(src: Path, dst: Path) -> None:
@@ -150,15 +156,15 @@ def build_flat(dataset, task, task_kwargs, dataset_name, task_name, source: Path
                     report["removed_columns"].append(f"{table_name}.{column}")
             save_table(table_file, table)
         for table_file in sorted(out_db.glob("*.parquet")):
-            pristine_rows = len(pd.read_parquet(src_dataset_dir / "db" / table_file.name, columns=[]))
-            report["tables"][table_file.stem] = {"pristine_rows": pristine_rows, "rows": len(pd.read_parquet(table_file, columns=[]))}
+            report["tables"][table_file.stem] = {"pristine_rows": row_count(src_dataset_dir / "db" / table_file.name),
+                                                 "rows": row_count(table_file)}
     else:
         db = dataset.get_db(upto_test_timestamp=True)
         for table_name, table in db.table_dict.items():
             table_file = out_db / f"{table_name}.parquet"
             if not table_file.exists():
                 raise SystemExit(f"expected database table file missing: {table_file}")
-            pristine_rows = len(pd.read_parquet(table_file, columns=[]))
+            pristine_rows = row_count(table_file)
             if pristine_rows != len(table.df):
                 save_table(table_file, table)
             report["tables"][table_name] = {"pristine_rows": pristine_rows, "rows": len(table.df)}

@@ -1,16 +1,26 @@
 """Self-check prediction files against the evaluation contract (read-only).
 
-Run after writing predictions:  python kapso_evaluation/check_predictions.py
+Run after writing predictions, from the repository root with the run's
+variables set as the evaluation sets them:
+
+    python kapso_datasets/check_predictions.py
+
 Exits non-zero with a specific message on the first violation.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
 
 import numpy as np
+from relbench.base import RecommendationTask, TaskType
+from relbench.datasets import dataset_registry
+from relbench.tasks import task_registry
+
+TASK_FILE = Path("kapso_evaluation") / "task.json"
 
 
 def fail(msg: str) -> None:
@@ -19,13 +29,14 @@ def fail(msg: str) -> None:
 
 
 def main() -> None:
-    from relbench.base import AutoCompleteTask, RecommendationTask, TaskType
-    from relbench.tasks import get_task
-
-    dataset_name = os.environ["RELBENCH_DATASET"]
-    task_name = os.environ["RELBENCH_TASK"]
-    out = Path(os.environ.get("KAPSO_RUN_DATA_DIR", "./kapso_output"))
-    task = get_task(dataset_name, task_name, download=False)
+    settings = json.loads(TASK_FILE.read_text(encoding="utf-8"))
+    dataset_name, task_name = settings["dataset"], settings["task"]
+    cache = Path(os.environ["RELBENCH_CACHE_DIR"])
+    out = Path(os.environ["KAPSO_RUN_DATA_DIR"])
+    dataset_cls, dataset_args, dataset_kwargs = dataset_registry[dataset_name]
+    dataset = dataset_cls(*dataset_args, **{**dataset_kwargs, "cache_dir": str(cache / dataset_name)})
+    task_cls, task_args, task_kwargs = task_registry[dataset_name][task_name]
+    task = task_cls(dataset, *task_args, **{**task_kwargs, "cache_dir": str(cache / dataset_name / "tasks" / task_name)})
 
     for split in ("val", "test"):
         n = len(task.get_table(split))

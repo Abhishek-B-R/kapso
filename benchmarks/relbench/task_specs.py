@@ -2,7 +2,8 @@
 
 Most metadata is derived live from the relbench task object; the static maps
 below only carry information the package does not expose (leaderboard-primary
-metrics, runtime tiers, domain notes).
+metrics, size tiers, domain notes). The candidate's caps per tier are the
+runner's configuration (`benchmark.timeouts` in config.yaml).
 """
 
 from __future__ import annotations
@@ -10,25 +11,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from relbench.base import AutoCompleteTask, RecommendationTask, TaskType
+
 # Target coercion -----------------------------------------------------------
 
 BOOLEAN_TARGET_MAP = {"t": 1, "f": 0, "true": 1, "false": 0}
 
 
-def coerce_boolean_target(table, target_col: str):
+def coerce_boolean_target(table, target_col: Optional[str]):
     """Map a text boolean target ('t'/'f') to 0/1 in place.
 
     Some relbench task tables store a boolean target as text (rel-trial's
     studies-has_dmc, eligibilities-adult, eligibilities-child). relbench's own
-    metrics then raise `pos_label=1 is not a valid label`, so every consumer —
-    the candidate, the in-loop grader, and our final scoring — must see the
-    numeric form. Unknown strings raise rather than being coerced to NaN.
-
-    Lives here, at the bottom of the benchmark's import graph, because the
-    sandbox builder runs it in a bare subprocess that must not drag in the
-    handler (and through it the framework).
+    metrics then raise `pos_label=1 is not a valid label`, so every consumer
+    (the candidate, the grader, the final scoring) must see the numeric form;
+    the harness's sanitizer carries the same mapping for the copy it writes.
+    Unknown strings raise rather than being coerced to NaN. A recommendation
+    task has no target column and passes through.
     """
-    if target_col not in table.df.columns:
+    if target_col is None or target_col not in table.df.columns:
         return table
     column = table.df[target_col]
     if column.dtype != object:
@@ -102,9 +103,8 @@ NATIVE_DATASETS = [
     "rel-mimic",
 ]
 
-# Rough database size tiers -> default runtime budget for one full training
-# run of generated code (seconds). Override per run with
-# RELBENCH_FULL_TIMEOUT / RELBENCH_DEBUG_TIMEOUT.
+# Database size tiers; the candidate's caps per tier are `benchmark.timeouts`
+# in config.yaml.
 SIZE_TIER = {
     "rel-f1": "small",
     "rel-event": "small",
@@ -119,11 +119,7 @@ SIZE_TIER = {
     "rel-amazon": "large",
 }
 
-FULL_TIMEOUT_BY_TIER = {"small": 2 * 60 * 60, "medium": 4 * 60 * 60, "large": 8 * 60 * 60}
-DEBUG_TIMEOUT_BY_TIER = {"small": 15 * 60, "medium": 20 * 60, "large": 30 * 60}
-
-# Domain notes injected into the problem context (kept short; the heavy
-# lifting is in the family playbooks in context.py).
+# Domain notes, one line per database: task facts the Brief carries.
 DATASET_NOTES = {
     "rel-amazon": "Amazon product reviews (books). Tens of millions of review rows; "
     "review text/summary are strong signals where present. Users/items are long-tailed.",
@@ -157,6 +153,8 @@ class TaskSpec:
     family: str
     primary_metric: str
     maximize: bool
+    full_timeout: int
+    debug_timeout: int
     entity_col: Optional[str] = None
     entity_table: Optional[str] = None
     src_entity_col: Optional[str] = None
@@ -172,8 +170,6 @@ class TaskSpec:
     num_eval_timestamps: int = 1
     metrics: List[str] = field(default_factory=list)
     removed_columns: List[str] = field(default_factory=list)
-    full_timeout: int = 4 * 60 * 60
-    debug_timeout: int = 20 * 60
 
     @property
     def task_id(self) -> str:
@@ -191,6 +187,18 @@ class TaskSpec:
     def is_autocomplete(self) -> bool:
         return self.family.startswith("autocomplete")
 
+    @property
+    def rolling(self) -> bool:
+        """Per-row seed time: the test seed times roll past the cutoff."""
+        return self.num_eval_timestamps > 1
+
+    @property
+    def regime(self) -> str:
+        """The temporal regime in the harness's words (the scan's `--regime`)."""
+        if self.is_autocomplete:
+            return "autocomplete"
+        return "seed-time" if self.rolling else "frozen"
+
     def expected_pred_shape(self, n_rows: int) -> tuple:
         if self.is_recommendation:
             return (n_rows, self.eval_k)
@@ -199,10 +207,9 @@ class TaskSpec:
         return (n_rows,)
 
 
-def resolve_spec(task, dataset_name: str, task_name: str) -> TaskSpec:
-    """Build a TaskSpec from a live relbench task object."""
-    from relbench.base import AutoCompleteTask, RecommendationTask, TaskType
-
+def resolve_spec(task, dataset_name: str, task_name: str, timeouts: Dict[str, Dict[str, int]]) -> TaskSpec:
+    """Build a TaskSpec from a live relbench task object; `timeouts` is the
+    runner's `benchmark.timeouts` block, the caps per size tier."""
     task_type = task.task_type
     if isinstance(task, AutoCompleteTask):
         family = {
@@ -224,20 +231,20 @@ def resolve_spec(task, dataset_name: str, task_name: str) -> TaskSpec:
         task_id, PRIMARY_METRIC[family]
     )
 
-    tier = SIZE_TIER.get(dataset_name, "medium")
+    caps = timeouts[SIZE_TIER[dataset_name]]
     spec = TaskSpec(
         dataset_name=dataset_name,
         task_name=task_name,
         family=family,
         primary_metric=primary_metric,
         maximize=maximize,
+        full_timeout=int(caps["full"]),
+        debug_timeout=int(caps["debug"]),
         time_col=getattr(task, "time_col", None),
         target_col=getattr(task, "target_col", None),
         timedelta_str=str(getattr(task, "timedelta", None)),
-        num_eval_timestamps=getattr(task, "num_eval_timestamps", 1),
+        num_eval_timestamps=task.num_eval_timestamps,
         metrics=[fn.__name__ for fn in task.metrics],
-        full_timeout=FULL_TIMEOUT_BY_TIER[tier],
-        debug_timeout=DEBUG_TIMEOUT_BY_TIER[tier],
     )
 
     if family == RECOMMENDATION:

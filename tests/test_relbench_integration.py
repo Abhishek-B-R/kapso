@@ -1,19 +1,18 @@
-"""Unit tests for the RelBench benchmark integration.
-
-Fast, network-free tests: prediction-contract validation, audit scoping,
-primary-metric routing, and the candidate-materialization fix in
-the generic strategy. Tests that need a populated relbench cache are skipped
-unless the cache exists.
-"""
+"""The RelBench integration: the Brief from the task's facts, the harness's
+sanitizer on real data, the override file, the provided grader, the final
+report over the archive's registered finals, and the grader's own labels.
+Tests that need a populated relbench cache are skipped unless the cache
+exists."""
 
 import json
 import os
-from contextlib import contextmanager
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 # The relbench package is installed separately (pip install relbench); it is
@@ -22,134 +21,153 @@ pytest.importorskip("relbench")
 
 from kapso.core.config import load_config, read_yaml
 from kapso.execution.evaluation_archive import label_run_of_record
+from kapso.handles import Brief
+from kapso.harness import BUNDLED_ROOT
+from benchmarks.relbench import scoring
+from benchmarks.relbench.context import build_brief
 from benchmarks.relbench.task_specs import (
-    AUTOCOMPLETE_REGRESSION,
-    ENTITY_BINARY,
+    ENTITY_REGRESSION,
     PRIMARY_METRIC_OVERRIDES,
-    RECOMMENDATION,
     TaskSpec,
+    coerce_boolean_target,
+)
+
+REPO_ROOT = Path(__file__).parents[1]
+GENERIC_EVAL_DIR = REPO_ROOT / "benchmarks" / "relbench" / "data" / "generic_eval"
+HARNESS = BUNDLED_ROOT / "predictive-modelling"
+SANITIZER = HARNESS / "skills" / "sanitized-copy" / "scripts" / "sanitize.py"
+RELBENCH_CACHE = Path(
+    os.environ.get("RELBENCH_PRISTINE_CACHE_DIR", os.path.expanduser("~/.cache/relbench"))
+)
+needs_rel_f1 = pytest.mark.skipif(
+    not (RELBENCH_CACHE / "rel-f1" / "db").exists(),
+    reason="requires a populated rel-f1 relbench cache",
 )
 
 
-def make_handler(spec: TaskSpec, n_val=10, n_test=8):
-    """Build a RelBenchHandler shell without touching relbench/data."""
-    from benchmarks.relbench.handler import RelBenchHandler
+# ---------------------------------------------------------------------------
+# The Brief
+# ---------------------------------------------------------------------------
 
-    handler = RelBenchHandler.__new__(RelBenchHandler)
-    handler.spec = spec
-    handler.n_val = n_val
-    handler.n_test = n_test
-    return handler
+class FakeTable:
+    def __init__(self, df, pkey, time_col, fkeys):
+        self.df = df
+        self.pkey_col = pkey
+        self.time_col = time_col
+        self.fkey_col_to_pkey_table = fkeys
 
 
-def binary_spec():
+class FakeDriverTask:
+    """A relbench-shaped entity task: the Brief reads its docstring, its
+    `make_table` source, its tables and its dataset's database."""
+
+    entity_col = "driverId"
+    entity_table = "drivers"
+    time_col = "date"
+    target_col = "position"
+
+    def __init__(self, num_eval_timestamps: int):
+        self.num_eval_timestamps = num_eval_timestamps
+        wide = pd.DataFrame({f"c{i}": [1.0] for i in range(45)})
+        wide["driverId"] = [1]
+        db = SimpleNamespace(
+            table_dict={
+                "drivers": FakeTable(wide, "driverId", None, {}),
+                "results": FakeTable(pd.DataFrame({"resultId": [1], "driverId": [1], "position": [None]}),
+                                     "resultId", "date", {"driverId": "drivers"}),
+            },
+            min_timestamp="1950-05-13", max_timestamp="2009-11-01",
+        )
+        self.dataset = SimpleNamespace(get_db=lambda: db, val_timestamp="2005-01-01", test_timestamp="2010-01-01")
+        ticks = pd.to_datetime(["2005-01-01", "2005-02-01", "2005-03-01"][:num_eval_timestamps])
+        rows = len(ticks) * 4
+        self.tables = {
+            "train": pd.DataFrame({"date": pd.to_datetime(["2000-01-01"] * 8), "driverId": range(8), "position": [1.0, 2, 3, 4, 5, 6, 7, 8]}),
+            "val": pd.DataFrame({"date": np.repeat(ticks, 4), "driverId": range(rows), "position": [3.0] * rows}),
+            "test": pd.DataFrame({"date": np.repeat(ticks, 4), "driverId": range(rows)}),
+        }
+
+    def get_table(self, split, mask_input_cols=None):
+        return SimpleNamespace(df=self.tables[split])
+
+    def make_table(self, db, timestamps):
+        """The driver's finishing position in the races of the window."""
+        return db
+
+
+def driver_spec(num_eval_timestamps: int = 1) -> TaskSpec:
     return TaskSpec(
-        dataset_name="rel-x", task_name="t", family=ENTITY_BINARY,
-        primary_metric="roc_auc", maximize=True,
+        dataset_name="rel-f1", task_name="driver-position", family=ENTITY_REGRESSION,
+        primary_metric="mae", maximize=False, full_timeout=7200, debug_timeout=900,
+        entity_col="driverId", entity_table="drivers", time_col="date", target_col="position",
+        timedelta_str="30 days", num_eval_timestamps=num_eval_timestamps, metrics=["mae", "r2"],
     )
 
 
-def rec_spec():
-    return TaskSpec(
-        dataset_name="rel-x", task_name="t", family=RECOMMENDATION,
-        primary_metric="link_prediction_map", maximize=True,
-        eval_k=5, num_dst_nodes=100,
-    )
+COMPUTE = {"has_gpu": True, "gpu_name": "NVIDIA A100-SXM4-40GB, 40960 MiB", "num_cpus": 12, "mem_gb": 85}
 
 
-class TestPredictionValidation:
-    def _write(self, tmp_path, split, arr):
-        np.save(tmp_path / f"{split}_predictions.npy", arr)
-        return tmp_path
+class TestBrief:
+    def brief(self, tmp_path, num_eval_timestamps=1, hosted="none"):
+        task = FakeDriverTask(num_eval_timestamps)
+        rolling_root = tmp_path / "rolling" if num_eval_timestamps > 1 else None
+        return build_brief(task, driver_spec(num_eval_timestamps), tmp_path / "copy", rolling_root,
+                           tmp_path / "shared", hosted, compute=COMPUTE)
 
-    def test_missing_file_rejected(self, tmp_path):
-        from benchmarks.relbench.handler import PredictionContractError
+    def test_the_objective_holds_the_tasks_facts_whole(self, tmp_path):
+        """The task definition with its label-generating code, the label
+        statistics, the schema with every column, the paths and the
+        retraction command: facts, never clipped."""
+        brief = self.brief(tmp_path)
+        objective = brief.objective
+        assert "## Task definition" in objective and "def make_table" in objective
+        assert "The driver's finishing position" in objective
+        assert "positive rate" not in objective and "median=" in objective
+        assert "### table `drivers`" in objective and "c44:float64" in objective   # the 45th column, not clipped
+        assert f"`{tmp_path / 'copy'}`" in objective and str(tmp_path / "shared") in objective
+        assert "a frozen database, truncated at the test cutoff" in objective
+        assert "--void run_XXXX" in brief.render()
+        assert "NVIDIA A100" in objective and "~12 CPUs" in objective
+        assert "Published-board units" in objective
 
-        handler = make_handler(binary_spec())
-        with pytest.raises(PredictionContractError, match="not written"):
-            handler._load_predictions(str(tmp_path), "val")
+    def test_measured_by_names_the_metric_its_direction_and_the_orientation(self, tmp_path):
+        brief = self.brief(tmp_path)
+        assert brief.measured_by.startswith("validation mae, lower is better")
+        assert "negated, so that higher is better" in brief.measured_by
+        assert "mae, r2" in brief.measured_by
+        assert "divide a MAE by" in brief.target and brief.baseline.startswith("the seeded candidate")
 
-    def test_binary_range_enforced(self, tmp_path):
-        from benchmarks.relbench.handler import PredictionContractError
+    def test_the_rules_are_the_tasks_and_the_grant_is_the_configs(self, tmp_path):
+        rules = self.brief(tmp_path).rules
+        assert any("two-model contract" in rule for rule in rules)
+        assert any("No hosted model API is granted" in rule for rule in rules)
+        assert any("date <= t" in rule for rule in rules)
+        assert not any("another tick's snapshot" in rule for rule in rules)
+        granted = self.brief(tmp_path, hosted="openai").rules
+        assert any("OPENAI_API_KEY" in rule for rule in granted)
+        with pytest.raises(ValueError, match="hosted_model_api"):
+            self.brief(tmp_path, hosted="anthropic")
 
-        handler = make_handler(binary_spec())
-        self._write(tmp_path, "val", np.linspace(-3, 3, 10))
-        with pytest.raises(PredictionContractError, match="sigmoid"):
-            handler._load_predictions(str(tmp_path), "val")
+    def test_a_rolling_task_carries_the_per_tick_invocation_contract(self, tmp_path):
+        brief = self.brief(tmp_path, num_eval_timestamps=3)
+        assert "## Per-row seed time" in brief.objective
+        assert "6 invocations in all" in brief.objective and "(3 validation ticks, then 3 test ticks)" in brief.objective
+        assert str(tmp_path / "rolling") in brief.objective
+        assert any("another tick's snapshot" in rule for rule in brief.rules)
 
-    def test_binary_ok_and_column_squeeze(self, tmp_path):
-        handler = make_handler(binary_spec())
-        self._write(tmp_path, "val", np.full((10, 1), 0.5))
-        arr, warnings = handler._load_predictions(str(tmp_path), "val")
-        assert arr.shape == (10,) and not warnings
+    def test_no_standing_guidance_rides_in_the_brief(self, tmp_path):
+        """What the harness says (the practices, the validation discipline)
+        is not the task's: the Brief carries none of it."""
+        text = self.brief(tmp_path).render()
+        for phrase in ("Feature engineering", "never use the official validation score",
+                       "features_history", "practice"):
+            assert phrase not in text, phrase
 
-    def test_nan_rejected(self, tmp_path):
-        from benchmarks.relbench.handler import PredictionContractError
-
-        handler = make_handler(binary_spec())
-        bad = np.full(10, 0.5)
-        bad[3] = np.nan
-        self._write(tmp_path, "val", bad)
-        with pytest.raises(PredictionContractError, match="NaN"):
-            handler._load_predictions(str(tmp_path), "val")
-
-    def test_wrong_shape_rejected(self, tmp_path):
-        from benchmarks.relbench.handler import PredictionContractError
-
-        handler = make_handler(binary_spec())
-        self._write(tmp_path, "val", np.full(7, 0.5))
-        with pytest.raises(PredictionContractError, match="shape"):
-            handler._load_predictions(str(tmp_path), "val")
-
-    def test_recommendation_shape_and_warnings(self, tmp_path):
-        handler = make_handler(rec_spec())
-        pred = np.tile(np.arange(5), (10, 1))
-        pred[0] = [1, 1, 2, 3, 4]      # duplicate
-        pred[1] = [0, 1, 2, 3, 999]    # out of range
-        self._write(tmp_path, "val", pred)
-        arr, warnings = handler._load_predictions(str(tmp_path), "val")
-        assert arr.shape == (10, 5)
-        assert any("duplicate" in w for w in warnings)
-        assert any("out of" in w for w in warnings)
-
-    def test_recommendation_float_ids_rejected(self, tmp_path):
-        from benchmarks.relbench.handler import PredictionContractError
-
-        handler = make_handler(rec_spec())
-        self._write(tmp_path, "val", np.random.rand(10, 5))
-        with pytest.raises(PredictionContractError, match="integer"):
-            handler._load_predictions(str(tmp_path), "val")
-
-
-class TestAudit:
-    def test_flags_violations_and_skips_vendored(self, tmp_path):
-        spec = binary_spec()
-        handler = make_handler(spec)
-        code = tmp_path / "code"
-        code.mkdir()
-        (code / "main.py").write_text(
-            "t = task.get_table('test', mask_input_cols=False)\n"
-        )
-        kit_file = (
-            Path(__file__).parents[1]
-            / "benchmarks" / "relbench" / "data" / "starter_kit" / "common.py"
-        )
-        (code / "common.py").write_bytes(kit_file.read_bytes())
-        report = handler._audit_code(code)
-        assert report["clean"] is False
-        files = {f["file"] for f in report["findings"]}
-        assert "main.py" in files and "common.py" not in files
-
-    def test_autocomplete_allows_full_db(self, tmp_path):
-        spec = TaskSpec(
-            dataset_name="rel-x", task_name="t", family=AUTOCOMPLETE_REGRESSION,
-            primary_metric="r2", maximize=True,
-        )
-        handler = make_handler(spec)
-        code = tmp_path / "code"
-        code.mkdir()
-        (code / "main.py").write_text("db = ds.get_db(upto_test_timestamp=False)\n")
-        assert handler._audit_code(code)["clean"] is True
+    def test_the_brief_survives_its_own_rendering(self, tmp_path):
+        """The engine fingerprints the rendered text and a resume parses it
+        back: a code block in the objective must round-trip."""
+        brief = self.brief(tmp_path, num_eval_timestamps=3)
+        assert Brief.parse(brief.render()) == brief
 
 
 class TestMetricRouting:
@@ -157,48 +175,54 @@ class TestMetricRouting:
         assert PRIMARY_METRIC_OVERRIDES["rel-trial/studies-enrollment"] == ("r2", True)
         assert PRIMARY_METRIC_OVERRIDES["rel-amazon/review-rating"] == ("r2", True)
 
-    def test_direction_helpers(self):
-        handler = make_handler(binary_spec())
-        assert handler._is_better(0.8, 0.7)
-        spec = TaskSpec(
-            dataset_name="d", task_name="t", family="entity_regression",
-            primary_metric="mae", maximize=False,
-        )
-        handler = make_handler(spec)
-        assert handler._is_better(0.3, 0.4)
+    def test_the_regime_is_the_scans_word(self):
+        assert driver_spec().regime == "frozen" and driver_spec(40).regime == "seed-time"
+        autocomplete = TaskSpec(dataset_name="rel-salt", task_name="sales-group", family="autocomplete_multiclass_classification",
+                                primary_metric="accuracy", maximize=True, full_timeout=1, debug_timeout=1)
+        assert autocomplete.regime == "autocomplete"
 
 
-RELBENCH_CACHE = Path(
-    os.environ.get("RELBENCH_PRISTINE_CACHE_DIR", os.path.expanduser("~/.cache/relbench"))
-)
+# ---------------------------------------------------------------------------
+# The sanitized copy, on real data
+# ---------------------------------------------------------------------------
 
-
-@pytest.mark.skipif(
-    not (RELBENCH_CACHE / "rel-f1" / "db").exists(),
-    reason="requires a populated rel-f1 relbench cache",
-)
-class TestSandboxOnRealData:
-    def test_forecasting_cache_is_leak_free(self, tmp_path):
-        import subprocess
-        import sys
-
-        dest = tmp_path / "cache"
-        repo_root = Path(__file__).parents[1]
-        env = os.environ.copy()
-        env.pop("RELBENCH_CACHE_DIR", None)
-        env["PYTHONPATH"] = str(repo_root)
+@needs_rel_f1
+class TestSanitizerOnRealData:
+    def test_forecasting_copy_is_leak_free(self, tmp_path):
+        """The harness's sanitizer, as the runner invokes it: the test table
+        reduced to key and seed time, the database truncated at the cutoff,
+        the tree read-only, the marker's report."""
+        dest = tmp_path / "copy"
         subprocess.run(
-            [sys.executable, "-m", "benchmarks.relbench.sandbox",
-             "--dataset", "rel-f1", "--task", "driver-position", "--dest", str(dest)],
-            cwd=repo_root, env=env, check=True, capture_output=True,
+            [sys.executable, str(SANITIZER), "--dataset", "rel-f1", "--task", "driver-position",
+             "--source", str(RELBENCH_CACHE), "--out", str(dest)],
+            check=True, capture_output=True,
         )
-        import pandas as pd
-
         test_df = pd.read_parquet(dest / "rel-f1" / "tasks" / "driver-position" / "test.parquet")
         assert "position" not in test_df.columns
         races = pd.read_parquet(dest / "rel-f1" / "db" / "races.parquet")
         assert str(races["date"].max()) < "2010-01-02"
         assert not os.access(dest / "rel-f1" / "db" / "races.parquet", os.W_OK)
+        marker = json.loads((dest / scoring.SANITIZED_MARKER).read_text())
+        assert marker["dataset"] == "rel-f1" and marker["report"]["tables"]["races"]["rows"] <= marker["report"]["tables"]["races"]["pristine_rows"]
+
+    def test_the_copy_is_reused_under_its_marker_and_rebuilt_on_demand(self, tmp_path, monkeypatch):
+        """The runner builds the copy once per task and script; a changed
+        script or --rebuild-cache builds it again."""
+        calls = []
+        real_run = scoring.subprocess.run
+
+        def counting_run(command, **kwargs):
+            calls.append(command)
+            return real_run(command, **kwargs)
+
+        monkeypatch.setattr(scoring.subprocess, "run", counting_run)
+        out = tmp_path / "sanitized_cache"
+        first = scoring.ensure_sanitized_copy(SANITIZER, RELBENCH_CACHE, "rel-f1", "driver-position", out, rolling=False, rebuild=False)
+        again = scoring.ensure_sanitized_copy(SANITIZER, RELBENCH_CACHE, "rel-f1", "driver-position", out, rolling=False, rebuild=False)
+        assert first == again == out and len(calls) == 1
+        scoring.ensure_sanitized_copy(SANITIZER, RELBENCH_CACHE, "rel-f1", "driver-position", out, rolling=False, rebuild=True)
+        assert len(calls) == 2 and (out / scoring.SANITIZED_MARKER).is_file()
 
 
 class TestRepoMemoryMcpMount:
@@ -251,17 +275,13 @@ class TestRepoMemoryMcpMount:
         assert "mcp_servers" not in config.agent_specific
 
 
-RELBENCH_CACHE = Path(
-    os.environ.get("RELBENCH_PRISTINE_CACHE_DIR", os.path.expanduser("~/.cache/relbench"))
-)
-
-
-class TestGenericModeConfig:
+class TestOverrideFile:
     def test_the_override_resolves_over_the_packaged_config(self):
         """The benchmark's file is an override (docs/plans/redesign/
         wp4-config.md): what it leaves unset rides along from the
-        packaged defaults, what it sets is the campaign's."""
-        path = Path(__file__).parents[1] / "benchmarks/relbench/config.yaml"
+        packaged defaults, what it sets is the campaign's; the runner's own
+        keys sit in the `benchmark:` block the engine never reads."""
+        path = REPO_ROOT / "benchmarks/relbench/config.yaml"
         override = read_yaml(path)
         cfg = load_config(str(path))
         params = cfg["search_strategy"]["params"]
@@ -276,8 +296,6 @@ class TestGenericModeConfig:
         assert params["ideation"]["selector"]["cli"] == "codex"
         # The temporal-leakage protocol: no live web in implementation.
         assert params["implementation"]["web"] is False
-        # No model routes: the CLI-only conversion made ModelRouter
-        # embedding-only (stale-code audit 2026-08-26).
         assert "models" not in override
         # K=4 expansion (user-directed 2026-07-29): four GPU-pinned lanes,
         # 10h budget, 5h session caps; threads sized for the on-demand
@@ -289,21 +307,22 @@ class TestGenericModeConfig:
         assert [lane["CUDA_VISIBLE_DEVICES"] for lane in lanes] == ["0", "1", "2", "3"]
         assert params["implementation"]["timeout"] == 18000
         assert cfg["budget"]["minutes"] == 600
+        benchmark = override["benchmark"]
+        assert benchmark["work_root"] == "tmp/relbench" and params["registered_evaluation_archive_glob"] == "tmp/relbench/*/runs"
+        assert benchmark["timeouts"]["small"] == {"full": 7200, "debug": 900}
+        assert benchmark["hosted_model_api"] == "none"
 
 
-@pytest.mark.skipif(
-    not (RELBENCH_CACHE / "rel-f1" / "db").exists(),
-    reason="requires a populated rel-f1 relbench cache",
-)
+# ---------------------------------------------------------------------------
+# The provided grader, on real data
+# ---------------------------------------------------------------------------
+
+@needs_rel_f1
 class TestProvidedGrader:
     def _repo(self, tmp_path):
-        import subprocess
-        import sys as _sys
-
         root = tmp_path / "candidate"
         (root / "kapso_evaluation").mkdir(parents=True)
-        suite = Path(__file__).parents[1] / "benchmarks/relbench/data/generic_eval"
-        for f in suite.glob("*"):
+        for f in GENERIC_EVAL_DIR.glob("*"):
             (root / "kapso_evaluation" / f.name).write_bytes(f.read_bytes())
         (root / "main.py").write_text(
             "import json, os, numpy as np\n"
@@ -329,7 +348,7 @@ class TestProvidedGrader:
 
         def run(fidelity):
             return subprocess.run(
-                [_sys.executable, "kapso_evaluation/grader.py", "--fidelity", fidelity,
+                [sys.executable, "kapso_evaluation/grader.py", "--fidelity", fidelity,
                  "--fraction", "1.0", "--seed", "1337"],
                 cwd=root, env=env, capture_output=True, text=True, timeout=300,
             )
@@ -370,9 +389,6 @@ class TestProvidedGrader:
         recomputation from stored predictions must equal the archive-time
         score bit-for-bit, because final selection treats any disagreement
         as tampering and refuses to ship."""
-        import subprocess
-        import sys as _sys
-
         root, work, run = self._repo(tmp_path)
         proc = run("full")
         assert proc.returncode == 0, proc.stdout[-2000:]
@@ -380,7 +396,7 @@ class TestProvidedGrader:
             proc.stdout.strip().splitlines()[-1].split(" ", 1)[1]
         )
         rescore = subprocess.run(
-            [_sys.executable, "kapso_evaluation/grader.py",
+            [sys.executable, "kapso_evaluation/grader.py",
              "--rescore", str(work / "runs" / "run_0001")],
             cwd=root, capture_output=True, text=True, timeout=300,
         )
@@ -396,26 +412,25 @@ class TestProvidedGrader:
         assert payload["score"] == -payload["metrics"]["mae"]
 
 
-def _bare_driver_position_handler(tmp_path):
-    from relbench.tasks import get_task
+# ---------------------------------------------------------------------------
+# The final report over the archive
+# ---------------------------------------------------------------------------
 
-    from benchmarks.relbench.handler import RelBenchHandler
+def _driver_position(tmp_path):
+    """The real task from the pristine cache, the spec, and an archive root."""
+    from relbench.tasks import get_task
 
     os.environ["RELBENCH_CACHE_DIR"] = str(RELBENCH_CACHE)
     task = get_task("rel-f1", "driver-position", download=False)
-    handler = RelBenchHandler.__new__(RelBenchHandler)
-    handler.task = task
-    handler.spec = TaskSpec(
-        dataset_name="rel-f1", task_name="driver-position",
-        family="entity_regression", primary_metric="mae", maximize=False,
+    spec = TaskSpec(
+        dataset_name="rel-f1", task_name="driver-position", family=ENTITY_REGRESSION,
+        primary_metric="mae", maximize=False, full_timeout=300, debug_timeout=300,
+        entity_col="driverId", entity_table="drivers", time_col="date", target_col="position",
+        num_eval_timestamps=40, metrics=["mae"],
     )
-    handler.dataset_name, handler.task_name = "rel-f1", "driver-position"
-    handler.runs_dir = tmp_path / "runs"
-    handler.work_dir = tmp_path
-    return handler, task
+    (tmp_path / "runs").mkdir()
+    return tmp_path, task, spec
 
-
-GENERIC_EVAL_DIR = Path(__file__).parents[1] / "benchmarks/relbench/data/generic_eval"
 
 # The maintainer-built entrypoint is a thin forwarder onto the provided
 # grader — this is the wrapper shape the registered contract expects, and
@@ -429,36 +444,36 @@ FORWARDING_WRAPPER = (
     "     *sys.argv[1:]]))\n"
 )
 
+DELIVERED = {"campaign": "/w", "branch": "generic_exp_2", "commit": "abc123", "score": -2.7,
+             "stopped_reason": "budget_exhausted", "experiments": 3, "cost_usd": 1.5, "harness": "predictive-modelling"}
+
 
 def _governed_head(work_dir):
-    """Snapshot a real evaluator tree (provided suite + wrapper) and return
-    its fingerprint — the head every archived run must be stamped with."""
+    """Stage the evaluation as the runner does (the provided suite plus the
+    task's settings) with the maintainer's wrapper, snapshot it, and return
+    its fingerprint and the directory."""
     from kapso.execution import evaluation_archive_sandbox as sandbox
 
-    source = work_dir / "eval_source"
-    source.mkdir()
-    for f in sorted(GENERIC_EVAL_DIR.glob("*")):
-        if f.is_file():
-            (source / f.name).write_bytes(f.read_bytes())
-    (source / "kapso_eval.py").write_text(FORWARDING_WRAPPER)
-    # The task's settings travel with the grader (the runner stages them).
-    (source / "task.json").write_text(json.dumps({
+    source = scoring.stage_evaluation(GENERIC_EVAL_DIR, work_dir, {
         "dataset": "rel-f1", "task": "driver-position", "primary_metric": "mae",
         "higher_is_better": False, "work_dir": str(work_dir), "full_timeout": 300,
         "debug_timeout": 300, "cache_dir": str(RELBENCH_CACHE), "rolling_root": None,
-    }))
+    })
+    (source / "kapso_eval.py").write_text(FORWARDING_WRAPPER)
     head = sandbox.fingerprint_tree(source)
     sandbox.snapshot_evaluator_tree(work_dir, source, head)
-    return head
+    return head, source
 
 
 def _archive_run(runs_dir, name, val_pred, test_pred, status, session="exp_A",
-                 forged_val=None, head="", score=None):
+                 forged_val=None, head="", score=None, code="print('candidate')\n"):
     """One archived run as the governed grader would record it: predictions,
-    label with evaluator stamp, metrics.json, and the archive-time manifest
-    line the rescore tripwire cross-checks."""
+    label with evaluator stamp, metrics.json, the code snapshot, and the
+    archive-time manifest line the rescore tripwire cross-checks."""
     run_dir = runs_dir / name
     (run_dir / "private").mkdir(parents=True)
+    (run_dir / "code").mkdir()
+    (run_dir / "code" / "main.py").write_text(code)
     np.save(run_dir / "val_predictions.npy", val_pred)
     np.save(run_dir / "test_predictions.npy", test_pred)
     (run_dir / "private/selection.json").write_text(
@@ -481,20 +496,23 @@ def _archive_run(runs_dir, name, val_pred, test_pred, status, session="exp_A",
     return run_dir
 
 
-@pytest.mark.skipif(
-    not (RELBENCH_CACHE / "rel-f1" / "db").exists(),
-    reason="requires a populated rel-f1 relbench cache",
-)
-class TestRunSelectionLabels:
+@needs_rel_f1
+class TestFinalReport:
     """Selection-eligibility labels (user-directed 2026-07-31, after the
-    user-ignore incident: final_evaluate shipped a self-disqualified leaky
-    intermediate). Pool = registered finals stamped with the HEAD evaluator;
-    ranking values are recomputed from stored predictions by the head
-    evaluator's own --rescore, never read from metrics.json."""
+    user-ignore incident: the final evaluation shipped a self-disqualified
+    leaky intermediate). Pool = registered finals stamped with the HEAD
+    evaluator; ranking values are recomputed from stored predictions by the
+    head evaluator's own --rescore, never read from metrics.json; the
+    winner's test metrics are computed once and its code scanned by the
+    harness."""
 
-    def test_final_evaluate_ignores_pending_and_voided_runs(self, tmp_path):
-        handler, task = _bare_driver_position_handler(tmp_path)
-        head = _governed_head(handler.work_dir)
+    def report(self, work_dir, task, spec, source, solution=DELIVERED):
+        return scoring.final_report(work_dir, source, task, spec, HARNESS, solution)
+
+    def test_the_report_ignores_pending_and_voided_runs(self, tmp_path):
+        work_dir, task, spec = _driver_position(tmp_path)
+        head, source = _governed_head(work_dir)
+        runs = work_dir / "runs"
         n_val = len(task.get_table("val"))
         n_test = len(task.get_table("test"))
         val_y = task.get_table("val", mask_input_cols=False).df[
@@ -503,17 +521,14 @@ class TestRunSelectionLabels:
 
         # Superseded intermediate with a FORGED perfect metrics.json val and
         # genuinely best predictions — must not be selectable.
-        _archive_run(handler.runs_dir, "run_0001", val_y.copy(),
-                     np.full(n_test, 11.0), "superseded",
+        _archive_run(runs, "run_0001", val_y.copy(), np.full(n_test, 11.0), "superseded",
                      forged_val={"mae": 0.0001}, head=head, score=0.0)
         # Registered final: mediocre but real.
-        _archive_run(handler.runs_dir, "run_0002", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "final", head=head, score=expected)
+        _archive_run(runs, "run_0002", np.full(n_val, 11.0), np.full(n_test, 11.0), "final", head=head, score=expected)
         # Self-voided run with perfect predictions — excluded.
-        _archive_run(handler.runs_dir, "run_0003", val_y.copy(),
-                     np.full(n_test, 11.0), "self-voided", head=head, score=0.0)
+        _archive_run(runs, "run_0003", val_y.copy(), np.full(n_test, 11.0), "self-voided", head=head, score=0.0)
 
-        report = handler.final_evaluate()
+        report = self.report(work_dir, task, spec, source)
         assert report["run"] == "run_0002"
         # Val in the report is the head evaluator's recomputation from the
         # stored predictions, not the (forged-able) metrics.json.
@@ -521,36 +536,46 @@ class TestRunSelectionLabels:
         assert report["test_metrics"]["mae"] > 0
         assert report["head_evaluator_id"] == head
         assert set(report["scored"]) == {"run_0002"}
+        assert report["audit"]["clean"] is True and report["audit"]["regime"] == "seed-time"
+        assert report["solution"] == DELIVERED
+        assert json.loads((work_dir / scoring.FINAL_REPORT).read_text())["run"] == "run_0002"
+        # The winner's test metrics are written back, once.
+        assert json.loads((runs / "run_0002" / "private" / "metrics.json").read_text())["test"]["mae"] == report["test_metrics"]["mae"]
+
+    def test_the_harness_scan_reports_a_leak_in_the_winners_code(self, tmp_path):
+        work_dir, task, spec = _driver_position(tmp_path)
+        head, source = _governed_head(work_dir)
+        n_val = len(task.get_table("val")); n_test = len(task.get_table("test"))
+        val_y = task.get_table("val", mask_input_cols=False).df[task.target_col].to_numpy(dtype=float)
+        _archive_run(work_dir / "runs", "run_0001", np.full(n_val, 11.0), np.full(n_test, 11.0), "final",
+                     head=head, score=float(np.abs(val_y - 11.0).mean()),
+                     code="t = task.get_table('test', mask_input_cols=False)\n")
+        audit = self.report(work_dir, task, spec, source)["audit"]
+        assert audit["clean"] is False
+        assert any(finding["file"] == "main.py" for finding in audit["findings"])
 
     def test_session_finals_are_inferred_when_the_hook_never_fired(self, tmp_path):
         """The manifest of record is printed by the maintainer-owned wrapper and
         may carry no run/session identity, so the hook can silently never fire
-        (observed live: every run left 'pending' -> final_evaluate errored and a
-        completed task recorded as failed). selection.json always records the
-        session, so the archive derives each session's last run as its final."""
-        handler, task = _bare_driver_position_handler(tmp_path)
-        head = _governed_head(handler.work_dir)
+        (observed live: every run left 'pending' -> the final evaluation errored
+        and a completed task recorded as failed). selection.json always records
+        the session, so the archive derives each session's last run as its final."""
+        work_dir, task, spec = _driver_position(tmp_path)
+        head, source = _governed_head(work_dir)
+        runs = work_dir / "runs"
         n_val = len(task.get_table("val")); n_test = len(task.get_table("test"))
-        val_y = task.get_table("val", mask_input_cols=False).df[
-            task.target_col].to_numpy(dtype=float)
+        val_y = task.get_table("val", mask_input_cols=False).df[task.target_col].to_numpy(dtype=float)
         mae_of = lambda c: float(np.abs(val_y - c).mean())
         # session A: two runs, the later one is the final; session B: one run
-        _archive_run(handler.runs_dir, "run_0001", np.full(n_val, 20.0),
-                     np.full(n_test, 20.0), "pending", session="exp_A",
-                     head=head, score=mae_of(20.0))
-        _archive_run(handler.runs_dir, "run_0002", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "pending", session="exp_A",
-                     head=head, score=mae_of(11.0))
-        _archive_run(handler.runs_dir, "run_0003", np.full(n_val, 30.0),
-                     np.full(n_test, 30.0), "pending", session="exp_B",
-                     head=head, score=mae_of(30.0))
-        report = handler.final_evaluate()
-        status = lambda n: json.loads(
-            (handler.runs_dir / n / "private/selection.json").read_text())["status"]
+        _archive_run(runs, "run_0001", np.full(n_val, 20.0), np.full(n_test, 20.0), "pending", session="exp_A", head=head, score=mae_of(20.0))
+        _archive_run(runs, "run_0002", np.full(n_val, 11.0), np.full(n_test, 11.0), "pending", session="exp_A", head=head, score=mae_of(11.0))
+        _archive_run(runs, "run_0003", np.full(n_val, 30.0), np.full(n_test, 30.0), "pending", session="exp_B", head=head, score=mae_of(30.0))
+        report = self.report(work_dir, task, spec, source)
+        status = lambda n: json.loads((runs / n / "private/selection.json").read_text())["status"]
         assert status("run_0001") == "superseded"
         assert status("run_0002") == "final"
         assert status("run_0003") == "final"
-        # of the two finals, argmax(val) on a minimize metric picks run_0002
+        # of the two finals, the oriented score (negated error) picks run_0002
         assert report["run"] == "run_0002"
         assert abs(report["val_metrics"]["mae"] - mae_of(11.0)) < 1e-9
 
@@ -558,19 +583,15 @@ class TestRunSelectionLabels:
         """The archive-level mirror of the in-loop None-projection rule: a
         final measured under a superseded evaluator never re-ranks against
         head runs, even with the best raw score on the board."""
-        handler, task = _bare_driver_position_handler(tmp_path)
-        head = _governed_head(handler.work_dir)
+        work_dir, task, spec = _driver_position(tmp_path)
+        head, source = _governed_head(work_dir)
+        runs = work_dir / "runs"
         n_val = len(task.get_table("val")); n_test = len(task.get_table("test"))
-        val_y = task.get_table("val", mask_input_cols=False).df[
-            task.target_col].to_numpy(dtype=float)
+        val_y = task.get_table("val", mask_input_cols=False).df[task.target_col].to_numpy(dtype=float)
         mae_of = lambda c: float(np.abs(val_y - c).mean())
-        _archive_run(handler.runs_dir, "run_0001", val_y.copy(),
-                     np.full(n_test, 11.0), "final", session="exp_A",
-                     head="superseded-evaluator", score=0.0)
-        _archive_run(handler.runs_dir, "run_0002", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "final", session="exp_B",
-                     head=head, score=mae_of(11.0))
-        report = handler.final_evaluate()
+        _archive_run(runs, "run_0001", val_y.copy(), np.full(n_test, 11.0), "final", session="exp_A", head="superseded-evaluator", score=0.0)
+        _archive_run(runs, "run_0002", np.full(n_val, 11.0), np.full(n_test, 11.0), "final", session="exp_B", head=head, score=mae_of(11.0))
+        report = self.report(work_dir, task, spec, source)
         assert report["run"] == "run_0002"
         assert "run_0001" in report["excluded"]
         assert "never re-ranked across rulers" in report["excluded"]["run_0001"]
@@ -578,87 +599,65 @@ class TestRunSelectionLabels:
     def test_edited_archive_score_fails_loud(self, tmp_path):
         """A forged manifest score disagrees with its own recomputation —
         final selection refuses to ship rather than resolving silently."""
-        handler, task = _bare_driver_position_handler(tmp_path)
-        head = _governed_head(handler.work_dir)
+        work_dir, task, spec = _driver_position(tmp_path)
+        head, source = _governed_head(work_dir)
         n_val = len(task.get_table("val")); n_test = len(task.get_table("test"))
-        _archive_run(handler.runs_dir, "run_0001", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "final", head=head, score=0.0001)
+        _archive_run(work_dir / "runs", "run_0001", np.full(n_val, 11.0), np.full(n_test, 11.0), "final", head=head, score=0.0001)
         with pytest.raises(ValueError, match="does not match its recomputation"):
-            handler.final_evaluate()
+            self.report(work_dir, task, spec, source)
 
-    def test_inference_never_overrides_a_decided_label(self, tmp_path):
-        handler, task = _bare_driver_position_handler(tmp_path)
-        head = _governed_head(handler.work_dir)
+    def test_no_eligible_run_is_the_documented_error_with_the_delivery_beside_it(self, tmp_path):
+        """Nothing final under the head: the report says there is no candidate
+        and still records what the build delivered (here: nothing)."""
+        work_dir, task, spec = _driver_position(tmp_path)
+        head, source = _governed_head(work_dir)
         n_val = len(task.get_table("val")); n_test = len(task.get_table("test"))
-        _archive_run(handler.runs_dir, "run_0001", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "self-voided", session="exp_A",
-                     head=head)
-        _archive_run(handler.runs_dir, "run_0002", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "invalid", session="exp_A",
-                     head=head)
-        assert "error" in handler.final_evaluate()   # nothing eligible
-        status = lambda n: json.loads(
-            (handler.runs_dir / n / "private/selection.json").read_text())["status"]
+        _archive_run(work_dir / "runs", "run_0001", np.full(n_val, 11.0), np.full(n_test, 11.0), "self-voided", session="exp_A", head=head)
+        _archive_run(work_dir / "runs", "run_0002", np.full(n_val, 11.0), np.full(n_test, 11.0), "invalid", session="exp_A", head=head)
+        nothing = {**DELIVERED, "branch": None, "commit": None, "score": None}
+        report = self.report(work_dir, task, spec, source, solution=nothing)
+        assert report["run"] is None and "no candidate" in report["error"] and report["solution"]["branch"] is None
+        status = lambda n: json.loads((work_dir / "runs" / n / "private/selection.json").read_text())["status"]
         assert status("run_0001") == "self-voided" and status("run_0002") == "invalid"
 
-    def test_zero_finals_is_the_documented_error(self, tmp_path):
-        handler, task = _bare_driver_position_handler(tmp_path)
-        head = _governed_head(handler.work_dir)
-        n_val = len(task.get_table("val"))
-        n_test = len(task.get_table("test"))
-        _archive_run(handler.runs_dir, "run_0001", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "self-voided", head=head)
-        assert "error" in handler.final_evaluate()
-
     def test_missing_label_raises(self, tmp_path):
-        handler, task = _bare_driver_position_handler(tmp_path)
-        run_dir = handler.runs_dir / "run_0001"
+        work_dir, task, spec = _driver_position(tmp_path)
+        _head, source = _governed_head(work_dir)
+        run_dir = work_dir / "runs" / "run_0001"
         (run_dir / "private").mkdir(parents=True)
-        (run_dir / "private/metrics.json").write_text(
-            json.dumps({"val": {"mae": 1.0}, "test": {}}))
+        (run_dir / "private/metrics.json").write_text(json.dumps({"val": {"mae": 1.0}, "test": {}}))
         with pytest.raises(FileNotFoundError):
-            handler.final_evaluate()
+            self.report(work_dir, task, spec, source)
 
     def test_finalize_stamps_final_and_supersedes_session_siblings(self, tmp_path):
-        handler, task = _bare_driver_position_handler(tmp_path)
-        n_val = len(task.get_table("val"))
-        n_test = len(task.get_table("test"))
-        for name, session in (("run_0001", "exp_A"), ("run_0002", "exp_A"),
-                              ("run_0003", "exp_B")):
-            _archive_run(handler.runs_dir, name, np.full(n_val, 11.0),
-                         np.full(n_test, 11.0), "pending", session=session)
-        manifest = {"fidelity": "full", "run": "run_0002", "session": "exp_A"}
-        label_run_of_record(str(handler.runs_dir), manifest, True)
-        status = lambda n: json.loads(
-            (handler.runs_dir / n / "private/selection.json").read_text())["status"]
+        work_dir, task, _spec = _driver_position(tmp_path)
+        runs = work_dir / "runs"
+        n_val = len(task.get_table("val")); n_test = len(task.get_table("test"))
+        for name, session in (("run_0001", "exp_A"), ("run_0002", "exp_A"), ("run_0003", "exp_B")):
+            _archive_run(runs, name, np.full(n_val, 11.0), np.full(n_test, 11.0), "pending", session=session)
+        label_run_of_record(str(runs), {"fidelity": "full", "run": "run_0002", "session": "exp_A"}, True)
+        status = lambda n: json.loads((runs / n / "private/selection.json").read_text())["status"]
         assert status("run_0002") == "final"
         assert status("run_0001") == "superseded"
         assert status("run_0003") == "pending"  # other session untouched
 
     def test_finalize_respects_self_voided_and_judge_veto(self, tmp_path):
-        handler, task = _bare_driver_position_handler(tmp_path)
-        n_val = len(task.get_table("val"))
-        n_test = len(task.get_table("test"))
-        _archive_run(handler.runs_dir, "run_0001", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "self-voided")
-        label_run_of_record(
-            str(handler.runs_dir), {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True)
-        rec = json.loads(
-            (handler.runs_dir / "run_0001/private/selection.json").read_text())
+        work_dir, task, _spec = _driver_position(tmp_path)
+        runs = work_dir / "runs"
+        n_val = len(task.get_table("val")); n_test = len(task.get_table("test"))
+        _archive_run(runs, "run_0001", np.full(n_val, 11.0), np.full(n_test, 11.0), "self-voided")
+        label_run_of_record(str(runs), {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True)
+        rec = json.loads((runs / "run_0001/private/selection.json").read_text())
         assert rec["status"] == "self-voided"  # retraction outranks promotion
 
-        _archive_run(handler.runs_dir, "run_0002", np.full(n_val, 11.0),
-                     np.full(n_test, 11.0), "pending")
-        label_run_of_record(
-            str(handler.runs_dir), {"fidelity": "full", "run": "run_0002", "session": "exp_A"}, False)
-        rec2 = json.loads(
-            (handler.runs_dir / "run_0002/private/selection.json").read_text())
+        _archive_run(runs, "run_0002", np.full(n_val, 11.0), np.full(n_test, 11.0), "pending")
+        label_run_of_record(str(runs), {"fidelity": "full", "run": "run_0002", "session": "exp_A"}, False)
+        rec2 = json.loads((runs / "run_0002/private/selection.json").read_text())
         assert rec2["status"] == "invalid"
 
     def test_fast_manifest_is_a_noop(self, tmp_path):
-        handler, _ = _bare_driver_position_handler(tmp_path)
-        label_run_of_record(
-            str(handler.runs_dir), {"fidelity": "fast", "run": "", "session": "exp_A"}, True)
+        work_dir, _task, _spec = _driver_position(tmp_path)
+        label_run_of_record(str(work_dir / "runs"), {"fidelity": "fast", "run": "", "session": "exp_A"}, True)
 
 
 class TestBooleanTargetCoercion:
@@ -669,67 +668,38 @@ class TestBooleanTargetCoercion:
     must see 0/1."""
 
     def test_text_boolean_target_becomes_int(self):
-        import pandas as pd
-        from types import SimpleNamespace
-
-        from benchmarks.relbench.task_specs import coerce_boolean_target
-
         table = SimpleNamespace(df=pd.DataFrame({"target": ["t", "f", "T", "F"]}))
         coerce_boolean_target(table, "target")
         assert table.df["target"].tolist() == [1, 0, 1, 0]
         assert str(table.df["target"].dtype) == "int64"
 
     def test_numeric_target_untouched(self):
-        import pandas as pd
-        from types import SimpleNamespace
-
-        from benchmarks.relbench.task_specs import coerce_boolean_target
-
         table = SimpleNamespace(df=pd.DataFrame({"target": [0.0, 1.0]}))
         coerce_boolean_target(table, "target")
         assert table.df["target"].tolist() == [0.0, 1.0]
 
     def test_unexpected_strings_raise(self):
-        import pandas as pd
-        from types import SimpleNamespace
-
-        from benchmarks.relbench.task_specs import coerce_boolean_target
-
         table = SimpleNamespace(df=pd.DataFrame({"target": ["t", "maybe"]}))
         with pytest.raises(ValueError, match="non-boolean strings"):
             coerce_boolean_target(table, "target")
 
-    def test_flat_cache_skips_coercion_for_recommendation_tasks(self):
-        """A RecommendationTask has no scalar `target_col` — link prediction
-        carries src/dst entity columns instead. Reaching for `task.target_col`
-        while writing the flat cache raised AttributeError and failed every
-        recommendation task at sandbox-build time (observed live on
-        rel-ratebeer/user-place-liked). Coercion must be gated on the same
-        `src_entity_col` check the rest of the builder dispatches on."""
-        import inspect
-
-        from benchmarks.relbench import sandbox
-
-        src = inspect.getsource(sandbox.build_sanitized_cache)
-        coerce_at = src.index("coerce_boolean_target(table")
-        guard_at = src.index('if not hasattr(task, "src_entity_col")')
-        assert guard_at < coerce_at, (
-            "coerce_boolean_target must sit behind the RecommendationTask guard"
-        )
+    def test_a_recommendation_task_has_no_target_and_passes_through(self):
+        """A RecommendationTask carries src/dst entity columns and no scalar
+        target: the final scoring reaches for `task.target_col`, which is
+        None there, and must not raise (observed live on
+        rel-ratebeer/user-place-liked at cache-build time)."""
+        table = SimpleNamespace(df=pd.DataFrame({"dst": [[1, 2]]}))
+        assert coerce_boolean_target(table, None) is table
 
 
 class TestGraderSelectionLabel:
     def test_void_run_stamps_and_rejects_cross_session(self, tmp_path, monkeypatch):
         import importlib.util
-        import sys as _sys
-        spec = importlib.util.spec_from_file_location(
-            "relbench_grader",
-            Path("benchmarks/relbench/data/generic_eval/grader.py"),
-        )
+        spec = importlib.util.spec_from_file_location("relbench_grader", GENERIC_EVAL_DIR / "grader.py")
         grader = importlib.util.module_from_spec(spec)
         # Never drop a __pycache__ into the eval suite dir: the grader
         # snapshot/copy tests iterate that directory's entries.
-        monkeypatch.setattr(_sys, "dont_write_bytecode", True)
+        monkeypatch.setattr(sys, "dont_write_bytecode", True)
         spec.loader.exec_module(grader)
 
         monkeypatch.setattr(grader, "task_settings", lambda: {"work_dir": str(tmp_path)})
@@ -768,196 +738,3 @@ class TestGraderSelectionLabel:
         parsed = parse_manifest_line(line)
         assert parsed["run"] == "run_0007"
         assert parsed["session"] == "generic_exp_3"
-
-
-class TestDataAccessRules:
-    def test_external_leverage_fully_relaxed_rules(self):
-        """User-directed data policy (final relaxation 2026-07-28):
-        pretrained models unconditionally allowed and ENCOURAGED with NO
-        carve-outs — the baseline-weights exclusion is fully lifted (no
-        method names in the rules); the relbench-API/cache mechanics block
-        and the determinism bullet are dropped (cache protection stays
-        physical: sanitized read-only cache). What remains: the published-
-        solution ban, external-dataset leakage condition with changes.log
-        provenance, synthetic-data legality, temporal censoring, the
-        two-model val contract, and the forbidden API calls."""
-        from types import SimpleNamespace
-
-        from benchmarks.relbench.context import _data_access_rules
-
-        spec = SimpleNamespace(
-            is_autocomplete=False,
-            dataset_name="rel-f1",
-            task_name="driver-position",
-            time_col="date",
-            is_recommendation=False,
-        )
-        rules = _data_access_rules(spec)
-        assert "do NOT look up this problem's published solution" in rules
-        assert "PRETRAINED MODELS (encouraged)" in rules
-        assert "EXTERNAL DATASETS (encouraged)" in rules
-        assert "ZERO leakage" in rules and "voids the experiment" in rules
-        assert "changes.log" in rules
-        assert "SYNTHETIC DATA" in rules and "legal" in rules
-        assert "Temporal censoring" in rules
-        assert "two-model" in rules
-        assert "mask_input_cols=False" in rules
-        # Removed-by-direction pins: no baseline-weights exclusion, no API/
-        # cache mechanics block, no determinism bullet, no model constraints.
-        for gone in ("KumoRFM", "Relational Transformer", "PluRel", "Griffin",
-                     "Rel-LLM", "WEIGHTS only", "carve-out", "download=False",
-                     "OFFICIAL RelBench distribution", "Determinism",
-                     "WORLD-KNOWLEDGE", "NEEDS CENSORING", "opaque ids"):
-            assert gone not in rules, gone
-
-
-class TestDesignAxes:
-    def test_the_handler_declares_its_axes_and_the_standing_fe_direction(self):
-        """Anti-freeze integration (user-directed 2026-07-27): the relbench
-        handler's context declares task-specific design axes with feature
-        engineering as the first axis (domain vocabulary, so it lives in
-        the handler, not the engine's config), and carries the standing
-        feature-engineering note (matrix never finished; unchanged only on
-        measured saturation evidence)."""
-        from benchmarks.relbench.context import DESIGN_AXES, FEATURE_ENGINEERING_NOTE, knowledge_section
-
-        assert len(DESIGN_AXES) == 5
-        assert "feature engineering" in DESIGN_AXES[0]
-        assert any("training distribution" in axis for axis in DESIGN_AXES)
-        assert "## Design axes of the solution space" in knowledge_section(None)
-        assert "highest-value direction" in FEATURE_ENGINEERING_NOTE
-        assert "never finished" in FEATURE_ENGINEERING_NOTE
-        assert "freezing the feature matrix" in FEATURE_ENGINEERING_NOTE
-        assert "guidance, not constraints" in FEATURE_ENGINEERING_NOTE
-
-
-class TestLivingDocuments:
-    def _fake_db_dataset(self):
-        import pandas as pd
-
-        class FakeTable:
-            def __init__(self, df, pkey, time_col, fkeys):
-                self.df = df
-                self.pkey_col = pkey
-                self.time_col = time_col
-                self.fkey_col_to_pkey_table = fkeys
-
-        results = FakeTable(
-            pd.DataFrame({"resultId": [1], "raceId": [1], "driverId": [1]}),
-            "resultId", "date", {"raceId": "races", "driverId": "drivers"},
-        )
-        races = FakeTable(
-            pd.DataFrame({"raceId": [1], "circuitId": [1], "round": [1]}),
-            "raceId", "date", {"circuitId": "circuits"},
-        )
-        circuits = FakeTable(
-            pd.DataFrame({"circuitId": [1], "country": ["x"]}),
-            "circuitId", None, {},
-        )
-        drivers = FakeTable(
-            pd.DataFrame({"driverId": [1]}), "driverId", None, {}
-        )
-        db = SimpleNamespace(
-            table_dict={
-                "results": results, "races": races,
-                "circuits": circuits, "drivers": drivers,
-            },
-            min_timestamp="1950", max_timestamp="2009",
-        )
-        dataset = SimpleNamespace(val_timestamp="2005", test_timestamp="2010")
-        return db, dataset
-
-    def test_table_information_seed_is_agent_built_template(self):
-        """User-directed (2026-07-30): the living doc starts near-empty — no
-        deterministic schema/join dump (the schema already lives in the
-        problem context); the seed instructs agents to build the knowledge
-        base themselves."""
-        from benchmarks.relbench.context import build_table_information
-
-        doc = build_table_information("rel-x")
-        assert "LIVING DOCUMENT" in doc
-        assert "empty by design" in doc
-        assert "multi-hop join paths" in doc
-        assert "measured reasons" in doc
-        assert "table `" not in doc  # no pre-generated schema rows
-
-    def test_seeding_is_absent_only(self, tmp_path):
-        """Agent edits must survive handler restarts/resumes: an existing
-        living doc is never overwritten."""
-        from benchmarks.relbench.handler import RelBenchHandler
-
-        handler = RelBenchHandler.__new__(RelBenchHandler)
-        handler.shared_cache_dir = tmp_path
-        handler.dataset_name = "rel-x"
-        handler.problem_id = "rel-x--t"
-        db, dataset = self._fake_db_dataset()
-        handler.dataset = SimpleNamespace(get_db=lambda: db, **vars(dataset))
-
-        handler._seed_living_documents()
-        info = tmp_path / "table_information.md"
-        hist = tmp_path / "features_history.md"
-        assert info.exists() and hist.exists()
-        assert "rel-x--t" in hist.read_text()
-
-        info.write_text("AGENT EDITED\n")
-        hist.write_text("AGENT MEMORY\n")
-        handler._seed_living_documents()
-        assert info.read_text() == "AGENT EDITED\n"
-        assert hist.read_text() == "AGENT MEMORY\n"
-
-    def test_context_carries_living_docs_and_suggestions(self):
-        """User-directed (2026-07-30): FE guidance is suggestion-strength
-        (all-tables + features-over-architecture as leans, not hard rules),
-        no best-practices or published-SOTA sections, and the
-        living-documents contract stays in the problem context constants."""
-        import benchmarks.relbench.context as ctx
-        from benchmarks.relbench.context import (
-            FEATURE_ENGINEERING_NOTE,
-            FEATURES_HISTORY_TEMPLATE,
-            LIVING_DOCUMENTS_NOTE,
-        )
-
-        # OOS-val contract (user-directed 2026-07-30): generic rule with the
-        # explicit train+validation allowance for the test chain.
-        from benchmarks.relbench.context import _prediction_contract
-        import inspect
-        src = inspect.getsource(_prediction_contract)
-        for phrase in ("OUT-OF-SAMPLE", "stacking meta-learners",
-                       "IS allowed", "pre-refit model"):
-            assert phrase in src, phrase
-
-        # Validation-realism note (user-directed 2026-07-30, after the
-        # user-attendance/user-ignore selection failures): generic
-        # predictive-modelling rule — no task-specific wording.
-        for phrase in ("ONE finite sample", "never use the official validation score",
-                       "mirror how test differs from train", "near-identical variants"):
-            assert phrase in src, phrase
-        for banned in ("Thanksgiving", "tick", "holiday"):
-            assert banned not in src, f"task-specific wording leaked: {banned}"
-
-        assert "Consider ALL tables" in FEATURE_ENGINEERING_NOTE
-
-class TestOOSValAuditHooks:
-    def test_advisory_verify_flags_do_not_dirty_the_run(self, tmp_path):
-        """The OOS review hooks must surface train+val mixing (the exact shape
-        of the observed in-sample-val incident) WITHOUT marking the run dirty —
-        mixing is legal for the test chain; and a direct fit on val labels is
-        also surfaced."""
-        from types import SimpleNamespace
-
-        from benchmarks.relbench.handler import RelBenchHandler
-
-        (tmp_path / "model.py").write_text(
-            "train_val_idx = np.concatenate([self.train_idx, self.val_idx])\n"
-            "clf.fit(X[train_val_idx], y[train_val_idx])\n"
-            "calib.fit(scores, val_labels)\n"
-        )
-        stub = SimpleNamespace(spec=SimpleNamespace(is_autocomplete=False))
-        stub._AUDIT_PATTERNS = RelBenchHandler._AUDIT_PATTERNS
-        audit = RelBenchHandler._audit_code(
-            SimpleNamespace(_audit_patterns=RelBenchHandler._AUDIT_PATTERNS), tmp_path
-        )
-        concerns = [f["concern"] for f in audit["findings"]]
-        assert any(c.startswith("verify: train+val mixing") for c in concerns)
-        assert any(c.startswith("verify: possible fit on validation labels") for c in concerns)
-        assert audit["clean"] is True  # advisory only — no violation claimed

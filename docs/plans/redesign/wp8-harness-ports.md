@@ -354,8 +354,9 @@ the one extension requested above.
 
 Edits: `src/kapso/harness/bundled/` (the two trees and the README),
 `benchmarks/` (the four runners, handlers, override files and READMEs;
-`relbench/context.py`, `relbench/campaign.py`, `relbench/sandbox.py`
-deleted into the skill's script; `ale/problems.py`; `harness_scan.py` and
+`relbench/context.py`, `relbench/campaign.py`, `relbench/scoring.py`;
+`relbench/sandbox.py` deleted into the skill's script and
+`relbench/handler.py` into `scoring.py`; `ale/problems.py`; `harness_scan.py` and
 the vocabulary files; `ioai2026/book_to_bank.py`, `ioai2026/PROVENANCE.md`;
 `ioai2026/past_learning/` deleted), the tests under `tests/`
 (`test_bundled_harnesses.py`, `test_bundled_hooks.py`,
@@ -529,6 +530,23 @@ that is still evidence.
     the deadlines, the reserve, the harness in the launch record, the
     evaluation directory's contract on a fixture, a lower-is-better task's
     oriented score sorting correctly, no candidate delivered).
+    Done (2026-10-29): `scoring.py` replaces the handler class (the
+    sanitized copy and the per-tick snapshots through the harness's
+    script, reused under a marker of the task and the script's hash; the
+    staged evaluation with `task.json`; the final report over the
+    archive's finals with the winner's test metrics once, the harness's
+    scan over its code and the build's delivery beside it);
+    `context.py` builds the Brief from the facts, every schema column
+    listed (rule 6); the champion seeding is deleted with the handler
+    (`claims/` was retired to the bucket); `--initial-repo`, `--no-kg`,
+    `--target-val` and `--knowledge-file` are gone; the starter kit and
+    the baseline read the task from `kapso_evaluation/task.json` and the
+    copy from the run's `RELBENCH_CACHE_DIR` (a tick's snapshot under the
+    rolling regime); the pristine cache is the library's own
+    (`get_relbench_cache_dir`); `campaign.py` is budget-bound only. The
+    real-data test of the sanitizer found its report's row counts at zero
+    (a `columns=[]` parquet read has no rows): the counts now come from
+    the parquet metadata.
 12. **The MLE runner on `build()`.** The grader directory per competition
     (the held-out score as the search signal; the official grade once in
     the runner's final evaluation), `data=` the prepared competition data,

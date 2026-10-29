@@ -115,38 +115,91 @@ def test_ale_runner_enters_the_campaign_with_the_former_mode(entered, monkeypatc
     assert result["problem_id"] == "ahc039" and result["private_evaluation"] == {"evaluated": strategy.workspace.workspace_dir}
 
 
-def test_relbench_runner_runs_on_the_runtime_file_it_writes(entered, monkeypatch, tmp_path):
+def test_relbench_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, tmp_path):
+    """The runner's solve path on the real facade with the engine's boundary
+    stubbed (docs/plans/redesign/wp8-harness-ports.md, change 11): the
+    harness in the launch record, the staged evaluation's task.json and the
+    oriented direction, the runtime file's shared cache, the budget's
+    mapping, the seeded baseline, and the former mode's roles on the
+    orchestrator the campaign was entered on."""
     pytest.importorskip("relbench")
-    import benchmarks.relbench.handler as handler_module
+    import kapso.kapso as kapso_module
+    from kapso.handles import Brief
+    from kapso.harness import load as harness_load
     from benchmarks.relbench import runner
+    from benchmarks.relbench.task_specs import ENTITY_REGRESSION, TaskSpec
+    from tests.handles_support import solve_result
 
-    work_dir = tmp_path / "work"
-    work_dir.mkdir()
-    cache = tmp_path / "cache"
-    monkeypatch.setattr(
-        handler_module, "RelBenchHandler", lambda **kwargs: FakeBenchmarkHandler(work_dir=work_dir, shared_cache_dir=cache),
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(orchestrator_module.CodingAgentFactory, "create", staticmethod(lambda config: NoopAgent(config)))
+    monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
+    monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self: object())
+    monkeypatch.setattr(kapso_module, "run_preflight", lambda *a, **k: None)
+    monkeypatch.setattr(kapso_module, "register_campaign", lambda *a, **k: None)
+    # The bundled harness's prerequisites are this machine's business, not the test's.
+    monkeypatch.setattr(harness_load.Harness, "missing_for", lambda self, modules: [])
+    entered = []
+    result = solve_result(stopped_reason="budget_exhausted")
+
+    def solve(self, *args, finish=None, **kwargs):
+        entered.append((self, kwargs))
+        finish(result)
+        return result
+
+    monkeypatch.setattr(OrchestratorAgent, "solve", solve)
+    # The task's material: no library download, no copy built, the Brief and
+    # the final report as fakes; the runner's staging and launch are real.
+    spec = TaskSpec(
+        dataset_name="rel-f1", task_name="driver-position", family=ENTITY_REGRESSION, primary_metric="mae",
+        maximize=False, full_timeout=7200, debug_timeout=900, time_col="date", target_col="position", num_eval_timestamps=40,
     )
+    monkeypatch.setattr(runner, "pristine_task", lambda dataset, task: object())
+    monkeypatch.setattr(runner, "resolve_spec", lambda task, dataset, name, timeouts: spec)
+
+    def fake_copy(script, source, dataset, task, out, *, rolling, rebuild):
+        out.mkdir(parents=True, exist_ok=True)
+        return out
+
+    monkeypatch.setattr(runner, "ensure_sanitized_copy", fake_copy)
+    brief = Brief(objective="RelBench rel-f1/driver-position: the task's facts", measured_by="validation mae, lower is better")
+    monkeypatch.setattr(runner, "build_brief", lambda *a, **k: brief)
+    reports = []
+    monkeypatch.setattr(runner, "final_report", lambda work_dir, evaluation_dir, task, spec_, harness_path, solution: reports.append((work_dir, harness_path, solution)) or {"final": "report"})
     args = argparse.Namespace(
-        dataset="rel-f1", task="driver-position", iterations=4, coding_agent=None, no_kg=False,
-        workspace=str(tmp_path / "workspace"), resume=False, target_val=None, rebuild_cache=False,
-        knowledge_file=None, experience=None, initial_repo=None, time_budget_hours=2.0,
+        dataset="rel-f1", task="driver-position", iterations=4, coding_agent=None, workspace=str(tmp_path / "workspace"),
+        resume=False, time_budget_hours=2.0, harness=None, experience=None, rebuild_cache=False,
     )
-    report = runner.solve_task(args)
+    assert runner.solve_task(args) == {"final": "report"}
     (orchestrator, kwargs), = entered
-    # The runtime file: this benchmark's file with the task's cache and the
-    # run's budget over it, resolving as an override file, the campaign's.
+    assert kwargs["experiment_max_iter"] == 4 and kwargs["time_budget_minutes"] == 120.0
+    work_dir = tmp_path / "tmp" / "relbench" / "rel-f1--driver-position"
+    # The staged evaluation: the provided suite with the task's settings beside it.
+    assert json.loads((work_dir / "evaluation" / "task.json").read_text()) == {
+        "dataset": "rel-f1", "task": "driver-position", "primary_metric": "mae", "higher_is_better": False,
+        "work_dir": str(work_dir), "full_timeout": 7200, "debug_timeout": 900,
+        "cache_dir": str(work_dir / "sanitized_cache"), "rolling_root": str(work_dir / "rolling_caches"),
+    }
+    assert (work_dir / "evaluation" / "grader.py").is_file() and (work_dir / "evaluation" / "kapso_eval_archive.py").is_file()
+    # The runtime file: this benchmark's file with the task's shared cache over it.
     runtime = work_dir / ".kapso_runtime" / "config.yaml"
-    assert orchestrator.config_path == str(runtime) and kwargs == {"experiment_max_iter": 4}
-    config = load_config(str(runtime))
-    assert config["search_strategy"]["params"]["shared_cache_dir"] == str(cache)
-    assert config["budget"]["minutes"] == 120 and config["budget"]["reserve_minutes"] == 15
-    assert config["budget"]["min_iteration_seconds"] == 1800 and config["budget"]["checkpoint_heartbeat_seconds"] == 300
-    assert config["evaluation_maintainer"]["enabled"] is True and config["evaluation_maintainer"]["timeout"] == 1800
-    assert config["evaluation_maintainer"]["calibration_timeout_seconds"] == 1200
-    strategy = orchestrator.search_strategy
-    assert str(strategy.shared_cache_dir) == str(cache)
+    assert orchestrator.config_path == str(runtime)
+    assert load_config(str(runtime))["search_strategy"]["params"]["shared_cache_dir"] == str(work_dir / "shared_cache")
+    # The launch record: the bundled harness, the brief, the directories, the budget.
+    launch = json.loads((tmp_path / "workspace" / ".kapso" / "launch.json").read_text())
+    assert launch["harness"]["name"] == "predictive-modelling" and launch["brief"]["objective"].startswith("RelBench rel-f1")
+    assert launch["eval_dir"] == str(work_dir / "evaluation") and launch["data_dir"] == str(runner.STARTER_KIT)
+    assert launch["minutes"] == 120.0 and launch["experiments"] == 4
+    assert (tmp_path / "workspace" / "kapso_evaluation" / "task.json").is_file()
+    assert (tmp_path / "workspace" / "kapso_datasets" / "common.py").is_file()
+    assert (tmp_path / "workspace" / "main.py").read_text().startswith('"""Baseline candidate')
+    # The final report runs on the archive root with the loaded harness and the delivery.
+    (reported_work_dir, harness_path, delivered), = reports
+    assert reported_work_dir == work_dir and harness_path.name == "predictive-modelling"
+    assert delivered["harness"] == "predictive-modelling" and delivered["branch"] is None
     # The former mode: codex everywhere but the Claude member and the lens
     # planner; no web for implementation (the temporal-leakage protocol).
+    strategy = orchestrator.search_strategy
+    assert str(strategy.shared_cache_dir) == str(work_dir / "shared_cache")
     assert facts(strategy.ideation_role) == (*CODEX, 86400.0, True)
     assert facts(strategy.implementation_role) == (*CODEX, 18000.0, False)
     assert facts(strategy.judge_role) == (*CODEX, 900.0, True)
@@ -154,19 +207,13 @@ def test_relbench_runner_runs_on_the_runtime_file_it_writes(entered, monkeypatch
         (*CODEX, None, True), ("claude_code", "claude-fable-5", "xhigh", None, True),
     ]
     assert facts(strategy.ideation_lens_planner) == ("claude_code", "claude-fable-5", "max", 600.0, True)
-    assert facts(strategy.ideation_selector) == (*CODEX, None, True)
-    assert strategy.params["ideation"]["candidates_per_member"] == 3
-    assert strategy.params["ideation"]["ensemble_time_split"] == {"member_fraction": 0.7, "selector_fraction": 0.3}
     assert strategy.params["ideation"]["gates"] == ["experiment_history", "repo_memory", "bank"]
     assert strategy.params["implementation"]["gates"] == ["repo_memory", "bank"]
     assert strategy.node_expansion_value == 4
     assert [lane["CUDA_VISIBLE_DEVICES"] for lane in strategy.expansion_lane_env] == ["0", "1", "2", "3"]
     assert strategy.inbox_settings["enabled"] is False
-    assert orchestrator.budget_spec.time_budget_seconds == 7200.0
-    assert orchestrator.budget_spec.finalization_reserve_seconds == 900.0
     # The provided grader is the campaign's evaluation, fingerprinted.
     assert orchestrator._provided_evaluation_manifest
-    assert report["workspace"] == str(tmp_path / "workspace") and report["cost_usd"] == 0.0
 
 
 def test_ioai_runner_shapes_the_session_deadlines_to_the_run(entered, monkeypatch, tmp_path):
@@ -258,35 +305,6 @@ def test_past_learning_runner_shapes_the_reserve_and_the_deadlines_to_the_run(en
     assert strategy.inbox_settings["enabled"] is False
     assert orchestrator._config_budget["min_iteration_seconds"] == 900
     assert json.loads((root / "results.json").read_text())["task"] == "ioai-2025-practice"
-
-
-def test_relbench_runner_threads_the_bank_serving_as_the_engines_own(entered, monkeypatch, tmp_path):
-    """The serving is the engine's parameter, threaded as the facade
-    threads it, never a key of the runtime file (the resolver would refuse
-    it there)."""
-    pytest.importorskip("relbench")
-    import benchmarks.relbench.handler as handler_module
-    from benchmarks.relbench import runner
-
-    work_dir = tmp_path / "work"
-    work_dir.mkdir()
-    monkeypatch.setattr(
-        handler_module, "RelBenchHandler",
-        lambda **kwargs: FakeBenchmarkHandler(work_dir=work_dir, shared_cache_dir=tmp_path / "cache"),
-    )
-    monkeypatch.setattr(runner, "parse_experience_reference", lambda raw, indexes_root: raw)
-    monkeypatch.setattr(runner, "resolve_source", lambda reference, settings: reference)
-    serving = {"intro": "the bank", "lines": ["bank: mine"], "bank_serving": {"KAPSO_BANK_ROOT": "/bank"}}
-    monkeypatch.setattr(runner, "prepare_campaign_serving", lambda sources, coordinates, work_dir, budget: serving)
-    args = argparse.Namespace(
-        dataset="rel-f1", task="driver-position", iterations=1, coding_agent=None, no_kg=False,
-        workspace=str(tmp_path / "workspace"), resume=False, target_val=None, rebuild_cache=False,
-        knowledge_file=None, experience="bank:mine", initial_repo=None, time_budget_hours=None,
-    )
-    runner.solve_task(args)
-    (orchestrator, _), = entered
-    assert orchestrator.search_strategy.params["bank_serving"] == {"KAPSO_BANK_ROOT": "/bank"}
-    assert "bank_serving" not in load_config(orchestrator.config_path)["search_strategy"]["params"]
 
 
 @pytest.mark.parametrize("benchmark", ["relbench", "mle", "ale", "ioai2026"])

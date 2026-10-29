@@ -69,18 +69,20 @@ run|harvest)
         $PY_REMOTE -c 'from relbench.datasets import get_dataset; from relbench.tasks import get_task
 get_dataset(\"$DS\", download=True).get_db(); get_task(\"$DS\", \"$TN\", download=True)
 print(\"pristine cache ready\")' > \$W/download.log 2>&1
-        PYTHONPATH=src:. $PY_REMOTE -m benchmarks.relbench.sandbox --dataset $DS --task $TN \
-          --dest ~/cc_baseline/cache_$DIR --source ~/.cache/relbench > \$W/sandbox.log 2>&1
+        $PY_REMOTE src/kapso/harness/bundled/predictive-modelling/skills/sanitized-copy/scripts/sanitize.py \
+          --dataset $DS --task $TN --source ~/.cache/relbench --out ~/cc_baseline/cache_$DIR > \$W/sandbox.log 2>&1
         test -d ~/cc_baseline/cache_$DIR/$DS/tasks/$TN || { echo SANDBOX-FAILED; tail -3 \$W/sandbox.log; exit 1; }
       fi
       # Leak hardening: with the sanitized cache built, remove the pristine
       # test labels from the box entirely (the launcher re-downloads on demand).
       rm -f ~/.cache/relbench/*/tasks/*/test.parquet
       cp -r ~/kapso/benchmarks/relbench/data/starter_kit \$W/kapso_datasets
-      rm -rf \$W/kapso_datasets/__pycache__; mkdir -p \$W/kapso_output
+      rm -rf \$W/kapso_datasets/__pycache__; mkdir -p \$W/kapso_output \$W/kapso_evaluation
+      # The task's identity, where the starter kit reads it.
+      printf '{\"dataset\": \"%s\", \"task\": \"%s\", \"cache_dir\": \"%s\"}\n' $DS $TN \$HOME/cc_baseline/cache_$DIR > \$W/kapso_evaluation/task.json
       cat > \$W/session.sh <<EOF
 set -a; . ~/cc_baseline/.env; set +a
-export RELBENCH_CACHE_DIR=\$HOME/cc_baseline/cache_$DIR RELBENCH_DATASET=$DS RELBENCH_TASK=$TN
+export RELBENCH_CACHE_DIR=\$HOME/cc_baseline/cache_$DIR
 export KAPSO_RUN_DATA_DIR=\$W/kapso_output KAPSO_SHARED_CACHE_DIR=\$W/shared_cache
 export CUDA_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false HF_HOME=\$W/shared_cache/hf
 export PATH=\$HOME/miniconda3/bin:\$PATH

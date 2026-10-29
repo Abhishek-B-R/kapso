@@ -2521,3 +2521,20 @@ skills are six (`task-type-playbooks`, `cv-protocol`, `ensembling`,
 `eda-discipline`, `hf-model-fetch`, `tabular-modeling`), copied by
 directory, kept identical by the gate test, and self-contained: none cites
 a skill the other harness lacks.
+
+## WP8: the RelBench runner's shape on build() (2026-10-29)
+
+The handler class is gone; `benchmarks/relbench/scoring.py` holds what the
+runner still does itself (the copy through the harness's script, the staged
+evaluation, the final report), `context.py` the Brief from the task's
+facts, and the facade the rest. What the plan listed as optional went: the
+champion seeding (its `claims/` directory was retired earlier, so it seeded
+nothing), `--initial-repo` (the seeded baseline is the repository), the
+early-stop target and the knowledge file (the stop vote is advisory). The
+pristine cache is the library's own cache directory, read through the
+library's helper, never a config key of ours; the hosted model API grant is
+the override file's `benchmark.hosted_model_api` (`none` or `openai`), a
+user's decision the Brief states as a rule. The candidate-facing starter kit
+reads the task's identity from `kapso_evaluation/task.json` and the copy
+from the variable the evaluation sets for the run, so the runner exports no
+environment of its own.
