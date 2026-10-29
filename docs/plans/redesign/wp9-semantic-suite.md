@@ -512,6 +512,27 @@ learning crews run on opus by `--learn-model`, said in each record. Codex
 dollars on the development box are the owner's ChatGPT plan, not metered;
 on the machine the key's credit, when it exists.
 
+**As run (2026-10-27 to 29), the machine hours the launch logs recorded
+at $0.134 per hour; the caps are now derived from the suite (see
+`machine_hours`).** The runs this document cites, with the re-runs that
+re-measured a row:
+
+| test | runs | machine hours | about |
+|---|---|---|---|
+| S1 (the new stack) | `s1-claude-1` | 5.72 | $0.77 |
+| S1 (the released baseline) | `s1-released-2` | 3.92 | $0.53 |
+| S2, Claude host | `s2-claude-1` 2.68, `s2-claude-2` 6.00 (lost at the cap), `s2-claude-3` 3.79; the targeted arms (inbox ×5, review ×2, propose, data-only) 5.69 | 18.2 | $2.44 |
+| S2, Codex host | `s2-codex-1` (fetched, no report), `s2-codex-4` 2.46 (stopped), `s2-codex-5` 4.31; the inbox arms 0.57 | 7.3 and the first run | about $1.10 |
+| S4 | `s4-claude-1` | 0.12 | $0.02 |
+| S5 | arms 1 to 4 (stopped early), `s5-claude-5` 1.21, `s5-claude-6` 2.72, `s5-claude-7` 4.14 | 8.1 and the first four | about $1.20 |
+| S6 | rounds 1 to 4 (stopped), `s6-claude-5` 2.97, `s6-codex-1` running | 3.0 and the rest | about $0.50 |
+| the author test | six rounds of about ten minutes | 1.0 | $0.14 |
+
+Model spend: the Claude Max tokens' windows, read before each launch and
+never metered in dollars; one learn on Opus 5.5 (`s6-claude-5`'s lesson
+crew) reported $15.28 for 88 minutes and 204 tool calls, and a churn
+campaign on the Claude host reports $4 to $6 per hour of sessions.
+
 ## Acceptance
 
 - The learn of WP7's archived churn campaign completes through mining,
