@@ -529,7 +529,7 @@ re-measured a row:
 |---|---|---|---|
 | S1 (the new stack) | `s1-claude-1` | 5.72 | $0.77 |
 | S1 (the released baseline) | `s1-released-2` | 3.92 | $0.53 |
-| S2, Claude host | `s2-claude-1` 2.68, `s2-claude-2` 6.00 (lost at the cap), `s2-claude-3` 3.79; the targeted arms (inbox ×5, review ×2, propose, data-only) 5.69; the second engineer's arms `s2-claude-second-1` 3.0, `-2` 3.54 | 24.7 | $3.31 |
+| S2, Claude host | `s2-claude-1` 2.68, `s2-claude-2` 6.00 (lost at the cap), `s2-claude-3` 3.79; the targeted arms (inbox ×5, review ×2, propose, data-only) 5.69; the second engineer's arms `s2-claude-second-1` 3.0, `-2` 3.54, `-3` 3.56 | 28.3 | $3.79 |
 | S2, Codex host | `s2-codex-1` (fetched, no report), `s2-codex-4` 2.46 (stopped), `s2-codex-5` 4.31; the inbox arms 0.57; `s2-codex-triggers-1` 0.93 | 8.3 and the first run | about $1.20 |
 | S4 | `s4-claude-1` | 0.12 | $0.02 |
 | S5 | arms 1 to 4 (stopped early), `s5-claude-5` 1.21, `s5-claude-6` 2.72, `s5-claude-7` 4.14, `s5-claude-8` 4.01 | 12.1 and the first four | about $1.70 |
@@ -598,27 +598,35 @@ run"):**
   the same way: first try 6 of 12 (not the 1 first written), two errored
   calls neither fixed in one step, comprehension 0 of 7, a 30-line flow,
   its unsupported verbs said in the engineer's own words.
-- **S2: met with caveats, three of them the owner's call.** Every
-  required step is true on a clean run of its host (`s2-claude-3` 19 of
-  25, `s2-codex-5` 17 of 24, the targeted arms for the rows those left
-  false), each false row traced in the record to a fix, a finding or a
-  calibration. The caveats: the Claude host's build and review
-  conversations run 13 to 20 lines against the 12-line budget, the
-  skill's prescribed message against the design's budget (DECISIONS
-  2026-10-28, the owner's call); the judge's clear and not-annoying
-  dimensions pass at 4 on both hosts while proactive, engaging and return
-  on attention fail on the worst item (the deploy conversation with
-  nothing to deploy on the Claude host; the right, terse answers on the
-  Codex host), a finding on the Codex host's skill wording and the owner's
-  call on whether terseness binds; the deployed call's parity "differs" on
-  both hosts where a delivery existed, the delivery re-fitting at load
-  (WP5's call); the learn-complete step outrun on the Codex host
-  (DECISIONS 2026-10-28); the second engineer's served build died at the
-  engine's preflight on the clean run for want of a Codex login, a
-  finding, and is re-measured by `s2-claude-second-1`, running at this
-  writing. The fresh-machine arms ran on both hosts, marked in each record
-  as running the Codex roles on the device-auth session rather than the
-  persona's own credit.
+- **S2: met with caveats, three of them the owner's call; one line not
+  established.** Every required step is true on a clean run of its host
+  (`s2-claude-3` 19 of 25, `s2-codex-5` 17 of 24) or on a targeted arm,
+  each false row traced in the record to a fix, a finding or a
+  calibration, except two. `deploy` delivered nothing on the clean Claude
+  run and, where a delivery existed, the deployed call's parity "differs"
+  because the serving adapter changed the prediction's transform (a
+  finding, WP5's call). The second engineer's served build was never
+  scored: three arms, each lost to the harness before the build could
+  finish — a score key the product never writes, the second Unix user's
+  missing git identity, then the identity written from a directory that
+  user cannot read — while the build itself launched and was served the
+  bank's cards (the second arm's receipt says "3 cards"); no fourth arm,
+  by the owner's call, so the line reads not established, the harness's
+  fault and said so. The judge after the review's fixes: on the Claude
+  host proactive 5 and clear 4 pass and return on attention fails on the
+  deploy conversation with nothing to deploy; on the Codex host clear 4
+  passes and proactive 3 and return on attention 1 fail where the terse
+  answers meet a step that invites a finding (the finding on the Codex
+  host's skill wording); not annoying and engaging are reported, not
+  binding, the persona having nodded through the planted baseline on
+  both. The owner's calls: the Claude host's build and review
+  conversations over the 12-line budget (DECISIONS 2026-10-28), the
+  learn-complete budget outrun on the Codex host (DECISIONS 2026-10-28),
+  whether terseness binds (DECISIONS 2026-10-29). The trigger suite on
+  the Codex host meets the bar once its sessions can start
+  (`s2-codex-triggers-1`). The fresh-machine arms ran on both hosts on
+  the owner's device-auth session, said in the Scope and in each record
+  from the runner's mark on.
 - **S4: met on the readings, half met on the campaign.** `s4-claude-1`:
   both readers 6 of 6 in both passes, once the fact sheet filed a void by
   the engine's own semantics; the campaign held the integrity void and no
@@ -654,8 +662,9 @@ run"):**
   preflighted, the archive fetched and verified before the machine's
   deletion, the report rendered with the verdict the runner's exit
   carries; every report cited here is committed under its immutable id.
-- **The gate, the docs checks, MASTER's row: met.** 1967 passed on the
-  full gate (two live Codex tests deselected, as CI does);
+- **The gate, the docs checks, MASTER's row: met.** 1989 passed on the
+  full gate at the branch's last commit (two live Codex tests deselected,
+  as CI does);
   `check_docs_coverage.py` and `check_docs_geo.py` green on the branch;
   MASTER's WP9 row written, its size L.
 
@@ -1526,6 +1535,25 @@ identity, so the suite now gives the second user one and keeps the
 product finding (below): a build that dies after its receipt leaves a
 person watching a status that never comes. `s2-claude-second-3`
 re-measures the served build with the identity in place.
+
+**`s2-claude-second-3`** (2026-10-29 07:05 to 10:40, token-5; 3.56 h of
+machine, about $0.48; report `tests/semantic/reports/s2-claude-second-3.md`):
+the churn build, review and learn true (the learn at 149.2 of its 150
+minutes), its four conversations passing every binding dimension
+(proactive 5, clear 5, return on attention 5) — and the driver died at
+the share, on the fix made for the second arm: the git-identity command
+was run from the driver's own directory, which the second user cannot
+read, so git failed before it wrote anything and the served build was
+never launched. The runner's failure tail, built for the review, did its
+work: the archive was fetched and verified before the machine was
+deleted and the report rendered. The command now runs from that user's
+home. Three arms, each lost to the harness before the served build could
+be scored — a score key the product never writes, the missing identity,
+the identity written from the wrong directory — while the build itself
+launched and was served the bank's cards on the second; by the owner's
+call there is no fourth arm, and the acceptance line "the second
+engineer's served build scored" reads **not established**, the harness's
+fault and said so.
 
 **`s2-codex-triggers-1`** (the trigger suite alone on a fresh Codex
 machine, 2026-10-29 03:16 to 04:12, the sessions unsandboxed by the

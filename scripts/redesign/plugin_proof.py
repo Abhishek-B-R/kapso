@@ -722,7 +722,10 @@ def ensure_second_user(ctx: Context) -> None:
     # does; without one the engine's first commit in the campaign dies with
     # git's "empty ident name" after the launch receipt (s2-claude-second-2),
     # the finding below — the suite gives the user one and keeps the finding.
-    ctx.shell(f"sudo -u {SECOND_USER} -H git config --global user.name 'Second Engineer' && sudo -u {SECOND_USER} -H git config --global user.email second-engineer@kapso.invalid")
+    # From that user's own home: git stats the working directory first, and
+    # the driver's is not readable to the second user (s2-claude-second-3
+    # died here, on this line's first form).
+    ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc 'cd ~ && git config --global user.name \"Second Engineer\" && git config --global user.email second-engineer@kapso.invalid'")
     # The engine's build preflight wants a Codex login (two of its roles run
     # on gpt-5.6-sol), so the second engineer gets the machine's device-auth
     # session too — s2-claude-3's served build died at preflight without it.
