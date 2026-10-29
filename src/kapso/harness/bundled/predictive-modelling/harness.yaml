@@ -8,8 +8,7 @@ environment:
 
 modules:
   setup:
-    skills: [sanitize-cache, temporal-protocol, relbench-api, living-documents, hf-model-fetch]
-    hooks: [protect-prepared]
+    skills: [sanitized-copy, temporal-protocol, relbench-api, living-documents, hf-model-fetch]
   ideation:
     skills: [relational-feature-practices, temporal-protocol, living-documents, task-type-playbooks, ensembling]
     hooks: [protect-prepared]

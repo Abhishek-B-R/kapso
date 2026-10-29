@@ -306,9 +306,10 @@ class TestProvidedGrader:
         for f in suite.glob("*"):
             (root / "kapso_evaluation" / f.name).write_bytes(f.read_bytes())
         (root / "main.py").write_text(
-            "import os, numpy as np\n"
+            "import json, os, numpy as np\n"
             "from relbench.tasks import get_task\n"
-            "t = get_task(os.environ['RELBENCH_DATASET'], os.environ['RELBENCH_TASK'], download=False)\n"
+            "task = json.load(open('kapso_evaluation/task.json'))\n"
+            "t = get_task(task['dataset'], task['task'], download=False)\n"
             "n_val = len(t.get_table('val'))\n"
             "n_test = len(t.get_table('test'))\n"
             "out = os.environ['KAPSO_RUN_DATA_DIR']\n"
@@ -316,18 +317,15 @@ class TestProvidedGrader:
             "np.save(f'{out}/test_predictions.npy', np.full(n_test, 13.0))\n"
             "print('fixture candidate done, debug=' + str('--debug' in __import__('sys').argv))\n"
         )
+        # The task's settings travel with the grader, in the evaluation directory.
+        (root / "kapso_evaluation" / "task.json").write_text(json.dumps({
+            "dataset": "rel-f1", "task": "driver-position", "primary_metric": "mae",
+            "higher_is_better": False, "work_dir": str(tmp_path / "work"),
+            "full_timeout": 300, "debug_timeout": 300, "cache_dir": str(RELBENCH_CACHE),
+            "rolling_root": None,
+        }))
         env = os.environ.copy()
-        env.update(
-            {
-                "RELBENCH_CACHE_DIR": str(RELBENCH_CACHE),
-                "RELBENCH_DATASET": "rel-f1",
-                "RELBENCH_TASK": "driver-position",
-                "RELBENCH_PRIMARY_METRIC": "mae",
-                "RELBENCH_WORK_DIR": str(tmp_path / "work"),
-                "RELBENCH_FULL_TIMEOUT": "300",
-                "RELBENCH_DEBUG_TIMEOUT": "300",
-            }
-        )
+        env.pop("RELBENCH_CACHE_DIR", None)
 
         def run(fidelity):
             return subprocess.run(
@@ -342,7 +340,9 @@ class TestProvidedGrader:
         proc = run("fast")
         assert proc.returncode == 0, proc.stdout[-2000:]
         manifest = json.loads(proc.stdout.strip().splitlines()[-1].split(" ", 1)[1])
-        assert manifest["fidelity"] == "fast" and manifest["score"] > 0
+        assert manifest["fidelity"] == "fast" and manifest["raw_score"] > 0
+        # The engine maximises: a lower-is-better metric travels negated, the raw value beside it.
+        assert manifest["score"] == -manifest["raw_score"] and manifest["higher_is_better"] is False
         assert not (work / "runs").exists()
 
     def test_full_archives_with_code_snapshot(self, tmp_path):
@@ -352,7 +352,7 @@ class TestProvidedGrader:
         manifest = json.loads(proc.stdout.strip().splitlines()[-1].split(" ", 1)[1])
         run_dir = work / "runs" / "run_0001"
         metrics = json.loads((run_dir / "private/metrics.json").read_text())
-        assert abs(metrics["val"]["mae"] - manifest["score"]) < 1e-9
+        assert abs(metrics["val"]["mae"] - manifest["raw_score"]) < 1e-9
         assert metrics["test"] == {}
         assert (run_dir / "test_predictions.npy").exists()
         assert (run_dir / "code" / "main.py").exists()
@@ -379,19 +379,10 @@ class TestProvidedGrader:
         archived = json.loads(
             proc.stdout.strip().splitlines()[-1].split(" ", 1)[1]
         )
-        env = os.environ.copy()
-        env.update(
-            {
-                "RELBENCH_CACHE_DIR": str(RELBENCH_CACHE),
-                "RELBENCH_DATASET": "rel-f1",
-                "RELBENCH_TASK": "driver-position",
-                "RELBENCH_PRIMARY_METRIC": "mae",
-            }
-        )
         rescore = subprocess.run(
             [_sys.executable, "kapso_evaluation/grader.py",
              "--rescore", str(work / "runs" / "run_0001")],
-            cwd=root, env=env, capture_output=True, text=True, timeout=300,
+            cwd=root, capture_output=True, text=True, timeout=300,
         )
         assert rescore.returncode == 0, rescore.stdout[-2000:]
         payload = json.loads(
@@ -401,7 +392,8 @@ class TestProvidedGrader:
         assert payload["run"] == "run_0001"
         assert payload["score"] == archived["score"]
         assert payload["evaluator_id"] == archived["evaluator_id"]
-        assert payload["metrics"]["mae"] == archived["score"]
+        assert payload["metrics"]["mae"] == archived["raw_score"]
+        assert payload["score"] == -payload["metrics"]["mae"]
 
 
 def _bare_driver_position_handler(tmp_path):
@@ -449,6 +441,12 @@ def _governed_head(work_dir):
         if f.is_file():
             (source / f.name).write_bytes(f.read_bytes())
     (source / "kapso_eval.py").write_text(FORWARDING_WRAPPER)
+    # The task's settings travel with the grader (the runner stages them).
+    (source / "task.json").write_text(json.dumps({
+        "dataset": "rel-f1", "task": "driver-position", "primary_metric": "mae",
+        "higher_is_better": False, "work_dir": str(work_dir), "full_timeout": 300,
+        "debug_timeout": 300, "cache_dir": str(RELBENCH_CACHE), "rolling_root": None,
+    }))
     head = sandbox.fingerprint_tree(source)
     sandbox.snapshot_evaluator_tree(work_dir, source, head)
     return head
@@ -471,9 +469,12 @@ def _archive_run(runs_dir, name, val_pred, test_pred, status, session="exp_A",
         json.dumps({"val": forged_val or {"mae": 999.0}, "test": {}})
     )
     if score is not None:
+        # The manifest's score is oriented for the engine (higher is better):
+        # this task's metric is an error, so the raw value travels negated.
         line = {"fidelity": "full", "fraction": 1.0, "seed": 1337,
                 "items": int(len(val_pred)), "total_items": int(len(val_pred)),
-                "score": score, "run": name, "session": session}
+                "score": -score, "raw_score": score, "higher_is_better": False,
+                "run": name, "session": session}
         (run_dir / "manifest.txt").write_text(
             "KAPSO_EVAL_MANIFEST " + json.dumps(line) + "\n"
         )
@@ -731,7 +732,7 @@ class TestGraderSelectionLabel:
         monkeypatch.setattr(_sys, "dont_write_bytecode", True)
         spec.loader.exec_module(grader)
 
-        monkeypatch.setenv("RELBENCH_WORK_DIR", str(tmp_path))
+        monkeypatch.setattr(grader, "task_settings", lambda: {"work_dir": str(tmp_path)})
         own_session = grader._session_id()
         sel = tmp_path / "runs" / "run_0001" / "private"
         sel.mkdir(parents=True)

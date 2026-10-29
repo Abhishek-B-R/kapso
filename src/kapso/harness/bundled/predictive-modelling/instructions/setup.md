@@ -10,7 +10,7 @@ not train a model in setup.
 2. When the data is a relational database with a temporal cutoff, verify
    the sanitized copy the task statement names (row counts against the
    cutoff, the test table's columns, the tree read-only); build one with
-   the sanitize-cache skill's script only when the task provides none.
+   the sanitized-copy skill's script only when the task provides none.
    Check it against the regime the task statement names (the
    temporal-protocol skill has both).
 3. When the task grants hub access, find the candidate pretrained models

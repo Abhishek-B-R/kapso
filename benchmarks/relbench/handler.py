@@ -265,19 +265,13 @@ class RelBenchHandler(ProblemHandler):
             for f in sorted(provided_dir.glob("*"))
             if f.is_file()
         }
-        rescore_env = os.environ.copy()
-        rescore_env.update(
-            {
-                "RELBENCH_DATASET": self.dataset_name,
-                "RELBENCH_TASK": self.task_name,
-                "RELBENCH_PRIMARY_METRIC": self.spec.primary_metric,
-            }
-        )
+        # The rescore reads the task's settings from the task.json snapshotted
+        # beside the grader, and reports the score oriented for the engine
+        # (higher is better); the raw metric rides beside it.
         selection = select_final(
             self.work_dir,
-            higher_is_better=self.spec.maximize,
+            higher_is_better=True,
             provided_files=provided_files,
-            env=rescore_env,
         )
         if selection.winner_run is None:
             return {

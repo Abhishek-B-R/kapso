@@ -16,7 +16,7 @@ over anything written here.
   leak voids the attempt whatever it scores.
 - When the task statement says the data is a relational database with a
   temporal cutoff, work from the sanitized copy under `prepared/` (the
-  sanitize-cache skill builds it in setup) and follow the temporal-protocol
+  sanitized-copy skill builds it in setup) and follow the temporal-protocol
   skill: the regime, frozen database or per-row seed time, is the task's.
 - Reads outside the prepared copy, the task's data reference and the shared
   artifact directory are what the leakage-scan skill and the leakage-auditor

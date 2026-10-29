@@ -58,11 +58,13 @@ def test_deny_web_fetch_lets_other_commands_through():
 
 
 def test_the_manifest_puts_each_hook_where_its_rule_applies():
-    """The prepared copy is read-only in every build module; the web is off
-    where a candidate's code is written and checked, and on in setup, where
-    the task may grant a hub."""
+    """The prepared copy is read-only in every build module after setup (the
+    setup session is the one that writes it); the web is off where a
+    candidate's code is written and checked, and on in setup, where the task
+    may grant a hub."""
     modules = yaml.safe_load((PREDICTIVE / "harness.yaml").read_text())["modules"]
     hooks = {module: set(entry.get("hooks", [])) for module, entry in modules.items()}
-    for module in ("setup", "ideation", "implementation", "verification", "feedback"):
+    assert "protect-prepared" not in hooks["setup"]
+    for module in ("ideation", "implementation", "verification", "feedback"):
         assert "protect-prepared" in hooks[module], module
     assert {module for module, listed in hooks.items() if "deny-web-fetch" in listed} == {"implementation", "verification"}

@@ -2,13 +2,18 @@
 
 Two modes over one rule table. `--diff` reads a unified diff on stdin and
 scans the added lines (an attempt's own change, before its evaluation);
-`--tree DIR` scans every Python file under a directory (a delivered
-candidate, whole, for the final audit). Each hit is one JSON finding on
-stdout: the file, the line, the rule, the concern and the line itself. A
+`--tree DIR` scans every Python file the candidate owns under a directory
+(a delivered candidate, whole, for the final audit), leaving out what the
+engine staged beside it (the hosts' skill and settings directories, the
+evaluation directory, the data directory, version control). Every rule
+that matches a line is reported, one JSON finding per match on stdout:
+the file, the line, the rule, the concern and the line itself. A
 violation exits 1; an advisory finding alone exits 0 and is prefixed
 `verify:` because the pattern is legal for one chain (the test-predicting
 model) and illegal for the other (the model that produces validation
-predictions), so it is traced, not condemned.
+predictions), so it is traced, not condemned. The scan reads one line at
+a time: a call split over several lines is a line of its own, which is
+why verification also reads the code (the leakage-auditor delegate).
 
     git diff main...HEAD | python3 scan.py --diff --regime frozen|seed-time|autocomplete
     python3 scan.py --tree . --regime frozen
@@ -20,6 +25,7 @@ import sys
 from pathlib import Path
 
 REGIMES = ("frozen", "seed-time", "autocomplete")
+STAGED_DIRECTORIES = {".agents", ".claude", ".codex", ".git", "kapso_evaluation", "kapso_datasets", "prepared", "__pycache__"}
 
 # (rule, pattern, concern, advisory)
 RULES = [
@@ -28,7 +34,8 @@ RULES = [
     ("unmasked-table", r"mask_input_cols\s*=\s*False",
      "reads a task table with its input masks off: legal on train and val, confirm which split", True),
     ("removed-columns", r"removed_cols", "reads the columns the sanitizer removed (the target and what derives it)", False),
-    ("cache-location", r"RELBENCH_CACHE_DIR", "names the library's cache location: the prepared copy is the only cache", False),
+    ("cache-location", r"RELBENCH_CACHE_DIR[\"']?\s*[\]\)]?\s*=[^=]|environ\.setdefault\(\s*[\"']RELBENCH_CACHE_DIR",
+     "overrides the library's cache location: the prepared copy is the only cache", False),
     ("outside-snapshot", r"RELBENCH_ROLLING_ROOT|rolling_caches", "reaches outside the staged tick snapshot", False),
     ("task-stats", r"task\.stats\s*\(", "probes the task tables' statistics on a sanitized copy", False),
     ("download", r"download\s*=\s*True", "downloads the dataset: the prepared copy is complete and read-only", False),
@@ -42,11 +49,13 @@ RULES = [
      "a fit that names validation labels: confirm it is the test-predicting chain", True),
 ]
 REGIME_RULES = {
-    "frozen": ("untruncated-load", r"upto_test_timestamp\s*=\s*False",
-               "requests the untruncated database under the frozen regime", False),
-    "seed-time": ("re-truncated-load", r"upto_test_timestamp\s*=\s*True",
-                  "truncates the per-tick snapshot at the static cutoff: the trap the temporal protocol names", False),
-    "autocomplete": None,
+    "frozen": [("untruncated-load", r"upto_test_timestamp\s*=\s*False",
+                "requests the untruncated database under the frozen regime", False)],
+    "seed-time": [("re-truncated-load", r"upto_test_timestamp\s*=\s*True",
+                   "truncates the per-tick snapshot at the static cutoff: the trap the temporal protocol names", False),
+                  ("default-load", r"get_db\s*\(\s*\)",
+                   "loads the database with the loader's default, which truncates at the static cutoff under per-row seed time", False)],
+    "autocomplete": [],
 }
 FILE_HEADER = re.compile(r"^\+\+\+ (?:b/)?(.+)$")
 HUNK_HEADER = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
@@ -74,33 +83,47 @@ def added_lines(diff):
             number += 1
 
 
-def tree_lines(root: Path):
-    """Yield (file, line number, text) for every line of every Python file under `root`."""
+def candidate_files(root: Path):
+    """Every Python file the candidate owns under `root`: the engine's staged
+    directories and version control are left out. A root that does not
+    exist is an error, not an empty scan."""
+    if not root.is_dir():
+        raise SystemExit(f"no directory to scan at {root}")
     for path in sorted(root.rglob("*.py")):
-        for number, text in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
-            yield str(path.relative_to(root)), number, text
+        relative = path.relative_to(root)
+        if STAGED_DIRECTORIES.intersection(relative.parts[:-1]):
+            continue
+        yield path, relative
+
+
+def tree_lines(root: Path):
+    """Yield (file, line number, text) for every line of every candidate file; a file that is not UTF-8 is an error."""
+    for path, relative in candidate_files(root):
+        for number, text in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            yield str(relative), number, text
 
 
 def compiled_rules(regime):
-    rules = list(RULES)
-    if REGIME_RULES[regime] is not None:
-        rules.append(REGIME_RULES[regime])
-    return [(rule, re.compile(pattern), concern, advisory) for rule, pattern, concern, advisory in rules]
+    return [(rule, re.compile(pattern), concern, advisory)
+            for rule, pattern, concern, advisory in RULES + REGIME_RULES[regime]]
 
 
 def scan(lines, regime):
-    """The findings over (file, number, text) triples: the first rule that
-    matches a line wins, so a test-table unmasking is reported once."""
+    """The findings over (file, number, text) triples: every rule that
+    matches a line is reported, except that a test-table unmasking is
+    reported once, as the violation and not also as the advisory."""
+    rules = compiled_rules(regime)
     findings = []
     for file, number, text in lines:
-        for rule, pattern, concern, advisory in compiled_rules(regime):
-            if pattern.search(text):
-                findings.append({
-                    "file": file, "line": number, "rule": rule,
-                    "concern": f"verify: {concern}" if advisory else concern,
-                    "advisory": advisory, "text": text.strip(),
-                })
-                break
+        matched = [(rule, concern, advisory) for rule, pattern, concern, advisory in rules if pattern.search(text)]
+        if any(rule == "unmasked-test-table" for rule, _, _ in matched):
+            matched = [entry for entry in matched if entry[0] != "unmasked-table"]
+        for rule, concern, advisory in matched:
+            findings.append({
+                "file": file, "line": number, "rule": rule,
+                "concern": f"verify: {concern}" if advisory else concern,
+                "advisory": advisory, "text": text.strip(),
+            })
     return findings
 
 
@@ -109,7 +132,7 @@ def main():
     parser.add_argument("--regime", required=True, choices=REGIMES, help="the regime the domain statement records")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--diff", action="store_true", help="scan the added lines of the unified diff on stdin")
-    mode.add_argument("--tree", metavar="DIR", help="scan every Python file under this directory")
+    mode.add_argument("--tree", metavar="DIR", help="scan every Python file the candidate owns under this directory")
     args = parser.parse_args()
     lines = added_lines(sys.stdin.read()) if args.diff else tree_lines(Path(args.tree))
     findings = scan(lines, args.regime)

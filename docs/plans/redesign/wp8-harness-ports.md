@@ -70,7 +70,7 @@ predictive-modelling/                       competitive-programming/
 │   ideation implementation                 │   ideation implementation
 │   verification feedback learning          │   verification feedback learning
 ├── skills/                                 ├── skills/
-│   sanitize-cache (scripts/sanitize.py)    │   heuristic-patterns
+│   sanitized-copy (scripts/sanitize.py)    │   heuristic-patterns
 │   temporal-protocol                       │   cpp-performance
 │   relational-feature-practices (eleven)   │   scorer-cli
 │   relbench-api (tensor frames folded in)  │   kaggle-cli
@@ -409,7 +409,7 @@ that is still evidence.
    domain-general ones on guardrails; the rolling regime's semantics and
    trap on the skill, the per-tick invocation contract left to the
    statement.
-4. **Its skills, delegate and hooks** (drafted): `sanitize-cache` with the
+4. **Its skills, delegate and hooks** (drafted): `sanitized-copy` with the
    standalone `scripts/sanitize.py` (run on the local pristine cache for
    `rel-trial/study-outcome`: tables truncated, the test table reduced to
    entity and seed time, the tree read-only, a second run refused),
@@ -873,7 +873,35 @@ concepts, 8 code examples, the tip sheet) was read and placed:
   sampling formula (the task's data size decides, said on the ideation
   page as a pacing rule).
 
-### Change 8: the IOAI inventory, source to destination (2026-10-29)
+### The harness reviews (changes 6 and 9, 2026-10-29)
+
+`scripts/redesign/review.sh` over each harness at 0.2.0, read-only, both
+reviewers: `scripts/redesign/runs/wp8-harness-review-pm/` (predictive-modelling:
+Codex 28 findings, scores 2/3/2; Claude 33 findings, scores 3/4/4) and
+`scripts/redesign/runs/wp8-harness-review-cp/` (competitive-programming:
+Codex 23 findings, scores 2/3/2; Claude's recorded beside it). The
+revisions land in two commits each: the scripts, manifest and tests first,
+the pages and skills second, with every finding answered in the table
+below as it is closed.
+
+**A repository trap the first commit hit.** `.gitignore` ignores every
+directory named `*cache*/`, so the skill `sanitize-cache` was never tracked
+although `check` and the gate test saw it on disk; it is renamed
+`sanitized-copy` (a skill's name must not match an ignore pattern; the
+gate test now also asserts every bundled file is tracked).
+
+**Closed in the first commit (predictive-modelling):** the sanitizer binds
+the task's cache directory as well as the dataset's (Codex 1), drops an
+autocomplete task's removed columns from the stored tables (Codex 2),
+copies files instead of hardlinking them (Codex 3), refuses a sanitized
+source, reports every table and the removed columns in a `SANITIZED.json`
+marker, and states its library prerequisite (Codex 27); the scan reports
+every matching rule on a line, flags the loader's default under per-row
+seed time, scans only the candidate's files in tree mode and fails loud on
+a missing root or a file that is not text (Codex 5, 6); `protect-prepared`
+is off setup (Codex 18); the zero-inflated median is the mixture's median
+(Codex 16); the grader reads `task.json` beside itself and emits the
+oriented score with the raw metric (Codex 13 of the plan review).
 
 | Source | Destination |
 |---|---|

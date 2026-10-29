@@ -4,7 +4,9 @@ packaged page budget, is named after its directory, resolves by its bare
 name, and `kapso harness list` prints it under `bundled`. A port that
 ships broken is caught here, not by a user."""
 
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -30,6 +32,23 @@ def test_a_bundled_harness_checks_clean_at_the_packaged_page_budget(path):
 def test_a_bundled_harness_resolves_by_its_bare_name(path):
     reference = parse_reference(path.name)
     assert reference.kind == "bundled" and reference.path == path
+
+
+def test_every_bundled_file_is_tracked_by_git():
+    """`.gitignore` ignores every directory named *cache*; a skill named that
+    way checked clean on disk and shipped nowhere. A bundled file git does
+    not track is a file the wheel will not carry."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", str(BUNDLED_ROOT)], capture_output=True, text=True, check=True,
+        cwd=str(BUNDLED_ROOT),
+    ).stdout.splitlines()
+    tracked_paths = {str((BUNDLED_ROOT / path).resolve()) for path in tracked} | {
+        str(Path(line).resolve()) for line in tracked
+    }
+    on_disk = {str(path.resolve()) for path in BUNDLED_ROOT.rglob("*")
+               if path.is_file() and "__pycache__" not in path.parts}
+    untracked = sorted(path for path in on_disk if path not in tracked_paths)
+    assert untracked == [], untracked
 
 
 SHARED_SKILLS = ("task-type-playbooks", "cv-protocol", "ensembling", "eda-discipline")

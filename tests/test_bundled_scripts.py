@@ -16,7 +16,7 @@ from kapso.harness import BUNDLED_ROOT
 
 SKILLS = BUNDLED_ROOT / "predictive-modelling" / "skills"
 SCAN = SKILLS / "leakage-scan" / "scripts" / "scan.py"
-SANITIZE = SKILLS / "sanitize-cache" / "scripts" / "sanitize.py"
+SANITIZE = SKILLS / "sanitized-copy" / "scripts" / "sanitize.py"
 
 
 def diff_of(*lines, file="main.py"):
@@ -34,6 +34,7 @@ VIOLATIONS = [
     ("unmasked-test-table", "test = task.get_table('test', mask_input_cols=False)"),
     ("removed-columns", "cols = db.table_dict['users'].removed_cols"),
     ("cache-location", "os.environ['RELBENCH_CACHE_DIR'] = '/tmp/mine'"),
+    ("cache-location", "os.environ.setdefault('RELBENCH_CACHE_DIR', '/tmp/mine')"),
     ("outside-snapshot", "root = os.environ['RELBENCH_ROLLING_ROOT']"),
     ("task-stats", "print(task.stats())"),
     ("download", "dataset = get_dataset(name, download=True)"),
@@ -43,12 +44,28 @@ VIOLATIONS = [
 ]
 
 
-@pytest.mark.parametrize("rule,line", VIOLATIONS, ids=[rule for rule, _ in VIOLATIONS])
+@pytest.mark.parametrize("rule,line", VIOLATIONS, ids=[f"{rule}-{i}" for i, (rule, _) in enumerate(VIOLATIONS)])
 def test_each_violation_is_one_finding_that_fails_the_scan(rule, line):
     code, findings = run_scan("frozen", diff=diff_of("import os", line))
     assert code == 1
     assert [(f["rule"], f["line"], f["advisory"]) for f in findings] == [(rule, 2, False)]
     assert findings[0]["file"] == "main.py" and findings[0]["text"] == line
+
+
+def test_reading_the_cache_variable_is_not_overriding_it():
+    assert run_scan("frozen", diff=diff_of("cache = os.environ['RELBENCH_CACHE_DIR']", "if a == b: pass")) == (0, [])
+
+
+def test_every_matching_rule_is_reported_on_one_line():
+    line = "train = task.get_table('train', mask_input_cols=False); os.environ['RELBENCH_CACHE_DIR'] = '/x'"
+    code, findings = run_scan("frozen", diff=diff_of(line))
+    assert code == 1 and [(f["rule"], f["advisory"]) for f in findings] == [("unmasked-table", True), ("cache-location", False)]
+
+
+def test_the_loaders_default_is_the_violation_under_per_row_seed_time():
+    default = diff_of("db = dataset.get_db()")
+    assert run_scan("seed-time", diff=default)[0] == 1 and run_scan("seed-time", diff=default)[1][0]["rule"] == "default-load"
+    assert run_scan("frozen", diff=default) == (0, []) and run_scan("autocomplete", diff=default) == (0, [])
 
 
 def test_advisory_findings_alone_pass_with_the_verify_prefix():
@@ -84,13 +101,25 @@ def test_line_numbers_follow_the_hunk_through_context_lines():
     assert code == 1 and [(f["file"], f["line"]) for f in findings] == [("features.py", 13)]
 
 
-def test_tree_mode_scans_every_python_file_whole(tmp_path):
+def test_tree_mode_scans_the_candidates_files_and_not_what_the_engine_staged(tmp_path):
     (tmp_path / "main.py").write_text("import os\nx = 1\n")
     (tmp_path / "features").mkdir()
     (tmp_path / "features" / "build.py").write_text("a = 1\ntable = task._get_table('x')\n")
     (tmp_path / "notes.md").write_text("task._get_table('x') in prose is not code\n")
+    for staged in (".claude/skills/leakage-scan/scripts", ".agents/skills/x", "kapso_evaluation", "kapso_datasets", "prepared/cache"):
+        (tmp_path / staged).mkdir(parents=True)
+        (tmp_path / staged / "tool.py").write_text("PATTERN = 'task._get_table('\nos.environ['RELBENCH_CACHE_DIR'] = '/x'\n")
     code, findings = run_scan("frozen", tree=tmp_path)
     assert code == 1 and [(f["file"], f["line"], f["rule"]) for f in findings] == [("features/build.py", 2, "private-builder")]
+
+
+def test_tree_mode_refuses_a_missing_root_and_a_file_that_is_not_text(tmp_path):
+    completed = subprocess.run([sys.executable, str(SCAN), "--regime", "frozen", "--tree", str(tmp_path / "nowhere")],
+                               capture_output=True, text=True)
+    assert completed.returncode != 0 and "no directory to scan" in completed.stderr
+    (tmp_path / "bad.py").write_bytes(b"\xff\xfe not utf-8")
+    completed = subprocess.run([sys.executable, str(SCAN), "--regime", "frozen", "--tree", str(tmp_path)], capture_output=True, text=True)
+    assert completed.returncode != 0 and "UnicodeDecodeError" in completed.stderr
 
 
 def sanitizer():
@@ -103,15 +132,25 @@ def sanitizer():
 pytest.importorskip("relbench")
 
 
-def test_the_sanitizer_refuses_a_missing_cache_a_full_output_and_an_output_inside_the_source(tmp_path, monkeypatch):
+def test_the_sanitizer_refuses_what_it_must_before_writing_anything(tmp_path, monkeypatch):
     module = sanitizer()
     source = tmp_path / "cache"
     (source / "rel-x" / "db").mkdir(parents=True)
+    (source / "rel-x" / "tasks" / "t").mkdir(parents=True)
+    for split in ("train", "val", "test"):
+        (source / "rel-x" / "tasks" / "t" / f"{split}.parquet").write_bytes(b"")
+    (source / "rel-x" / "tasks" / "u").mkdir()
+    (source / "rel-x" / "tasks" / "u" / "train.parquet").write_bytes(b"")
+    sanitized = tmp_path / "already"
+    (sanitized / "rel-x" / "db").mkdir(parents=True)
+    (sanitized / module.MARKER).write_text("{}")
     full = tmp_path / "out"
     full.mkdir()
     (full / "stale").write_text("x")
     for argv, message in (
         (["--dataset", "rel-y", "--task", "t", "--source", str(source), "--out", str(tmp_path / "o1")], "no pristine cache"),
+        (["--dataset", "rel-x", "--task", "t", "--source", str(sanitized), "--out", str(tmp_path / "o2")], "is itself a sanitized copy"),
+        (["--dataset", "rel-x", "--task", "u", "--source", str(source), "--out", str(tmp_path / "o3")], "pristine task table missing"),
         (["--dataset", "rel-x", "--task", "t", "--source", str(source), "--out", str(full)], "is not empty"),
         (["--dataset", "rel-x", "--task", "t", "--source", str(source), "--out", str(source / "inner")], "must not be inside"),
     ):

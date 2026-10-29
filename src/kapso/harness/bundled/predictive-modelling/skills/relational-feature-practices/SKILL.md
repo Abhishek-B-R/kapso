@@ -229,15 +229,17 @@ When the evaluation is an absolute-error metric, L2-trained means target the
 wrong statistic: train with L1 or median-quantile objectives and predict
 conditional medians end to end, including through any target transform (a
 log transform preserves the median, not the mean, so it pairs with L1; use
-it for heavy-tailed targets). For zero-inflated counts, model hurdle-style: a
-zero-probability classifier times a positive-part regressor (or a Tweedie
-objective), gate the zero component like any family, and remember the
-MAE-optimal point prediction is exactly zero whenever the zero probability
-exceeds one half. Calibrate per slice on the metric's own scale. When the
-label is a ratio of future binary events over a small roster, it lives on a
-lattice: the MAE-optimal prediction is the median of the predicted outcome
-distribution, snapped to the achievable lattice; measured in simulation, the
-snap alone recovered a double-digit share of the metric.
+it for heavy-tailed targets). For zero-inflated counts, model the mixture
+(a zero-probability classifier and a positive-part distribution) and take
+the mixture's median, not a product of means: when the zero probability is
+at least one half the median is zero; otherwise it is the positive part's
+quantile at (0.5 minus the zero probability) over (1 minus the zero
+probability). Gate the zero component like any family. Calibrate per slice
+on the metric's own scale. When the label is a ratio of future binary
+events over a small roster, it lives on a lattice: the MAE-optimal
+prediction is the median of the predicted outcome distribution, snapped to
+the achievable lattice; measured in simulation on such a task, the snap
+alone recovered a large share of the metric.
 
 ## 11. Run a label-determinism audit before deep modelling
 
