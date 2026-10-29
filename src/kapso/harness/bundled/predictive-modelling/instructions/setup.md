@@ -33,4 +33,4 @@ not train a model in setup.
    ideation page's stage rule); what the task grants (hub access, hosted
    model APIs, external data under its leakage rule); the model shortlist;
    the repeated unit the folds must group by; and the relbench-api skill's
-   traps that apply when the data's library is relbench.
+   traps, which apply when the data comes through that library.

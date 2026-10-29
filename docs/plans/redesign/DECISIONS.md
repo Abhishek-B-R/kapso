@@ -2600,3 +2600,24 @@ everything else — the mechanical pass decides no legal question. The
 survey and the theory entries are text procedures (no payload); compiled
 byproducts never ship; markdown in a payload is refused because the card
 count would read it as a card.
+
+## WP8: the abstraction scan is benchmark tooling, not `check` (2026-10-29)
+
+`check` validates a harness's grammar for every author; the abstraction
+scan validates ours against the benchmarks we ported from, so it lives
+under `benchmarks/` with the benchmarks' own vocabularies and runs as a
+test over the bundled trees, never as a `check` rule a user's harness
+would trip on its own domain words. The decisions per word: a platform's
+name (kaggle, atcoder) is domain vocabulary and no word of the scan; a
+data library's name (`relbench`, its cache variable) is a skill's
+vocabulary — the skill teaches its API — and a page's constant, so the
+two page sentences that named it now name the skill; a benchmark's name
+(`mle-bench`, `ale-bench`, `ahc`, `ioai`, `kumo`) is a constant anywhere;
+a task, dataset, competition or problem id is a constant anywhere. A
+number counts only beside a quota, deadline, score or hardware word
+(within two tokens), with version strings and statistical thresholds
+allowed and an ordered list's marker skipped. The harness's own names are
+blanked before a word is read, because a page must name its skills
+literally (`relbench-api` is a skill, not the library). A zero-hit scan is
+evidence, not proof: the cross-model reviews of each harness read for the
+rest.

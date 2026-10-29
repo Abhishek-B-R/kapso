@@ -674,6 +674,33 @@ that is still evidence.
 16. **The abstraction scan**: `benchmarks/harness_scan.py`, the
     dependency-free vocabularies, the gate test that never skips, run over
     both harnesses; the hits fixed at the source (and at changes 6 and 9).
+    Done (2026-10-29): `scan(root, vocabulary)` over `instructions/*.md`,
+    `agents/*.md` and `skills/*/SKILL.md` outside fenced code, the
+    harness's own names (skills, hooks, agents, files) blanked before a
+    word is read; the vocabulary (146 words) from `task_specs.py`
+    (datasets, size tiers, the override tasks), `ale/problems.py`,
+    `mle/data/competitions.json` (82 ids, 22 lite) and
+    `ioai2026/data/competitions.json` (the practice slug and the book's
+    twelve mirrors), plus the named benchmarks and libraries with a
+    decision each: `relbench` and its cache variable skill-only, the
+    benchmark names never, the platforms (kaggle, atcoder) not words. The
+    number rule: a number within two tokens of a quota, deadline, score or
+    hardware word, an ordered list's marker skipped, version strings and
+    statistical thresholds allowed. `tests/test_bundled_abstraction.py`
+    runs over every bundled harness and pins the rules on a fixture;
+    `tests/test_benchmark_vocabularies.py` checks each data file against
+    its registry and skips when the registry is absent (the mlebench and
+    relbench registries, ale_bench's roster, Kaggle's listing with the
+    account's credentials). The first run found three hits: two sentences
+    on predictive-modelling's pages naming the data library (rephrased to
+    name the skill, 0.3.2) and one false positive (a list marker beside
+    "submission", the rule fixed); competitive-programming was clean.
+    `check` is unchanged (DECISIONS); `docs/harnesses/write.mdx` says the
+    scan exists and is ours.
+    Found on the way: the repository's `data/` ignore rule had left changes
+    12–14's provided suites and baselines untracked (the tests passed only
+    where they were written); `!benchmarks/*/data/` re-includes them,
+    committed apart as 6f8bb2fb.
 17. **The task swaps**, before the full arms, each a short arm with its
     exact task and the runner edit it is known to need, pre-listed so a
     runner edit is not mistaken for a harness finding: a second RelBench

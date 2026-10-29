@@ -6,8 +6,8 @@ Build the chosen idea on the branch and run the task's evaluation.
   t. The temporal-protocol skill has the pattern for each regime and the
   trap that makes a crippled model look its best on validation.
 - Data comes from the task's data reference and the sanitized copy, as the
-  task statement describes them; when that reference is a relbench dataset,
-  through the library's API as the relbench-api skill says. Never a path you
+  task statement describes them; when that reference is a database of the
+  relbench-api skill's library, through its API as the skill says. Never a path you
   fetched, never the library's own download; pretrained weights from the
   setup shortlist's local paths, and a load that fails is an error, not a
   fallback.
