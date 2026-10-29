@@ -115,8 +115,9 @@ cmd_install() {
   if [ ! -d "$ROOT/benchmarks/$benchmark" ]; then echo "no benchmark at benchmarks/$benchmark" >&2; exit 1; fi
   sha256sum "$wheel" | tee "$RUNS/$id/wheel.sha256"
   # The benchmark tree as it is in the working copy at this commit: the
-  # runner is repository code, not part of the wheel.
-  tar -C "$ROOT" -czf "$RUNS/$id/benchmark.tgz" --exclude='__pycache__' --exclude='*.pyc' "benchmarks/__init__.py" "benchmarks/$benchmark"
+  # runner is repository code, not part of the wheel; benchmarks/common.py
+  # is what the runners share.
+  tar -C "$ROOT" -czf "$RUNS/$id/benchmark.tgz" --exclude='__pycache__' --exclude='*.pyc' "benchmarks/common.py" "benchmarks/$benchmark"
   gcloud compute scp "$wheel" "$RUNS/$id/benchmark.tgz" "ubuntu@$(name_of "$id"):/tmp/" --project "$PROJECT" --zone "$(zone_of "$id")" --quiet
   ssh_run "$id" "bash -s -- $(basename "$wheel") $benchmark $(cat "$RUNS/$id/kind")" < "$HERE/benchmark_machine_install.sh" 2>&1 | tee "$RUNS/$id/install.log"
   push_secret "$id" CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_SECRET"

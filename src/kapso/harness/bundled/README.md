@@ -12,6 +12,7 @@ build with the harness.
 | Harness | Domain | Written from |
 |---|---|---|
 | `predictive-modelling` | structured prediction: a test set that never trains, cross-validation discipline, leakage as the failure that voids, features before architectures, ensembling last; relational databases with a temporal cutoff as the situation its skills name | RelBench (the measured practices, the temporal protocol, the leakage audit), then MLE-bench |
+| `competitive-programming` | a scored contest under a clock: validity before score, an insurance submission early, the scorer's measurement over every claim, a submission ledger and a quota spent on purpose; heuristic-optimisation rounds and olympiad-style Kaggle tasks as the modalities its skills name | ALE-Bench (the scorer discipline, the heuristic toolbox), then the IOAI campaigns (the contest economics, the Kaggle flow, the olympiad playbook) |
 
 The gate runs `check` over every directory here at the packaged page budget
 and fails on a warning (`tests/test_bundled_harnesses.py`), and scans each
