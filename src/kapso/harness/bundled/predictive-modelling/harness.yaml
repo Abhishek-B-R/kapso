@@ -1,6 +1,6 @@
 schema_version: 1
 name: predictive-modelling
-version: 0.1.0
+version: 0.2.0
 description: Structured prediction with a test set that never trains, cross-validation discipline, leakage as the failure that voids, features before architectures, ensembling last.
 
 environment:
@@ -8,13 +8,13 @@ environment:
 
 modules:
   setup:
-    skills: [sanitize-cache, temporal-protocol, relbench-api, living-documents]
+    skills: [sanitize-cache, temporal-protocol, relbench-api, living-documents, hf-model-fetch]
     hooks: [protect-prepared]
   ideation:
-    skills: [relational-feature-practices, temporal-protocol, living-documents]
+    skills: [relational-feature-practices, temporal-protocol, living-documents, task-type-playbooks, ensembling]
     hooks: [protect-prepared]
   implementation:
-    skills: [relational-feature-practices, temporal-protocol, relbench-api, living-documents, leakage-scan, cv-protocol]
+    skills: [relational-feature-practices, temporal-protocol, relbench-api, living-documents, leakage-scan, cv-protocol, task-type-playbooks, tabular-modeling, ensembling, eda-discipline]
     agents: [leakage-auditor]
     hooks: [protect-prepared, deny-web-fetch]
   verification:
@@ -22,6 +22,6 @@ modules:
     agents: [leakage-auditor]
     hooks: [protect-prepared, deny-web-fetch]
   feedback:
-    skills: [cv-protocol]
+    skills: [cv-protocol, ensembling]
     hooks: [protect-prepared]
   learning: {}

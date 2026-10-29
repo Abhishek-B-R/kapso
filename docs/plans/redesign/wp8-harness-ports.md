@@ -836,6 +836,43 @@ book pushed, the smoke-arm rule, one archive per run, the Codex review per
 port before the arms, `check` domain-agnostic, the started tree's
 discipline.
 
+### Change 5: the MLE graph's dispositions (2026-10-29)
+
+Every node of `benchmarks/mle/data/kg_data.json` (34 workflows, 8
+concepts, 8 code examples, the tip sheet) was read and placed:
+
+- **Kept, as conditional practice** in `task-type-playbooks`: the text
+  classification families and their conditions, token classification, the
+  tabular factors, the image factors and the ensemble-by-condition ladder,
+  image-to-image, audio models and features, video and volumes, detection
+  and segmentation; the tip sheet's early stopping, the modality with the
+  most value, a model per modality, and the meta-model rule; the
+  pretrained-weights-or-fail rule; augmentation after the split.
+- **Kept, names only** in `references/hub-inventory.md`: the 28 hub
+  inventories by task type (speech, time series, graphs, question
+  answering, translation, summarisation, generation, ranking, similarity,
+  pose, depth and the rest), with the caveat that an inventory ages and
+  the hub is searched in setup.
+- **Kept as reference code** under `references/code/` with the named
+  example datasets replaced by the task's inputs (the IMDB load and its
+  test split; the iris frame and its synthetic category).
+- **Reworded**: "never cross-validate transformers" became resampling at
+  the budget's price; "never simple averaging" became a fitted blend
+  measured against the rank average (the relational practices blend by
+  rank average); the fixed thresholds (five hundred thousand rows, two
+  hundred features, fifty epochs, two hundred parameters, ten billion
+  parameters, five gigabytes) became their conditions.
+- **Dropped**: the tip sheet's "avoid out-of-fold validation, cross
+  validation and heavy folding" (contradicts the guardrails and the
+  cv-protocol skill); "never use LightGBM unless sparse" (arbitrary; the
+  relational practices use it); "round probabilities toward certainty
+  when the metric is a loss" (a confident wrong answer costs more than
+  the gain; the ensembling skill says the opposite); "a model under two
+  hundred parameters" (a typo-grade claim); the handler's "forbidden
+  packages" line (task material, the Brief's); the stage percentages'
+  sampling formula (the task's data size decides, said on the ideation
+  page as a pacing rule).
+
 ## Hours
 
 | Change | Estimate | Cost | As run |
