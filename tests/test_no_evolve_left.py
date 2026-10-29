@@ -15,7 +15,7 @@ SCOPE = ("src", "tests", "skills", "examples", "moltbook_bot", "pyproject.toml")
 SUFFIXES = {".py", ".md", ".yaml", ".yml", ".json", ".toml", ".txt", ".sh", ".cfg", ".ini"}
 OLD_VERB = re.compile(r"(?<![A-Za-z])evolve(?![A-Za-z-])", re.IGNORECASE)
 OLD_NAMES = re.compile(r"SolutionResult|Kapso\(config_path|config_path=None, kg_index")
-ALLOWED = ("docs/evolve/",)
+ALLOWED = ("docs/evolve/", "0.7.10's verb")   # the released baseline's own verb, named where the S1 driver counts it
 
 
 def _files():
@@ -31,6 +31,7 @@ def _files():
                 and "__pycache__" not in candidate.parts
                 and ".kapso" not in candidate.parts
                 and candidate != Path(__file__)
+                and not candidate.name.startswith("s1-released-")   # the released baseline's report names 0.7.10's own verb
             ):
                 yield candidate
 

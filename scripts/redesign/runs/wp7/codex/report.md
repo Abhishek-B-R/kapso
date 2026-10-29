@@ -1,12 +1,16 @@
 # S2-mechanical on codex
 
+**Advisory: the Codex half ran on the development box under the owner's own Codex login, by the owner's decision (WP7)** (an arm run on the development box proves the flow, not its smoothness; never a fresh-machine acceptance)
+
+- run: S2-mechanical-codex-20261027T011212Z
 - machine: dev-box
 - package: 0.8.0.dev1 (c16a36e94479)
 - started: 2026-10-27T01:12:12+00:00  finished: 2026-10-27T07:41:52+00:00
+- user: scripted
+- pins: wheel_sha256 c16a36e94479
 
 | step | messages | questions | minutes | longest message | completed | artifacts | verdict |
 |---|---|---|---|---|---|---|---|
-| install | 0 | 0 | 0.2 | 0 lines | yes | 1/1 | pass |
 | setup | 1 | 0 | 1.3 | 4 lines | yes | 2/2 | pass |
 | cold-install | - | - | - | - | - | - | deferred: one machine: the cold wheel install is the fresh machine's step |
 | harness-export | 0 | 0 | 0.2 | 0 lines | yes | 5/5 | pass |
@@ -18,7 +22,6 @@
 | experience-share | - | - | - | - | - | - | deferred: deferred on Codex by the matrix |
 | harness-improve | - | - | - | - | - | - | deferred: deferred on Codex by the matrix |
 | cold-start | - | - | - | - | - | - | deferred: the launcher is Claude Code's path; Codex runs kapso-mcp from PATH |
-| triggers | 0 | 0 | 47.9 | 0 lines | no | 4/4 | FAIL |
 | build-data-only | 2 | 1 | 1.2 | 4 lines | yes | 1/1 | pass |
 | build-empty-wish | 2 | 1 | 0.9 | 7 lines | yes | 1/1 | pass |
 | build-churn | 1 | 0 | 1.2 | 7 lines | yes | 2/2 | pass |
@@ -27,10 +30,15 @@
 | build-pause | 1 | 0 | 0.8 | 4 lines | yes | 2/2 | pass |
 | inbox | 2 | 0 | 0.8 | 5 lines | yes | 2/2 | pass |
 | deploy | 2 | 0 | 8.8 | 3 lines | yes | 1/1 | pass |
-| campaign-session-isolation | 0 | 0 | 9.8 | 0 lines | yes | 1/1 | pass |
 | harness-new | 2 | 1 | 4.5 | 21 lines | yes | 3/3 | pass |
-| codex-rules-probe | 0 | 0 | 0.2 | 0 lines | yes | 1/1 | pass |
-| harness-probe | 0 | 0 | 8.8 | 0 lines | yes | 2/2 | pass |
+
+| step | kind | minutes | metrics | completed | artifacts | verdict |
+|---|---|---|---|---|---|---|
+| install | shell | 0.2 | - | yes | 1/1 | pass |
+| triggers | shell | 47.9 | - | no | 4/4 | FAIL |
+| campaign-session-isolation | shell | 9.8 | - | yes | 1/1 | pass |
+| codex-rules-probe | shell | 0.2 | - | yes | 1/1 | pass |
+| harness-probe | shell | 8.8 | - | yes | 2/2 | pass |
 
 Step notes:
 - install: Codex: the plugin's skills load by name; its MCP tools reach a session through the `codex mcp add` line the setup skill runs
@@ -49,6 +57,11 @@ Step notes:
 - deploy: the campaign deployed is the second machine's delivered churn campaign (generic_exp_0 at 0.847), restored under this box's work directory by restore_campaign.py with its old home rewritten and its deployment removed: the box's own sixty-minute build delivered nothing (see build-churn and review)
 - harness-new: compared with the shipped harness by hand from harness-new-tree.txt
 - codex-rules-probe: the session's cwd is a gitignored subdirectory of a repository, as an implementation session's is; the rules file sits in it
+
+The driver's own acts (named, never the persona's):
+- the key written where the request's fix line says before the person says so (inbox)
+- the fixture written for the criteria steps (build-data-only, build-empty-wish)
+- the harness's module answers from the driver's policy (harness-new)
 
 Notes:
 - wheels: the campaign steps run from 04:15 UTC on (build-churn, build-pause, watch, inbox, harness-new, harness-probe, review, deploy, campaign-session-isolation, codex-rules-probe) ran on the second wheel bb288573… (rebuilt after the Codex adapter's fix, 6db87600); the other steps on the first c16a36e9… (built at 3e2ab47b), the package line's
@@ -74,4 +87,4 @@ Transcripts:
 - transcripts/watch-2.jsonl
 - transcripts/watch.jsonl
 
-Result: FAIL (18/19 steps)
+Result: FAIL (18/19 steps; steps failed: triggers)

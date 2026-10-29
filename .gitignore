@@ -303,3 +303,6 @@ skills-lock.json
 examples/*/campaign/
 # The trigger suite's run outputs (`claude plugin eval` writes them beside the cases)
 /plugin/evals/results/
+
+# The semantic suite's reports are committed under immutable run ids (docs/plans/redesign/wp9-semantic-suite.md).
+!tests/semantic/reports/

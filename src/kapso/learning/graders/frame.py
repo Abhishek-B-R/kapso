@@ -50,6 +50,20 @@ def _fill(template: str, values: Dict[str, str]) -> str:
     return template
 
 
+def _session_said(result) -> str:
+    """What a role session's result says about itself, for the fail-loud
+    line when the artifact never appeared: its error, its refusal, or the
+    tail of its own last words — a session that ends saying "the workspace
+    rejected writes" must say so in the line, not vanish behind "ended
+    without writing it" (S6, 2026-10-28)."""
+    if result.error:
+        return f"error: {result.error}"
+    if result.refused:
+        return "refused"
+    said = " ".join((result.output or "").split())
+    return f"ended without writing it, saying: ...{said[-300:]}" if said else "ended without writing it, saying nothing"
+
+
 class GradingFrame:
     """Stage -> sessions -> validate -> aggregate for hindcast grading."""
 
@@ -67,12 +81,16 @@ class GradingFrame:
 
     # ------------------------------------------------------------- sessions
 
-    def _run_role(self, role: str, prompt: str, cwd: Path) -> str:
+    def _run_role(self, role: str, prompt: str, cwd: Path):
+        """One role session; its result (output, error, refusal) is the
+        caller's to read."""
         spec = self.crew_config[role]
+        # A Codex role runs in the adapter's default sandbox, as every engine
+        # session does: on a stock Ubuntu 24.04 machine with codex-cli 0.165
+        # the workspace-write sandbox rejects every write, so a role under it
+        # ends saying so and leaves no artifact (S6, 2026-10-28).
         agent_specific: Dict[str, Any] = {"effort": spec["effort"]}
-        if spec["cli"] == "codex":
-            agent_specific["sandbox"] = "workspace-write"
-        else:
+        if spec["cli"] != "codex":
             agent_specific["auth_mode"] = spec["auth_mode"]
         agent = self.agent_factory.create(CodingAgentConfig(
             agent_type=spec["cli"],
@@ -82,20 +100,25 @@ class GradingFrame:
         ))
         agent.initialize(str(cwd))
         timeout = self.crew_config["timeout_minutes"] * 60
-        result = agent.generate_code(prompt, timeout_seconds=timeout)
-        return result.output or ""
+        return agent.generate_code(prompt, timeout_seconds=timeout)
 
     def _run_role_for_artifact(
         self, role: str, prompt: str, cwd: Path, artifact: Path
     ) -> None:
         """Run a role session that must produce `artifact`. A session can
         die without writing it for infrastructure reasons (rate-limit
-        events, provider disconnects) — retry ONCE with a fresh session,
-        then let the caller's missing-artifact raise fire (fail loud; the
-        retry covers transport, never content)."""
-        self._run_role(role, prompt, cwd)
+        events, provider disconnects, a key over quota): retry ONCE with a
+        fresh session, then fail loud naming the role, the file and what
+        each session said (the retry covers transport, never content; a
+        bare "produced no report" once hid a key over quota)."""
+        results = [self._run_role(role, prompt, cwd)]
         if not artifact.is_file():
-            self._run_role(role, prompt, cwd)
+            results.append(self._run_role(role, prompt, cwd))
+        if not artifact.is_file():
+            said = "; ".join(_session_said(result) for result in results)
+            raise FileNotFoundError(
+                f"{role} produced no {artifact.name} at {artifact} after {len(results)} session(s): {said}"
+            )
 
     # ------------------------------------------------------------ one exam
 
@@ -186,12 +209,7 @@ class GradingFrame:
             "report_writer", writer_prompt, run_dir, slot / "report.md"
         )
         while True:
-            report_path = slot / "report.md"
-            if not report_path.is_file():
-                raise FileNotFoundError(
-                    f"report-writer produced no report for {trajectory_id}"
-                )
-            report = HindcastReport.parse(report_path.read_text())
+            report = HindcastReport.parse((slot / "report.md").read_text())
             findings = validator.validate(report)
             if not findings:
                 self._run_role_for_artifact(
@@ -293,14 +311,13 @@ class GradingFrame:
             "reports_dir": run_dir / "hindcast",
             "verdict_path": run_dir / "verdict.yaml",
         }
-        self._run_role(
+        verdict_path = run_dir / "verdict.yaml"
+        self._run_role_for_artifact(
             "assessor",
             _fill((CREW_DIR / "assessor_prompt.md").read_text(), assessor_values),
             run_dir,
+            verdict_path,
         )
-        verdict_path = run_dir / "verdict.yaml"
-        if not verdict_path.is_file():
-            raise FileNotFoundError("assessor produced no verdict.yaml")
         verdict = yaml.safe_load(verdict_path.read_text())
         if not isinstance(verdict, dict):
             raise ValueError("verdict.yaml is not a mapping")

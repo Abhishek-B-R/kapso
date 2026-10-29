@@ -121,6 +121,9 @@ ALLOWED_PATHS = (
     "tests/test_session_roles.py",
     "tests/test_problem_text.py",
     "tests/test_cli_errors.py",
+    # The semantic suite's retrospective baseline runs the released 0.7.10
+    # and its reports quote that package's own forms as evidence.
+    "tests/semantic/reports/s1-released-",
 )
 
 

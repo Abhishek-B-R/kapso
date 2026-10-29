@@ -186,7 +186,7 @@ class _Checker:
                     f"for {', '.join(MODULES)}",
                 )
                 continue
-            lines = page.read_text(encoding="utf-8").count("\n")
+            lines = len(page.read_text(encoding="utf-8").splitlines())   # a page without a trailing newline counts its last line too
             if lines > self.page_warning_lines:
                 self.warn(
                     self.relative(page),

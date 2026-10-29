@@ -245,10 +245,8 @@ class CodifyRunDriver:
 
     def _implementor_session(self, workspace: Path, feedback: str) -> None:
         spec = self.codify_config["implementor"]
-        agent_specific: Dict[str, Any] = {"effort": spec["effort"]}
-        if spec["cli"] == "codex":
-            agent_specific["sandbox"] = "workspace-write"
-        else:
+        agent_specific: Dict[str, Any] = {"effort": spec["effort"]}   # a Codex role: the adapter's default sandbox (graders/frame.py says why)
+        if spec["cli"] != "codex":
             agent_specific["auth_mode"] = spec["auth_mode"]
         agent = self.agent_factory.create(CodingAgentConfig(
             agent_type=spec["cli"], model=spec["model"],
@@ -269,10 +267,8 @@ class CodifyRunDriver:
         iteration: int,
     ) -> Dict[str, Any]:
         spec = self.codify_config["judge"]
-        agent_specific: Dict[str, Any] = {"effort": spec["effort"]}
-        if spec["cli"] == "codex":
-            agent_specific["sandbox"] = "workspace-write"
-        else:
+        agent_specific: Dict[str, Any] = {"effort": spec["effort"]}   # a Codex role: the adapter's default sandbox (graders/frame.py says why)
+        if spec["cli"] != "codex":
             agent_specific["auth_mode"] = spec["auth_mode"]
         agent = self.agent_factory.create(CodingAgentConfig(
             agent_type=spec["cli"], model=spec["model"],

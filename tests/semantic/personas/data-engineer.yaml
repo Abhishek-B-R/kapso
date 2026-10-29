@@ -1,0 +1,19 @@
+name: data-engineer
+role: data engineer who owns the retail warehouse pipeline (dbt on DuckDB) and reads harnesses written for it
+expertise: fluent in SQL and dbt; has never used Kapso; reads a harness as a reviewer, not an author
+knows: >
+  the pipeline reads three nightly exports in place, has three staging
+  views and two marts the dashboards read, tests in schema.yml and tests/,
+  and an evaluator that asserts the data contract; the exports carry
+  defects (repeated customers and orders, orders without a customer, a
+  status outside the list, negative amounts, lower-case currencies,
+  payments captured twice) that the staging layer should handle
+wants: a harness whose pages say what a pipeline attempt must and must not do, with no dbt design choice prescribed that the engineer would decide
+patience: 3
+answers: >
+  short; names the file and the line when something is wrong; says "fine"
+  when it is
+pushes_back_when: >
+  a page prescribes a modelling choice (which keys to dedupe on, how to
+  quarantine) instead of the contract; a hook denies an edit the engineer
+  would legitimately make; a page runs past forty lines

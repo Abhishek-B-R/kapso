@@ -30,7 +30,7 @@ trading/
 ├── instructions/
 │   ├── guardrails.md     every module: standing rules, where to look
 │   └── <module>.md       one module: setup, ideation, implementation, verification, feedback, deployment, learning
-├── skills/<name>/        SKILL.md with front matter; scripts beside it
+├── skills/<name>/        SKILL.md with front matter; scripts under it
 ├── agents/<name>.md      a delegate: front matter, then its instructions
 ├── mcp.json              tool servers by name, stdio or streamable-http
 ├── servers/              the stdio servers' code, when the harness ships them
@@ -38,7 +38,7 @@ trading/
 └── requirements.txt      what the bundled tooling needs
 ```
 
-Everything is defined once, under its kind, and listed per module in the manifest. A file that exists and is listed nowhere is a warning; a name listed and not defined is a failure.
+Everything is defined once, under its kind, and listed per module in the manifest. A file that exists and is listed nowhere is a warning; a name listed and not defined is a failure. Each attachment takes the cheapest form that does its job — the ladder: a line on a page before a skill, a skill before a delegate, a delegate before a hook. What only restates a page is a page line; a server that would return fixed text is a page too; a hook earns its place by acting on an event, not by reminding.
 
 ## harness.yaml
 
@@ -65,7 +65,7 @@ modules:                            # any of the seven; a module left out still 
 
 ## Pages
 
-`instructions/guardrails.md` reaches every session; `instructions/<module>.md` reaches that module's sessions, after it. Both go into the prompt whole, under a `Domain guidance` heading that ends with the paths of the task statement and the prepared resources, so a page says "the task statement" or "the diff" and never a path it would have to guess. They are short and dense: standing rules, the discipline of the domain, where to look. The config's `harness.page_warning_lines` (40) is where `check` starts warning. A page never holds a value that belongs to one task: the task statement carries the brief, and its values win. A prepared resource is a directory the setup session leaves under `prepared/<name>/`, nothing is registered; the files an attempt saves under `results/` are the harness's own convention, the engine requires none.
+`instructions/guardrails.md` reaches every session; `instructions/<module>.md` reaches that module's sessions, after it. Both go into the prompt whole, under a `Domain guidance` heading that ends with the paths of the task statement and the prepared resources, so a page says "the task statement" or "the diff" and never a path it would have to guess. They are short and dense: standing rules, the discipline of the domain, where to look. A page over the config's `harness.page_warning_lines` (40) — forty-one lines and up, every line of the file counted, blank lines and headings included — draws a warning from `check`, never a failure. A page never holds a value that belongs to one task: the task statement carries the brief, and its values win. A prepared resource is a directory the setup session leaves under `prepared/<name>/`, nothing is registered; the files an attempt saves under `results/` are the harness's own convention, the engine requires none.
 
 | Page | What it holds |
 |---|---|
@@ -82,7 +82,7 @@ A module with a page or any attachment has content. The setup session and the ve
 
 ## Skills
 
-A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs beside it. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
+A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs under it (the example keeps them in a `scripts/` directory). Those two keys are all `check` reads; the host reads the rest, and one other key the engine does read: a deployment target's `metadata.run_kinds` (the example's `paper-trading` skill carries it), which `deploy` reads and refuses when malformed — see the deploy page. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
 
 ```markdown
 ---
@@ -95,7 +95,7 @@ Run the scan on the attempt's diff; a hit is a finding with its file and line:
     git diff main...HEAD | python3 $KAPSO_HARNESS_ROOT/skills/lookahead-scan/scripts/scan.py
 ```
 
-`KAPSO_HARNESS_ROOT` is set in every staged session and names the harness directory, so a script is run where it lives. Name each skill on its module's page: `check` warns on one the page never mentions, since a session that is never told about a skill does not look for it.
+`KAPSO_HARNESS_ROOT` is set in every staged session and names the harness directory, so a script is run where it lives. Name each skill on its module's own page — the directory name, literally, anywhere in that page's text is what `check` looks for; a module with no page of its own is read on `guardrails.md`, and only then does a mention there count — since it warns on one the page it reads never mentions: a session that is never told about a skill does not look for it.
 
 ## Servers
 
@@ -111,13 +111,13 @@ Run the scan on the attempt's diff; a hit is a finding with its file and line:
 }
 ```
 
-A stdio server has `command`, `args`, `env` and `cwd`; a streamable-http server has `type`, `url` and `headers`. `${PLUGIN_ROOT}` is the harness directory, expanded at staging. A server runs with the session's directory as its working directory, with `KAPSO_HARNESS_ROOT` set, beside the engine's own gates; on Codex the engine forwards the variables the server names, which that host does not inherit. Names match `[A-Za-z0-9_-]+`; `gated-knowledge` is the engine's own server.
+A stdio server has `command`, `args`, `env` and `cwd`; a streamable-http server has `type`, `url` and `headers`. A stdio server is any program that speaks MCP on its stdin and stdout; the example's are Python on the official SDK's FastMCP (`from mcp.server.fastmcp import FastMCP`, one `@server.tool()` per tool, `server.run()`), with `mcp` in `requirements.txt`. `${PLUGIN_ROOT}` is the harness directory, expanded at staging. A server runs with the session's directory as its working directory, with `KAPSO_HARNESS_ROOT` set, beside the engine's own gates; on Codex the engine forwards the variables the server names, which that host does not inherit. Names match `[A-Za-z0-9_-]+`; `gated-knowledge` is the engine's own server.
 
 Every `env` and `headers` value is one `${NAME}` reference, the whole value (`Bearer ...` prefix included, so the variable holds the whole header), and an `env` entry names the variable it forwards (`"BROKER_API_KEY": "${BROKER_API_KEY}"`, never another name: Codex forwards by name). The value lives in `.env` beside the run, or in the environment. A literal, a credential-shaped value, a reference embedded in a longer value or an `env` key that references another variable is a failure; an unset reference is reported as something the machine lacks, scoped to the modules that mount the server, and a build whose modules need it refuses before any session.
 
 ## Delegates
 
-A delegate is a file under `agents/` with `name` and `description` in its front matter and its instructions in the body. A session hands it one piece of work and reads its report; on Claude Code it is a sub-agent, on Codex a role, and on both it gets the module's pages. The trading harness has two: an auditor the verifier asks about a suspect pattern, and a risk reviewer the judge asks about a drawdown.
+A delegate is a file under `agents/` with `name` and `description` in its front matter and its instructions in the body; those two keys are all the engine reads and stages (a `tools` or `model` key would be dropped), so a delegate works with the session's tools and model. A session hands it one piece of work and reads its report; on Claude Code it is a sub-agent, on Codex a role, and on both it gets the module's pages. The trading harness has two: an auditor the verifier asks about a suspect pattern, and a risk reviewer the judge asks about a drawdown.
 
 ```markdown
 ---
@@ -153,19 +153,19 @@ print(json.dumps({"hookSpecificOutput": {
 }}))
 ```
 
-The events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact` and `PostCompact`. A command names `python3`, not `python`: a stock Ubuntu has only the former, and `check` reports a program that is not on PATH. What a script sees differs by host in three places:
+The events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact` and `PostCompact`. An entry is `{"matcher": ..., "hooks": [...]}` with the matcher optional on every event: a tool event without one fires for every tool, and `SessionStart`, `Stop` and the other session-wide events take none. `check` splits the command like a shell, skips leading `NAME=value` words (`PYTHONPATH=${PLUGIN_ROOT} python3 ...` is fine) and verifies that the first program word is on PATH or an existing path. A command names `python3`, not `python`: a stock Ubuntu has only the former. The host runs the script from the session directory, the same directory the servers get as `cwd`, so a relative `prepared/` or `results/` path resolves there, with `KAPSO_HARNESS_ROOT` set. What a script sees differs by host in three places:
 
 | | Claude Code | Codex |
 |---|---|---|
 | the shell tool | `Bash`, `tool_input.command` | `Bash`, `tool_input.command` |
-| the file tools | `Write`, `Edit`, `MultiEdit`; `tool_input.file_path` | `apply_patch`; `tool_input.command` is the patch, with `*** Add File:` and `*** Update File:` lines; a matcher `Edit\|Write\|MultiEdit` fires on it too |
+| the file tools | `Write`, `Edit`, `MultiEdit`; `tool_input.file_path` | `apply_patch`; `tool_input.command` is the patch, whose file headers are `*** Add File: <path>`, `*** Update File: <path>`, `*** Delete File: <path>` and `*** Move to: <path>` (one regex in the example's `protect-prepared` reads all four); a matcher `Edit\|Write\|MultiEdit` fires on it too |
 | a server's tool | `mcp__<server>__<tool>` | `mcp__<server>__<tool>` |
 
-A file hook reads both shapes, as the trading harness's `protect-prepared` and `scan-writes` do. Exit 0 with nothing printed is no opinion. A `PreToolUse` denial and a `SessionStart` or `PostToolUse` context line go inside `hookSpecificOutput`; a `Stop` hook's decision is top level, `{"decision": "block", "reason": "..."}`, and it sees `stop_hook_active` turn true after it blocked once, on both hosts, which is when it stays silent.
+A file hook reads both shapes, as the trading harness's `protect-prepared` and `scan-writes` do. Exit 0 with nothing printed is no opinion. A `PreToolUse` denial (`permissionDecision` and `permissionDecisionReason`) and a `SessionStart` or `PostToolUse` context line (the `additionalContext` key, as the trading example's `session-brief` and `scan-writes` print) go inside `hookSpecificOutput` beside `hookEventName`; a `Stop` hook's decision is top level, `{"decision": "block", "reason": "..."}`, and it sees `stop_hook_active` turn true after it blocked once, on both hosts, which is when it stays silent.
 
 ## Environment
 
-`environment.python` names a requirements file; `check` reads each pin against `python3` on PATH, the interpreter the harness's own commands name, and reports what is missing or too old, with the `python3 -m pip install` line. `environment.commands` are programs that must be on PATH, `environment.gpu` asks for an NVIDIA GPU. A program a hook or a server runs is checked without being listed. Nothing is installed by the engine: a need is reported by `check`, printed by `kapso harness list`, and refused by a verb whose modules need it.
+`environment.python` names a requirements file: one requirement per line in pip's form (`numpy`, `numpy==2.1.0`, `numpy>=2.0`, an environment marker if needed; `#` comments, blank lines and `-r`-style option lines are skipped; a line that is not a requirement stops `check` with pip's own parse error). `check` reads each against `python3` on PATH, the interpreter the harness's own commands name — a bare name needs the package installed, a specifier needs the installed version inside it — and reports what is missing or too old, with the `python3 -m pip install` line. `environment.commands` are programs that must be on PATH, `environment.gpu` asks for an NVIDIA GPU. A program a hook or a server runs is checked without being listed. Nothing is installed by the engine: a need is reported by `check`, printed by `kapso harness list`, and refused by a verb whose modules need it.
 
 ## Check, run, read
 
@@ -173,7 +173,7 @@ A file hook reads both shapes, as the trading harness's `protect-prepared` and `
 kapso harness check ./trading
 ```
 
-`check` fails on what cannot load (an unknown module or field, a name that resolves to nothing, a page or skill without front matter, a malformed `mcp.json` or `hook.json`, a hook with an unknown event, a script that does not exist, a credential literal, a missing requirements file), warns on what should be looked at (a file no module lists, a skill its module's page never mentions, a long page, a long opaque value) and reports what the machine lacks. It runs no script and reads no path a `SKILL.md` quotes. The [reference](/docs/reference/harness#check) lists every rule.
+`check` fails on what cannot load (an unknown module or field, a name that resolves to nothing, a skill or delegate without front matter (a page has none), a malformed `mcp.json` or `hook.json`, a hook with an unknown event, a script that does not exist, a credential literal, a missing requirements file), warns on what should be looked at (a file no module lists, a skill its module's page never mentions, a long page, a long opaque value) and reports what the machine lacks. It runs no script and reads no path a `SKILL.md` quotes. The [reference](/docs/reference/harness#check) lists every rule.
 
 Then run a task on it and read the campaign: `kapso_task.md`, each session's `session.json` and `stream.jsonl`, the verdicts. A hook that never fired, a skill no session used, a page a session contradicted, a verdict without evidence: each is a sentence to add or a file to cut. The [trading example](/docs/harnesses/example-trading) is that loop, with a task tuned so the shipped strategy has room to improve.
 

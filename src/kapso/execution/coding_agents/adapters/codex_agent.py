@@ -46,6 +46,10 @@ _THREAD_STARTED_PATTERN = re.compile(
     r'"type"\s*:\s*"thread\.started".*?"thread_id"\s*:\s*"([^"]+)"'
 )
 _DEFAULT_TIMEOUT_SECONDS = 3600.0
+# The sandbox a Codex session runs in when its role names none: every
+# engine session's, and the one source for the learning crews' raw worker
+# invocations (update_frame) — a copied literal there drifted once.
+DEFAULT_SANDBOX = "danger-full-access"
 _STREAM_TAIL_CHARS = 2000
 
 
@@ -228,7 +232,7 @@ class CodexCodingAgent(CodingAgentInterface):
         self._timeout: float = (
             float(configured_timeout) if configured_timeout is not None else _DEFAULT_TIMEOUT_SECONDS
         )
-        self._sandbox: str = str(spec.get("sandbox", "danger-full-access"))
+        self._sandbox: str = str(spec.get("sandbox", DEFAULT_SANDBOX))
         self._web_search: bool = bool(spec.get("web_search", True))
         self._mcp_overrides: List[str] = mcp_config_overrides(
             spec.get("mcp_servers") or {}

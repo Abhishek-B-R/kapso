@@ -1,0 +1,4 @@
+# Procedures
+- [binned-outcome-profiles-test-basis-when-linear-model-underfits](binned-outcome-profiles-test-basis-when-linear-model-underfits/card.md) — Use binned outcome profiles to test a compact nonlinear basis when a regularized linear model underfits a low-dimensional tabular target
+- [fixed-holdout-sampling-error-limits-decisions-near-target](fixed-holdout-sampling-error-limits-decisions-near-target/card.md) — When a fixed holdout result is near a decision target, use the metric's sampling standard error as the resolution limit for claims, forecasts, confirmation, and stopping
+- [independent-claims-require-evidence-channels-audited-party-cannot-influence](independent-claims-require-evidence-channels-audited-party-cannot-influence/card.md) — When reviewers assess train-only discovery, non-use of protected data, or independent score verification, approve the claim only after the relevant check is produced outside the audited party's control

@@ -44,10 +44,10 @@ The modules are `setup`, `ideation`, `implementation`, `verification`, `feedback
 |---|---|
 | `instructions/guardrails.md` | reaches every session; the only page the starter writes |
 | `instructions/<module>.md` | reaches that module's sessions after the guardrails; a module with a page or any attachment has content |
-| `skills/<name>/SKILL.md` | front matter `name` (the directory's name) and `description`; scripts beside it |
-| `agents/<name>.md` | front matter `name` (the file's name) and `description`, then the delegate's instructions |
+| `skills/<name>/SKILL.md` | front matter `name` (the directory's name) and `description`, the two keys `check` reads (the host reads the rest; a deployment target's `metadata.run_kinds` is read by `deploy`); scripts under it |
+| `agents/<name>.md` | front matter `name` (the file's name) and `description`, all that staging reads (a `tools` or `model` key is dropped), then the delegate's instructions |
 | `mcp.json` | `{"mcpServers": {<name>: ...}}`; a stdio server has `command`, `args`, `env`, `cwd`, a streamable-http server `type` (`streamable-http` or `http`), `url`, `headers`; names match `[A-Za-z0-9_-]+`, `gated-knowledge` is reserved |
-| `hooks/<name>/hook.json` | `{"hooks": {<event>: [{"matcher": ..., "hooks": [{"type": "command", "command": ..., "timeout": ...}]}]}}`; the events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact` |
+| `hooks/<name>/hook.json` | `{"hooks": {<event>: [{"matcher": ..., "hooks": [{"type": "command", "command": ..., "timeout": ...}]}]}}`, `matcher` and `timeout` optional (`matcher` a string; an entry without one fires on every tool, and the session-wide events take none); the command is split like a shell, leading `NAME=value` words skipped, and its first program word must be on PATH or an existing path; the host runs it from the session directory; the events are `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact` |
 | `requirements.txt` | the file `environment.python` names |
 
 `${PLUGIN_ROOT}` in a server's or a hook's command or arguments is the harness directory, expanded at staging; a path under it must exist. An `env` or `headers` value that is a `${NAME}` reference is read from the environment or `.env` beside the run; a literal where a reference is expected, or a value that looks like a credential, is a failure.
@@ -66,9 +66,9 @@ Failures, each with the file and, when it has one, the line:
 - `hook.json` that is not `{"hooks": {...}}`; an unknown event; an entry, matcher or command of the wrong shape; a command with no program; a `${PLUGIN_ROOT}` path that does not exist
 - `environment.python` naming a file that does not exist; no page at all
 
-Warnings: a skill, agent, server or hook directory no module lists; a skill its module's page never mentions; a page over `harness.page_warning_lines` lines; a long opaque value in a server's `env` or `headers`.
+Warnings: a skill, agent, server or hook directory no module lists; a skill its module's page never mentions (the directory name, literally, anywhere in the module's own page, or in `guardrails.md` when the module has no page of its own); a page over `harness.page_warning_lines` lines (every line counts, blank lines and headings included); a long opaque value in a server's `env` or `headers`.
 
-Needs, each tagged with the modules that need it: a program a hook or a server runs, or `environment.commands` names, that is not on PATH; a requirements pin that `python3` on PATH does not have, or has too old, with the `python3 -m pip install -r` line (the harness's servers, hooks and scripts run on that interpreter, so its requirements are checked there, not in the engine's); a `${NAME}` reference that is set nowhere, tagged with the modules that mount the server; a GPU. `check` exits 1 on a failure and 0 otherwise; a need never fails `check` or `add`.
+Needs, each tagged with the modules that need it: a program a hook or a server runs, or `environment.commands` names, that is not on PATH; a requirements line (pip's form: `name`, `name==v`, `name>=v`, a marker; `#` comments, blank lines and `-` option lines skipped, an unparsable line stops `check` with pip's own parse error) that `python3` on PATH does not satisfy — a bare name needs the package installed, a specifier the installed version inside it — with the `python3 -m pip install -r` line (the harness's servers, hooks and scripts run on that interpreter, so its requirements are checked there, not in the engine's); a `${NAME}` reference that is set nowhere, tagged with the modules that mount the server; a GPU. `check` exits 1 on a failure and 0 otherwise; a need never fails `check` or `add`.
 
 ## Staging
 
@@ -77,7 +77,7 @@ Each session of a module gets, in its own directory:
 | | Claude Code | Codex |
 |---|---|---|
 | skills | `.claude/skills/<name>/` | `.agents/skills/<name>/` |
-| hooks: the engine's `protect-harness` first (a file-tool write under the harness directory is denied with the reason; a shell write is caught by the hash check at the next staging), then the module's in manifest order | `.claude/harness-hooks.json`, passed as `--settings` | `.codex/hooks.json`, with `--dangerously-bypass-hook-trust` |
+| hooks: the engine's `protect-harness` first (a file-tool write under the harness directory is denied with the reason; a shell write is caught by the hash check at the next staging), then the module's in manifest order | `.claude/harness-hooks.json`, passed as `--settings`; the host runs each command from the session directory | `.codex/hooks.json`, with `--dangerously-bypass-hook-trust`; the same |
 | delegates | `.claude/harness-agents.json`, passed as `--agents`; invoked through the `Agent` tool | `.codex/harness-agents/<name>.toml`, passed as `agents.<name>` roles |
 | servers | merged with the engine's gates, `${PLUGIN_ROOT}` expanded, `cwd` the session directory | the same, with the variables the server names forwarded by name and `default_tools_approval_mode = "approve"` |
 | environment | `KAPSO_HARNESS_ROOT` = the harness directory | the same |

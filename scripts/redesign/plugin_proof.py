@@ -3,7 +3,7 @@
 acceptance matrix's steps driven on one host by a scripted person (S2
 without the simulated user and the judge), each step recorded in the
 semantic record shape (tests/semantic/README.md, test `S2-mechanical`)
-and rendered by tests/semantic/report.py against tests/semantic/budgets.json.
+and rendered by tests/semantic/report.py against tests/semantic/suite.json.
 
     python3 scripts/redesign/plugin_proof.py --host claude_code|codex --clone <repo> --out <dir>
         [--work <dir>] [--steps a,b,...] [--from <step>] [--wheel <path>] [--machine <name>]
@@ -18,7 +18,9 @@ the standard library and PyYAML (the examples' python3 has it).
 
 import argparse
 import glob
+import hashlib
 import json
+import math
 import os
 import re
 import shlex
@@ -33,45 +35,153 @@ import yaml
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-CLAUDE_MODEL = "claude-opus-5-5"
-CODEX_MODEL = "gpt-6-astra"
-TURN_TIMEOUT = 1800
+# The persona driver sits beside this script; a run from anywhere finds it.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import simulated_user  # noqa: E402
+import judge as judge_module  # noqa: E402  (final_texts: the host's text on both vendors; litellm rides along)
+
+SUITE_PATH = Path(__file__).resolve().parent.parent.parent / "tests" / "semantic" / "suite.json"
+SUITE = json.loads(SUITE_PATH.read_text(encoding="utf-8"))
+CLAUDE_MODEL = SUITE["hosts"]["claude_code"]["model"]
+CODEX_MODEL = SUITE["hosts"]["codex"]["model"]
+TURN_TIMEOUT = SUITE["turn_timeout"]
+_CHURN_B, _FRAUD_B, _PAUSE_B, _PROBE_B = SUITE["builds"]["churn"], SUITE["builds"]["fraud"], SUITE["builds"]["pause"], SUITE["builds"]["probe"]
+# How long a step waits for a campaign or a learn: the step's own minutes
+# from the suite, or the campaign's budget plus the suite's grace.
+CAMPAIGN_GRACE_SECONDS = SUITE["waits"]["campaign_grace_minutes"] * 60
+
+
+def step_seconds(name: str) -> int:
+    return SUITE["steps"][name]["minutes"] * 60
+
+
+def machine_hours(test: str, host: str) -> str:
+    """A fresh machine's auto-delete cap for one test on one host: the
+    host's required steps' budgets end to end, the campaign grace and an
+    hour of provisioning, rounded up to the hour — a safety net past the
+    whole run, never inside it (s2-claude-2 was deleted at its twenty-third
+    step of twenty-four under a six-hour literal, its evidence with it)."""
+    minutes = sum(SUITE["steps"][name]["minutes"] for name in SUITE["tests"][test]["required_steps"][host])
+    return f"{math.ceil((minutes + SUITE['waits']['campaign_grace_minutes'] + 60) / 60)}h"
 # A turn that waits for a word without a question mark: "say go and I'll launch".
+# An approval request, matched only against the FINAL line: a plain
+# courtesy ("let me know if you want the full trace") is not a question,
+# so those weak phrases are gone and a real request has to end the turn.
 APPROVAL_ASKED = re.compile(
-    r"\b(say|reply|type|answer)\b[^\n]{0,30}\bgo\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b"
-    r"|\blet me know\b|\bonce you.ve answered\b|\bafter you answer\b|\byour answers?\b|\bif you say\b|\bsay yes\b",
+    r"\b(say|reply|type)\b[^\n]{0,30}\b(go|yes)\b|\b(confirm|approve|approval)\b|\bshall i\b|\bwant me to\b|\bif you say\b|\bsay the word\b",
     re.I,
 )
+# The approval words without a request: a negation, or the host checking
+# something itself.
+NO_ASK = re.compile(r"\bno (approval|confirmation|go-ahead|input|answer) (is |was )?(needed|required)\b|\bwithout (your )?(approval|confirmation)\b", re.I)
+SELF_CHECK = re.compile(r"^(let me|i'?ll|i will|i) (confirm|approve|verify|check)\b", re.I)
+# A campaign that misses its goal delivers no branch; a review of it must say
+# so rather than dress a near miss as something to merge.
+NOTHING_DELIVERED = re.compile(
+    r"\b(goal|target) (was )?not (met|reached)\b|\b(goal|target) (remains |is |still )?unmet\b|\bnothing (was )?delivered\b"
+    r"|\bno (approved )?(winner|branch|result|delivery|candidate) (was )?delivered\b|\bdelivered no (approved )?(winner|branch|result|candidate)\b|\bdid not deliver\b"
+    r"|\b(below|short of|under) the (target|threshold|goal)\b|\bmissed the (target|goal)\b",
+    re.I,
+)
+
+
+def names_delivery(answer: str, branch: Optional[str]) -> bool:
+    """The review names what the campaign delivered: its branch, when there
+    is one; that nothing was delivered, when there is none — a statement
+    of the fact (no winner, the goal unmet), never a bare score beside a
+    number ("0.8459, below 0.85" says what scored, not what was delivered)."""
+    if branch:
+        return branch.lower() in answer.lower()
+    return bool(NOTHING_DELIVERED.search(answer))
+
+
+# The review skill's verdict comes as "is it safe to merge" answered, or as
+# the one-line next action it prescribes (merge, cherry-pick, resume with
+# more budget, learn from it) — a review that said "merging the branch
+# whole carries the labels" and "resume with more time" had given it.
+MERGE_VERDICT = re.compile(r"\bmerg(e|ing|ed)\b|\b(not )?safe\b|\bcherry-pick|\bresume with\b|\blearn from\b", re.I)
+# A line that carries the words without a decision: the question itself,
+# or a hedge ("I can't tell whether it's safe to merge").
+NOT_A_VERDICT = re.compile(r"\bwhether\b|\bcan(no|')t (tell|say|judge|determine)\b|\bnot sure\b|\bunsure\b|\bunclear\b|\bunable to (tell|say|judge)\b", re.I)
+
+
+def merge_verdict(answer: str) -> bool:
+    """A merge verdict is a statement — merge, do not merge, not safe,
+    cherry-pick, resume with more budget, learn from it — on some line of
+    the answer; a line that asks the question or hedges it gives none."""
+    for raw in answer.splitlines():
+        line = raw.strip().rstrip("*_` ")
+        if MERGE_VERDICT.search(line) and not line.endswith("?") and not NOT_A_VERDICT.search(line):
+            return True
+    return False
+
+
 CHURN_WISH = (
     "get the churn model's ROC AUC above 0.85 without changing the prediction contract; "
-    "the campaign goes to ../churn-campaign with a budget of 60 minutes and 3 experiments"
+    f"the campaign goes to ../churn-campaign with a budget of {_CHURN_B['minutes']} minutes and {_CHURN_B['experiments']} experiments"
 )
 PAUSE_WISH = (
-    "get the churn model's ROC AUC above 0.85; one rule for the brief: before training, the enrichment table "
-    "must be fetched from the enrichment service with the DATA_API_KEY in .env, and a session that lacks the key "
-    "asks for it through the inbox. Launch now without asking me for the key: the campaign's own session asks "
-    "when it needs it. The campaign goes to ../churn-pause-campaign with a budget of {minutes} minutes and 1 experiment"
+    "get the churn model's ROC AUC above 0.85; one rule for the brief: the first thing every session does, before "
+    "it reads the data or plans anything, is fetch the enrichment table from the enrichment service with the "
+    "DATA_API_KEY in .env, and a session that lacks the key asks for it through the inbox at once and does nothing "
+    "else until it has it. Launch now without asking me for the key: the campaign's own session asks "
+    f"when it needs it. The campaign goes to ../churn-pause-campaign with a budget of {{minutes}} minutes and {_PAUSE_B['experiments']} experiment"
 )
 FRAUD_WISH = (
     "build a fraud scorer on data/transactions.csv that beats the rule-based one in score.py, and prove it; "
-    "the campaign goes to ../fraud-campaign with a budget of 10 minutes and 1 experiment"
+    f"the campaign goes to ../fraud-campaign with a budget of {_FRAUD_B['minutes']} minutes and {_FRAUD_B['experiments']} experiment"
 )
 # The order the round runs in; the budgets file bounds every name.
 STEP_NAMES = [
     "install", "setup", "cold-install", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools",
     "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review",
-    "deploy", "learn", "learn-complete", "session-brief", "experience-share", "harness-improve",
+    "deploy", "learn", "learn-complete", "session-brief", "experience-share", "second-engineer-build", "harness-improve",
     "campaign-session-isolation", "codex-rules-probe", "cold-start",
 ]
 # Codex's explicit skill for each Claude Code command.
 CODEX_SKILL = {"setup": "kapso-setup", "build": "kapso-build", "review": "kapso-review", "harness": "kapso-harness"}
+# Claude Code's launcher path, by design; every other step runs on Codex
+# too (advisory on the development box until the machine's Codex key has
+# credit: docs/plans/redesign/wp9-semantic-suite.md).
 CODEX_DEFERRED = {
     "cold-install": "one machine: the cold wheel install is the fresh machine's step",
-    "harness-improve": "deferred on Codex by the matrix",
-    "learn": "hours on the development box; the Claude Code half runs it",
-    "learn-complete": "hours on the development box; the Claude Code half runs it",
-    "experience-share": "deferred on Codex by the matrix",
     "cold-start": "the launcher is Claude Code's path; Codex runs kapso-mcp from PATH",
+}
+# What each step is for, told to the persona with the card (the scripted
+# policies' knowledge, as a person would hold it).
+# The card a step is answered with when it differs from the run's card: the
+# trading author knows the harness interview's module answers (patience 8);
+# the second engineer owns the served build. The rest fall back to the run's card.
+STEP_CARDS = {
+    "harness-new": "trading-author",
+    "harness-probe": "trading-author",
+    "harness-improve": "trading-author",
+}
+STEP_INTENTS = {
+    "setup": "set Kapso up on this machine to a green doctor; you have no Leeroopedia or OpenAI key and want none added; no harness for now",
+    "build-churn": "get one proposal for the churn build and have it launched detached at the budget the brief names; you do not hold the data API key a rule may mention, the campaign's own session asks through the inbox when it needs it",
+    "build-pause": "have the campaign launched now without being asked for the key: its own session asks through the inbox when it needs it",
+    "watch": "how the campaign is going, in a few lines", "watch-2": "how the campaign is going, in a few lines",
+    # The inbox step is two exchanges: the host reads the request and says what
+    # the person must do (the key is NOT in .env yet; the driver writes it
+    # after), then the host replies. A want that spans both can never be met
+    # in the first, so each exchange has its own.
+    "inbox": "hear what the campaign is waiting on and what I must do before it can continue; I will do it myself and come back",
+    "inbox-reply": "answer every open request of the campaign: the key is now in both .env files; there is no enrichment service, endpoint or table; the campaign must reach 0.85 without it; nothing left waiting",
+    "build-fraud": "a fraud scorer that beats the rule-based one, with an evaluator proposed from the protocol and approved by you, then launched",
+    "build-data-only": "see the candidate criteria and the recommended one; take the first; do not launch anything",
+    "build-empty-wish": "see what could be built here and the candidate criteria; take the first; do not launch anything",
+    "harness-new": "a proposal first, then the harness written and checked green; answer every numbered question in one reply, in order",
+    "review": "the review of the finished churn campaign, then whether its branch is safe to merge",
+    "review-2": "whether the delivered branch is safe to merge",
+    "deploy": "deploy the delivered churn campaign to the local target and call it once with the inputs its proof used",
+    "deploy-2": "call the deployment once with the inputs its proof used",
+    "learn": "launch the learn from the churn campaign, detached, and hear how it will be served",
+    "session-brief": "what this session is served and one read of the bank",
+    "experience-share": "share your bank to the remote given, so a teammate can read it",
+    "harness-improve": "one improvement proposed from the probe's trace, applied on your go, the check green again",
+    "campaign-tools": "launch a tiny campaign through the session's tools rather than the shell, read its status, stop it",
+    "harness-export": "what timestamp discipline the backtesting skill asks for, in three lines",
 }
 CLAUDE_DEFERRED = {
     "codex-rules-probe": "Codex's mechanism; Claude Code's is the plugin switch, which the isolation step reads",
@@ -90,10 +200,27 @@ def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
     sentence on why it is needed)."""
     if any(tool["name"] == "AskUserQuestion" for tool in tools):
         return True
-    lines = [line.strip().rstrip("*_`)\"' ") for line in text.splitlines() if line.strip()]
-    closing = "\n".join(lines[-8:])
-    # A numbered question's line may run on past its question mark.
-    return "?" in closing or bool(APPROVAL_ASKED.search(closing))
+    # A fence line is nothing once its backticks are stripped; it is dropped
+    # so the closing lines are the closing prose and commands.
+    lines = [line for line in (raw.strip().rstrip("*_`)\"' ") for raw in text.splitlines()) if line]
+    # The command the ask refers to, shown after it (a fenced block, a
+    # backtick-wrapped line, a `kapso ...` line), is not the ask's last
+    # word: three steps on the Claude host ended "Say go and I'll run:"
+    # and the command, and read as never asking (2026-10-28).
+    while lines and (lines[-1].startswith("`") or lines[-1].startswith("kapso ") or lines[-1].startswith("$ ")):
+        lines.pop()
+    if not lines:
+        return False
+    # A question mark or an approval request in the closing lines: the
+    # regex names real requests only (a courtesy sign-off never matches),
+    # and a host closes "Say go and I'll run:", the command, "or edit a
+    # line first" — the request three lines up, its continuation last.
+    closing = lines[-3:]
+    if any("?" in line for line in closing):
+        return True
+    # An approval request is a request: "no approval is needed" and "let
+    # me confirm the data" carry the word without asking for anything.
+    return any(APPROVAL_ASKED.search(line) and not NO_ASK.search(line) and not SELF_CHECK.match(line) for line in closing)
 
 
 def lines_outside_fences(text: str) -> int:
@@ -107,8 +234,63 @@ def lines_outside_fences(text: str) -> int:
     return count
 
 
+def parse_claude_stream(stdout: str, sid: str, elapsed: float):
+    """A Claude Code stream-json turn: the final text, the tool calls with
+    whether each one's result was an error (the result rides in a user
+    row's tool_result block; None when no result row came, the stream
+    having ended first), the turn's seconds and the session id."""
+    text, tools, seconds = "", [], elapsed
+    results: Dict[str, bool] = {}   # a tool call's id → whether its result was an error
+    for line in stdout.splitlines():
+        if not line.startswith("{"):
+            continue
+        event = json.loads(line)
+        if event.get("type") == "assistant":
+            for block in event["message"].get("content", []):
+                if block.get("type") == "tool_use":
+                    tools.append({"id": block.get("id"), "name": block["name"], "input": block.get("input", {})})
+        elif event.get("type") == "user":
+            for block in event.get("message", {}).get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    results[block.get("tool_use_id")] = bool(block.get("is_error"))
+        elif event.get("type") == "result":
+            text = event.get("result") or ""
+            seconds = event.get("duration_ms", seconds * 1000) / 1000
+            sid = event.get("session_id", sid)
+    for tool in tools:
+        tool["is_error"] = results.get(tool.pop("id"))
+    return text, tools, seconds, sid
+
+
+def parse_codex_stream(stdout: str, sid: str):
+    """A Codex exec --json turn: the tool calls (a command with its exit
+    code, an MCP call with its completed item's status and error) and the
+    thread id."""
+    tools: List[Dict[str, Any]] = []
+    for line in stdout.splitlines():
+        if not line.startswith("{"):
+            continue
+        event = json.loads(line)
+        if event.get("type") == "thread.started":
+            sid = event["thread_id"]
+        item = event.get("item") or {}
+        if event.get("type") == "item.completed" and item.get("type") == "command_execution":
+            tools.append({"name": "Bash", "input": {"command": item.get("command", "")}, "is_error": item.get("exit_code", 0) != 0})
+        elif event.get("type") == "item.completed" and item.get("type") == "mcp_tool_call":
+            tools.append({"name": f"mcp__{item.get('server')}__{item.get('tool')}", "input": item.get("arguments", {}),
+                          "is_error": item.get("status") != "completed" or bool(item.get("error"))})
+    return tools, sid
+
+
 class ClaudeHost:
     name = "claude_code"
+
+    def __init__(self, extra_argv: Sequence[str] = (), model: Optional[str] = None):
+        # What a driver adds to every turn: the cold engineer's session runs
+        # plugin-free, server-free and web-free through these. The model is
+        # the suite's host model unless a role names its own (S4's readers).
+        self.extra_argv = list(extra_argv)
+        self.model = model or CLAUDE_MODEL
 
     def command(self, verb: str, args: str = "") -> str:
         return f"/kapso:{verb} {args}".strip()
@@ -118,7 +300,7 @@ class ClaudeHost:
         # The turn's deadline is the `timeout` command's: a turn that
         # overstays ends with exit 124 and its stream so far, and the round
         # goes on with what it has.
-        argv = ["timeout", str(TURN_TIMEOUT), "claude", "-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "--model", CLAUDE_MODEL]
+        argv = ["timeout", str(TURN_TIMEOUT), "claude", "-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose", "--model", self.model, *self.extra_argv]
         argv += ["--resume", sid] if session else ["--session-id", sid]
         started = time.monotonic()
         run = subprocess.run(argv, input=prompt, capture_output=True, text=True, cwd=str(cwd))
@@ -126,31 +308,26 @@ class ClaudeHost:
             out.write(json.dumps({"proof_prompt": prompt}) + "\n" + run.stdout + ("\n" if not run.stdout.endswith("\n") else ""))
             if run.stderr.strip():
                 out.write(json.dumps({"proof_stderr": run.stderr}) + "\n")
-        text, tools, seconds = "", [], time.monotonic() - started
-        for line in run.stdout.splitlines():
-            if not line.startswith("{"):
-                continue
-            event = json.loads(line)
-            if event.get("type") == "assistant":
-                for block in event["message"].get("content", []):
-                    if block.get("type") == "tool_use":
-                        tools.append({"name": block["name"], "input": block.get("input", {})})
-            elif event.get("type") == "result":
-                text = event.get("result") or ""
-                seconds = event.get("duration_ms", seconds * 1000) / 1000
-                sid = event.get("session_id", sid)
+        text, tools, seconds, sid = parse_claude_stream(run.stdout, sid, time.monotonic() - started)
         return Turn(text, seconds, sid, tools, question_asked(text, tools))
 
 
 class CodexHost:
     name = "codex"
 
+    def __init__(self, extra_argv: Sequence[str] = (), model: Optional[str] = None, effort: Optional[str] = None):
+        self.extra_argv = list(extra_argv)
+        self.model = model or CODEX_MODEL
+        self.effort = effort   # a role's reasoning effort (S4's reader); None leaves the CLI's own
+
     def command(self, verb: str, args: str = "") -> str:
         return f"${CODEX_SKILL.get(verb, 'kapso')} {verb if verb not in CODEX_SKILL else ''} {args}".replace("  ", " ").strip()
 
     def turn(self, cwd: Path, prompt: str, session: Optional[str], transcript: Path) -> Turn:
         last = cwd / ".proof-last.txt"
-        argv = ["timeout", str(TURN_TIMEOUT), "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "danger-full-access", "-C", str(cwd), "-m", CODEX_MODEL, "-o", str(last)]
+        argv = ["timeout", str(TURN_TIMEOUT), "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "danger-full-access", "-C", str(cwd), "-m", self.model, "-o", str(last), *self.extra_argv]
+        if self.effort:
+            argv += ["-c", f'model_reasoning_effort="{self.effort}"']
         if session:
             argv += ["resume", session, "-"]
         else:
@@ -162,18 +339,7 @@ class CodexHost:
             out.write(json.dumps({"proof_prompt": prompt}) + "\n" + run.stdout + ("\n" if not run.stdout.endswith("\n") else ""))
             if run.stderr.strip():
                 out.write(json.dumps({"proof_stderr": run.stderr}) + "\n")
-        tools, sid = [], session or ""
-        for line in run.stdout.splitlines():
-            if not line.startswith("{"):
-                continue
-            event = json.loads(line)
-            if event.get("type") == "thread.started":
-                sid = event["thread_id"]
-            item = event.get("item") or {}
-            if event.get("type") == "item.completed" and item.get("type") == "command_execution":
-                tools.append({"name": "Bash", "input": {"command": item.get("command", "")}})
-            elif event.get("type") == "item.completed" and item.get("type") == "mcp_tool_call":
-                tools.append({"name": f"mcp__{item.get('server')}__{item.get('tool')}", "input": item.get("arguments", {})})
+        tools, sid = parse_codex_stream(run.stdout, session or "")
         text = last.read_text(encoding="utf-8") if last.exists() else ""
         if last.exists():
             last.unlink()
@@ -181,11 +347,64 @@ class CodexHost:
 
 
 # --------------------------------------------------------------- context
+class UserMode:
+    """Who answers the host: the scripted policies of the mechanical round,
+    or a persona card through the other vendor's CLI. The driver's own
+    acts are named as interventions either way; a persona run records
+    the pins the review asked for, every DONE and every turn cap."""
+
+    def __init__(self, spec: str, host: str):
+        if spec != "scripted" and not spec.startswith("persona:"):
+            raise ValueError(f"--user is scripted or persona:<card>, not {spec!r}")
+        self.kind = "scripted" if spec == "scripted" else "persona"
+        self.host = host
+        self.card = None
+        self.cards: Dict[str, Any] = {}
+        self.settings: Dict[str, Any] = {}
+        self.turn_cap = SUITE["user"]["turn_cap"]
+        self.prompt_sha256 = None
+        if self.kind == "persona":
+            name = spec.split(":", 1)[1]
+            self.card = simulated_user.load_card(simulated_user.PERSONAS / f"{name}.yaml")
+            self.settings = SUITE["user"]["persona"][host]
+            self.prompt_sha256 = simulated_user.template_sha256()
+        self.interventions: List[str] = []
+        self.events: List[str] = []
+        self.capped: set = set()
+        self.pushback: Optional[bool] = None
+
+    def card_for(self, step: str):
+        """The card a step is answered with: a per-step card (the trading
+        author answers the harness interview, the second engineer the
+        served build) falls back to the run's card. Loaded once and cached."""
+        name = STEP_CARDS.get(step)
+        if not name or self.kind != "persona":
+            return self.card
+        if name not in self.cards:
+            self.cards[name] = simulated_user.load_card(simulated_user.PERSONAS / f"{name}.yaml")
+        return self.cards[name]
+
+    def ended_well(self, step: str, predicate: bool) -> bool:
+        """A persona step is complete only when its evidence holds AND the
+        exchange resolved (the persona said DONE), never when the turn cap
+        cut a user still asking for help off."""
+        return bool(predicate) and (self.kind != "persona" or step not in self.capped)
+
+    def record(self) -> Dict[str, Any]:
+        block: Dict[str, Any] = {"kind": self.kind, "card": self.card.name if self.card else None, "interventions": self.interventions, "events": self.events, "pushback": self.pushback}
+        if self.card:
+            block.update({"card_sha256": self.card.sha256, "vendor": self.settings["vendor"], "model": self.settings["model"], "effort": self.settings.get("effort"), "prompt_sha256": self.prompt_sha256})
+        return block
+
+
 class Context:
-    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = 10):
+    def __init__(self, host, clone: Path, work: Path, out: Path, wheel: Optional[Path], machine: str, learn_model: Optional[str] = None, pause_minutes: int = _PAUSE_B["minutes"], user: Optional[UserMode] = None,
+                 triggers_sandbox: Optional[str] = None):
         self.host, self.clone, self.work, self.out, self.wheel, self.machine = host, clone, work, out, wheel, machine
         self.learn_model = learn_model
         self.pause_minutes = pause_minutes
+        self.triggers_sandbox = triggers_sandbox   # the runner's word for a machine whose codex sandbox cannot start (None: the suite's)
+        self.user = user or UserMode("scripted", host.name)
         self.state_file = out / "state.json"
         self.state: Dict[str, Any] = json.loads(self.state_file.read_text()) if self.state_file.exists() else {}
         (out / "transcripts").mkdir(parents=True, exist_ok=True)
@@ -218,20 +437,62 @@ class Context:
         return f"artifacts/{name}"
 
     def converse(self, step: str, cwd: Path, opening: str, answer: Callable[[str, int], Optional[str]], max_turns: int = 8) -> List[Turn]:
+        """The exchange of one step. Scripted: the policy answers a turn that
+        asks, and a turn that does not ask ends the step. Persona: every
+        host turn is offered to the persona, who answers or says DONE; the
+        turn cap ends the step as an event, never a pass."""
         transcript = self.out / "transcripts" / f"{step}.jsonl"
         turns: List[Turn] = []
         session, prompt = None, opening
-        for index in range(max_turns):
+        if self.user.kind == "scripted":
+            for index in range(max_turns):
+                turn = self.host.turn(cwd, prompt, session, transcript)
+                turns.append(turn)
+                session = turn.session
+                if not turn.asked:
+                    break
+                reply = answer(turn.text, index)
+                if reply is None:
+                    break
+                prompt = reply
+            return turns
+        history: List[Dict[str, Any]] = []
+        intent = STEP_INTENTS.get(step, step)
+        card = self.user.card_for(step)
+        if card is not self.user.card:
+            self.user.interventions.append(f"{step}: answered by the {card.name} card (its knowledge the step needs), not the run's {self.user.card.name}")
+        # The exchange's cap is the step's own message budget (a sub-exchange
+        # such as review-2 takes its parent's), so a legitimate interview is
+        # never cut short of what the suite allows and a step over it fails
+        # on its count; the persona's turn cap stands only where the suite
+        # has no entry. `max_turns` is the scripted loop's.
+        cap = SUITE["steps"].get(parent_step(step), {}).get("messages") or self.user.turn_cap
+        for index in range(cap):
             turn = self.host.turn(cwd, prompt, session, transcript)
             turns.append(turn)
             session = turn.session
-            if not turn.asked:
-                break
-            reply = answer(turn.text, index)
-            if reply is None:
-                break
-            prompt = reply
+            history.append({"role": "user", "text": prompt})
+            history.append({"role": "assistant", "text": turn.text, "asked": turn.asked})
+            reply = simulated_user.next_message(card, cwd, intent, history, turn.text, self.host.name, self.user.settings, TURN_TIMEOUT)
+            with open(transcript, "a", encoding="utf-8") as out:
+                out.write(json.dumps({"persona_reply": reply.text, "persona_session": reply.session, "done": reply.done}) + "\n")
+            if reply.done:
+                self.user.events.append(f"{step}: the persona said DONE after {index + 1} turn(s)")
+                return turns
+            prompt = reply.text
+        self.user.events.append(f"{step}: the turn cap ({cap}) ended the exchange without DONE: the step is incomplete")
+        self.user.capped.add(parent_step(step))   # a capped follow-up (review-2) makes its step incomplete, not a name nothing reads
         return turns
+
+    def task_view(self, project: Path, planted: Optional[str] = None) -> None:
+        """What the persona reads: the repository's own README (never the
+        example's, which teaches the Kapso lines and quotes the recorded
+        result), with a planted wrong fact when the step checks pushback."""
+        own = project / "repo" / "README.md"
+        text = own.read_text(encoding="utf-8") if own.is_file() else f"# {project.name}\n\nA repository with no README of its own.\n"
+        if planted:
+            text = text.rstrip() + f"\n\n{planted}\n"
+        (project / "README.md").write_text(text, encoding="utf-8")
 
     def fixture(self, name: str, target: str, generate: bool = True) -> Path:
         """A copy of an example under the work directory, its data generated,
@@ -245,6 +506,9 @@ class Context:
         if generate:
             self.shell("python3 generate.py", cwd=path, timeout=600)
         self.seed_env(path)
+        if self.user.kind == "persona":
+            self.task_view(path)
+            self.user.interventions.append(f"{target}: the example's README replaced by the repository's own for the persona (no Kapso line, no recorded result)")
         return path
 
     def seed_env(self, project: Path) -> None:
@@ -283,6 +547,27 @@ def learning_on(block: Any, model: str, replaced: str) -> Any:
     return model if block == replaced else block
 
 
+def parent_step(name: str) -> str:
+    """The suite step an exchange belongs to: the step itself; a numbered
+    follow-up's base (`review-2` → `review`); a named sub-exchange's head
+    (`inbox-reply` → `inbox`); else the name as given."""
+    if name in SUITE["steps"]:
+        return name
+    base = re.sub(r"-\d+$", "", name)
+    if base in SUITE["steps"]:
+        return base
+    head = name.split("-", 1)[0]
+    return head if head in SUITE["steps"] else name
+
+
+def codex_session_note() -> Optional[str]:
+    """What the machine's Codex login is, when the runner marked it
+    (fresh_machine.sh writes ~/.codex/SOURCE beside the session it pushed):
+    a record made on a borrowed session says so in its notes."""
+    marker = Path.home() / ".codex" / "SOURCE"
+    return f"codex login: {marker.read_text(encoding='utf-8').strip()}" if marker.is_file() else None
+
+
 def wait_for(predicate: Callable[[], bool], seconds: int, every: int = 10) -> bool:
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -299,9 +584,10 @@ def status_of(campaign: Path) -> Optional[Dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def record_step(name: str, turns: Sequence[Turn], completed: bool, artifacts: Sequence[str], notes: Sequence[str] = (), extra_minutes: float = 0.0) -> Dict[str, Any]:
+def record_step(name: str, turns: Sequence[Turn], completed: bool, artifacts: Sequence[str], notes: Sequence[str] = (), extra_minutes: float = 0.0, kind: str = "conversation") -> Dict[str, Any]:
     return {
         "name": name,
+        "kind": kind,
         "messages": len(turns),
         "questions": sum(1 for turn in turns if turn.asked),
         "minutes": round(sum(turn.seconds for turn in turns) / 60 + extra_minutes, 1),
@@ -312,8 +598,8 @@ def record_step(name: str, turns: Sequence[Turn], completed: bool, artifacts: Se
     }
 
 
-def shell_step(name: str, completed: bool, artifacts: Sequence[str], minutes: float, notes: Sequence[str] = ()) -> Dict[str, Any]:
-    return record_step(name, [], completed, artifacts, notes, extra_minutes=round(minutes, 1))
+def shell_step(name: str, completed: bool, artifacts: Sequence[str], minutes: float, notes: Sequence[str] = (), kind: str = "shell") -> Dict[str, Any]:
+    return record_step(name, [], completed, artifacts, notes, extra_minutes=round(minutes, 1), kind=kind)
 
 
 # --------------------------------------------------------- answer policies
@@ -402,22 +688,62 @@ def step_setup(ctx: Context) -> Dict[str, Any]:
     return record_step("setup", turns, required_ok, artifacts, notes)
 
 
-def step_cold_install(ctx: Context) -> Dict[str, Any]:
-    started = time.monotonic()
+SECOND_USER = "proof2"
+
+
+def second_user_install_script(wheel_name: str) -> str:
+    """The second engineer's own install, from its own home: `kapso` reads
+    `.env` from the working directory, and a directory the user cannot
+    see is no place to run."""
+    return (
+        "set -e; cd ~; curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; "
+        f"uv tool install --python 3.12 /tmp/{wheel_name} >/dev/null 2>&1; echo kapso $(kapso --version); echo kapso-mcp $(kapso-mcp --version); "
+        "echo which $(which kapso) $(which kapso-mcp)"
+    )
+
+
+def stage_wheel_for_second_user(ctx: Context) -> Path:
+    """The wheel where another user can read it."""
     wheel = ctx.wheel
-    user = "proof2"
-    ctx.shell(f"id -u {user} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {user}")
     if wheel.resolve() != Path("/tmp") / wheel.name:
         ctx.shell(f"sudo cp {wheel} /tmp/{wheel.name}")
     ctx.shell(f"sudo chmod 644 /tmp/{wheel.name}")
-    # From the user's own home: `kapso` reads `.env` from the working
-    # directory, and a directory the user cannot see is no place to run.
-    script = (
-        "set -e; cd ~; curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; "
-        f"uv tool install --python 3.12 /tmp/{wheel.name} >/dev/null 2>&1; echo kapso $(kapso --version); echo kapso-mcp $(kapso-mcp --version); "
-        "echo which $(which kapso) $(which kapso-mcp)"
-    )
-    run = ctx.shell(f"sudo -u {user} -H bash -lc {shlex.quote(script)}", timeout=1200, check=False)
+    return wheel
+
+
+def ensure_second_user(ctx: Context) -> None:
+    """The second engineer exists with the wheel on its PATH. The Claude
+    host's cold-install step measures that install; the Codex step list
+    has no cold-install, so the steps that act as the second user make
+    sure of it here (a no-op once it is there). A fresh Codex machine
+    (2026-10-28) had no such user and the ninth step died on it."""
+    ctx.shell(f"id -u {SECOND_USER} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {SECOND_USER}")
+    # A second engineer has a git identity, as any person running kapso
+    # does; without one the engine's first commit in the campaign dies with
+    # git's "empty ident name" after the launch receipt (s2-claude-second-2),
+    # the finding below — the suite gives the user one and keeps the finding.
+    # From that user's own home: git stats the working directory first, and
+    # the driver's is not readable to the second user (s2-claude-second-3
+    # died here, on this line's first form).
+    ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc 'cd ~ && git config --global user.name \"Second Engineer\" && git config --global user.email second-engineer@kapso.invalid'")
+    # The engine's build preflight wants a Codex login (two of its roles run
+    # on gpt-5.6-sol), so the second engineer gets the machine's device-auth
+    # session too — s2-claude-3's served build died at preflight without it.
+    ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc 'umask 077; mkdir -p ~/.codex' && sudo cp /home/ubuntu/.codex/auth.json /home/{SECOND_USER}/.codex/auth.json "
+              f"&& sudo chown {SECOND_USER}:{SECOND_USER} /home/{SECOND_USER}/.codex/auth.json && sudo chmod 600 /home/{SECOND_USER}/.codex/auth.json")
+    present = ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc 'export PATH=$HOME/.local/bin:$PATH; command -v kapso'", check=False)
+    if present.returncode == 0:
+        return
+    wheel = stage_wheel_for_second_user(ctx)
+    ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc {shlex.quote(second_user_install_script(wheel.name))}", timeout=1200)
+
+
+def step_cold_install(ctx: Context) -> Dict[str, Any]:
+    started = time.monotonic()
+    user = SECOND_USER
+    ctx.shell(f"id -u {user} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {user}")
+    wheel = stage_wheel_for_second_user(ctx)
+    run = ctx.shell(f"sudo -u {user} -H bash -lc {shlex.quote(second_user_install_script(wheel.name))}", timeout=1200, check=False)
     text = run.stdout + run.stderr
     # The lines read `kapso kapso 0.8.0.dev1`: the label, then what --version printed.
     versions = re.findall(r"^(kapso|kapso-mcp) (?:\1 )?(\S+)$", run.stdout, re.M)
@@ -428,13 +754,47 @@ def step_cold_install(ctx: Context) -> Dict[str, Any]:
 def _launch_and_wait_status(ctx: Context, project: Path, campaign: Path, wish: str, step: str, policy=go_policy) -> Dict[str, Any]:
     turns = ctx.converse(step, project, ctx.host.command("build", wish), policy, max_turns=4)
     brief = project / "kapso-brief.md"
-    launched = wait_for(lambda: status_of(campaign) is not None, 180)
+    # A LIVE launch: the campaign reaches running (or a non-failed terminal),
+    # not merely a status file a child wrote before failing on start.
+    launched = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("starting", "running", "done"), 300)
+    state = (status_of(campaign) or {}).get("state")
+    # A proposal was offered before the launch (the host asked), the step's
+    # shape; the brief the host wrote names the objective.
+    proposed = bool(turns) and any(turn.asked for turn in turns)
     artifacts = []
     if brief.is_file():
         artifacts.append(ctx.copy_artifact(brief, f"{step}-brief.md"))
-    if launched:
+    if status_of(campaign) is not None:
         artifacts.append(ctx.copy_artifact(campaign / ".kapso" / "status.json", f"{step}-status.json"))
-    return {"turns": turns, "launched": launched, "brief": brief.is_file(), "artifacts": artifacts}
+    return {"turns": turns, "launched": launched, "proposed": proposed, "brief": brief.is_file(), "state": state, "artifacts": artifacts,
+            "notes": [f"the launch reached: {state}; a proposal was offered: {proposed}"]}
+
+
+PLANTED_BASELINE = "The current model scores about 0.90 ROC AUC on the held-out rows."
+PLANTED_TRUTH = "the current churn model's ROC AUC is about 0.80 (0.797 on the held-out rows), not 0.90"
+
+
+def plant_baseline(ctx: Context, project: Path) -> None:
+    """The pushback check: the task view and the brief state the baseline
+    as 0.90 where the card knows about 0.80; a proposal carries the wrong
+    figure and a persona that reads corrects it."""
+    ctx.task_view(project, PLANTED_BASELINE)
+    brief = project / "kapso-brief.md"
+    lines = brief.read_text(encoding="utf-8").splitlines(keepends=True)
+    brief.write_text("".join("Baseline     0.90 (the shipped logistic regression)\n" if line.startswith("Baseline") else line for line in lines), encoding="utf-8")
+    ctx.user.card.planted = PLANTED_TRUTH
+    ctx.user.interventions.append("build-churn: the task view's README and the brief's Baseline line state 0.90 (planted); the card is certain of about 0.80")
+
+
+def pushed_back(transcript: Path) -> Optional[bool]:
+    """Whether the persona corrected the planted figure: None when no host
+    turn carried it (nothing to push back on), else whether a persona reply
+    named the true one. The host's text is read from BOTH vendors' row
+    shapes (judge.final_texts), so the Codex arm's check is not blind."""
+    rows = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines() if line.startswith("{")]
+    stated = any("0.90" in turn["text"] for turn in judge_module.final_texts(rows) if turn["role"] == "assistant")
+    corrected = any("persona_reply" in row and any(figure in row["persona_reply"] for figure in ("0.80", "0.797", "0.8 ")) for row in rows)
+    return corrected if stated else None
 
 
 def step_build_churn(ctx: Context) -> Dict[str, Any]:
@@ -444,8 +804,15 @@ def step_build_churn(ctx: Context) -> Dict[str, Any]:
     ctx.state["churn_campaign"] = str(campaign)
     ctx.state["churn_launched_at"] = time.time()
     ctx.save()
+    if ctx.user.kind == "persona":
+        plant_baseline(ctx, project)
     result = _launch_and_wait_status(ctx, project, campaign, CHURN_WISH, "build-churn")
-    return record_step("build-churn", result["turns"], result["launched"] and result["brief"], result["artifacts"])
+    if ctx.user.kind == "persona":
+        ctx.user.card.planted = None
+        ctx.user.pushback = pushed_back(ctx.out / "transcripts" / "build-churn.jsonl")
+        result["notes"].append(f"the planted baseline: {'corrected by the persona' if ctx.user.pushback else 'not corrected' if ctx.user.pushback is False else 'never stated by the host'}")
+    completed = ctx.user.ended_well("build-churn", result["launched"] and result["proposed"] and result["brief"])
+    return record_step("build-churn", result["turns"], completed, result["artifacts"], result["notes"])
 
 
 def step_build_pause(ctx: Context) -> Dict[str, Any]:
@@ -468,13 +835,18 @@ def step_watch(ctx: Context) -> Dict[str, Any]:
     first = ctx.converse("watch", project, ctx.host.command("watch", "../churn-campaign"), lambda text, index: None, max_turns=1)
     second = ctx.converse("watch-2", project, "how is the kapso campaign in ../churn-campaign going?", lambda text, index: None, max_turns=1)
     turns = first + second
-    text = "\n".join(turn.text for turn in turns).lower()
-    completed = all(not turn.asked for turn in turns) and any(word in text for word in ("running", "setup", "ideation", "implementation", "phase", "best"))
-    return record_step("watch", turns, completed, [ctx.artifact("watch-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))])
+    answer = "\n".join(turn.text for turn in turns).lower()
+    status = status_of(Path(campaign)) or {}
+    state, phase = (status.get("state") or "").lower(), (status.get("phase") or "").lower()
+    # The answer must name the real state (or phase), so a host that
+    # reported a dead campaign as running would fail here.
+    reflects = bool(state) and (state in answer or (phase and phase in answer))
+    completed = ctx.user.ended_well("watch", all(not turn.asked for turn in turns) and reflects)
+    return record_step("watch", turns, completed, [ctx.artifact("watch-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))], [f"the status at the read: state={state or '-'} phase={phase or '-'}; the answer reflected it: {reflects}"])
 
 
 CASE_NAME = re.compile(r"^(?P<skill>[a-z]+)-(?P<kind>[eicn])\d+$|^(?P<holdout>holdout)-\d+$")
-TRIGGER_BAR = 0.9   # eighteen of twenty per skill
+TRIGGER_BAR = SUITE["triggers"]["bar"]   # eighteen of twenty per skill
 
 
 def trigger_bar(out_dir: Path, host: str) -> Dict[str, Any]:
@@ -506,8 +878,11 @@ def trigger_bar(out_dir: Path, host: str) -> Dict[str, Any]:
             if any(g["name"].startswith("not-") and not g["passed"] for run in runs for g in run["graders"]):
                 false_positives.append(name)
     per_skill = {skill: f"{sum(ok)}/{len(ok)}" for skill, ok in passed.items()}
-    met = bool(passed) and all(sum(ok) >= TRIGGER_BAR * len(ok) for ok in passed.values()) and not false_positives
-    return {"per_skill": per_skill, "false_positives": sorted(set(false_positives)), "met": met}
+    # A Codex run whose sandbox never started is the machine's failure
+    # (codex_triggers.sandbox_failure): the bar is not established on it.
+    environment = sum(1 for result in document.get("results", []) if result.get("environment")) if host != "claude_code" else 0
+    met = bool(passed) and all(sum(ok) >= TRIGGER_BAR * len(ok) for ok in passed.values()) and not false_positives and environment == 0
+    return {"per_skill": per_skill, "false_positives": sorted(set(false_positives)), "environment": environment, "met": met}
 
 
 def trigger_verdict(ctx: Context) -> Dict[str, Any]:
@@ -520,7 +895,7 @@ def trigger_verdict(ctx: Context) -> Dict[str, Any]:
         if result_file.is_file():
             verdict = trigger_bar(out_dir, ctx.host.name)
             verdicts.append(verdict["met"])
-            notes.append(f"{label}: {verdict['per_skill']}; cross-skill false positives: {verdict['false_positives'] or 'none'}")
+            notes.append(f"{label}: {verdict['per_skill']}; cross-skill false positives: {verdict['false_positives'] or 'none'}; runs whose sandbox never started (not established): {verdict['environment']}")
         else:
             verdicts.append(False)
             notes.append(f"{label}: the suite wrote no result file")
@@ -531,8 +906,16 @@ def trigger_verdict(ctx: Context) -> Dict[str, Any]:
 def step_triggers(ctx: Context) -> Dict[str, Any]:
     started = time.monotonic()
     which = "claude-triggers" if ctx.host.name == "claude_code" else "codex-triggers"
-    main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main", cwd=ctx.clone, timeout=10800, check=False)
-    holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1", cwd=ctx.clone, timeout=3600, check=False)
+    # Codex's sessions run under the suite's sandbox unless the runner says
+    # the machine needs another (GCP's image cannot start bwrap); the step
+    # notes it, so a verdict on an unsandboxed session is read as such.
+    sandbox = f" --sandbox {ctx.triggers_sandbox}" if ctx.host.name == "codex" and ctx.triggers_sandbox else ""
+    # The two suites share the step's own budget: the main cases take most
+    # of it, the ten held-out cases a quarter (a run past it reads as the
+    # step's failure on minutes, never an unbounded subprocess).
+    budget = step_seconds("triggers")
+    main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main{sandbox}", cwd=ctx.clone, timeout=budget, check=False)
+    holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1{sandbox}", cwd=ctx.clone, timeout=budget // 4, check=False)
     artifacts = []
     for label, run in (("main", main), ("holdout", holdout)):
         out_dir = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""
@@ -540,7 +923,8 @@ def step_triggers(ctx: Context) -> Dict[str, Any]:
             artifacts.append(ctx.copy_artifact(Path(out_dir), f"triggers-{label}"))
         artifacts.append(ctx.artifact(f"triggers-{label}.log", run.stdout + run.stderr))
     verdict = trigger_verdict(ctx)
-    return shell_step("triggers", verdict["completed"], artifacts, (time.monotonic() - started) / 60, verdict["notes"])
+    notes = [*verdict["notes"], *([f"the Codex sessions ran under --sandbox {ctx.triggers_sandbox}, the runner's word for this machine"] if sandbox else [])]
+    return shell_step("triggers", verdict["completed"], artifacts, (time.monotonic() - started) / 60, notes)
 
 
 def step_harness_export(ctx: Context) -> Dict[str, Any]:
@@ -558,11 +942,18 @@ def step_harness_export(ctx: Context) -> Dict[str, Any]:
         artifacts.append(ctx.artifact(f"export-{host}-files.txt", "\n".join(tree) + "\n"))
     refused = ctx.shell(f"kapso harness export {harness} --host claude_code --to {ctx.work / 'export-claude_code'}", check=False)
     artifacts.append(ctx.artifact("export-refusal.txt", refused.stdout + refused.stderr))
-    session_dir = ctx.work / "export-claude_code"
-    turns = ctx.converse("harness-export", session_dir, "Using the backtesting skill in this project, tell me in three lines what timestamp discipline it asks for. Load the skill rather than guessing.", lambda text, index: None, max_turns=1) if ctx.host.name == "claude_code" else []
-    skill_used = any(tool["name"] == "Skill" and "backtesting" in json.dumps(tool["input"]) for turn in turns for tool in turn.tools) if turns else True
+    # The exported skill's session runs on this host, in its own export:
+    # Claude Code loads the skill through its Skill tool; Codex loads one by
+    # reading its file (the plugin's trigger runner reads the same event),
+    # so the host's commands are read for a SKILL.md read that succeeded.
+    session_dir = ctx.work / f"export-{ctx.host.name}"
+    turns = ctx.converse("harness-export", session_dir, "Using the backtesting skill in this project, tell me in three lines what timestamp discipline it asks for. Load the skill rather than guessing.", lambda text, index: None, max_turns=1)
+    if ctx.host.name == "claude_code":
+        skill_used = any(tool["name"] == "Skill" and "backtesting" in json.dumps(tool["input"]) for turn in turns for tool in turn.tools)
+    else:
+        skill_used = any("backtesting/SKILL.md" in json.dumps(tool["input"]) and tool.get("is_error") is False for turn in turns for tool in turn.tools)
     completed = refused.returncode != 0 and (ctx.work / "export-codex" / ".codex" / "agents" / "lookahead-auditor.toml").is_file() and skill_used
-    step = record_step("harness-export", turns, completed, artifacts)
+    step = record_step("harness-export", turns, completed, artifacts, [f"the export and its refusal on both hosts; the exported skill's session on {ctx.host.name} loaded the skill: {skill_used}"])
     step["minutes"] = round(step["minutes"] + (time.monotonic() - started) / 60, 1)
     return step
 
@@ -591,6 +982,7 @@ def step_inbox(ctx: Context) -> Dict[str, Any]:
     paused = wait_for(lambda: (campaign / ".kapso" / "inbox.jsonl").is_file(), ctx.pause_minutes * 60 + 300, every=15)
     notes = [f"the injected pause arrived: {paused}"]
     turns = ctx.converse("inbox", project, ctx.host.command("inbox", "../churn-pause-campaign"), lambda text, index: None, max_turns=1)
+    ctx.user.interventions.append("inbox: the key written where the request's fix line says before the person says so")
     # The person does what the request's fix line says before saying so:
     # the key into the campaign's .env (and the project's), never the reply.
     for env in (campaign / ".env", project / ".env"):
@@ -598,35 +990,88 @@ def step_inbox(ctx: Context) -> Dict[str, Any]:
             out.write("DATA_API_KEY=proof-placeholder-key\n")
     turns += ctx.converse(
         "inbox-reply", project,
-        "DATA_API_KEY is in .env now, in the campaign's and the project's. There is no enrichment service to "
-        "document: reply to the request that the key is in place and that it must reach 0.85 without the enrichment table.",
+        "DATA_API_KEY is in .env now, in the campaign's and the project's. There is no enrichment service, endpoint "
+        "or document to give: reply to every open request of the campaign — the key is in place, there is no service, "
+        "and it must reach 0.85 without the enrichment table — so that nothing is left waiting on me.",
         lambda text, index: None, max_turns=1,
     )
-    artifacts = [ctx.artifact("inbox-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     inbox = campaign / ".kapso" / "inbox.jsonl"
+    replied = inbox.is_file() and any('"replied"' in line or '"reply"' in line for line in inbox.read_text(encoding="utf-8").splitlines())
+    # The requirement is kept: the suspended work must actually resume (the
+    # orchestrator writes a `continued` event), not just be answered.
+    continued = wait_for(lambda: inbox.is_file() and '"continued"' in inbox.read_text(encoding="utf-8"), 600, every=15)
+    artifacts = [ctx.artifact("inbox-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     if inbox.is_file():
         artifacts.append(ctx.copy_artifact(inbox, "inbox.jsonl"))
-    replied = inbox.is_file() and any('"reply"' in line or '"answer"' in line or '"note"' in line for line in inbox.read_text(encoding="utf-8").splitlines())
     ctx.shell(f"kapso build --output {campaign} --stop", check=False)
-    return record_step("inbox", turns, paused and replied, artifacts, notes)
+    notes.append(f"the request was replied: {replied}; the campaign resumed (a continued event): {continued}")
+    return record_step("inbox", turns, ctx.user.ended_well("inbox", paused and replied and continued), artifacts, notes)
 
 
 def step_build_fraud(ctx: Context) -> Dict[str, Any]:
     project = ctx.fixture("fraud-no-evaluator", "fraud")
     campaign = ctx.work / "fraud-campaign"
     result = _launch_and_wait_status(ctx, project, campaign, FRAUD_WISH, "build-fraud")
-    evaluators = [str(path.relative_to(project)) for path in project.rglob("evaluate.py")]
+    evaluators = [str(path.relative_to(project)) for path in project.rglob("evaluate.py") if "campaign" not in path.parts]
     artifacts = result["artifacts"] + [ctx.artifact("fraud-evaluators.txt", "\n".join(evaluators) + "\n")]
     ctx.shell(f"kapso build --output {campaign} --stop", check=False)
-    return record_step("build-fraud", result["turns"], result["brief"] and result["launched"], artifacts, [f"evaluator files written by the session: {evaluators}"])
+    contract = evaluator_contract(ctx, project, evaluators[0]) if evaluators else "no evaluator written"
+    artifacts.append(ctx.artifact("fraud-contract.txt", contract + "\n"))
+    return record_step("build-fraud", result["turns"], result["brief"] and result["launched"] and contract == "ok", artifacts,
+                       [f"evaluator files written by the session: {evaluators}", f"the evaluator's contract: {contract}"])
+
+
+def evaluator_contract(ctx: Context, project: Path, evaluator: str) -> str:
+    """The contract every fixture meets, on the evaluator a session wrote:
+    one command from a workspace root, the metric on its own line last as
+    `name: value`, result.json beside the script with the engine's keys.
+    Returns "ok" or the first breach."""
+    workspace = ctx.work / f"{project.name}-contract"
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    shutil.copytree(project / "repo", workspace, ignore=shutil.ignore_patterns("__pycache__"))
+    if (project / "data").is_dir():
+        shutil.copytree(project / "data", workspace / "kapso_datasets")
+    source = (project / evaluator).parent
+    shutil.copytree(source, workspace / "kapso_evaluation", ignore=shutil.ignore_patterns("result.json", "__pycache__"))
+    run = ctx.shell(f"python3 kapso_evaluation/{Path(evaluator).name}", cwd=workspace, check=False, timeout=900)
+    if run.returncode != 0:
+        return f"exit {run.returncode}: {(run.stdout + run.stderr).strip().splitlines()[-1:] or ['no output']}"
+    last = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""
+    if not re.match(r"^[a-z_]+: -?[0-9.]+$", last):
+        return f"the last line is not `name: value`: {last!r}"
+    result = workspace / "kapso_evaluation" / "result.json"
+    if not result.is_file():
+        return "no result.json beside the script"
+    payload = json.loads(result.read_text(encoding="utf-8"))
+    keys = set(payload)
+    if not {"evaluation_script_path", "evaluation_output", "score"} <= keys:
+        return f"result.json lacks {sorted({'evaluation_script_path', 'evaluation_output', 'score'} - keys)}"
+    score = payload.get("score")
+    if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score)):
+        return f"the score is not a finite number: {score!r}"
+    # A malformed submission must be REJECTED (a scorer that accepts anything
+    # is not a protected evaluator): a predict.py that writes the wrong
+    # columns, re-run, must exit non-zero with a printed reason.
+    predict = workspace / "predict.py"
+    if predict.is_file():
+        predict.write_text("import argparse, csv, sys\np = argparse.ArgumentParser(); p.add_argument('--data'); p.add_argument('--out'); a = p.parse_args()\nw = csv.writer(open(a.out, 'w')); w.writerow(['wrong', 'columns']); w.writerow(['x', 'y'])\n", encoding="utf-8")
+        (workspace / "predictions.csv").unlink(missing_ok=True)
+        malformed = ctx.shell(f"python3 kapso_evaluation/{Path(evaluator).name}", cwd=workspace, check=False, timeout=900)
+        if malformed.returncode == 0:
+            return "a malformed submission (wrong prediction columns) was accepted, not rejected"
+    return "ok"
 
 
 def _criteria_step(ctx: Context, name: str, project: Path, wish: str) -> Dict[str, Any]:
+    # Any campaign that appears under the work tree during the step is a
+    # launch — the one behaviour "do not launch anything" must catch.
+    before = {str(path) for path in ctx.work.rglob(".kapso/status.json")}
     turns = ctx.converse(name, project, ctx.host.command("build", wish), stop_here_policy, max_turns=3)
-    launched = any(path.name == "status.json" for path in ctx.work.rglob("status.json") if name in str(path))
+    launched = bool({str(path) for path in ctx.work.rglob(".kapso/status.json")} - before)
     proposed = turns and turns[0].asked
     artifacts = [ctx.artifact(f"{name}-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
-    return record_step(name, turns, bool(proposed) and not launched, artifacts, ["candidate criteria judged by hand from the answers artifact"])
+    return record_step(name, turns, ctx.user.ended_well(name, bool(proposed) and not launched), artifacts, [f"candidate criteria judged by hand from the answers artifact; a campaign was launched: {launched} (the step forbids it)"])
 
 
 def step_build_data_only(ctx: Context) -> Dict[str, Any]:
@@ -653,6 +1098,8 @@ def step_harness_new(ctx: Context) -> Dict[str, Any]:
     brief.write_text("".join(line for line in brief.read_text(encoding="utf-8").splitlines(keepends=True) if not line.startswith("Harness")), encoding="utf-8")
     ctx.state["trading_project"] = str(project)
     ctx.save()
+    if ctx.user.kind == "scripted":
+        ctx.user.interventions.append("harness-new: the harness's module answers from the driver's policy")
     turns = ctx.converse("harness-new", project, ctx.host.command("harness", "new"), harness_policy, max_turns=12)
     # The session writes where the repository points (`../harnesses/trading`
     # in the README) or under the project: both are the person's.
@@ -698,9 +1145,9 @@ def step_harness_probe(ctx: Context) -> Dict[str, Any]:
         leftover.unlink()
     run = ctx.shell(
         f"kapso build --harness {harness} --brief kapso-brief.md --repo repo --evaluation evaluation --data data "
-        f"--output {campaign} --budget-minutes 10 --budget-experiments 1 --detach", cwd=project, check=False,
+        f"--output {campaign} --budget-minutes {_PROBE_B['minutes']} --budget-experiments {_PROBE_B['experiments']} --detach", cwd=project, check=False,
     )
-    done = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 1500, every=20)
+    done = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), step_seconds("harness-probe"), every=20)
     artifacts = [ctx.artifact("harness-probe-launch.txt", run.stdout + run.stderr)]
     if status_of(campaign) is not None:
         artifacts.append(ctx.copy_artifact(campaign / ".kapso" / "status.json", "harness-probe-status.json"))
@@ -709,15 +1156,30 @@ def step_harness_probe(ctx: Context) -> Dict[str, Any]:
 
 def step_review(ctx: Context) -> Dict[str, Any]:
     project, campaign = Path(ctx.state["churn_project"]), Path(ctx.state["churn_campaign"])
-    finished = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 4500, every=20)
-    turns = ctx.converse("review", project, ctx.host.command("review", "../churn-campaign"), lambda text, index: "is it safe to merge?" if index == 0 else None, max_turns=2)
-    if len(turns) == 1:
+    finished = wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), _CHURN_B["minutes"] * 60 + CAMPAIGN_GRACE_SECONDS, every=20)
+    turns = ctx.converse("review", project, ctx.host.command("review", "../churn-campaign"), lambda text, index: "is it safe to merge?" if index == 0 else None, max_turns=3)   # WP7's round: the review's two-turn headroom was thin for a persona
+    # The merge question is the step's second want; a persona that spent
+    # its turn elsewhere (s2-claude-2 asked about the planted baseline and
+    # was done) leaves it to be asked once, as the scripted user would.
+    if len(turns) == 1 or not merge_verdict("\n".join(turn.text for turn in turns)):
         turns += ctx.converse("review-2", project, "is the branch the campaign delivered in ../churn-campaign safe to merge?", lambda text, index: None, max_turns=1)
     artifacts = [ctx.artifact("review-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
     solution = campaign / ".kapso" / "solution.json"
+    branch = None
     if solution.is_file():
         artifacts.append(ctx.copy_artifact(solution, "churn-solution.json"))
-    return record_step("review", turns, finished and solution.is_file(), artifacts, [f"the churn campaign ended: {(status_of(campaign) or {}).get('state')}"])
+        # The solution record's own key (handles.py writes `branch` at the top;
+        # a run on the Claude host read an older shape's `delivered.branch`
+        # and named nothing). Null when no node scored.
+        branch = json.loads(solution.read_text(encoding="utf-8")).get("branch")
+    answer = "\n".join(turn.text for turn in turns).lower()
+    # The answer must name what was delivered (the branch, or that nothing
+    # was) and give a merge verdict, so "I can't read that campaign" does
+    # not pass review.
+    named = names_delivery(answer, branch)
+    verdict = merge_verdict(answer)
+    completed = ctx.user.ended_well("review", finished and solution.is_file() and named and verdict)
+    return record_step("review", turns, completed, artifacts, [f"the churn campaign ended: {(status_of(campaign) or {}).get('state')}; the answer named the delivered branch {branch!r}: {named}; a merge verdict: {verdict}"])
 
 
 def step_deploy(ctx: Context) -> Dict[str, Any]:
@@ -727,12 +1189,32 @@ def step_deploy(ctx: Context) -> Dict[str, Any]:
         turns += ctx.converse("deploy-2", project, "call the deployment once with the inputs its proof used and show me the answer", lambda text, index: None, max_turns=1)
     deployment = campaign / ".kapso" / "deployments" / "1"
     artifacts = [ctx.artifact("deploy-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
-    if deployment.is_dir():
-        for name in ("record.json", "kapso_deployment.json"):
-            if (deployment / name).is_file():
-                artifacts.append(ctx.copy_artifact(deployment / name, f"deploy-{name}"))
+    if (deployment / "deployment.json").is_file():
+        artifacts.append(ctx.copy_artifact(deployment / "deployment.json", "deploy-deployment.json"))
+    parity = deploy_parity(deployment, campaign)
     ctx.shell(f"kapso deploy {campaign} --stop --number 1", cwd=project, check=False)
-    return record_step("deploy", turns, deployment.is_dir(), artifacts)
+    # Parity must be "same": a "differs (...)" string or a "not established"
+    # is not a proven deployment (the old `!= "differs"` let both pass).
+    return record_step("deploy", turns, (deployment / "deployment.json").is_file() and parity == "same", artifacts, [f"the deployed call against the delivered predictions: {parity}"])
+
+
+def deploy_parity(deployment: Path, campaign: Path) -> str:
+    """Deployment parity: the deployed call's observed answer for its proof
+    input against the delivered branch's own prediction for that row.
+    "same", "differs", or why it is not established."""
+    record = deployment / "deployment.json"
+    if not record.is_file():
+        return "not established: no deployment record"
+    observed = json.loads(record.read_text(encoding="utf-8")).get("observed") or {}
+    predictions = campaign / "predictions.csv"
+    if "id" not in observed or not predictions.is_file():
+        return "not established: no observed row or no predictions.csv on the delivered branch"
+    for line in predictions.read_text(encoding="utf-8").splitlines()[1:]:
+        row_id, _, value = line.partition(",")
+        if row_id == str(observed["id"]):
+            delivered = float(value)
+            return "same" if abs(delivered - float(observed["churn_probability"])) <= 1e-6 else f"differs (deployed {observed['churn_probability']}, delivered {delivered})"
+    return "not established: the proof's id is not in predictions.csv"
 
 
 def step_learn(ctx: Context) -> Dict[str, Any]:
@@ -763,7 +1245,7 @@ def step_learn_complete(ctx: Context) -> Dict[str, Any]:
     status = ctx.state.get("learn_status")
     if not status:
         return shell_step("learn-complete", False, [], 0, ["no learn status appeared"])
-    done = wait_for(lambda: json.loads(Path(status).read_text()).get("state") in ("done", "failed"), 9000, every=60)
+    done = wait_for(lambda: json.loads(Path(status).read_text()).get("state") in ("done", "failed"), step_seconds("learn-complete"), every=60)
     final = json.loads(Path(status).read_text())
     listing = ctx.shell("kapso experience list", cwd=Path(ctx.state["churn_project"]), check=False)
     artifacts = [ctx.artifact("learn-status.json", json.dumps(final, indent=1)), ctx.artifact("experience-list.txt", listing.stdout + listing.stderr)]
@@ -776,14 +1258,19 @@ def step_session_brief(ctx: Context) -> Dict[str, Any]:
     project_config(project, {"experience": {"session_sources": ["mine:all"]}})
     prompt = "What experience is this session served, according to your MCP server's instructions? Then read one card from the bank with the bank tools and quote its title."
     turns = ctx.converse("session-brief", project, prompt, lambda text, index: None, max_turns=1)
+    bank_tools = [tool for turn in turns for tool in turn.tools if "bank" in tool["name"]]
+    # A successful bank read: a bank tool's result came back and was not
+    # an error (both hosts' turns carry `is_error` from the result; a call
+    # with no result, or a failed one, is not a card read).
+    bank_read = any(tool.get("is_error") is False for tool in bank_tools)
     names = [tool["name"] for turn in turns for tool in turn.tools]
-    bank_read = any("bank" in name for name in names)
     artifacts = [ctx.artifact("session-brief.txt", "\n".join(names) + "\n\n" + "\n".join(turn.text for turn in turns))]
-    return record_step("session-brief", turns, bank_read, artifacts, ["the sources recognised in the instructions: judged by hand from the answer"])
+    return record_step("session-brief", turns, ctx.user.ended_well("session-brief", bank_read), artifacts, [f"a bank tool succeeded (a card read): {bank_read}; the sources recognised judged by hand from the answer"])
 
 
 def step_experience_share(ctx: Context) -> Dict[str, Any]:
     project = Path(ctx.state["churn_project"])
+    ensure_second_user(ctx)
     # The bare remote where the second user can read it: the first user's
     # home is its own.
     remote = Path("/tmp") / "bank-remote.git"
@@ -806,6 +1293,47 @@ def step_experience_share(ctx: Context) -> Dict[str, Any]:
     shared = ctx.shell(f"git -C {remote} log --oneline -1", check=False).returncode == 0
     loaded = "banks you read" in second.stdout and "serving" in second.stdout
     return record_step("experience-share", turns, shared and loaded, artifacts, ["the second user loads the shared bank by reference through kapso-mcp and lists it under the banks it reads; a served build at a tiny budget is left to WP9's round"])
+
+
+def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
+    """The design's ninth step: the second engineer, on its own install,
+    builds at a tiny budget served the shared bank by its reference, and
+    the record names the bank among what the build was served."""
+    started = time.monotonic()
+    project = Path(ctx.state["churn_project"])
+    budget = SUITE["builds"]["second_engineer"]
+    ensure_second_user(ctx)
+    ctx.shell(f"sudo rm -rf /home/proof2/churn-second /home/proof2/second-campaign /home/proof2/second-campaign.log; sudo cp -r {project} /home/proof2/churn-second; sudo chown -R proof2:proof2 /home/proof2/churn-second")
+    launch = ctx.shell(
+        "sudo -u proof2 -H bash -lc 'cd ~/churn-second; export PATH=$HOME/.local/bin:$PATH; "
+        "kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output ~/second-campaign "
+        f"--experience file:///tmp/bank-remote.git --budget-minutes {budget['minutes']} --budget-experiments {budget['experiments']} --detach'",
+        check=False, timeout=600,
+    )
+    campaign = Path("/home/proof2/second-campaign")
+    read_status = lambda: json.loads(ctx.shell(f"sudo cat {campaign}/.kapso/status.json", check=False).stdout or "null")
+    done = wait_for(lambda: (read_status() or {}).get("state") in ("done", "failed"), budget["minutes"] * 60 + 600, every=30)
+    solution_text = ctx.shell(f"sudo cat {campaign}/.kapso/solution.json", check=False).stdout
+    solution = json.loads(solution_text) if solution_text.strip() else {}
+    served = "bank-remote" in solution_text
+    final_state = (read_status() or {}).get("state")
+    # Scored: the solution record's own `score` (handles.py writes it at
+    # the top; a `delivered.score` key does not exist, and reading it
+    # could never be true); and the build read a bank card (a record under
+    # the campaign names the shared bank).
+    scored = solution.get("score") is not None
+    read_bank = "bank-remote" in ctx.shell(f"sudo cat {campaign}/.kapso/experiment_history.json 2>/dev/null; sudo cat {campaign}/.kapso/solution.json", check=False).stdout
+    artifacts = [ctx.artifact("second-engineer-launch.txt", launch.stdout + launch.stderr)]
+    if solution_text.strip():
+        artifacts.append(ctx.artifact("second-engineer-solution.json", solution_text))
+    # The second user's campaign log and status, so a failure has an
+    # inspectable cause in the archive (the preflight death of s2-claude-3
+    # had none).
+    artifacts.append(ctx.artifact("second-engineer-campaign.log", ctx.shell("sudo cat /home/proof2/second-campaign.log", check=False).stdout))
+    artifacts.append(ctx.artifact("second-engineer-status.json", ctx.shell(f"sudo cat {campaign}/.kapso/status.json", check=False).stdout))
+    ctx.user.interventions.append("second-engineer-build: the churn fixture copied to the second user's home; the build run as that user with the bank by reference")
+    return shell_step("second-engineer-build", launch.returncode == 0 and done and final_state == "done" and served and scored, artifacts, (time.monotonic() - started) / 60,
+                      [f"served the shared bank: {served}; a scored delivery: {scored}; the bank in the build's records: {read_bank}; final state: {final_state}"], kind="build")
 
 
 def step_harness_improve(ctx: Context) -> Dict[str, Any]:
@@ -836,9 +1364,9 @@ def step_campaign_session_isolation(ctx: Context) -> Dict[str, Any]:
         shutil.rmtree(campaign)
     launch = ctx.shell(
         f"kapso build --brief kapso-brief.md --repo repo --evaluation evaluation --data data --output {campaign} "
-        "--budget-minutes 10 --budget-experiments 1 --detach", cwd=project, check=False,
+        f"--budget-minutes {_PROBE_B['minutes']} --budget-experiments {_PROBE_B['experiments']} --detach", cwd=project, check=False,
     )
-    wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), 1200, every=20)
+    wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), step_seconds("campaign-session-isolation"), every=20)
     findings = []
     # The implementation sessions' streams are `.kapso/sessions/<branch>/stream.jsonl`,
     # the ideation sessions' `.kapso/ideation/iter<n>/<host>_<model>.stream.txt`.
@@ -941,7 +1469,8 @@ STEPS: Dict[str, Callable[[Context], Dict[str, Any]]] = {
     "inbox": step_inbox, "build-fraud": step_build_fraud, "build-data-only": step_build_data_only,
     "build-empty-wish": step_build_empty_wish, "harness-new": step_harness_new, "harness-probe": step_harness_probe,
     "review": step_review, "deploy": step_deploy, "learn": step_learn, "learn-complete": step_learn_complete,
-    "session-brief": step_session_brief, "experience-share": step_experience_share, "harness-improve": step_harness_improve,
+    "session-brief": step_session_brief, "experience-share": step_experience_share, "second-engineer-build": step_second_engineer_build,
+    "harness-improve": step_harness_improve,
     "campaign-session-isolation": step_campaign_session_isolation, "codex-rules-probe": step_codex_rules_probe, "cold-start": step_cold_start,
 }
 assert list(STEPS) == STEP_NAMES
@@ -958,20 +1487,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--wheel", default=None, help="the wheel the cold install uses")
     parser.add_argument("--machine", default=os.uname().nodename)
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model instead of the shipped one (said in the record)")
-    parser.add_argument("--pause-minutes", type=int, default=10, help="the injected pause campaign's budget; a slow box needs more than the machine's ten for its session to reach the ask")
+    parser.add_argument("--pause-minutes", type=int, default=_PAUSE_B["minutes"], help="the injected pause campaign's budget (the suite's builds.pause.minutes); a slow box needs more than the default for its session to reach the ask")
     parser.add_argument("--recompute-triggers", action="store_true", help="read the trigger step's verdict again from its artifacts, run nothing")
+    parser.add_argument("--triggers-sandbox", default=None, help="codex's sandbox for the trigger sessions on a machine whose own cannot start (the runner's word; default: the suite's triggers.codex_sandbox)")
+    parser.add_argument("--advisory", default=None, help="the reason this arm runs on the development box; the record is marked and never a fresh-machine acceptance")
+    parser.add_argument("--user", default="scripted", help="who answers the host: scripted (the mechanical round) or persona:<card> (a card under tests/semantic/personas through the other vendor's CLI)")
     args = parser.parse_args(argv)
     host = ClaudeHost() if args.host == "claude_code" else CodexHost()
     out = Path(args.out).resolve()
     work = Path(args.work).resolve() if args.work else out / "work"
     work.mkdir(parents=True, exist_ok=True)
-    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model, args.pause_minutes)
+    user = UserMode(args.user, host.name)
+    ctx = Context(host, Path(args.clone).resolve(), work, out, Path(args.wheel).resolve() if args.wheel else None, args.machine, args.learn_model, args.pause_minutes, user,
+                  triggers_sandbox=args.triggers_sandbox)
+    test_name = "S2" if user.kind == "persona" else "S2-mechanical"
     record_file = out / "record.json"
+    started = datetime.now(timezone.utc)
+    wheel_sha256 = subprocess.run(["sha256sum", str(ctx.wheel)], capture_output=True, text=True).stdout.split()[0] if ctx.wheel else "-"
     record = json.loads(record_file.read_text()) if record_file.exists() else {
-        "test": "S2-mechanical", "host": host.name, "machine": args.machine,
-        "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1],
-                    "wheel_sha256": subprocess.run(["sha256sum", str(ctx.wheel)], capture_output=True, text=True).stdout.split()[0] if ctx.wheel else "-"},
-        "started": datetime.now(timezone.utc).isoformat(timespec="seconds"), "finished": None, "steps": [], "notes": [], "transcripts": [],
+        "test": test_name, "host": host.name, "machine": args.machine,
+        "run_id": f"{test_name}-{host.name}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
+        "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": wheel_sha256},
+        "pins": {"wheel_sha256": wheel_sha256, "suite_sha256": hashlib.sha256(SUITE_PATH.read_bytes()).hexdigest()},
+        "user": user.record(),
+        "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [note for note in [codex_session_note()] if note], "transcripts": [],
     }
     if args.recompute_triggers:
         # The verdict's rule changed after the suite ran: the same evidence
@@ -999,6 +1538,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else:
             step = STEPS[name](ctx)
         record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]
+        record["user"] = {**record.get("user", {}), **user.record(), "interventions": sorted(set(record.get("user", {}).get("interventions", [])) | set(user.interventions))}
+        # A persona that never corrected the planted baseline nodded: the
+        # engaging and not-annoying dimensions are reported, not binding,
+        # for this arm (not earned against a user who nods through a wrong
+        # figure). The arm itself stays what it is — `advisory` is the
+        # development box's mark alone, never the persona's.
+        if user.pushback is False:
+            record["advisory_dimensions"] = {"dimensions": ["engaging", "not annoying"], "reason": "the persona did not correct the planted baseline"}
         record["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         record["transcripts"] = sorted(f"transcripts/{path.name}" for path in (out / "transcripts").glob("*.jsonl"))
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")

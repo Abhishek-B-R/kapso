@@ -23,6 +23,9 @@ HOURLY_USD="0.134"
 LABEL="purpose=kapso-fresh"
 CLAUDE_SECRET="${KAPSO_FRESH_CLAUDE_SECRET:-claude-oauth-token-3}"   # the token rule's answer, when another login has the headroom
 OPENAI_SECRET="openai-api-key"
+# Codex credit lives in a device-auth ChatGPT session, not the api key (which is
+# credit-exhausted); its auth.json is pushed to the machine at install.
+CODEX_SESSION="${KAPSO_CODEX_SESSION:-/home/ubuntu/.codex-semantic/auth.json}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RUNS="$HERE/runs"
 
@@ -71,7 +74,13 @@ cmd_install() {
   ssh_run "$name" "bash -s -- $(basename "$wheel")" < "$HERE/fresh_machine_install.sh" 2>&1 | tee "$RUNS/$id/install.log"
   push_secret "$name" CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_SECRET"
   push_secret "$name" OPENAI_API_KEY "$OPENAI_SECRET"
-  ssh_run "$name" "set -a; . ~/.secrets/env; set +a; printenv OPENAI_API_KEY | codex login --with-api-key >/dev/null && echo 'codex: logged in with the API key'"
+  # The credited Codex login is the device-auth ChatGPT session (the api key is
+  # credit-exhausted); push its auth.json rather than logging in with the key.
+  # The session travels on ssh stdin only, never the command line.
+  [ -f "$CODEX_SESSION" ] || { echo "no Codex session at $CODEX_SESSION" >&2; exit 1; }
+  # ~/.codex/SOURCE says where the login came from; every driver copies it
+  # into its record's notes, so a run on this session is marked as such.
+  cat "$CODEX_SESSION" | ssh_run "$name" "umask 077; mkdir -p ~/.codex && cat > ~/.codex/auth.json && echo 'the device-auth ChatGPT session of the owner, pushed by fresh_machine.sh at $(date -u +%FT%TZ); no Codex credit of the run itself' > ~/.codex/SOURCE && echo 'codex: device-auth session installed'"
   echo "installed $(basename "$wheel") on $name"
 }
 
@@ -85,10 +94,19 @@ cmd_run() {
 }
 
 cmd_fetch() {
-  local id="$1" remote="$2" name; name="$(name_of "$id")"
+  local id="$1" remote="$2" name rel; name="$(name_of "$id")"; rel="${remote#\~/}"
   mkdir -p "$RUNS/$id/fetched"
-  gcloud compute scp --recurse "ubuntu@$name:$remote" "$RUNS/$id/fetched/" --project "$PROJECT" --zone "$ZONE" --quiet
-  echo "fetched $remote into $RUNS/$id/fetched/"
+  # One compressed stream, not a recursive scp. scp --recurse dereferences a
+  # venv's lib64 -> lib symlink (copying site-packages twice) and pays a round
+  # trip per tiny file -- an S1 run's throwaway venv alone is ~1 GB of bytecode.
+  # tar keeps symlinks and drops the reproducible bulk (venvs, caches, .pyc)
+  # the record never needs; every transcript and build artifact stays.
+  gcloud compute ssh "ubuntu@$name" --project "$PROJECT" --zone "$ZONE" --quiet \
+    --command "tar -C \"\$HOME\" -czf /tmp/fetch.tgz --exclude='*/venv' --exclude='*/.venv' --exclude='*/__pycache__' --exclude='*.pyc' --exclude='*/.cache' '$rel'"
+  gcloud compute scp "ubuntu@$name:/tmp/fetch.tgz" "$RUNS/$id/fetched.tgz" --project "$PROJECT" --zone "$ZONE" --quiet
+  tar -C "$RUNS/$id/fetched" -xzf "$RUNS/$id/fetched.tgz"
+  rm -f "$RUNS/$id/fetched.tgz"
+  echo "fetched $remote into $RUNS/$id/fetched/ (venvs, caches and bytecode excluded)"
 }
 
 cmd_delete() {

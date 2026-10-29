@@ -51,6 +51,28 @@ _FLOW_FILE_PATTERN = re.compile(r"^it-\d+/flow-\d+\.md$")
 _RUN_ID_PATTERN = re.compile(r"^runs/(run_\d+)/")
 _MD_LINK_PATTERN = re.compile(r"\]\(([^)\s]+)\)")
 _LINE_FRAGMENT_PATTERN = re.compile(r"^L\d+(-L?\d+)?$")
+# A frontmatter line whose unquoted value is a reference with a fragment
+# holding a colon followed by whitespace: YAML reads a mapping value there.
+_COLON_FRAGMENT_PATTERN = re.compile(r"""^(\s*(?:- )?[\w.-]+:\s+)([^\s"'][^\s]*#.*:\s.*)$""")
+
+
+def _unquoted_colon_fragments(text: str) -> List[str]:
+    """The frontmatter lines whose unquoted reference carries a fragment
+    with a colon in it, which YAML would read as a mapping value: a
+    finding for the crew (quote the reference whole), where the parser
+    would raise and the repair round never see the document."""
+    if not text.startswith("---\n") or "\n---" not in text[4:]:
+        return []
+    block = text[4:text.index("\n---", 4)]
+    findings = []
+    for number, line in enumerate(block.splitlines(), 1):
+        match = _COLON_FRAGMENT_PATTERN.match(line)
+        if match:
+            findings.append(
+                f"frontmatter line {number}: the reference `{match.group(2).strip()}` is unquoted and its "
+                "fragment holds a colon; quote the whole reference"
+            )
+    return findings
 
 
 def _split_frontmatter(text: str) -> Optional[Dict[str, Any]]:
@@ -141,7 +163,12 @@ class MinedViewValidator:
         flows = []
         for path in self._flow_files():
             rel = path.relative_to(self.mined_dir).as_posix()
-            frontmatter = _split_frontmatter(path.read_text())
+            text = path.read_text()
+            unquoted = _unquoted_colon_fragments(text)
+            if unquoted:
+                findings.extend(f"mined/{rel}: {finding}" for finding in unquoted)
+                continue
+            frontmatter = _split_frontmatter(text)
             if frontmatter is None:
                 findings.append(f"mined/{rel}: missing or non-mapping frontmatter block")
                 continue
