@@ -74,10 +74,10 @@ def test_done_alone_ends_and_done_in_a_sentence_does_not(task, monkeypatch):
     card = simulated_user.load_card(CARDS / "ml-engineer.yaml")
     calls = []
     _fake_run(monkeypatch, calls, _codex_stream("DONE"))
-    reply = simulated_user.next_message(card, task, "intent", [], "Anything else?", "claude_code", SETTINGS["claude_code"])
+    reply = simulated_user.next_message(card, task, "intent", [], "Anything else?", "claude_code", SETTINGS["claude_code"], 600)
     assert reply.done and reply.text == "DONE" and reply.session == "t-1"
     _fake_run(monkeypatch, calls, _codex_stream("I'm DONE with the proposal, launch it."))
-    reply = simulated_user.next_message(card, task, "intent", [], "Anything else?", "claude_code", SETTINGS["claude_code"])
+    reply = simulated_user.next_message(card, task, "intent", [], "Anything else?", "claude_code", SETTINGS["claude_code"], 600)
     assert not reply.done and reply.text.startswith("I'm DONE")
 
 
@@ -85,16 +85,16 @@ def test_the_vendor_is_the_other_one_by_host_and_the_persona_has_no_tool(task, m
     card = simulated_user.load_card(CARDS / "ml-engineer.yaml")
     calls = []
     _fake_run(monkeypatch, calls, _codex_stream("go"))
-    simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"])
+    simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"], 600)
     command = calls[-1][0]
     assert command[:2] == ["codex", "exec"] and "--sandbox" in command and command[command.index("--sandbox") + 1] == "read-only"
     assert command[command.index("-m") + 1] == "gpt-6-astra" and 'model_reasoning_effort="medium"' in command
     _fake_run(monkeypatch, calls, json.dumps({"result": "go", "session_id": "s-9"}))
-    reply = simulated_user.next_message(card, task, "intent", [], "Shall I?", "codex", SETTINGS["codex"])
+    reply = simulated_user.next_message(card, task, "intent", [], "Shall I?", "codex", SETTINGS["codex"], 600)
     command = calls[-1][0]
     assert command[:2] == ["claude", "-p"] and "--disallowedTools" in command and reply.session == "s-9"
     with pytest.raises(ValueError, match="the persona for a claude_code host is codex's"):
-        simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["codex"])
+        simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["codex"], 600)
 
 
 def test_a_failed_or_empty_persona_session_raises_rather_than_reading_as_satisfied(task, monkeypatch):
@@ -102,17 +102,17 @@ def test_a_failed_or_empty_persona_session_raises_rather_than_reading_as_satisfi
     calls = []
     _fake_run(monkeypatch, calls, "", returncode=1, stderr="Quota exceeded")
     with pytest.raises(RuntimeError, match=r"the persona's codex session failed \(exit 1\): Quota exceeded"):
-        simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"])
+        simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"], 600)
     _fake_run(monkeypatch, calls, _codex_stream(""))
     with pytest.raises(RuntimeError, match="no agent_message"):
-        simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"])
+        simulated_user.next_message(card, task, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"], 600)
     # A Claude session that returns is_error (a limit/quota) is a refusal,
     # never a satisfied user, even though the process exited 0.
     _fake_run(monkeypatch, calls, json.dumps({"result": "API Error: 429", "is_error": True, "subtype": "error_during_execution", "session_id": "s-1"}))
     with pytest.raises(RuntimeError, match="refused persona is not a satisfied user"):
-        simulated_user.next_message(card, task, "intent", [], "Shall I?", "codex", SETTINGS["codex"])
+        simulated_user.next_message(card, task, "intent", [], "Shall I?", "codex", SETTINGS["codex"], 600)
     # With no README in the task directory the persona still runs (an empty view, not a crash).
     _fake_run(monkeypatch, calls, _codex_stream("go"))
     bare = task.parent / "bare"
     bare.mkdir()
-    assert simulated_user.next_message(card, bare, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"]).text == "go"
+    assert simulated_user.next_message(card, bare, "intent", [], "Shall I?", "claude_code", SETTINGS["claude_code"], 600).text == "go"

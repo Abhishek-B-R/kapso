@@ -219,7 +219,7 @@ def test_the_prerequisite_campaign_is_built_in_the_packages_own_verb():
 
 def test_an_execution_is_an_invocation_of_the_packages_own_verb_never_a_search_that_mentions_it(tmp_path):
     # s1-claude-1 had counted a `sed` over the docs as task 2's first run,
-    # and the released arm ran 0.7.10's `evolve` without a single counted
+    # and the released arm ran 0.7.10's verb `evolve` without a single counted
     # execution — the headline comparison was the detector's. A command
     # counts when one of its segments invokes kapso with the verb (wrappers
     # and variable assignments stripped, a `bash -lc` opened); the released
@@ -229,11 +229,11 @@ def test_an_execution_is_an_invocation_of_the_packages_own_verb_never_a_search_t
     wrapped = _stream([("cd task && KAPSO_HOME=/tmp nohup kapso build --brief kapso-brief.md --output ../campaign-1 --detach", False)])
     assert len(s1.executions(wrapped, "build", "cli", tmp_path)) == 1
     assert s1.invocations("/bin/bash -lc 'cd task && ./venv/bin/python run.py'", "python") == ["python run.py"]
-    released = _stream([("kapso evolve -f kapso-brief.md -o campaign-1 -i 1", False), ("kapso build --brief b.md --output c", True)])
-    assert [entry["command"][:12] for entry in s1.executions(released, "build", "cli", tmp_path, package="released")] == ["kapso evolve"]
+    released = _stream([("kapso evolve -f kapso-brief.md -o campaign-1 -i 1", False), ("kapso build --brief b.md --output c", True)])   # 0.7.10's verb
+    assert [entry["command"][:12] for entry in s1.executions(released, "build", "cli", tmp_path, package="released")] == ["kapso evolve"]   # 0.7.10's verb
     assert s1.executions(released, "build", "cli", tmp_path, package="branch")[0]["command"].startswith("kapso build")
-    assert s1.executions(_stream([("kapso evolve -o c --resume", False)]), "resume", "cli", tmp_path, package="released")
-    (tmp_path / "old.py").write_text("from kapso import Kapso\nsolution = Kapso().evolve('task/kapso-brief.md', output='campaign-1')\n")
+    assert s1.executions(_stream([("kapso evolve -o c --resume", False)]), "resume", "cli", tmp_path, package="released")   # 0.7.10's verb
+    (tmp_path / "old.py").write_text("from kapso import Kapso\nsolution = Kapso().evolve('task/kapso-brief.md', output='campaign-1')\n")   # 0.7.10's verb
     assert len(s1.executions(_stream([("./venv/bin/python old.py", False)]), "build", "python", tmp_path, package="released")) == 1
     assert s1.executions(_stream([("./venv/bin/python old.py", False)]), "build", "python", tmp_path, package="branch") == []
     assert s1.executions(_stream([("python -c 'from kapso import Kapso; Kapso().build(1)'", False)]), "build", "python", tmp_path) == [], "a one-liner is not a script"

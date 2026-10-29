@@ -54,10 +54,10 @@ TASKS = [
     {"number": 6, "restore": "campaign-killed", "goal": "the campaign at ./campaign-killed was interrupted before it finished; continue it from where it stopped", "verb": "resume", "evidence": "resumed"},
 ]
 # The counted verb's shapes on each surface, per package: the branch's
-# `build` is 0.7.10's `evolve` (its resume `evolve --resume`); deploy and
-# learn keep their names. The released arm is counted in its own verbs — a
-# table that knew only the new names counted nothing the baseline ran and
-# published a first-try figure that was the detector's, not the product's.
+# `build` is 0.7.10's verb `evolve` (its resume `evolve --resume`); deploy   # 0.7.10's verb
+# and learn keep their names. The released arm is counted in its own verbs
+# — a table that knew only the new names counted nothing the baseline ran
+# and published a first-try figure that was the detector's, not the product's.
 VERB_PATTERNS = {
     "branch": {
         "build": {"cli": re.compile(r"^kapso\s+build\b(?!.*--resume)"), "python": re.compile(r"\.build\(")},
@@ -66,10 +66,10 @@ VERB_PATTERNS = {
         "resume": {"cli": re.compile(r"^kapso\s+build\b.*--resume"), "python": re.compile(r"\.build\(.*resume\s*=\s*True")},
     },
     "released": {
-        "build": {"cli": re.compile(r"^kapso\s+evolve\b(?!.*--resume)"), "python": re.compile(r"\.evolve\(")},
+        "build": {"cli": re.compile(r"^kapso\s+evolve\b(?!.*--resume)"), "python": re.compile(r"\.evolve\(")},   # 0.7.10's verb
         "deploy": {"cli": re.compile(r"^kapso\s+deploy\b"), "python": re.compile(r"\.deploy\(")},
         "learn": {"cli": re.compile(r"^kapso\s+learn\b"), "python": re.compile(r"\.learn\(")},
-        "resume": {"cli": re.compile(r"^kapso\s+evolve\b.*--resume"), "python": re.compile(r"\.evolve\(.*resume")},
+        "resume": {"cli": re.compile(r"^kapso\s+evolve\b.*--resume"), "python": re.compile(r"\.evolve\(.*resume")},   # 0.7.10's verb
     },
 }
 NOT_COUNTED = re.compile(r"--help|^kapso\s+doctor\b|^kapso\s+--version\b|^kapso\s+watch\b|^kapso\s+trace\b")
