@@ -119,6 +119,36 @@ def test_a_fresh_campaign_writes_the_launch_record_and_registers(tmp_path, monke
     assert listed[0]["path"] == str(workspace.resolve()) and listed[0]["goal"] == "Improve support"
 
 
+def test_the_launch_record_stores_resolved_paths(tmp_path, monkeypatch):
+    """`kapso inbox reply` resumes from inside the campaign, so a path the
+    launch was given relative to where it ran must still name the same
+    file there; a relative --config made the reply fail after it had
+    already consumed the request."""
+    workspace = tmp_path / "campaign"
+    _init_git_workspace(workspace)
+    (tmp_path / "eval").mkdir()
+    (tmp_path / "eval" / "evaluate.py").write_text("print(1)\n")
+    (tmp_path / "data").mkdir()
+    _fake_orchestrator(workspace, monkeypatch)
+    _inbox_on(monkeypatch, tmp_path / "registry.jsonl")
+    # A kg_index makes preflight ask for the knowledge services
+    monkeypatch.setattr(kapso_module, "run_preflight", lambda *a, **k: None)
+    kapso = _facade()
+    kapso.config_path = "my.yaml"
+    kapso._kg_index_path = "kg.index"
+    monkeypatch.chdir(tmp_path)
+
+    kapso.evolve(
+        goal="g", output_path="campaign", eval_dir="eval", data_dir="./data"
+    )
+
+    record = read_launch_record(workspace)
+    assert record["config_path"] == str(tmp_path.resolve() / "my.yaml")
+    assert record["kg_index"] == str(tmp_path.resolve() / "kg.index")
+    assert record["eval_dir"] == str(tmp_path.resolve() / "eval")
+    assert record["data_dir"] == str(tmp_path.resolve() / "data")
+
+
 def test_a_callback_makes_the_campaign_not_resumable_from_the_inbox(tmp_path, monkeypatch):
     workspace = tmp_path / "campaign"
     _init_git_workspace(workspace)
