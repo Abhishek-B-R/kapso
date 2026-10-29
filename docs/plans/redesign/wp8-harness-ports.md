@@ -641,6 +641,36 @@ that is still evidence.
     loads through `load_experience` by path, and serves a card with its
     code payload; a corrupt provenance row raises; the local-only entry is
     absent from the shareable bank.
+    Done (2026-10-29): the grammar extension landed in the learning
+    package (`bank.py`: the `reported` verdict with its five source
+    fields checked by conformance, `Card.reported_only`;
+    `bank_invariants.py`: admission refuses it as a learner's;
+    `retriever.py`: the evidence trail renders the source and every
+    read of a reported-only card carries the "reported by others"
+    line). `book_to_bank.py` writes the bank whole after every check (a
+    corrupt row, an uncovered entry, an unknown tier or status, markdown
+    in a payload refuse before a byte is written): the card's title from
+    the book's router line, the rule from the idea page's lead
+    paragraph, the task page as the situation, the idea's remainder and
+    the payload as what to do, the provenance and verification as why,
+    the confidence line in sync with `reliability.plain`; the status and
+    best-known score from the idea page's own `status:`/`best:` lines
+    (INDEX.md writes `?` where the page carries the review's verdict).
+    The two banks: `~/banks/ioai-shareable` (47 cards: 43
+    shippable-with-attribution + 4 ours; 46 code, 1 text — the survey)
+    and `~/banks/ioai-local-only` (21 cards: 13 local-only + 8 excluded;
+    19 code, 2 text — the theory rounds), both conformance-clean,
+    loadable by path, their tarballs and checksums beside the book's
+    backup and in the bucket. The second pass's table (`PROVENANCE.md`
+    beside the runner, 162 rows: the stated licence, use, publish, the
+    third-party payload, our files; the first pass's rules reading,
+    open questions and appendix carried) reads shareable 102,
+    local-only 60 over both sets. For the record: the body contract's
+    floors are unmet on 19 cards' rules (the book's one-line leads) and
+    9 cards' what-to-do (a one-paragraph idea), which the seeder's
+    rewrite queue owns; no artifact-reference pattern hits; the loaded
+    bank's intro line still says "measured by others" for a bank read
+    by path — the card line says what its evidence is (DECISIONS).
 16. **The abstraction scan**: `benchmarks/harness_scan.py`, the
     dependency-free vocabularies, the gate test that never skips, run over
     both harnesses; the hits fixed at the source (and at changes 6 and 9).

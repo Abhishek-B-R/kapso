@@ -51,7 +51,8 @@ Per task:
    submission goes through the task root's procedure, which records it in the ledger; the
    provided evaluation reports each candidate's own recorded submission by its public score.
 3. **Shared learning**: lanes learn from every sibling submission on the board, and a bank of
-   past olympiad solutions is served as experience (`--experience`), never staged.
+   past olympiad solutions — the IOAI book converted by `book_to_bank.py` (below) — is served
+   as experience (`--experience`), never staged.
 
 ## Quickstart
 
@@ -67,6 +68,29 @@ PYTHONPATH=src:. python -m benchmarks.ioai2026.preflight \
 PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root tmp/ioai/task1 --hours 6
 ```
 
+## The book as a bank
+
+The bank served as experience is the IOAI book — one directory per past olympiad task
+(`problem.md`, `idea.md`, `solution/`) — converted by `book_to_bank.py`: one procedure card per
+entry at `procedures/<uid>/card.md` with the solution files under `code/`, the card's one
+evidence entry `reported` (the score at its source, who reported it, under what licence, by
+what protocol), the card born `candidate`. A reported score is not a kapso measurement: the
+serving layer says so on every read, the reliability block carries no numbers, and only a
+campaign that runs the card promotes it. The licence pass over the book (`PROVENANCE.md`: one
+row per entry with the licence read at every cited source, the use and publish verdicts, the
+open questions left to a human) decides membership: the shareable bank takes the verdicts
+`shippable-with-attribution` and `ours (shippable)`, the local-only bank the rest; `--exclude`
+drops an entry by uid, so a campaign on one of the book's tasks is served the bank without its
+own entry.
+
+```bash
+PYTHONPATH=src:. python benchmarks/ioai2026/book_to_bank.py \
+    --book <the book> --provenance <provenance.json> --out ~/banks/ioai-shareable \
+    --verdicts shippable-with-attribution "ours (shippable)" [--exclude <uid>] [--table PROVENANCE.md]
+PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root tmp/ioai/task1 --hours 6 \
+    --experience ~/banks/ioai-shareable
+```
+
 ## Layout
 
 | path | role |
@@ -78,3 +102,5 @@ PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root tmp/ioai/task1 --ho
 | `kernel_slots.py` | ticket office over the submission platform's per account session limits |
 | `config.yaml` | the override file over the packaged config (the roles, the lanes, the budget); the runner's own settings (the harvest, the session budget) under `benchmark:` |
 | `RULES.md` | organizer rules, pinned into every campaign's contest root |
+| `book_to_bank.py` | the IOAI book as a bank: one procedure card per entry, its evidence `reported`, membership by the licence pass |
+| `PROVENANCE.md` | the licence pass over the book: every entry's sources, licences, use and publish verdicts, the open questions |

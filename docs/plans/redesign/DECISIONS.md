@@ -2573,3 +2573,30 @@ submissions list is attributed back to the ledger. The organizers' rules
 ride in the Brief's objective as a section, not as a Rules item: the brief
 grammar reads a bulleted line under Rules as a new item, and the rendered
 text must parse back to the same brief for a resume.
+
+## WP8: the IOAI book's cards are `reported` evidence, born candidates, priced by nobody (2026-10-29)
+
+The card grammar's evidence describes what a campaign did with a claim; a
+curated winner's solution has only a score at a source. The grammar gains
+one kind, `reported`: a source of `{url, author, licence, score, protocol}`
+with the verdict `reported`, outside the executed verdicts (it promotes
+nothing, seeds no codify, counts in no probe tier) and outside the
+reliability arithmetic (a converted card writes no validity, boundary,
+coverage or score — the index shows `score None` and sorts it last; the
+first executed verdict starts the numbers). A learner run cannot write it:
+admission refuses the verdict by name. The serving layer tells the reader
+on every read of a reported-only card that the score is the source's, not
+a kapso measurement, and renders the source whole in the evidence trail;
+the loaded bank's own intro line stays "measured by others" (the bank is
+somebody's; what each card's evidence is, the card says). The converter
+takes the idea page's `status:` and `best:` lines as the record (INDEX.md
+writes `?` where the page carries the review's verdict), the router line
+as the title, the lead paragraph as the rule — a thin rule is the book's
+thin lead, left for the seeder's rewrite queue rather than padded. The
+licence pass's verdict places an entry (shareable: shippable-with-attribution
+and ours; local-only: the rest); the use verdict is "yes" for our code and
+permissive sources and "owner's call" with the open question named for
+everything else — the mechanical pass decides no legal question. The
+survey and the theory entries are text procedures (no payload); compiled
+byproducts never ship; markdown in a payload is refused because the card
+count would read it as a card.

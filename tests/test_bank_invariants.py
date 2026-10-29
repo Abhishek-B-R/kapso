@@ -374,3 +374,21 @@ def test_negated_serving_is_independence_not_a_claim(tmp_path):
         store, {TRAJECTORY_ID: {"a-card": {"mine": "indexed"}}},
     )
     assert any("claims independence but" in f for f in findings)
+
+
+def test_evidence_admission_refuses_a_reported_entry(tmp_path):
+    # Regression: a learner run cannot write others' scores as its own
+    # evidence — the `reported` kind is a conversion's record; admission
+    # names it as the one finding and checks nothing else about the entry.
+    store = make_store_with_trajectory(tmp_path)
+    bank_root = build_bank(tmp_path, {"a-card": card_text("a-card")})
+    card = Bank(str(bank_root)).cards["a-card"]
+    reported = {
+        "source": {"url": "https://example.org", "author": "x", "licence": "MIT",
+                   "score": "1.0", "protocol": "a leaderboard"},
+        "verdict": "reported",
+    }
+    assert evidence_admission_findings(card, [reported], store, {}) == [
+        "a-card evidence[0]: verdict 'reported' is a conversion's record of a score "
+        "at a source, never a learner run's — a run writes what it measured"
+    ]
