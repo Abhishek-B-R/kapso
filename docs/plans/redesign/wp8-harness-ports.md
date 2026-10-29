@@ -873,6 +873,26 @@ concepts, 8 code examples, the tip sheet) was read and placed:
   sampling formula (the task's data size decides, said on the ideation
   page as a pacing rule).
 
+### Change 8: the IOAI inventory, source to destination (2026-10-29)
+
+| Source | Destination |
+|---|---|
+| `RULES.md`: the quota's authority, the report docstring, the account's history as inspiration | guardrails (standing rules) |
+| `RULES.md`: no outside models or data, one GPU, the machine shape, no internet, a script only, the fixed package list and its pins, the session limits' numbers | the Brief's task rules and the runner's configuration (the pool sizes); the submission-auditor checks a kernel against the task's rules |
+| `RULES.md`: the ticket office's protocol | the kaggle-cli skill (the discipline, no numbers); the office itself stays the runner's CLI |
+| `KAGGLE_CLI.md` §0–§11: the modality, the pages, the download, the kernel folder and metadata, the push, the poll, the output, the submission, the score, the failures table | the kaggle-cli skill, with the named competition, the named data file, the fixed version number and the duplicated push line removed; the submission goes through the task root's procedure (the guide's "submissions need no ticket" against the rules' "take a score ticket" resolved by that procedure owning the pool) |
+| `KAGGLE_CLI.md`: the copy-paste template with a token in it | dropped (a credential value in a page) |
+| `preflight_spec.md`: the scaffolding, the hard boundary, the fidelity rules, where the rules win, the statement's sections | the contest-preflight skill (for a user's own task; the runner's preflight stays the runner's, and the setup page reads the root it wrote) |
+| the handler's bank paragraph (the book as the first search priority, its tiers and layout) | the olympiad-playbook skill: the ten twists and the house moves, and how to pull a served bank's cards; the book itself is experience, not harness |
+| the handler's loop (submit-and-learn rounds, the calibration gap, the time gate, "an idle clock is the one unacceptable outcome") | the contest-economics skill |
+| the handler's board protocol (skip, steal, complement, ensemble) and the late-budget priority rule | the contest-economics skill and the ideation page |
+| the handler's public-versus-private warning and "report the local score in the message" | the contest-economics skill |
+| the handler's score tags and `result.json` line, the task and dataset paths, the time remaining, the competition slug, the rules path, the skill path, `best_score.log` | the Brief and the runner (task facts and engine fields) |
+| `RUN_FINDINGS.md` I-7 (the lost first submission, the harvest, the triage by prediction rate), I-12 (validation inflation), I-14 (the reserve) | the contest-economics skill (insurance first, the harvest, triage, validation inflation; the reserve is the engine's) |
+| `RUN_FINDINGS.md` I-1 to I-6, I-8 to I-11, I-13, the environment notes (lane collapse, the ideation split, the pool cap, the box setup, the `.env`, the checkpoint, orphaned GPU processes, the runner's default, the session pool's three consumers, zone exhaustion, per-model rate limits, the Bedrock trio) | dropped as runner and infrastructure incidents; their fixes live in the runner and the machine scripts |
+| the port mapping's `kernel-slots` server | not a server: the runner's CLI (a decision in DECISIONS) |
+| the port mapping's copied ML skills | `task-type-playbooks`, `cv-protocol`, `ensembling`, `eda-discipline` copied by directory, with a gate test that each copy is identical to its source |
+
 ## Hours
 
 | Change | Estimate | Cost | As run |

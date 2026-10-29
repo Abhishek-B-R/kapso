@@ -32,6 +32,21 @@ def test_a_bundled_harness_resolves_by_its_bare_name(path):
     assert reference.kind == "bundled" and reference.path == path
 
 
+SHARED_SKILLS = ("task-type-playbooks", "cv-protocol", "ensembling", "eda-discipline")
+
+
+@pytest.mark.parametrize("skill", SHARED_SKILLS)
+def test_a_modelling_skill_the_contest_harness_copies_is_identical_to_its_source(skill):
+    """The port mapping has the contest harness copy the modelling skills it
+    needs (a skill is a plain directory; composition is not in the design);
+    a copy that drifts from its source is the bug this test catches."""
+    source = BUNDLED_ROOT / "predictive-modelling" / "skills" / skill
+    copy = BUNDLED_ROOT / "competitive-programming" / "skills" / skill
+    source_files = {path.relative_to(source): path.read_bytes() for path in source.rglob("*") if path.is_file()}
+    copy_files = {path.relative_to(copy): path.read_bytes() for path in copy.rglob("*") if path.is_file()}
+    assert source_files == copy_files
+
+
 def test_list_prints_every_bundled_harness_under_bundled(monkeypatch, tmp_path, capsys):
     values = {"store": str(tmp_path / "store"), "page_warning_lines": PAGE_WARNING_LINES, "setup_minutes": 20,
               "verification_minutes": 10, "verification_attempts": 2, "server_tool_timeout_seconds": 600}
