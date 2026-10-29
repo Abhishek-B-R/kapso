@@ -1206,6 +1206,16 @@ its `fetched/out`.
   The build skill's wording on when to stop designing and launch is WP7's.
 - **Fable 5's safeguards and the mining prompt; codex-cli 0.165's
   workspace-write sandbox on a VM** — recorded in DECISIONS (S6).
+- **A build needs a Codex login even on the Claude host.** The second
+  engineer's served build on `s2-claude-3` — the first run with cards to
+  serve — died at the engine's preflight: "codex authenticated … needed by
+  inference.roles.commit_message.model (+1 more) = gpt-5.6-sol". Two of
+  the packaged defaults' roles run on Codex, so a person with only a
+  Claude login cannot `kapso build` without a config override, and the
+  setup skill's doctor says so only at launch. The suite now gives the
+  second engineer the machine's Codex session; whether the defaults should
+  route those two roles to the host's own vendor when the other is absent
+  is the owner's (config defaults).
 - **The Codex host answers right and stops.** On the clean Codex run
   (`s2-codex-5`) every conversation met its budget, the states it reported
   were true, and the judge read "clear" and "not annoying" at 4 — and

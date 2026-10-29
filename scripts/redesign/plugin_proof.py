@@ -642,6 +642,11 @@ def ensure_second_user(ctx: Context) -> None:
     sure of it here (a no-op once it is there). A fresh Codex machine
     (2026-10-28) had no such user and the ninth step died on it."""
     ctx.shell(f"id -u {SECOND_USER} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {SECOND_USER}")
+    # The engine's build preflight wants a Codex login (two of its roles run
+    # on gpt-5.6-sol), so the second engineer gets the machine's device-auth
+    # session too — s2-claude-3's served build died at preflight without it.
+    ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc 'umask 077; mkdir -p ~/.codex' && sudo cp /home/ubuntu/.codex/auth.json /home/{SECOND_USER}/.codex/auth.json "
+              f"&& sudo chown {SECOND_USER}:{SECOND_USER} /home/{SECOND_USER}/.codex/auth.json && sudo chmod 600 /home/{SECOND_USER}/.codex/auth.json")
     present = ctx.shell(f"sudo -u {SECOND_USER} -H bash -lc 'export PATH=$HOME/.local/bin:$PATH; command -v kapso'", check=False)
     if present.returncode == 0:
         return
