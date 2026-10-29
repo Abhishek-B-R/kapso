@@ -73,6 +73,8 @@ jobs:
       # pages and the examples are one source.
       - name: Check quoted snippets match their files
         run: python3 scripts/check_snippets.py
+      - name: Claims (the words-out list; a result with no provenance)
+        run: python3 scripts/check_claims.py
 
       # Gates only the objective GEO rules — a page opening with prose, an
       # internal link, no banned marketing word or terminology alias. The

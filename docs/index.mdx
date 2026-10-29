@@ -5,7 +5,7 @@ description: "Kapso, by Leeroo, is a team of long-running agents that optimize A
 keywords: ["Kapso", "long-running agents", "automated ML", "experiment campaigns", "optimization engine", "MLE-Bench", "RelBench"]
 ---
 
-Kapso is a team of long-running agents that optimize AI and Data systems. Write a brief and it runs a campaign: it designs candidate solutions, has coding agents implement each one on its own branch, measures how far each is from the objective with an evaluator it cannot touch, and keeps refining the closest until the objective is met. The result ships to your infrastructure.
+Kapso runs campaigns that optimize AI and data objectives, with coding agents doing the work and an evaluator keeping the score. Write a brief and it runs a campaign: it designs candidate solutions, has coding agents implement each one on its own branch, measures how far each is from the objective with an evaluator it cannot touch, and keeps refining the closest until the objective is met. The result ships to your infrastructure.
 
 Kapso learns from every experience. When a campaign ends, it studies its own work: which ideas closed the distance to the objective, which did not, and under what conditions. Each finding is kept as a lesson with the evidence that earned it, and a lesson stays trusted only as long as it keeps holding up. Kapso also reads outside your walls, repositories and papers, and folds what it finds into the same knowledge hub. Every new campaign begins from that hub, so it starts with what earlier work already established, about the problem and about your systems.
 
@@ -87,7 +87,7 @@ The [technical report](https://arxiv.org/abs/2601.21526) describes the system in
 | Orchestrator | Runs the experiment loop and tracks the budget |
 | Search strategy | Explores candidate solutions as a tree |
 | Coding agents | Pluggable implementers: Claude Code, Codex, Gemini, OpenHands, OSS Claude Code |
-| Judge | Validates each evaluation against the brief and decides when to stop |
+| Evaluation feedback | Validates each evaluation against the brief and decides when to stop |
 | Evaluation registry | The evaluator versions a campaign measured with, provided or built, protected |
 | Lesson bank | Evidence-priced cards mined from finished campaigns |
 | Knowledge graph | Repository and research knowledge, searched over Weaviate and Neo4j |

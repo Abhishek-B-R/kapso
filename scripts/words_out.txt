@@ -1,0 +1,21 @@
+# The words-out list of docs/research/kapso-redesign.md ("Rules for every
+# public sentence"), matched case-insensitively as whole words in prose
+# (outside fenced and inline code). Two sections: [everywhere] applies to
+# every public page; [front] to the front pages only (README.md and
+# docs/index.mdx), because "judge" and "trust" are also the names of the
+# engine's feedback role and of a host's trust line, which the inner pages
+# must use when they describe them.
+[everywhere]
+with a number
+applied research
+iteration engine
+long-running agents
+self-improving
+autonomous
+software factory
+team of agents
+always-on
+AI and data systems
+[front]
+judge
+trust
