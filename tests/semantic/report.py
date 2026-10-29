@@ -20,13 +20,15 @@ its steps and never be a fresh-machine acceptance, and the exit status
 says which: 0 a pass, 1 a failure, 3 an advisory pass.
 """
 
+import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts" / "redesign"))
-from judge import resolve as resolve_judge  # noqa: E402
+from judge import eligible_dimensions, resolve as resolve_judge  # noqa: E402
 
 SUITE_PATH = Path(__file__).resolve().parent / "suite.json"
 COUNT_KEYS = ("messages", "questions", "minutes", "longest_message_lines")
@@ -46,23 +48,37 @@ def step_passes(step: dict, spec: Optional[dict], root: Path) -> bool:
     budgets, its artifacts present; unknown to the suite is a failure."""
     if not spec or not step["completed"] or missing_artifacts(step, root):
         return False
+    if step.get("kind", "conversation") != spec.get("kind", "conversation"):
+        return False   # a conversation recorded as a shell step would escape its budgets and the judge
     if step.get("kind", "conversation") == "conversation":
         return all(step[key] <= spec[key] for key in COUNT_KEYS if key in spec)
     return "minutes" not in spec or step["minutes"] <= spec["minutes"]
 
 
-def bar_met(value, bar: dict) -> bool:
+def bar_verdict(metrics: dict, name: str, bar: dict) -> str:
+    """`pass`, `FAIL`, or `not exercised`: a bar that names the metric
+    counting the cases it rules on (`exercised_by`) and finds that count
+    zero was met on no case — neither met nor failed, and the report says
+    so rather than printing a vacuous pass. A missing value fails."""
+    exercised_by = bar.get("exercised_by")
+    if exercised_by is not None and not metrics.get(exercised_by):
+        return "not exercised"
+    value = metrics.get(name)
     if value is None:
-        return False
-    return ("min" not in bar or value >= bar["min"]) and ("max" not in bar or value <= bar["max"])
+        return "FAIL"
+    return "pass" if ("min" not in bar or value >= bar["min"]) and ("max" not in bar or value <= bar["max"]) else "FAIL"
 
 
-def judge_outcome(record: dict, spec: Optional[dict], expected_passes: int) -> Dict[str, object]:
+def judge_outcome(record: dict, spec: Optional[dict], expected_passes: int, suite: dict) -> Dict[str, object]:
     """What the judge sub-record establishes: `required`, `present`,
     `failure`, `ok`, and per dimension its final score — the minimum over
-    the judged items of each item's resolved score (a straddling item's
-    adjudication deciding, else the minimum over passes). The worst item
-    binds, and a straddle is resolved per item, not per dimension."""
+    the judged items eligible for it (the suite's `judged` list per step)
+    of each item's resolved score (a straddling item's adjudication
+    deciding, else the minimum over passes). The worst eligible item
+    binds, and a straddle is resolved per item, not per dimension. A
+    dimension the record marks advisory (`advisory_dimensions`: the
+    persona nodded through the planted baseline) is reported, not
+    binding."""
     judge = record.get("judge")
     outcome = {"required": spec is not None, "present": bool(judge), "failure": None, "ok": spec is None, "dimensions": {}}
     if spec is None or not judge:
@@ -73,7 +89,9 @@ def judge_outcome(record: dict, spec: Optional[dict], expected_passes: int) -> D
     passes = judge["passes"]
     bar = spec["bar"]
     labels = sorted({label for p in passes for label in p.get("items", {})})
-    finals = resolve_judge(judge, spec["dimensions"], bar)
+    eligible = {label: eligible_dimensions(suite, label, spec["dimensions"]) for label in labels}
+    finals = resolve_judge(judge, spec["dimensions"], bar, eligible)
+    advisory = set((record.get("advisory_dimensions") or {}).get("dimensions", []))
 
     def item_straddles(dimension: str, label: str) -> bool:
         scores = [p.get("items", {}).get(label, {}).get(dimension, {}).get("score") for p in passes]
@@ -83,7 +101,12 @@ def judge_outcome(record: dict, spec: Optional[dict], expected_passes: int) -> D
     ok = len(passes) == expected_passes and bool(labels)
     for dimension in spec["dimensions"]:
         final = finals[dimension]
-        outcome["dimensions"][dimension] = {"final": final, "straddled": any(item_straddles(dimension, label) for label in labels)}
+        outcome["dimensions"][dimension] = {
+            "final": final, "advisory": dimension in advisory,
+            "straddled": any(item_straddles(dimension, label) for label in labels if dimension in eligible[label]),
+        }
+        if dimension in advisory:
+            continue
         ok = ok and final is not None and final >= bar
     outcome["ok"] = ok
     return outcome
@@ -104,15 +127,23 @@ def verdict(record: dict, suite: dict, root: Path) -> Dict[str, object]:
     deferred_required = [name for name in required if steps.get(name) == "deferred"]
     failed = [name for name, result in steps.items() if result == "fail"]
     metrics = record.get("metrics", {})
-    bars = {name: bar_met(metrics.get(name), bar) for name, bar in test.get("bars", {}).items()}
-    judge = judge_outcome(record, test.get("judge"), suite.get("judge", {}).get("passes", 2))
-    passed = not missing_required and not deferred_required and not failed and all(bars.values()) and judge["ok"]
+    bars = {name: bar_verdict(metrics, name, bar) for name, bar in test.get("bars", {}).items()}
+    judge = judge_outcome(record, test.get("judge"), suite.get("judge", {}).get("passes", 2), suite)
+    passed = not missing_required and not deferred_required and not failed and all(mark != "FAIL" for mark in bars.values()) and judge["ok"]
     advisory = record.get("advisory")
     return {
-        "passed": passed, "advisory": advisory, "steps": steps, "missing_required": missing_required,
+        "passed": passed, "advisory": advisory, "advisory_dimensions": record.get("advisory_dimensions"), "steps": steps, "missing_required": missing_required,
         "deferred_required": deferred_required, "failed": failed, "bars": bars, "judge": judge,
         "exit": EXIT_ADVISORY if passed and advisory else (EXIT_PASS if passed else EXIT_FAIL),
     }
+
+
+def _short(value) -> str:
+    """A pin as the report shows it: a sha256 by its first twelve
+    characters, anything else whole (a path or a budget cut to twelve
+    characters said nothing)."""
+    text = str(value)
+    return text[:12] if re.fullmatch(r"[0-9a-f]{64}", text) else text
 
 
 def _counts(step: dict) -> str:
@@ -132,6 +163,10 @@ def render(record: dict, suite: dict, root: Path) -> str:
     if record.get("advisory"):
         lines.append(f"**Advisory: {record['advisory']}** (an arm run on the development box proves the flow, not its smoothness; never a fresh-machine acceptance)")
         lines.append("")
+    if record.get("advisory_dimensions"):
+        block = record["advisory_dimensions"]
+        lines.append(f"**Advisory dimensions: {', '.join(block['dimensions'])}** ({block['reason']}; their scores are reported, not binding)")
+        lines.append("")
     lines += [
         f"- run: {record.get('run_id', '-')}",
         f"- machine: {record['machine']}",
@@ -141,7 +176,10 @@ def render(record: dict, suite: dict, root: Path) -> str:
     ]
     pins = record.get("pins", {})
     if pins:
-        lines.append("- pins: " + ", ".join(f"{key} {str(value)[:12]}" for key, value in pins.items()))
+        lines.append("- pins: " + ", ".join(f"{key} {_short(value)}" for key, value in pins.items()))
+    pinned, current = pins.get("suite_sha256"), hashlib.sha256(SUITE_PATH.read_bytes()).hexdigest()
+    if pinned and pinned != current:
+        lines.append(f"- suite: re-derived under suite {current[:12]}; the run pinned {pinned[:12]} (a changed suite changes the verdict, never the record)")
     lines.append("")
     conversations = [s for s in record["steps"] if s.get("deferred") or s.get("kind", "conversation") == "conversation"]
     others = [s for s in record["steps"] if not s.get("deferred") and s.get("kind", "conversation") != "conversation"]
@@ -167,7 +205,7 @@ def render(record: dict, suite: dict, root: Path) -> str:
     if test.get("bars"):
         lines += ["| bar | value | limit | verdict |", "|---|---|---|---|"]
         for name, bar in test["bars"].items():
-            lines.append(f"| {name} | {record.get('metrics', {}).get(name, '-')} | {json.dumps(bar)} | {'pass' if result['bars'][name] else 'FAIL'} |")
+            lines.append(f"| {name} | {record.get('metrics', {}).get(name, '-')} | {json.dumps(bar)} | {result['bars'][name]} |")
         lines.append("")
     judge = result["judge"]
     if judge["required"]:
@@ -178,17 +216,24 @@ def render(record: dict, suite: dict, root: Path) -> str:
         else:
             spec = test["judge"]
             sub = record["judge"]
-            lines += [f"Judge: {sub.get('vendor')} {sub.get('model')} via {sub.get('route', '-')}, {len(sub['passes'])} pass(es), bar {spec['bar']} (the worst item binds)", "",
+            labels = sorted({label for p in sub["passes"] for label in p.get("items", {})})
+            eligible = {label: eligible_dimensions(suite, label, spec["dimensions"]) for label in labels}
+            lines += [f"Judge: {sub.get('vendor')} {sub.get('model')} via {sub.get('route', '-')}, {len(sub['passes'])} pass(es), bar {spec['bar']} (the worst eligible item binds; a step's `judged` list in the suite says which dimensions it is scored on)", "",
                       "| dimension | per-pass worst item | adjudicated items | final | verdict |", "|---|---|---|---|---|"]
             for dimension in spec["dimensions"]:
                 per_pass = []
                 for p in sub["passes"]:
-                    item_scores = [item.get(dimension, {}).get("score") for item in p.get("items", {}).values()]
+                    item_scores = [item.get(dimension, {}).get("score") for label, item in p.get("items", {}).items() if dimension in eligible.get(label, spec["dimensions"])]
                     present = [score for score in item_scores if score is not None]
                     per_pass.append(str(min(present)) if present else "-")
                 adjudicated = sum(1 for key in sub.get("adjudication", {}) if key.startswith(dimension + "|"))
-                final = judge["dimensions"].get(dimension, {}).get("final")
-                lines.append(f"| {dimension} | {', '.join(per_pass)} | {adjudicated} | {final if final is not None else '-'} | {'pass' if final is not None and final >= spec['bar'] else 'FAIL'} |")
+                outcome = judge["dimensions"].get(dimension, {})
+                final = outcome.get("final")
+                if outcome.get("advisory"):
+                    mark = "advisory (reported, not binding)"
+                else:
+                    mark = "pass" if final is not None and final >= spec["bar"] else "FAIL"
+                lines.append(f"| {dimension} | {', '.join(per_pass)} | {adjudicated} | {final if final is not None else '-'} | {mark} |")
             lines.append("")
     noted = [step for step in record["steps"] if step.get("notes")]
     if noted:
@@ -199,6 +244,11 @@ def render(record: dict, suite: dict, root: Path) -> str:
     if interventions:
         lines.append("The driver's own acts (named, never the persona's):")
         lines.extend(f"- {act}" for act in interventions)
+        lines.append("")
+    events = record.get("user", {}).get("events") or []
+    if events:
+        lines.append("The user's events (DONE, the turn cap):")
+        lines.extend(f"- {event}" for event in events)
         lines.append("")
     if record.get("notes"):
         lines.append("Notes:")
@@ -215,8 +265,8 @@ def render(record: dict, suite: dict, root: Path) -> str:
         reasons.append("required steps deferred: " + ", ".join(result["deferred_required"]))
     if result["failed"]:
         reasons.append("steps failed: " + ", ".join(result["failed"]))
-    if not all(result["bars"].values()):
-        reasons.append("bars unmet: " + ", ".join(name for name, met in result["bars"].items() if not met))
+    if any(mark == "FAIL" for mark in result["bars"].values()):
+        reasons.append("bars unmet: " + ", ".join(name for name, mark in result["bars"].items() if mark == "FAIL"))
     if judge["required"] and not judge["ok"]:
         reasons.append("the judge's bar not established")
     state = "PASS" if result["passed"] else "FAIL"

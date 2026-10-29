@@ -51,6 +51,15 @@ def load_suite() -> dict:
     return json.loads(SUITE_PATH.read_text(encoding="utf-8"))
 
 
+def eligible_dimensions(suite: dict, label: str, dimensions: Sequence[str]) -> List[str]:
+    """The dimensions an item can give evidence for: a step whose suite
+    entry lists `judged` is scored on those alone (a two-line state report
+    has nothing to be proactive about, and the worst item must not bind on
+    what a step was budgeted not to do); any other item, every dimension."""
+    judged = suite.get("steps", {}).get(label, {}).get("judged")
+    return [dimension for dimension in dimensions if judged is None or dimension in judged]
+
+
 # ---------------------------------------------------------------- rendering
 def final_texts(rows: Sequence[dict]) -> List[Dict[str, str]]:
     """The conversation a transcript holds: the user's messages (the proof's
@@ -259,7 +268,7 @@ def misquoted(data: dict, root: Path) -> bool:
     return False
 
 
-def gather_materials(record_dir: Path, record: dict, inputs: Optional[Sequence[str]], archive: Path) -> Dict[str, Dict[str, str]]:
+def gather_materials(record_dir: Path, record: dict, inputs: Optional[Sequence[str]], archive: Path, suite: Optional[dict] = None) -> Dict[str, Dict[str, str]]:
     """Each thing judged, as {label: {file, text}}: the named inputs, or
     every conversation step rendered with ALL of its transcripts (the step
     and its follow-ups, `<step>*.jsonl`), so the judge sees the whole
@@ -291,7 +300,11 @@ def gather_materials(record_dir: Path, record: dict, inputs: Optional[Sequence[s
         rendered = archive / f"{step['name']}.rendered.md"
         rendered.write_text(render_step(step["name"], rows), encoding="utf-8")
         file_label = f"{JUDGE_DIR}/{rendered.name}"
-        materials[step["name"]] = {"file": file_label, "text": f"(file {file_label})\n" + rendered.read_text(encoding="utf-8")}
+        # The step's own line budget, stated with the material: the rubric's
+        # "no message longer than the step's budget" needs the number.
+        budget = (suite or load_suite()).get("steps", {}).get(step["name"], {}).get("longest_message_lines")
+        header = f"(file {file_label})" + (f"\n(this step's line budget: {budget} lines per message; a brief the host quotes back is exempt)" if budget else "")
+        materials[step["name"]] = {"file": file_label, "text": header + "\n" + rendered.read_text(encoding="utf-8")}
     return materials
 
 
@@ -319,7 +332,7 @@ def judge_record(record_dir: Path, rubric: str, inputs: Optional[Sequence[str]],
         record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
     persist()
-    materials = gather_materials(record_dir, record, inputs, archive)
+    materials = gather_materials(record_dir, record, inputs, archive, suite)
     if not materials:
         raise JudgeFailure("nothing to judge: the record has no judged material")
     for number in range(1, settings["passes"] + 1):
@@ -334,6 +347,8 @@ def judge_record(record_dir: Path, rubric: str, inputs: Optional[Sequence[str]],
     # minimum over items then binds per dimension (report.py resolves it).
     for dimension in dimensions:
         for label, material in materials.items():
+            if dimension not in eligible_dimensions(suite, label, dimensions):
+                continue   # a dimension this step is not judged on binds nothing: no adjudication for it
             scores = [block["passes"][number]["items"][label][dimension]["score"] for number in range(len(block["passes"]))]
             if min(scores) < bar <= max(scores):
                 raw_label = f"{label}-adjudication-{dimension}"
@@ -368,16 +383,19 @@ def resolve_items(block: dict, dimensions: Sequence[str], bar: int) -> Dict[str,
     return resolved
 
 
-def resolve(block: dict, dimensions: Sequence[str], bar: int) -> Dict[str, Optional[int]]:
-    """The final score per dimension: the minimum over the judged items of
-    each item's resolved score (the worst item binds). None when no item is
-    fully scored, so a broken block never silently passes. report.py and S1
-    read a block this way."""
+def resolve(block: dict, dimensions: Sequence[str], bar: int, eligible: Optional[Dict[str, Sequence[str]]] = None) -> Dict[str, Optional[int]]:
+    """The final score per dimension: the minimum over the judged items
+    eligible for it (`eligible`: label to dimensions, from the suite's
+    `judged` lists; None: every item) of each item's resolved score — the
+    worst eligible item binds. None when an eligible item is not fully
+    scored, or none is eligible, so a broken block never silently passes.
+    report.py and S1 read a block this way."""
     items = resolve_items(block, dimensions, bar)
     finals: Dict[str, Optional[int]] = {}
     for dimension in dimensions:
-        values = [items[label][dimension] for label in items if items[label][dimension] is not None]
-        finals[dimension] = min(values) if values and len(values) == len(items) else None
+        labels = [label for label in items if eligible is None or dimension in eligible.get(label, dimensions)]
+        values = [items[label][dimension] for label in labels if items[label][dimension] is not None]
+        finals[dimension] = min(values) if values and len(values) == len(labels) else None
     return finals
 
 

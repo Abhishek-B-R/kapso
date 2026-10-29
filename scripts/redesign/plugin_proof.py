@@ -1453,11 +1453,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             step = STEPS[name](ctx)
         record["steps"] = [existing for existing in record["steps"] if existing["name"] != name] + [step]
         record["user"] = {**record.get("user", {}), **user.record(), "interventions": sorted(set(record.get("user", {}).get("interventions", [])) | set(user.interventions))}
-        # A persona that never corrected the planted baseline makes the arm
-        # advisory (the not-annoying and engaging dimensions are not earned
-        # against a user who nodded through a wrong figure).
-        if user.pushback is False and not record.get("advisory"):
-            record["advisory"] = "the persona did not correct the planted baseline: the engaging and not-annoying dimensions are advisory for this arm"
+        # A persona that never corrected the planted baseline nodded: the
+        # engaging and not-annoying dimensions are reported, not binding,
+        # for this arm (not earned against a user who nods through a wrong
+        # figure). The arm itself stays what it is — `advisory` is the
+        # development box's mark alone, never the persona's.
+        if user.pushback is False:
+            record["advisory_dimensions"] = {"dimensions": ["engaging", "not annoying"], "reason": "the persona did not correct the planted baseline"}
         record["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         record["transcripts"] = sorted(f"transcripts/{path.name}" for path in (out / "transcripts").glob("*.jsonl"))
         record_file.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")

@@ -56,7 +56,7 @@ def _complete(test, host):
     return [_step(name) for name in SUITE["tests"][test]["required_steps"][host]]
 
 
-def _judge(scores_per_pass, adjudication=None, failure=None, items=("watch",)):
+def _judge(scores_per_pass, adjudication=None, failure=None, items=("review",)):
     """A judge block in the per-item shape: one item (or more) per pass,
     each pass scoring every dimension. `adjudication` resolves each item of
     every straddling dimension."""
@@ -111,12 +111,12 @@ def test_the_bars_read_the_records_metrics(tmp_path):
     # own (the budget makes the sign noise); the gate is a cited lesson and
     # an observation.
     below = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 0, "scored_observations_min": 1, "review_names_served_cards": 1})
-    assert not report.verdict(below, SUITE, tmp_path)["passed"] and report.verdict(below, SUITE, tmp_path)["bars"]["lessons_cited"] is False
+    assert not report.verdict(below, SUITE, tmp_path)["passed"] and report.verdict(below, SUITE, tmp_path)["bars"]["lessons_cited"] == "FAIL"
     met = _record("S6", "claude_code", steps, metrics={"gap_min": -0.01, "lessons_cited": 2, "scored_observations_min": 1, "review_names_served_cards": 1})
     assert report.verdict(met, SUITE, tmp_path)["passed"], "a negative gap_min alone does not fail the run"
     absent = _record("S6", "claude_code", steps, metrics={"lessons_cited": 2, "review_names_served_cards": 1})
     result = report.verdict(absent, SUITE, tmp_path)
-    assert not result["passed"] and result["bars"]["scored_observations_min"] is False
+    assert not result["passed"] and result["bars"]["scored_observations_min"] == "FAIL"
     assert "| lessons_cited | 2 |" in report.render(met, SUITE, tmp_path)
 
 
@@ -178,13 +178,16 @@ def test_the_suite_knows_every_step_the_drivers_run_and_its_entries_hold_their_s
         for host, names in test["required_steps"].items():
             assert host in ("claude_code", "codex") and names and set(names) <= set(SUITE["steps"]), host
         for bar in test["bars"].values():
-            assert set(bar) <= {"min", "max"} and bar
+            assert set(bar) <= {"min", "max", "exercised_by"} and ({"min", "max"} & set(bar))
         if test["judge"]:
             assert test["judge"]["dimensions"] and test["judge"]["scale"][0] <= test["judge"]["bar"] <= test["judge"]["scale"][1]
+    s2_dimensions = set(SUITE["tests"]["S2"]["judge"]["dimensions"])
     for name, spec in SUITE["steps"].items():
         assert spec["kind"] in ("conversation", "attempt", "injection", "build", "reading", "shell"), name
         if spec["kind"] == "conversation":
-            assert set(spec) - {"kind"} <= set(report.COUNT_KEYS) and spec.get("minutes"), name
+            assert set(spec) - {"kind", "judged"} <= set(report.COUNT_KEYS) and spec.get("minutes"), name
+            # A step judged on fewer dimensions names them from the S2 rubric's, never none.
+            assert "judged" not in spec or (spec["judged"] and set(spec["judged"]) < s2_dimensions), name
         else:
             assert set(spec) - {"kind"} <= {"minutes"}, name
 
@@ -205,3 +208,41 @@ def test_each_steps_notes_are_rendered_beside_the_table(tmp_path):
     step["notes"] = ["the link clicks judged by hand from the transcript"]
     text = report.render(_record("S2-mechanical", "claude_code", [step]), SUITE, tmp_path)
     assert "Step notes:\n- setup: the link clicks judged by hand from the transcript\n" in text
+
+
+def test_a_dimension_binds_only_on_the_steps_judged_on_it_and_an_advisory_dimension_never_binds(tmp_path):
+    # `watch` is judged on four dimensions (a two-line state has nothing to
+    # be proactive about): its proactive 1 binds nothing, `review`'s does;
+    # a dimension the record marks advisory (the persona nodded through the
+    # planted baseline) is reported, never binding, and never turns a
+    # fresh-machine run into an advisory arm.
+    steps = _complete("S2", "claude_code")
+    record = _record("S2", "claude_code", steps, judge=_judge([5, 5], items=("watch", "review")))
+    for number in (0, 1):
+        record["judge"]["passes"][number]["items"]["watch"]["proactive"]["score"] = 1
+    assert report.verdict(record, SUITE, tmp_path)["passed"]
+    assert "| proactive | 5, 5 | 0 | 5 | pass |" in report.render(record, SUITE, tmp_path)
+    for number in (0, 1):
+        record["judge"]["passes"][number]["items"]["review"]["proactive"]["score"] = 1
+    assert not report.verdict(record, SUITE, tmp_path)["passed"]
+    nodded = _record("S2", "claude_code", steps, judge=_judge([5, 5], items=("review",)),
+                     advisory_dimensions={"dimensions": ["engaging", "not annoying"], "reason": "the persona did not correct the planted baseline"})
+    for number in (0, 1):
+        nodded["judge"]["passes"][number]["items"]["review"]["engaging"]["score"] = 2
+    result = report.verdict(nodded, SUITE, tmp_path)
+    assert result["passed"] and result["judge"]["dimensions"]["engaging"]["advisory"] and result["exit"] == report.EXIT_PASS
+    text = report.render(nodded, SUITE, tmp_path)
+    assert "| engaging | 2, 2 | 0 | 2 | advisory (reported, not binding) |" in text and "**Advisory dimensions: engaging, not annoying**" in text
+    assert "development box" not in text
+
+
+def test_a_step_recorded_under_another_kind_than_the_suites_fails_and_a_bar_on_no_case_is_not_exercised(tmp_path):
+    spec = SUITE["steps"]["harness-export"]
+    assert spec["kind"] == "conversation"
+    shell = {"name": "harness-export", "kind": "shell", "minutes": 1.0, "completed": True, "artifacts": [], "notes": []}
+    assert not report.step_passes(shell, spec, tmp_path), "a conversation recorded as a shell step would escape its budgets and the judge"
+    rule = {"min": 1.0, "exercised_by": "errored_calls"}
+    assert report.bar_verdict({"errors_led_to_fix": 1.0, "errored_calls": 0}, "errors_led_to_fix", rule) == "not exercised"
+    assert report.bar_verdict({"errors_led_to_fix": 0.5, "errored_calls": 2}, "errors_led_to_fix", rule) == "FAIL"
+    assert report.bar_verdict({"errors_led_to_fix": 1.0, "errored_calls": 2}, "errors_led_to_fix", rule) == "pass"
+    assert report.bar_verdict({}, "lessons_cited", {"min": 1}) == "FAIL", "a missing value fails"

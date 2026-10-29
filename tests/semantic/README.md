@@ -15,7 +15,7 @@ tests/semantic/
 ├── personas/            one card per simulated user (below), and prompt.md
 ├── rubrics/             one markdown rubric per judged test (s1, s2, s4, author)
 ├── report.py            renders one run's record as the markdown report, with the verdict
-└── reports/             the reports, one per run (gitignored except the ones cited in a sub-plan)
+└── reports/             the reports, one per run, tracked under an immutable id; the run archives (record, transcripts, artifacts) stay under scripts/redesign/runs/ on the development box, gitignored
 ```
 
 The drivers live beside the other redesign tooling under
@@ -76,10 +76,13 @@ config's `budget.checkpoint_heartbeat_seconds`, read through
 A run record is JSON: `test` (`S1`, `S2`, `S2-mechanical`, `S4`, `S5`,
 `S6`, `author`), `host`, `machine`, `run_id` (`<test>-<host>-<UTC stamp>`,
 immutable: a rerun is a new record), `advisory` (the reason when an arm
-ran on the development box, else null), `package` (version and wheel
-sha256), `pins` (`wheel_sha256`, `source_rev`, `plugin_rev`, `docs_rev`,
-`cli_versions`, `fixture_manifest_sha256`, `suite_sha256`,
-`config_sha256`, as far as a driver knows them), `user` (`kind` scripted
+ran on the development box, else null), `advisory_dimensions` (when the
+persona nodded through the planted baseline: the judge dimensions
+reported but not binding, with the reason), `package` (version and wheel
+sha256), `pins` (what the driver pinned: `suite_sha256` always,
+`wheel_sha256` where a wheel was installed, and the test's own — the
+campaign read, the grid's cadence and the builds' budget, the guide's
+hash), `user` (`kind` scripted
 or persona, `card`, `card_sha256`, `vendor`, `model`, `effort`,
 `prompt_sha256`, `interventions`: the driver's own acts, named),
 `started`, `finished`, `steps` (each with `name`, `kind`: `conversation`
@@ -88,10 +91,14 @@ with `messages`, `questions`, `minutes`, `longest_message_lines`; or
 `metrics` mapping; `completed`, `artifacts` as paths relative to the
 record's directory, `notes`; or `deferred` with the reason), `metrics`
 (the run-level values the test's bars read), `judge` (`vendor`, `model`,
-`route`, `passes`: two, each `scores` mapping a dimension to `{score,
-evidence: [{where, quote}]}`, `adjudication` per straddling dimension,
-`failure` when the judge's reply broke the contract, `prompt_path`,
-`raw_paths`), `notes`, `transcripts` (paths).
+`route`, `passes`: two, each `items` mapping a judged item (a step's
+name, or a named input's stem) to its dimensions, each `{score,
+evidence: [{where, quote}]}`; `adjudication` keyed `<dimension>|<item>`
+for each item that straddled the bar; `failure` when the judge's reply
+broke the contract, `prompt_path`, `raw_paths`), `notes`, `transcripts`
+(paths). A dimension's final score is the minimum over the items the
+suite judges on it (a conversation step's `judged` list, every dimension
+when absent): the worst eligible item binds.
 
 `report.py <record.json> <out.md>` renders the record and computes the
 verdict (its exit status: 0 a pass, 1 a failure, 3 an advisory pass):
