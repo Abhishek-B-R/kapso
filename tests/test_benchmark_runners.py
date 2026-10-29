@@ -121,7 +121,8 @@ def test_mle_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, t
     reports = []
     monkeypatch.setattr(runner, "final_report", lambda work_dir, competition_, solution: reports.append((work_dir, solution)) or {"final": "report"})
     args = argparse.Namespace(competition="spooky-author-identification", iterations=3, coding_agent=None,
-                              workspace=str(tmp_path / "workspace"), resume=False, harness=None, experience=None)
+                              workspace=str(tmp_path / "workspace"), resume=False, harness=None, experience=None,
+                              time_budget_hours=None)
     assert runner.solve_competition(args) == {"final": "report"}
     (orchestrator, kwargs), = entered
     assert kwargs["experiment_max_iter"] == 3 and kwargs["time_budget_minutes"] is None
@@ -173,7 +174,7 @@ def test_ale_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, t
     reports = []
     monkeypatch.setattr(runner, "final_report", lambda work_dir, problem_id, num_workers, solution: reports.append((work_dir, problem_id, num_workers)) or {"final": "report"})
     args = argparse.Namespace(problem="ahc039", iterations=2, coding_agent=None, workspace=str(tmp_path / "workspace"),
-                              resume=False, harness=None, experience=None)
+                              resume=False, harness=None, experience=None, time_budget_hours=None)
     assert runner.solve_problem(args) == {"final": "report"}
     (orchestrator, kwargs), = entered
     assert kwargs["experiment_max_iter"] == 2

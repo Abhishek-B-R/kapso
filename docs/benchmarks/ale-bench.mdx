@@ -39,6 +39,7 @@ PYTHONPATH=. python -m benchmarks.ale.runner \
 |--------|-------------|---------|
 | `-p, --problem` | Problem ID (e.g., `ahc039`) | Required |
 | `-i, --iterations` | `Budget.experiments` | the config's `budget.experiments` |
+| `--time-budget-hours` | `Budget.minutes`, in hours | the config's `budget.minutes` (unbounded) |
 | `-d, --coding-agent` | The host every role without a `cli` of its own runs on | `codex`, the override file's `host` |
 | `--harness` | A harness reference | the bundled `competitive-programming` |
 | `--experience` | Comma-separated experience sources to serve | none |

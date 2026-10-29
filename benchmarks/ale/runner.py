@@ -175,7 +175,10 @@ def solve_problem(args) -> dict:
         data=str(task_root),
         repo=None if args.resume else seeded_baseline(problem.example_output),
         output=args.workspace,
-        budget=Budget(experiments=args.iterations),
+        budget=Budget(
+            minutes=args.time_budget_hours * 60 if args.time_budget_hours is not None else None,
+            experiments=args.iterations,
+        ),
         resume=args.resume,
         coding_agent=args.coding_agent,
     )
@@ -197,6 +200,7 @@ def main() -> None:
     parser.add_argument("-d", "--coding-agent", type=str, default=None, help="The host every session runs on (the config's when absent)")
     parser.add_argument("--workspace", type=str, default=None, help="The campaign directory (output=); needed to resume")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--time-budget-hours", type=float, default=None, help="Budget.minutes, in hours")
     parser.add_argument("--harness", type=str, default=None, help=f"A harness reference (default: the bundled {BUNDLED_HARNESS})")
     parser.add_argument("--experience", type=str, default=None,
                         help="Comma-separated sources to serve: mine, a bank path or git reference, an index name")
