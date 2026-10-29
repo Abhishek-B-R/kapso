@@ -55,7 +55,7 @@ Every time the guide, the reference or the example left something undecided that
 
     GUESS: <what you guessed and what you chose> | <where in the guide you looked> | <the shape or value you settled on>
 
-Be honest and complete: a guess you later confirmed in the example still counts if the guide itself did not say it. Do not read any other file in the repository, do not run kapso, do not install anything, do not modify anything outside {out}. When you are done, reply with the file list of {out}/pipeline-dbt and the number of lines in {out}/GUESSES.md.
+Be honest and complete: a guess you later confirmed in the example still counts if the guide itself did not say it. Do not read any other file in the repository (the harnesses that ship inside the package included: the test's condition is the guide, the reference and the example above), do not run kapso, do not install anything, do not modify anything outside {out}. When you are done, reply with the file list of {out}/pipeline-dbt and the number of lines in {out}/GUESSES.md.
 """
 CLASSIFY = """You are grading the guess log of an author who wrote a Kapso harness with only the authoring guide below. Classify each guess as exactly one of:
 
