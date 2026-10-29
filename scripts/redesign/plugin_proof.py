@@ -104,9 +104,10 @@ CHURN_WISH = (
     f"the campaign goes to ../churn-campaign with a budget of {_CHURN_B['minutes']} minutes and {_CHURN_B['experiments']} experiments"
 )
 PAUSE_WISH = (
-    "get the churn model's ROC AUC above 0.85; one rule for the brief: before training, the enrichment table "
-    "must be fetched from the enrichment service with the DATA_API_KEY in .env, and a session that lacks the key "
-    "asks for it through the inbox. Launch now without asking me for the key: the campaign's own session asks "
+    "get the churn model's ROC AUC above 0.85; one rule for the brief: the first thing every session does, before "
+    "it reads the data or plans anything, is fetch the enrichment table from the enrichment service with the "
+    "DATA_API_KEY in .env, and a session that lacks the key asks for it through the inbox at once and does nothing "
+    "else until it has it. Launch now without asking me for the key: the campaign's own session asks "
     f"when it needs it. The campaign goes to ../churn-pause-campaign with a budget of {{minutes}} minutes and {_PAUSE_B['experiments']} experiment"
 )
 FRAUD_WISH = (
@@ -150,7 +151,7 @@ STEP_INTENTS = {
     # after), then the host replies. A want that spans both can never be met
     # in the first, so each exchange has its own.
     "inbox": "hear what the campaign is waiting on and what I must do before it can continue; I will do it myself and come back",
-    "inbox-reply": "answer the campaign's request: the key is now in both .env files; there is no enrichment service and no enrichment table; the campaign must reach 0.85 without it",
+    "inbox-reply": "answer every open request of the campaign: the key is now in both .env files; there is no enrichment service, endpoint or table; the campaign must reach 0.85 without it; nothing left waiting",
     "build-fraud": "a fraud scorer that beats the rule-based one, with an evaluator proposed from the protocol and approved by you, then launched",
     "build-data-only": "see the candidate criteria and the recommended one; take the first; do not launch anything",
     "build-empty-wish": "see what could be built here and the candidate criteria; take the first; do not launch anything",
@@ -887,8 +888,9 @@ def step_inbox(ctx: Context) -> Dict[str, Any]:
             out.write("DATA_API_KEY=proof-placeholder-key\n")
     turns += ctx.converse(
         "inbox-reply", project,
-        "DATA_API_KEY is in .env now, in the campaign's and the project's. There is no enrichment service to "
-        "document: reply to the request that the key is in place and that it must reach 0.85 without the enrichment table.",
+        "DATA_API_KEY is in .env now, in the campaign's and the project's. There is no enrichment service, endpoint "
+        "or document to give: reply to every open request of the campaign — the key is in place, there is no service, "
+        "and it must reach 0.85 without the enrichment table — so that nothing is left waiting on me.",
         lambda text, index: None, max_turns=1,
     )
     inbox = campaign / ".kapso" / "inbox.jsonl"
