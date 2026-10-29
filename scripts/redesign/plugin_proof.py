@@ -718,6 +718,11 @@ def ensure_second_user(ctx: Context) -> None:
     sure of it here (a no-op once it is there). A fresh Codex machine
     (2026-10-28) had no such user and the ninth step died on it."""
     ctx.shell(f"id -u {SECOND_USER} >/dev/null 2>&1 || sudo useradd -m -s /bin/bash {SECOND_USER}")
+    # A second engineer has a git identity, as any person running kapso
+    # does; without one the engine's first commit in the campaign dies with
+    # git's "empty ident name" after the launch receipt (s2-claude-second-2),
+    # the finding below — the suite gives the user one and keeps the finding.
+    ctx.shell(f"sudo -u {SECOND_USER} -H git config --global user.name 'Second Engineer' && sudo -u {SECOND_USER} -H git config --global user.email second-engineer@kapso.invalid")
     # The engine's build preflight wants a Codex login (two of its roles run
     # on gpt-5.6-sol), so the second engineer gets the machine's device-auth
     # session too — s2-claude-3's served build died at preflight without it.
