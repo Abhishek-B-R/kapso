@@ -1,11 +1,11 @@
 ---
 title: "Kapso CLI reference: every command, flag and default"
 sidebarTitle: "CLI"
-description: "The nine kapso commands and their thirteen subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
-keywords: ["kapso CLI", "kapso evolve", "kapso learn", "kapso doctor", "command reference", "CLI flags"]
+description: "The ten kapso commands and their thirteen subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
+keywords: ["kapso CLI", "kapso evolve", "kapso learn", "kapso report", "kapso doctor", "command reference", "CLI flags"]
 ---
 
-Kapso installs a single `kapso` executable with nine commands.
+Kapso installs a single `kapso` executable with ten commands.
 
 | Command | What it does |
 |---------|--------------|
@@ -16,6 +16,7 @@ Kapso installs a single `kapso` executable with nine commands.
 | [`kapso index_kg`](#kapso-index-kg) | Index a knowledge graph from a wiki or JSON |
 | [`kapso watch`](#kapso-watch) | Watch a running operation |
 | [`kapso inbox`](#kapso-inbox) | What a paused campaign is waiting on you for, and the reply that resumes it |
+| [`kapso report`](#kapso-report) | Export an evolve campaign as a shareable Markdown summary |
 | [`kapso bank`](#kapso-bank) | Manage the lesson bank's share remote |
 | [`kapso doctor`](#kapso-doctor) | Check this machine can run what your config asks for |
 
@@ -293,6 +294,37 @@ kapso inbox
 kapso inbox ./campaign
 kapso inbox reply 1 "added the key"
 kapso inbox reply ./campaign 1
+```
+
+## kapso report
+
+Renders a finished or running evolve campaign as Markdown that pastes straight into a pull request, an issue or a team thread. It is a pure reader: it uses only the files and git history the campaign already has, never writes into the campaign directory or changes its branches, and makes no model calls. On a running campaign it is a snapshot of that moment.
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `campaign` | Campaign directory. **Required** | — |
+| `-o`, `--output` | Write the report to this file instead of stdout | stdout |
+| `--top` | How many candidates the leaderboard and the diff section list | `report.leaderboard_size` (`5`) |
+| `--config` | Config whose `report.leaderboard_size` sets the default | packaged `config.yaml` |
+
+The report has seven sections:
+
+| Section | Contents |
+|---------|----------|
+| Summary | The goal, state and stop reason, iterations, elapsed time and model spend against the launch's budgets when they were set, and platform cost when [cost-aware selection](/docs/evolve/cost-aware-selection) is on |
+| Deliverable | The candidate the campaign delivers, its branch, its score and any external evaluator metrics |
+| Leaderboard | The top scored candidates in the campaign's own ranking, so minimize metrics and cost-aware selection order it as the campaign does, with each one's score, platform cost when cost is on, parent node, branch and idea |
+| Lineage | The campaign tree, the same rows `kapso watch --tree` draws |
+| What changed | `git diff --stat` of each leaderboard candidate against its parent branch |
+| Human input | Every [inbox](/docs/evolve/inbox) request, its state and the reply that answered it, verbatim |
+| Outcomes | How many candidates ran, were scored, failed, were integrity-flagged and were cost-refused |
+
+A directory without a run checkpoint or a status file fails with an explicit error, and a corrupt state file raises.
+
+```bash
+kapso report ./campaign
+kapso report ./campaign -o report.md
+kapso report ./campaign --top 10
 ```
 
 ## kapso bank

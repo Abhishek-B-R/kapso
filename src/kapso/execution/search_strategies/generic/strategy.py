@@ -161,6 +161,50 @@ def parent_weights(
     ]
 
 
+def rank_candidates(
+    nodes: Sequence[SearchNode], selection_config: Dict[str, Any]
+) -> List[SearchNode]:
+    """Scored candidates best first, as the campaign ranks them. A node
+    whose evaluation never completed (score=None) never ranks; on
+    minimize metrics it would otherwise key as 0 and out-rank every real
+    score."""
+    scored = [
+        node
+        for node in nodes
+        if not node.had_error and node.evaluation_valid and node.score is not None
+    ]
+    return sorted(
+        scored,
+        key=lambda node: selection_score(node, selection_config),
+        reverse=True,
+    )
+
+
+def select_deliverable(
+    nodes: Sequence[SearchNode],
+    *,
+    evaluator_id: str,
+    selection_config: Dict[str, Any],
+) -> Optional[SearchNode]:
+    """The committed-slot winner: evidence tiers, never raw scores.
+
+    Parent selection explores on projected scores (the four-bests split);
+    the deliverable follows the tier walk under the registered evaluator,
+    so an unvalidated fast leader cannot displace a full-tier candidate at
+    delivery. Without registered evidence the score leader stands.
+    """
+    if evaluator_id and not selection_config["cost"]["enabled"]:
+        committed = select_committed_candidate(
+            nodes,
+            evaluator_id=evaluator_id,
+            maximize=selection_config["maximize_scoring"],
+        )
+        if committed is not None:
+            return committed
+    ranked = rank_candidates(nodes, selection_config)
+    return ranked[0] if ranked else None
+
+
 @dataclass(frozen=True)
 class ParentSelection:
     """A branch and node ID selected as one consistent parent."""
@@ -1583,11 +1627,7 @@ class GenericSearch(SearchStrategy):
         """Draw one scored candidate, ranked as `best` ranks them. The draw
         is seeded from the configured seed and the node count, so a resumed
         campaign repeats the choice it would have made uninterrupted."""
-        ranked = sorted(
-            self._scored_nodes(),
-            key=lambda node: selection_score(node, self._selection_config()),
-            reverse=True,
-        )
+        ranked = rank_candidates(self.node_history, self._selection_config())
         if not ranked:
             return None
         sampling = self.parent_sampling
@@ -1600,13 +1640,6 @@ class GenericSearch(SearchStrategy):
         )
         rng = random.Random(f"{sampling['seed']}:{len(self.node_history)}")
         return rng.choices(ranked, weights=weights)[0]
-
-    def _scored_nodes(self) -> List[SearchNode]:
-        return [
-            node
-            for node in self.node_history
-            if not node.had_error and node.evaluation_valid and node.score is not None
-        ]
 
     def get_experiment_history(self, best_last: bool = False) -> List[SearchNode]:
         """Return all nodes, optionally sorted by score (unscored sort worst)."""
@@ -1622,16 +1655,9 @@ class GenericSearch(SearchStrategy):
         return self.node_history
 
     def get_best_experiment(self) -> Optional[SearchNode]:
-        """Return the best successful SCORED node — a node whose evaluation
-        never completed (score=None) can never be best; on minimize metrics
-        it would otherwise key as 0 and out-rank every real score."""
-        valid = self._scored_nodes()
-        if not valid:
-            return None
-        return max(
-            valid,
-            key=lambda node: selection_score(node, self._selection_config())
-        )
+        """Return the best successful SCORED node."""
+        ranked = rank_candidates(self.node_history, self._selection_config())
+        return ranked[0] if ranked else None
 
     def _selection_config(self) -> Dict[str, Any]:
         return {
@@ -1640,23 +1666,12 @@ class GenericSearch(SearchStrategy):
         }
 
     def get_deliverable_experiment(self) -> Optional[SearchNode]:
-        """The committed-slot winner: evidence tiers, never raw scores.
-
-        Parent selection explores on projected scores (the four-bests
-        split); the deliverable follows the tier walk under the registered
-        evaluator, so an unvalidated fast leader cannot displace a
-        full-tier candidate at delivery. Without registered evidence the
-        score leader stands.
-        """
-        if self.registered_evaluator_id and not self._cost_enabled():
-            committed = select_committed_candidate(
-                self.node_history,
-                evaluator_id=self.registered_evaluator_id,
-                maximize=self.problem_handler.maximize_scoring,
-            )
-            if committed is not None:
-                return committed
-        return self.get_best_experiment()
+        """The node the campaign delivers: see `select_deliverable`."""
+        return select_deliverable(
+            self.node_history,
+            evaluator_id=self.registered_evaluator_id,
+            selection_config=self._selection_config(),
+        )
 
     def get_deliverable_score(self) -> Optional[float]:
         """The deliverable's authoritative measurement.
