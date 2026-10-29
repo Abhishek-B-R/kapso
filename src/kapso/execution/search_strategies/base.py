@@ -24,6 +24,7 @@ from kapso.execution.experiment_workspace.experiment_workspace import Experiment
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.environment.handlers.base import ProblemHandler
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.execution.memories.repo_memory.builders import UPDATE_PAYLOAD_MAX_CHARS
 from kapso.execution.fidelity import (
     FIDELITIES,
     EvaluationAttempt,
@@ -530,6 +531,9 @@ class SearchStrategy(ABC):
                 )
             )
         )
+        self.repo_memory_update_payload_max_chars = self.params.get(
+            "repo_memory_update_payload_max_chars", UPDATE_PAYLOAD_MAX_CHARS
+        )
         
         # Feedback generator and goal for generating feedback after experiments
         self.feedback_generator = config.feedback_generator
@@ -546,6 +550,9 @@ class SearchStrategy(ABC):
             initial_repo=config.initial_repo,
             repo_memory_failure_policy=self.repo_memory_failure_policy,
             repo_memory_max_retries=self.repo_memory_max_retries,
+            repo_memory_update_payload_max_chars=(
+                self.repo_memory_update_payload_max_chars
+            ),
             llm_backend=self.llm,
         )
 

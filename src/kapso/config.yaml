@@ -115,6 +115,12 @@ defaults:
         temperature: 1.0
         offspring_penalty: 1.0
         seed: 0
+      # Characters of line-numbered changed-file text one RepoMemory update
+      # call carries. Past it the update is windowed into several calls of
+      # whole files, so an experiment that commits large data or vendored
+      # files still gets a memory update instead of a prompt past the
+      # model's context window.
+      repo_memory_update_payload_max_chars: 400000
   models:
     # Semantic search over past experiments (`search_similar_experiments`
     # and the ideation gate's similarity lookup) embeds every node's

@@ -21,7 +21,15 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set, Tuple
 
+from kapso.core.config import load_platform_defaults
 from kapso.core.prompt_loader import load_prompt, render_prompt
+
+# Changed-file text one update call may carry; a run's own config
+# overrides it through the strategy params.
+UPDATE_PAYLOAD_MAX_CHARS = load_platform_defaults()["search_strategy"]["params"][
+    "repo_memory_update_payload_max_chars"
+]
+_FILE_SEPARATOR = "\n\n"
 
 
 class LLMLike(Protocol):
@@ -242,7 +250,7 @@ def _build_toc_from_sections(sections: Dict[str, Any]) -> List[Dict[str, str]]:
     return toc
 
 
-def _format_file_payload(file_blobs: List[Tuple[str, str]]) -> str:
+def _format_file_payload(file_blobs: List[Tuple[str, Optional[str]]]) -> str:
     """
     Format line-numbered file blobs (see `_read_numbered_text`) into a payload.
 
@@ -251,12 +259,38 @@ def _format_file_payload(file_blobs: List[Tuple[str, str]]) -> str:
           1| first line
           2| second line
           ...
+
+    A deleted file (content None) is listed as `=== FILE: path (deleted) ===`.
     """
     parts = []
     for path, content in file_blobs:
-        if content:
+        if content is None:
+            parts.append(f"=== FILE: {path} (deleted) ===")
+        elif content:
             parts.append(f"=== FILE: {path} ===\n{content}")
-    return "\n\n".join(parts)
+    return _FILE_SEPARATOR.join(parts)
+
+
+def _window_file_blobs(
+    file_blobs: List[Tuple[str, Optional[str]]],
+    max_payload_chars: int,
+) -> List[List[Tuple[str, Optional[str]]]]:
+    """
+    Group file blobs into batches whose formatted payload fits the budget.
+
+    A file is never split: the model must see every line it re-cites, so a
+    file larger than the budget still goes whole, in a batch of its own.
+    """
+    batches: List[List[Tuple[str, Optional[str]]]] = [[]]
+    batch_chars = 0
+    for blob in file_blobs:
+        blob_chars = len(_format_file_payload([blob])) + len(_FILE_SEPARATOR)
+        if batches[-1] and batch_chars + blob_chars > max_payload_chars:
+            batches.append([])
+            batch_chars = 0
+        batches[-1].append(blob)
+        batch_chars += blob_chars
+    return batches
 
 
 def _extract_json(text: str) -> Dict[str, Any]:
@@ -550,6 +584,7 @@ def infer_repo_model_update(
     diff_summary: str,
     changed_files: List[str],
     max_retries: int = 0,
+    max_payload_chars: int = UPDATE_PAYLOAD_MAX_CHARS,
 ) -> Dict[str, Any]:
     """
     Incrementally update RepoModel using the previous model + diffs + changed files.
@@ -558,28 +593,39 @@ def infer_repo_model_update(
     sections + `removed_sections`); this returns that patch merged onto the
     previous model, so untouched sections are never lost.
     The updated model uses line-number-based evidence references.
+
+    When the changed files do not fit in `max_payload_chars`, they are
+    windowed: one call per batch of whole files, each patching the model the
+    previous call produced and validated against that batch's files.
     """
-    changed_blobs: List[Tuple[str, str]] = []
+    changed_blobs: List[Tuple[str, Optional[str]]] = []
     for rel in changed_files:
         abs_path = os.path.join(repo_root, rel)
+        # A changed file missing from a call's contents belongs to another
+        # call, so the call that carries a deleted file has to say so.
+        content = None
         if os.path.exists(abs_path):
-            changed_blobs.append((rel, _read_numbered_text(abs_path)))
-    changed_payload = _format_file_payload(changed_blobs)
+            content = _read_numbered_text(abs_path)
+        changed_blobs.append((rel, content))
 
     template = load_prompt("execution/memories/repo_memory/prompts/infer_repo_model_update.md")
-    prompt = render_prompt(
-        template,
-        {
-            "diff_summary": diff_summary,
-            "previous_model_json": json.dumps(previous_model, indent=2),
-            "changed_payload": changed_payload,
-        },
-    )
-    return _complete_repo_model(
-        llm=llm,
-        prompt=prompt,
-        max_retries=max_retries,
-        validate=lambda update: _merge_repo_model_update(
-            previous_model, update, changed_files
-        ),
-    )
+    model = previous_model
+    for batch in _window_file_blobs(changed_blobs, max_payload_chars):
+        batch_files = [rel for rel, _ in batch]
+        prompt = render_prompt(
+            template,
+            {
+                "diff_summary": diff_summary,
+                "previous_model_json": json.dumps(model, indent=2),
+                "changed_payload": _format_file_payload(batch),
+            },
+        )
+        model = _complete_repo_model(
+            llm=llm,
+            prompt=prompt,
+            max_retries=max_retries,
+            validate=lambda update, model=model, batch_files=batch_files: (
+                _merge_repo_model_update(model, update, batch_files)
+            ),
+        )
+    return model
