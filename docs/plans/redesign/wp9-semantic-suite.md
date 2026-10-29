@@ -795,6 +795,88 @@ driven through the teammate's own persona and host; and S1's flow count
 reads a script in its final state, a stated limit when one filename is
 reused within a task.
 
+## Pull-request review (cross-model, 2026-10-29)
+
+The pull request's cross-model review (`scripts/redesign/review.sh`, the
+brief in `scripts/redesign/runs/wp9-pr-review/brief.md`, Codex
+`gpt-6-astra` at xhigh and Claude `claude-opus-5`): fifty-nine findings
+— Codex twenty-two (eight P1, fourteen P2), Claude thirty-seven (five P1,
+twenty-one P2, eleven P3) — each fixed on the branch or answered here.
+Three of them changed what this document had claimed: the S1 headline
+(a detector artifact: nine against six, not ten against one), the S6
+round recorded as the Codex host's (it had run on Claude Code), and the
+Codex trigger miss (the machine's sandbox, not the host). The re-derived
+records and the reruns they called for are in the Proof run below.
+
+### Codex
+
+| # | finding | answer |
+|---|---|---|
+| 1 | P1: the trigger failure is misattributed to skill discovery | fixed: 153 of the 356 main runs and all 10 holdout runs said `bwrap: loopback: Failed RTM_NEWADDR`; the runner probes the sandbox once, classifies such a run as the machine's failure (`codex_triggers.sandbox_failure`), counts it apart in the bar (not established, never a miss), re-graded `s2-codex-5` (7 of 89 cases established), rewrote the finding, and re-ran the suite unsandboxed by its own word (`s2-codex-triggers-1`) |
+| 2 | P1: S1's first-try count scans searches and misses the released verbs | fixed: the verb table is per package (0.7.10's `evolve`); an execution is a segment that invokes kapso or runs a script with python (`command_segments`, `invocations`, `counted`); both arms re-graded from their archives — nine against six — and the headline corrected here and in MASTER. The comprehension key is the design's question (does the tool teach these names?); the baseline's 0 of 7 against it is reported as such |
+| 3 | P1: the second engineer's score predicate reads a key the product never writes | fixed: the solution record's own `score`; the second user's campaign log and status archived; `s2-claude-second-1` had run on the broken key (its served build launched with the bank's two cards and no status appeared within a ten-minute budget); the budget raised to one an attempt can score in (DECISIONS) and the arm re-run as `s2-claude-second-2` |
+| 4 | P1: the judge receives the exchange out of order, the persona's reply twice | fixed: follow-ups sort after their step by number, the reply is rendered once, an unsent reply is marked, DONE reads as the user satisfied; the S2 runs re-judged |
+| 5 | P1: unobserved S5 injections leave the denominator | fixed: the shown verdict is held against the observed liveness sample by sample (WAITING truthful), an injection with no sample in the judged window is counted unobserved and the bar wants none; the three records re-derived (the partial arms had one each); `s5-claude-8` re-run under the rule |
+| 6 | P1: the checkpoint-retention proof is vacuous | fixed in part: retention compares the attempts' identities, reads "not exercised" when none had landed, and the resume classes require the kill or ENOSPC to have happened; with the injections staged early (DECISIONS 2026-10-27) retention is rarely exercised, and the claim the records carry is the campaign's continuation, said as such |
+| 7 | P1: a driver or judge failure skips the archive and the report | fixed: the driver's exit is captured and the fetch, verification, deletion and report follow it; a judge or grade that does not complete leaves its failure for the report |
+| 8 | P2: the S1 judge holds only the comprehension answers | fixed: a flows artifact (each attempt's script or commands with the counts) is the judge's second file, the two judged as one material; re-judged, the lengths dimension cites the sixteen-line script itself |
+| 9 | P2: the exported-skill finding contradicts the tool record | fixed: the skill was loaded; the persona's follow-up was never sent at the one-turn cap; the finding withdrawn and the cap made the step's own budget |
+| 10 | P2: proactivity penalises constrained tasks; the Codex "never" is false | fixed: each conversation step's `judged` list names the dimensions it is scored on and the worst eligible item binds (DECISIONS, the owner's to widen); the material states the step's line budget; the "never offered" claim corrected (two of six); the persona's card is not the judge's business — it rates the host |
+| 11 | P2: the parity cause is not established | fixed: the finding rewritten from the archive's own words (the adapter re-ranks against the training scores: a transform change) |
+| 12 | P2: S4 passes without the required rejection | fixed in part: the fact sheet records what the campaign held and the bars read both; `s4-claude-1`'s campaign held the void alone (its report says FAIL on the rejection bar); no archived campaign holds both — the owner's to choose |
+| 13 | P2: S6 never exercised the Codex host nor the review | fixed: `--host` runs the campaigns on that coding agent and a `review-two` step on that host must name a served card the trace shows read or load-bearing; `s6-codex-1` relabelled as the Claude-host pair it was; `s6-codex-2` is the Codex host's round |
+| 14 | P2: the text detectors accept statements that establish nothing | fixed: a bare score beside a number is not a delivery, the merge question and a hedge are not verdicts, a negated or self-check mention of approval is not a request; negatives tested |
+| 15 | P2: the crash and diagnosis predicates pass without the event | fixed: the evaluator's own failure line, disjoint class and fix vocabularies, a scored attempt after the reply by node identity |
+| 16 | P2: the author task does not test the runnable fixture; `bool(guesses)` | fixed in part: an author with nothing to guess is complete; the generic domain description is the design's cold author (the fixture withheld to keep the test about the guide), the attachment counts stay so each kind is exercised and the rubric says the ladder judges the form (Claude 23) |
+| 17 | P2: author re-grading can use a different guide | fixed: the guide archived with the run and hash-checked against the pin before any grade; two classifier passes with an adjudication; both passing runs re-graded against their pinned guides (0 gaps) |
+| 18 | P2: the single home does not control the preflight, S4's readers, the waits | fixed: the preflight reads the hosts' and the persona's models from the suite and asks Gemini only for a judged test; S4 reads `readers`; the grace and the trace-and-stop wait are the suite's; the trigger limits are the step's budget; the machine cap stays the safeguard it is, said |
+| 19 | P2: the citation check folds `keep_me` and rejects a long quote | fixed: an underscore folds only at a word's edge; a quotation may run on; the one re-ask is a fresh judgment whose scores stand, said |
+| 20 | P2: the judge's try/except | fixed: gone; the non-passing block is on disk first |
+| 21 | P2: historical verdicts are not reproducible from their run | fixed in part: every record pins the suite's hash (S2's added), a report re-rendered under a changed suite says so, a re-judged run keeps its earlier judge directory beside the new one, the README describes the record as written; the suite and rubrics live in git at the pinned commit |
+| 22 | P1: the acceptance status overclaims | fixed: the status rewritten line by line against the records as re-derived and re-run (below) |
+
+### Claude Code
+
+| # | finding | answer |
+|---|---|---|
+| 1 | P1: the baseline comparison is a detector artifact | fixed (Codex 2) |
+| 2 | P1: the S1 judge has no material for two dimensions | fixed (Codex 8); the "independently" phrase now rests on the flows |
+| 3 | P1: the S2 acceptance sentence is contradicted by its records | fixed: the status names what is true on no arm |
+| 4 | P1: the second engineer's served build has no evidence | the arm re-run on the fixed driver (`s2-claude-second-2`, below) |
+| 5 | P1: the Scope and Risks describe an abandoned plan | fixed: the credit paragraph and the risk rewritten, a decision recorded, the pushed session marked in every record's notes from now (`~/.codex/SOURCE`) |
+| 6 | P2: a step's kind comes from the record | fixed: a kind other than the suite's fails; the exported skill's session runs on the Codex host too, so the step is a conversation on both |
+| 7 | P2: the bank-tool predicate is vacuous | fixed: both hosts' turns carry each call's result status |
+| 8 | P2: the two-message bar is a tautology | fixed: deleted; the count stays as information (DECISIONS) |
+| 9 | P2: one word satisfies both halves of the diagnosis | fixed: disjoint vocabularies, tested |
+| 10 | P2: `merge_verdict` is near-tautological | fixed: a statement, not the question or a hedge |
+| 11 | P2: the launch clock and the attempt budgets | fixed: the clock starts after the driver's setup and stops at the first sampled moment the evidence holds; an attempt's minutes are the turn's wall clock; the records' column is said to be the earlier clock |
+| 12 | P2: dead suite blocks; the reader's model misnamed | fixed: `readers` read by S4 and named as it ran (`claude-opus-5-5`); the fixture hashes gone; the Interface's pins trimmed to what exists |
+| 13 | P2: the sandbox literal in the update frame | fixed: one source (`DEFAULT_SANDBOX`), the role's own when configured, pinned by a test across both sites |
+| 14 | P2: the rubric names a budget the judge never sees | fixed: the material states the step's budget; the drift test reads the clause; the "verbatim" claim corrected |
+| 15 | P2: "proactive" binds on steps made terse | fixed (Codex 10) |
+| 16 | P2: the README's record shape | fixed |
+| 17 | P2: `write.mdx` says the engine reads nothing else | fixed: `deploy` reads `metadata.run_kinds`, said on both pages |
+| 18 | P2: the mention rule for a module without a page | fixed on both pages |
+| 19 | P2: per-step caps are literals beside the suite | fixed: the cap is the step's message budget (a follow-up takes its parent's) |
+| 20 | P2: a sub-exchange's cap is invisible | fixed: the cap lands on the parent step; the user's events are rendered |
+| 21 | P2: the try/except and the rmtree flags | fixed |
+| 22 | P2: one unblinded classifier call against the working tree's guide | fixed (Codex 17) |
+| 23 | P2: the brief mandates what the rubric penalises | fixed: the rubric says the brief asked for each kind and scores whether each does a job only its form can do |
+| 24 | P2: S6's per-build delivered metric | fixed: `delivered_score` |
+| 25 | P2: `advisory` conflates the development box and the persona's nod | fixed: `advisory_dimensions`, reported not binding; the clean runs' records migrated and re-rendered |
+| 26 | P2: the run archives are uncheckable | fixed: the README and the Interface say the archives are local to the development box; the reports are the tracked evidence |
+| 27 | P3: `APPROVAL_ASKED` on a statement | fixed |
+| 28 | P3: coldness asserted on Codex | fixed: reported as not established, the machine fresh |
+| 29 | P3: pins cut to twelve characters | fixed: a sha alone |
+| 30 | P3: the "read or load-bearing" label | fixed |
+| 31 | P3: tunables outside the suite | fixed: the service's rows from the manifest, the persona's timeout the suite's turn timeout, the wait the suite's |
+| 32 | P3: the one-step rule is vacuous when nothing errored | fixed: "not exercised" |
+| 33 | P3: dead weight | fixed: the second engineer's card entry and the spent migration script deleted |
+| 34 | P3: S4's run id | fixed: the readers in the id, the runner's id as the machine |
+| 35 | P3: forty-one lines; the requirements error | fixed: the count, and the pages say an unparsable line stops `check` with pip's error |
+| 36 | P3: a void by substring | fixed: by the attempt's integrity error |
+| 37 | P3: the device-auth risk | fixed: a Risk bullet |
+
 ## Proof run
 
 Each arm lands here with its run id, report and verdict. The first arm
