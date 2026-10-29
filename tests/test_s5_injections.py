@@ -224,6 +224,8 @@ def test_the_diagnosis_vocabularies_are_disjoint_and_name_the_class(tmp_path):
     assert s5.names_class_and_fix("the writer is dead (pid 19524 is gone); run kapso build --output ../s5-killed-writer --resume", "killed-writer") == {"names_class": True, "names_fix": True}
     assert s5.names_class_and_fix("the evaluator is fine", "evaluator-crash") == {"names_class": False, "names_fix": False}
     assert s5.names_class_and_fix("the evaluator crashed: holdout_labels.csv was missing; restore it, then resume", "evaluator-crash") == {"names_class": True, "names_fix": True}
+    # s5-claude-8's engineer, rightly: the session got SIGKILL, the campaign finished normally, nothing to resume.
+    assert s5.names_class_and_fix("The only thing killed was one coding session: it got SIGKILL 1.6 s in. The campaign finished normally; there's nothing to resume or stop.", "killed-session") == {"names_class": True, "names_fix": True}
     for name, class_regex in s5.CLASS_WORDS.items():
         assert not class_regex.search("resume"), name
     # The crash is the evaluator's own failure line, never the file named in a prompt.
