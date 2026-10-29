@@ -9,7 +9,7 @@ A search strategy decides which candidate to try next. It generates solution ide
 
 ## Which strategies ship?
 
-One: `generic` — a coding agent plus MCP gates for ideation and implementation. Every build and every benchmark run it; benchmarks differ only in the evaluation that scores each candidate.
+One: `generic` — a coding agent plus MCP gates for ideation and implementation. Every build and every benchmark run it; a benchmark run supplies the official evaluation through its handler.
 
 ## Generic search
 
@@ -131,7 +131,7 @@ class SearchNode:
 
 ## Who evaluates and who stops?
 
-In `kapso.build()` the coding agent builds the evaluation and the feedback generator owns the stop decision. Benchmark runs use the same strategy but their handler supplies the official evaluation, and a handler may still cast a legacy stop vote via `stop_condition()`.
+In `kapso.build()` the coding agent builds the evaluation and the feedback generator owns the stop decision. Benchmark runs use the same strategy; their handler supplies the official evaluation.
 
 ## How do I add my own?
 

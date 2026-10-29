@@ -59,11 +59,17 @@ A hindcast report has an **evidence layer**, marked entries each citing the traj
 | Accuracy | `AGREED`, `CONTRADICTED`, `OUT-OF-SCOPE`, `THIN` |
 | Serving | `SERVED-USED`, `UPTAKE-FAIL`, `SERVE-MISS`, `SERVE-NOISE` |
 
-Three roles are kept apart by information barriers: the **report writer** sees one trajectory and nothing else; the **verifier**, on a different model, attacks one report and a report survives only if no blocking finding lands (repair rounds bounded by `learning.graders.crew.repair_rounds`, shipped at `5`); the **scorecard assessor** sees the whole set with frame-computed numbers and writes the decision and rationale only. All arithmetic is frame math; an agent-written number is never aggregated.
+Three roles are kept apart by information barriers: the **report writer** sees one trajectory and nothing else; the **verifier**, on a different model, attacks one report and a report survives only if no blocking finding lands (repair rounds bounded by `learning.graders.crew.repair_rounds`, shipped at `5`); the **scorecard assessor** sees the whole set with frame-computed numbers and writes the decision and rationale only. All arithmetic is frame math; an agent-written number is never aggregated. The shipped crew (`learning.graders.crew`):
+
+| Role | Sees | Shipped host and model |
+|------|------|------------------------|
+| report writer | one trajectory, nothing else | Codex, `gpt-5.6-sol`, effort xhigh |
+| verifier | one report, cross-model | Claude Code, `claude-fable-5`, effort xhigh |
+| scorecard assessor | the whole set with the frame's numbers | Codex, `gpt-5.6-sol`, effort xhigh |
 
 The **split manifest** (`split.yaml`, one per exam version, versioned with the harness) is the authority on which trajectories are learned from and which are held out: every trajectory in the store appears exactly once, no family sits on both sides, every version carries its rationale, and paired comparisons are valid within one split version only. The **scorecard** aggregates the admitted reports: `within-noise` is a first-class decision never rounded into a win, a failed gate is not offset by a score, and calibration pools at buckets `0.4` and `0.7` with at least `20` observations per bucket.
 
-The **gauntlet** asks whether the learning step itself behaves, on controlled input whose answer is known by construction: a *duplicate* trap (a clone of a trajectory under a fresh identity must be recognised, not banked twice) and a *stability* trap (the same input twice must give the same touched cards, states, transitions and scores within `learning.graders.gauntlet.stability_tolerance`, prose free to differ).
+The **gauntlet** asks whether the learning step itself behaves, on controlled input whose answer is known by construction: a *duplicate* trap (a clone of a trajectory under a fresh identity must be recognised, not banked twice) and a *stability* trap (the same input twice must give the same touched cards, states, transitions and scores within `learning.graders.gauntlet.stability_tolerance`, shipped at `0.10`, prose free to differ).
 
 ```bash
 kapso learn dev grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml --learner-version crew_v4

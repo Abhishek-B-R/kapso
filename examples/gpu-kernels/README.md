@@ -4,7 +4,7 @@ A ninety-minute build on a CUDA machine that speeds up the vanilla
 multi-head self-attention in `repo/module.py` (sequence 256, embedding 768,
 8 heads, batch 32) while keeping its results within 1e-5, with the
 repository's own `evaluate.py` measuring correctness and speedup. Flash
-attention or a Triton kernel reaches two to four times the baseline.
+attention or a Triton kernel is the route the brief's target assumes.
 
 Recorded result: not recorded yet.
 

@@ -30,14 +30,14 @@ A page tells you what people have written down. It cannot tell you which of thos
 
 ## What a card is
 
-A card has a **body**, the fact itself, written to be read cold by an engineer who has never seen it, with a first heading that states the rule as a plain sentence (its *hero*, the one-liner the bank index shows); and a **reliability block**, what the evidence says about it.
+A card has a **body**, the fact itself, written to be read cold by an engineer who has never seen it, whose first heading states the rule as a plain sentence and whose `**Rule:**` line is the card's *hero*, the one-liner the bank index shows; and a **reliability block**, what the evidence says about it.
 
 | Card type | What it holds |
 |-----------|---------------|
 | `insight` | A mechanism that paid or failed, and the conditions under which it holds |
 | `procedure` | A runnable recipe. Its code ships with the card, under `procedures/<name>/` |
 
-A card carries its `scope`: `domain`, or the `harness:<name>` coordinate it was measured under (`harness:none` for a campaign that ran without one). The coordinate is read off the campaign's record, never invented. Its evidence entries say what a campaign did with the claim (confirmed, weakened, refined, refuted, exercised); a card converted from a curated source carries a `reported` entry instead, the score others reported with its author, licence and protocol, and is served as such, never as a measurement of yours.
+A card carries its `scope`: `domain`, or the `harness:<name>` coordinate it was measured under (`harness:none` for a campaign that ran without one). The coordinate is read off the campaign's record, never invented. Its evidence entries say what a campaign did with the claim, one verdict each (`confirm`, `weaken`, `refine`, `refute`, `spawn`, `exercise`); a card converted from a curated source carries a `reported` entry instead, the score others reported with its author, licence and protocol, and is served as such, never as a measurement of yours.
 
 A card sits in one of five reliability states, and only two reach a campaign:
 
@@ -57,7 +57,7 @@ One finished campaign moves through four stages. Each is bounded by a **frame** 
 
 | Stage | What happens |
 |-------|--------------|
-| Harvest | The campaign enters the trajectory store under a stable identity, with the experience it was served and the harness it ran under |
+| Import | The campaign enters the trajectory store under a stable identity, with the experience it was served and the harness it ran under (the campaign-side save that feeds it is the harvest) |
 | Mine | The bundle is read into derived `mined/` views: strategy, operations, artifacts |
 | Grade | The bank is graded against the campaign *before* it learns from it, so the score means something |
 | Update | The update crew folds the result in as one reviewed commit, tagged `lr_<id>`, pushed to your share when the bank has one |
@@ -82,9 +82,9 @@ Serving is an introduction, not an injection. At launch the frame clones each ba
 
 | Tool | Returns | Call it when |
 |------|---------|--------------|
-| `bank_index()` | The whole eligible bank as one index page: name, one-liner, score, applies-when | Your next decision might have been faced before. Cheap |
-| `bank_get_card(cards)` | Full card bodies; a procedure's code path with it | You want the advice |
-| `bank_get_card_with_evidence(cards)` | The card plus its reliability block and evidence trail | Before you stake real budget on it |
+| `bank_index(section=)` | The whole eligible bank as one index page: name, one-liner, score, applies-when | Your next decision might have been faced before. Cheap |
+| `bank_get_card(cards, source=)` | Full card bodies; a procedure's code path with it (`source` picks the bank when more than one is loaded) | You want the advice |
+| `bank_get_card_with_evidence(cards, source=)` | The card plus its reliability block and evidence trail | Before you stake real budget on it |
 
 The index is the whole eligible set in plain reliability order, with no `k` cap and no relevance cut. Two things are filtered, and the frame says which: **scope** (under a [harness](/docs/harnesses), `mine` serves the cards scoped `domain` or `harness:<name>`; a card outside is refused by name with the reason; `mine:all` serves every card you measured; a bank you read serves everything it holds) and **quarantine**, silently (decoys and the non-serving states). A card may carry a measurement offer, a *probe*, which rides card reads only, with a cost clause, under `learning.retriever.probe_budget` (shipped at `1`) and for `mine` alone.
 

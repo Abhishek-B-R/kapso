@@ -2,8 +2,9 @@
 
 A 45-minute build that takes `repo/train.py` from a DummyClassifier at
 about 0.50 accuracy toward the brief's 0.78 on the Kaggle Spaceship Titanic
-data, with the repository's own `evaluate.py` as the judge, and then the
-rest of the loop on what it delivered: the review, a lesson learned into
+data, with the repository's own `evaluate.py` as the judge, on the bundled
+`predictive-modelling` harness the brief names, and then the rest of the
+loop on what it delivered: the review, a lesson learned into
 your bank, a second build served that bank, and the delivered model
 deployed as running software.
 
@@ -30,6 +31,7 @@ Recorded result: not recorded yet.
 pip install pandas numpy scikit-learn xgboost lightgbm catboost
 kaggle competitions download -c spaceship-titanic && unzip spaceship-titanic.zip -d repo/data/
 kapso doctor build
+kapso harness check predictive-modelling
 python run.py
 ```
 
@@ -72,7 +74,8 @@ is recorded.
 - The budget: the brief's `Budget minutes=45 experiments=4`, or the command's
   `--budget-minutes` and `--budget-experiments`, which win over it.
 - Protect the evaluator from the start by moving `evaluate.py` into a
-  directory of its own and passing it with `--evaluation`.
+  directory of its own and passing it with `--evaluation`; the brief's
+  rule and the harness's verification hold it until you do.
 - The deployment target: `target="local"` in `run.py`, or `--target` on the
   command: `docker`, `modal`, `bentoml`, `langgraph`, or `auto` to let the
   session choose.
