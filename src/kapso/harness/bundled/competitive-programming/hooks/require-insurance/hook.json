@@ -3,7 +3,7 @@
     "Stop": [
       {
         "hooks": [
-          {"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/require-insurance/require_insurance.py"}
+          {"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/require-insurance/require_insurance.py || exit 2"}
         ]
       }
     ]

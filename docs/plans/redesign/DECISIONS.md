@@ -2494,3 +2494,30 @@ A swap tests the harness, not the benchmark adapters. The runner edits
 each swap is known to need are listed in the plan before it runs, so a
 runner change is not mistaken for a harness finding; a harness edit is a
 finding fixed at the source, and the swap runs again.
+
+## WP8: the contest root's conventions are the harness's, and its hooks are mistake catchers (2026-10-29)
+
+A leaderboard contest's task root carries a descriptor,
+`kapso_datasets/contest.json` (`competition`, the absolute `ledger` path,
+and the `procedure` that submits and records when one exists); a
+scorer-and-seeds task's root carries `kapso_datasets/seeds.txt`. The
+runners write them (changes 13 and 14); a user's preflight writes them for
+their own contest. The shell denial of a raw submission fires only where a
+procedure is named; without one the CLI submits and the session records
+the entry itself. A hook catches a mistake (shape, freshness, presence) and
+the verifier is the gate; both Stop hooks honour `stop_hook_active`. A
+corrupt evidence file fails loud in Python, and hook.json's launcher line
+(`|| exit 2`) turns the failure into the hosts' blocking exit, so a corrupt
+file never passes as a finish. The zero-score convention (one failed seed
+voids the submission) is ALE's and goes to its task statement; the harness
+reads validity from the scorer's status and the task's rule.
+
+## WP8: the contest harness has no environment file; six skills are shared (2026-10-29)
+
+The contest harness's hooks are standard-library scripts, so its
+`environment.python` is dropped (a C++ campaign on a stock box is not
+refused for numpy); the task's own tools are checked in setup. The shared
+skills are six (`task-type-playbooks`, `cv-protocol`, `ensembling`,
+`eda-discipline`, `hf-model-fetch`, `tabular-modeling`), copied by
+directory, kept identical by the gate test, and self-contained: none cites
+a skill the other harness lacks.

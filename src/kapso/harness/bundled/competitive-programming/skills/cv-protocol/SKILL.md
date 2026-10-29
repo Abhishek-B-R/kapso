@@ -26,8 +26,7 @@ improvement is clearly above even. Never a round-number bar: on a mature
 design it rejects every honest step, or exceeds what the resampling can
 resolve and becomes impassable. Re-measure the full suite occasionally to
 confirm small accepted gains compound. When two tests disagree, trust the
-one whose resampling unit matches the data's correlation structure. The
-relational-feature-practices skill holds the evidence behind this gate.
+one whose resampling unit matches the data's correlation structure.
 
 ## Folds
 

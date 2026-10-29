@@ -16,8 +16,9 @@ description: "How a contest program spends its time limit: input and output, the
   round nothing down. The budget is a number of seconds per step, and the
   steps' budgets add up to the whole.
 - Make the program time-aware: it reads the clock and stops itself before
-  the limit, and it uses the time that remains; an unspent second is
-  score left on the table.
+  the limit. For an anytime search (annealing, beam, random search) an
+  unspent second is score left on the table, so it uses the time that
+  remains; an exact method returns when it is done.
 
 ## The code
 

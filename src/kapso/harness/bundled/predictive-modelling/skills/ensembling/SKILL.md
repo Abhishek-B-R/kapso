@@ -10,8 +10,7 @@ description: "How a final ensemble is built and judged: members chosen for decor
   different seeds. The test is the pairwise correlation of their
   predictions on the folds: members that score within noise of each other
   and correlate weakly, by the campaign's own spread, are the ones a blend
-  pays for (the relational-feature-practices skill's sixth practice holds
-  the evidence).
+  pays for.
 - The blend fits the metric: a mean of probabilities or of values on the
   metric's own scale for probability and regression metrics (a rank
   average throws away calibration and units there); a rank average for

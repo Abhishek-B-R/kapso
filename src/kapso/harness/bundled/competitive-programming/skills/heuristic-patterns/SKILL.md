@@ -8,15 +8,17 @@ description: "The algorithm families that win timed optimisation contests (simul
 
 Mathematical programming and convex methods (linear, nonlinear, quadratic
 and sequential quadratic programming, simplex and interior point, Newton,
-L-BFGS, conjugate gradient, subgradient, cutting planes, column generation,
-Benders decomposition); search structures (k-d trees, hashing for duplicate
-states); exact and combinatorial methods (dynamic programming, branch and
-bound, delta updates, knapsack, set cover, the Hungarian algorithm,
-min-cost flow, max-flow families, spanning trees); metaheuristics (genetic
-algorithms, differential evolution, CMA-ES, simulated annealing, tabu
-search, particle swarm, ant colony, nested metaheuristics); direct search
-(Powell, pattern search). The families below are the ones that have
-decided contests.
+L-BFGS, conjugate gradient, subgradient and proximal methods, Frank-Wolfe,
+trust-region and augmented-Lagrangian methods, ADMM, cutting planes, column
+generation, Benders decomposition, the ellipsoid method); search structures
+(k-d trees, hashing for duplicate states); exact and combinatorial methods
+(dynamic programming, branch and bound, delta updates, knapsack, set cover,
+the Hungarian algorithm, min-cost flow, max-flow families, spanning trees);
+metaheuristics (genetic algorithms, differential evolution, CMA-ES,
+simulated annealing, tabu search, particle swarm, ant colony, firefly and
+bat methods, nested metaheuristics); direct search (Nelder-Mead, Powell,
+pattern search). The families below are the ones that have decided
+contests.
 
 ## Simulated annealing
 
@@ -41,8 +43,10 @@ plain local search. Push it further on four fronts:
 
 Think about the beam width and the evaluation function; balance diversity
 and quality in the beam; stop bad branches fast and control time so more
-candidates are tried; hash states to avoid duplicates; and keep asking how
-the same time could visit several times more valuable states.
+candidates are tried; hash states to avoid duplicates; Monte-Carlo tree
+search when the problem is a sequence of decisions with a rollout to
+evaluate them; and keep asking how the same time could visit several times
+more valuable states.
 
 ## Random simulation
 

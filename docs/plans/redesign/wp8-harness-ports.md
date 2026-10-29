@@ -65,7 +65,7 @@ package's `bundled/` holding a manifest.
 ```text
 predictive-modelling/                       competitive-programming/
 ├── harness.yaml                            ├── harness.yaml
-├── requirements.txt  (the scripts' own)    ├── requirements.txt
+├── requirements.txt  (the scripts' own)    ├── (no environment file: the hooks are stdlib)
 ├── instructions/  guardrails setup         ├── instructions/  guardrails setup
 │   ideation implementation                 │   ideation implementation
 │   verification feedback learning          │   verification feedback learning
@@ -879,7 +879,7 @@ concepts, 8 code examples, the tip sheet) was read and placed:
 reviewers: `scripts/redesign/runs/wp8-harness-review-pm/` (predictive-modelling:
 Codex 28 findings, scores 2/3/2; Claude 33 findings, scores 3/4/4) and
 `scripts/redesign/runs/wp8-harness-review-cp/` (competitive-programming:
-Codex 23 findings, scores 2/3/2; Claude's recorded beside it). The
+Codex 23 findings, scores 2/3/2; Claude 18 findings, scores 4/4/4). The
 revisions land in two commits each: the scripts, manifest and tests first,
 the pages and skills second, with every finding answered in the table
 below as it is closed.
@@ -970,6 +970,53 @@ with where it went:
 | L31 | P2: the Kaggle gap (L17, L9, L6, L7) | closed by those |
 | L32 | P3: `kapso deploy` has nothing to run | the description says the domain stops at the candidate; deployment is the engine's bundled targets |
 | L33 | P3: two provenance phrases a user cannot resolve | "from a hand-written knowledge graph of past competitions" |
+
+**Closed in change 9 (competitive-programming 0.3.0).** Every finding of
+both reviews by id (K = Codex, M = Claude), with where it went:
+
+| Id | Finding | Disposition |
+|---|---|---|
+| K1 | P1: setup asks for work the engine forbids (running the scorer, downloading into the data directory) | setup learns the scorer from its help and documentation and reads the baseline's recorded scores; the preflight is a pre-build activity and in setup judges the root; the data directory is not changed in setup; prepared models go under `prepared/models/` |
+| K2 | P1: a zero score as a universal invalidity contract | validity from the scorer's status and the task's rule for a failed case, on the guardrails, in `scorer-cli`, in the score-auditor and on the verification page; the all-or-nothing rule belongs to the task statement (the ALE runner's Brief, change 13) |
+| K3 | P1: a user's own competition has no permitted submission route | the descriptor convention (`kapso_datasets/contest.json`: `competition`, `ledger`, `procedure`); the shell denial fires only where a procedure is named; without one the command submits and the session records the entry in the shape `kaggle-cli` gives; setup checks the procedure runs |
+| K4 | P1: corrupt hook inputs fail open | explicit shape checks block with a reason; a file that is not JSON fails loud, and hook.json's launcher line (`\|\| exit 2`) turns that into the hosts' blocking exit; a test runs the launcher on a corrupt file |
+| K5 | P2: the gates' evidence is shallow | finite numbers (no booleans), a non-negative spread and runtime, a status from the scorer's set, a build line, a positive run count, the solution named and unchanged since the file was written; ledger entries for this competition with a submission id; the verifier remains the gate |
+| K6 | P2: `stop_hook_active` ignored | honoured by both Stop hooks; every reason says how to finish an attempt that cannot comply; a test over the flag |
+| K7 | P2: root discovery and conventions | the root is the nearest statement with a data directory beside it; `seeds.txt` and `contest.json` documented in `scorer-cli`, `kaggle-cli`, `contest-preflight` and the setup page; an empty seed list and a relative ledger path block as an incomplete root |
+| K8 | P2: the shell denial misses spellings and rejects text | the pattern takes a path to the binary, the alias, a line continuation and the Python API's call; described as an accidental-bypass guard; the quota lives in the procedure and the verifier |
+| K9 | P2: modality and benchmark bias spread across the pages | setup records the modality; every leaderboard-only and scorer-only rule on the pages carries its condition; an anytime search spends the remaining time and an exact method returns; the length bound is the task's |
+| K10 | P2: comparisons assume maximisation and add a delivery goal | "worse than, in the metric's direction"; validity, improvement and the floor distinguished; the account's best is a spend question, not a delivery requirement |
+| K11 | P2: the preflight's rule hierarchy and the lost prompts | the organizers say what binds and the statement pins the binding document; every constraint quoted or pinned; starter and continuation prompts verbatim; the cap binds the scoring re-run; the skill's trigger is a contest scored on a site |
+| K12 | P2: contradictory and stale CLI claims | only a push takes a session; the CPU-pool claim dropped; the terminal states named; "read the text" replaces the exit-code claim; the CLI line stated with `-h` as the fallback reading |
+| K13 | P2: status and output not tied to the version | status, output, audit and submission name the version (`<owner>/<slug>/<version>`), one output directory per version |
+| K14 | P2: the row count as the quota counter | the quota's unit and window from the statement; the ledger plus the whole paginated list, the site's allowance where shown, the procedure's reservation where it exists |
+| K15 | P2: the loop, the stop and the harvest disagree | "When the work ends": the deadline or session gate, the spent quota, or the written stopping rationale; the harvest scoped to this campaign's kernels, this competition, the quota and the window, before the campaign's last round |
+| K16 | P2: ceilings not established | the triage is a diagnostic; the stopping rationale is a rationale, not a proof; "sub-point" is "inside the noise floor" |
+| K17 | P2: differing measurements as invalidity | a reproducibility protocol (the same build and inputs, the scorer's seeds fixed, repeated runs); a difference beyond the spread is a finding; a CV/public gap is investigated; void only on a false report, a broken rule, or the task's own all-or-nothing rule |
+| K18 | P2: the submission auditor assumes a kernel | the brief branches by modality and checks only what the task establishes; label leakage, validation leakage and permitted transduction separated |
+| K19 | P2: house moves as prohibitions | every move carries its condition and what to measure first; the alternative earns its place by measurement |
+| K20 | P2: the copied skills' dependencies | `hf-model-fetch` and `tabular-modeling` copied too (six shared skills); `cv-protocol` and `ensembling` no longer cite the relational skill; the playbook's rules were made conditional in change 6 |
+| K21 | P2: past-run memories | the lost result and the double-digit inflation are rules now: the insurance's margin, and a naive fold on grouped data overstates the public score |
+| K22 | P3: the inventory's losses | the toolbox restored (proximal methods, Frank-Wolfe, trust-region, augmented Lagrangian, ADMM, Nelder-Mead, the ellipsoid method, firefly and bat), Monte-Carlo tree search named; "findings, not fixes" on the feedback page and in the auditor; the bank first and the web second on the ideation page (M13); the standings, the pull, the token's locations, the submit flags and the `--sandbox` warning in `kaggle-cli`; the daily cap and the cancelled run in its table; the continuation prompts and the cap on the re-run in the preflight |
+| K23 | P3: the numpy requirement | the environment file dropped; the task's tools are checked in setup |
+| M1 | P1: `stop_hook_active` | K6 |
+| M2 | P1: the submission route | K3 |
+| M3 | P2: the hooks' conventions named nowhere | K7 |
+| M4 | P2: the scoring re-run and the session | K12 |
+| M5 | P2: script-only as a Kaggle fact | a kernel is a script or a notebook; the task's rules decide; fixed at creation |
+| M6 | P2: both modalities' rules unconditional | K9 |
+| M7 | P2: a zero seed as a void | K2 |
+| M8 | P2: repeated runs for a randomised solution | `scorer-cli`: repeated runs per seed, the mean and the spread recorded, a difference inside the spread is not one; the domain statement records the run count; the hook and the auditor read the spread |
+| M9 | P2: the daily cap | the quota's window in `contest-economics` and `kaggle-cli`; the failure row restored |
+| M10 | P2: the numpy requirement | K23 |
+| M11 | P2: tracebacks fail open | K4 |
+| M12 | P2: the bank pull unconditional, engine tool names | conditional on a served bank; "its index and card tools" |
+| M13 | P2: "where to look outside" missing | the ideation page's source order: the summary and the board, the bank, then the web when the module's web is on |
+| M14 | P3: the results file's location | at the attempt's root, in the skill and the hook |
+| M15 | P3: the deny is bypassable; the pages oversell the gates | the pattern widened; the hooks described as mistake catchers; the pages say the finish asks once and the verifier reproduces |
+| M16 | P3: two missing commands; "the board" is two things | the standings and the pull in the table; "the standings" and "the account's submissions list" named apart; the two token locations named |
+| M17 | P3: `cv-protocol` on a heuristic attempt | the implementation page scopes it to a trained model; a heuristic solution's noise is the repeated-run spread |
+| M18 | P3: house moves as absolutes | K19 |
 
 **Change 8's inventory (IOAI into competitive-programming), for the record:**
 

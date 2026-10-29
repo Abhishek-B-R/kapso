@@ -51,7 +51,7 @@ def test_every_bundled_file_is_tracked_by_git():
     assert untracked == [], untracked
 
 
-SHARED_SKILLS = ("task-type-playbooks", "cv-protocol", "ensembling", "eda-discipline")
+SHARED_SKILLS = ("task-type-playbooks", "cv-protocol", "ensembling", "eda-discipline", "hf-model-fetch", "tabular-modeling")
 
 
 @pytest.mark.parametrize("skill", SHARED_SKILLS)
