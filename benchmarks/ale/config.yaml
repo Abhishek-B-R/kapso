@@ -23,6 +23,9 @@ search_strategy:
     judge:
       timeout: 900
     gate_failure_policy: skip
+    # A benchmark has no "goal achieved": the judge's stop vote is advisory
+    # and the campaign runs to its budget.
+    honor_agent_stop: false
     session_env_defaults:
       BASH_DEFAULT_TIMEOUT_MS: "1800000"
       BASH_MAX_TIMEOUT_MS: "7200000"

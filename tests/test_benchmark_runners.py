@@ -214,7 +214,6 @@ def test_ioai_runner_shapes_the_session_deadlines_to_the_run(entered, monkeypatc
     assert [lane["CUDA_VISIBLE_DEVICES"] for lane in strategy.expansion_lane_env] == [str(index) for index in range(8)]
     assert strategy.inbox_settings["enabled"] is False
     assert orchestrator._config_budget["min_iteration_seconds"] == 900
-    assert orchestrator.problem_handler.insured_reserve_seconds == 300.0
     # The runner's own staging beside the task, and its summary.
     assert (task / "RULES.md").is_file() and (task / "KAGGLE_CLI.md").is_file()
     assert (task / "knowledge_bank" / "INDEX.md").is_file()
@@ -288,6 +287,15 @@ def test_relbench_runner_threads_the_bank_serving_as_the_engines_own(entered, mo
     (orchestrator, _), = entered
     assert orchestrator.search_strategy.params["bank_serving"] == {"KAPSO_BANK_ROOT": "/bank"}
     assert "bank_serving" not in load_config(orchestrator.config_path)["search_strategy"]["params"]
+
+
+@pytest.mark.parametrize("benchmark", ["relbench", "mle", "ale", "ioai2026"])
+def test_every_benchmark_makes_the_stop_vote_advisory_in_its_override_file(benchmark):
+    """A benchmark has no goal to reach, so the judge's stop vote is advisory
+    and the campaign runs to its budget: the config key the orchestrator
+    reads (docs/plans/redesign/wp8-harness-ports.md, change 10)."""
+    override = Path(__file__).resolve().parent.parent / "benchmarks" / benchmark / "config.yaml"
+    assert read_yaml(str(override))["search_strategy"]["params"]["honor_agent_stop"] is False
 
 
 def test_a_runners_file_naming_a_host_with_no_staging_is_refused_at_construction(entered, tmp_path):

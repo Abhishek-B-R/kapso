@@ -50,7 +50,6 @@ def make_handler(tmp_path, **overrides):
         deadline_ts=time.time() + 7200,
         session_caps=SESSION_CAPS,
         kaggle=KAGGLE,
-        insured_reserve_seconds=300.0,
     )
     kwargs.update(overrides)
     return KaggleNotebookHandler(**kwargs)
@@ -123,11 +122,13 @@ def test_handler_context_is_statement_plus_minimal_contract(tmp_path):
     assert len(contract.replace(handler.task_dir, "/task")) < 6500
 
 
-def test_handler_never_honors_agent_stop(tmp_path):
+def test_the_override_file_makes_the_stop_vote_advisory():
     # A competition has no "goal achieved" — the radar rehearsal's judges
     # voted stop at 0.982/1.0 and ended the campaign 25 min early with an
-    # upload unspent. The campaign clock is the only stop.
-    assert make_handler(tmp_path).honor_agent_stop is False
+    # upload unspent. The campaign clock is the only stop: the config key.
+    with open(CONFIG_PATH) as f:
+        params = yaml.safe_load(f)["search_strategy"]["params"]
+    assert params["honor_agent_stop"] is False
 
 
 def test_handler_rejects_missing_kaggle_slug(tmp_path):
@@ -153,14 +154,14 @@ def test_handler_requires_the_staged_rules_and_points_the_agent_at_them(tmp_path
         KaggleNotebookHandler(
             task_dir=str(tmp_path / "task"), statement="s",
             deadline_ts=time.time() + 60, session_caps=SESSION_CAPS,
-            kaggle=KAGGLE, insured_reserve_seconds=300.0,
+            kaggle=KAGGLE,
         )
     os.remove(tmp_path / "task" / "RULES.md")
     with pytest.raises(FileNotFoundError, match="RULES.md"):
         KaggleNotebookHandler(
             task_dir=str(tmp_path / "task"), statement="s",
             deadline_ts=time.time() + 60, session_caps=SESSION_CAPS,
-            kaggle=KAGGLE, insured_reserve_seconds=300.0,
+            kaggle=KAGGLE,
         )
 
 
@@ -268,20 +269,6 @@ def test_audit_kernel_flags_external_pulls(tmp_path):
     )
     findings = audit_kernel(str(kernel))
     assert len(findings) == 1 and "MIT/ast-finetuned" in findings[0]
-
-
-def test_reserve_is_insured_only_once_a_public_score_is_banked(tmp_path):
-    # The full reserve covers one submission round trip; it is released only
-    # when a score is actually on the leaderboard, never merely attempted.
-    handler = make_handler(tmp_path)
-    assert handler.deliverable_ready_reserve_seconds() is None
-    log = os.path.join(handler.task_dir, "best_score.log")
-    with open(log, "w") as f:
-        f.write("0.0 2026-07-29T16:00:00Z placeholder\n")
-    assert handler.deliverable_ready_reserve_seconds() is None
-    with open(log, "a") as f:
-        f.write("0.83626 2026-07-29T16:20:00Z lane0\n")
-    assert handler.deliverable_ready_reserve_seconds() == 300.0
 
 
 def test_discover_run_kernels_finds_namespaced_lane_dirs(tmp_path):

@@ -69,7 +69,7 @@ PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root tmp/ioai/task1 --ho
 
 | path | role |
 |---|---|
-| `handler.py` | benchmark handler: the submit-and-learn lane contract, insured finalization |
+| `handler.py` | benchmark handler: the submit-and-learn lane contract |
 | `runner.py` / `preflight.py` | campaign driver and staging / task ingestion |
 | `kernel_slots.py` | ticket office over the submission platform's per account session limits |
 | `config.yaml` | the override file over the packaged config (the roles, the lanes, the budget); the runner's own settings (the harvest, the session budget, the knowledge bank) under `benchmark:` |

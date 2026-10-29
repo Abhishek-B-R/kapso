@@ -35,10 +35,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from kapso.environment.handlers.base import ProblemHandler, ProblemRunResult
-from kapso.execution.evaluation_archive import (
-    finalize_session_run,
-    select_final,
-)
+from kapso.execution.evaluation_archive import select_final
 
 from benchmarks.relbench.context import (
     FEATURES_HISTORY_TEMPLATE,
@@ -235,16 +232,6 @@ class RelBenchHandler(ProblemHandler):
 
     def stop_condition(self) -> bool:
         return self._target_reached
-
-    def finalize_run_selection(self, manifest: Dict, valid: bool) -> None:
-        """Label the archive when a session's score of record resolves.
-
-        Relocated to the framework archive contract; semantics unchanged
-        (final/invalid for the of-record run, superseded siblings,
-        self-voided outranks promotion). final_evaluate selects ONLY among
-        "final" runs stamped with the head evaluator.
-        """
-        finalize_session_run(self.runs_dir, manifest, valid)
 
     def _scoring_test_table(self):
         """Labeled test table with any text boolean target coerced to 0/1.

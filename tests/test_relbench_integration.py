@@ -21,6 +21,7 @@ import pytest
 pytest.importorskip("relbench")
 
 from kapso.core.config import load_config, read_yaml
+from kapso.execution.evaluation_archive import label_run_of_record
 from benchmarks.relbench.task_specs import (
     AUTOCOMPLETE_REGRESSION,
     ENTITY_BINARY,
@@ -626,7 +627,7 @@ class TestRunSelectionLabels:
             _archive_run(handler.runs_dir, name, np.full(n_val, 11.0),
                          np.full(n_test, 11.0), "pending", session=session)
         manifest = {"fidelity": "full", "run": "run_0002", "session": "exp_A"}
-        handler.finalize_run_selection(manifest, valid=True)
+        label_run_of_record(str(handler.runs_dir), manifest, True)
         status = lambda n: json.loads(
             (handler.runs_dir / n / "private/selection.json").read_text())["status"]
         assert status("run_0002") == "final"
@@ -639,24 +640,24 @@ class TestRunSelectionLabels:
         n_test = len(task.get_table("test"))
         _archive_run(handler.runs_dir, "run_0001", np.full(n_val, 11.0),
                      np.full(n_test, 11.0), "self-voided")
-        handler.finalize_run_selection(
-            {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True)
+        label_run_of_record(
+            str(handler.runs_dir), {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True)
         rec = json.loads(
             (handler.runs_dir / "run_0001/private/selection.json").read_text())
         assert rec["status"] == "self-voided"  # retraction outranks promotion
 
         _archive_run(handler.runs_dir, "run_0002", np.full(n_val, 11.0),
                      np.full(n_test, 11.0), "pending")
-        handler.finalize_run_selection(
-            {"fidelity": "full", "run": "run_0002", "session": "exp_A"}, False)
+        label_run_of_record(
+            str(handler.runs_dir), {"fidelity": "full", "run": "run_0002", "session": "exp_A"}, False)
         rec2 = json.loads(
             (handler.runs_dir / "run_0002/private/selection.json").read_text())
         assert rec2["status"] == "invalid"
 
     def test_fast_manifest_is_a_noop(self, tmp_path):
         handler, _ = _bare_driver_position_handler(tmp_path)
-        handler.finalize_run_selection(
-            {"fidelity": "fast", "run": "", "session": "exp_A"}, True)
+        label_run_of_record(
+            str(handler.runs_dir), {"fidelity": "fast", "run": "", "session": "exp_A"}, True)
 
 
 class TestBooleanTargetCoercion:
@@ -757,7 +758,7 @@ class TestGraderSelectionLabel:
         from kapso.execution.search_strategies.generic import strategy as strat
         src = inspect.getsource(strat.GenericSearch)
         assert "_manifest_of_record" in src
-        assert "finalize_run_selection" in src
+        assert "label_run_of_record" in src
 
         from kapso.execution.evaluation_maintainer.maintainer import parse_manifest_line
         line = ('KAPSO_EVAL_MANIFEST {"fidelity": "full", "fraction": 1.0, '

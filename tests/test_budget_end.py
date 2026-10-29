@@ -155,10 +155,6 @@ def test_admission_covers_the_last_round(tmp_path, monkeypatch):
     recent = status_file(orchestrator)["recent"]
     assert any("would not cover an attempt (the last took 14.0 min)" in line for line in recent)
     assert RunCheckpointStore(str(workspace)).load().last_stop == ATTEMPT_WOULD_NOT_FIT
-    # An insured campaign uses its own floor alone, whatever the last round took.
-    orchestrator.problem_handler.deliverable_ready_reserve_seconds = lambda: 5.0
-    third = orchestrator.solve(experiment_max_iter=1, time_budget_minutes=10)
-    assert third.iterations_run == 1
 
 
 def test_a_finishing_cut_stops_the_campaign_by_name(tmp_path, monkeypatch):

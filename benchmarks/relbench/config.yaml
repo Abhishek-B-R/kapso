@@ -61,6 +61,9 @@ search_strategy:
     judge:
       timeout: 900
     gate_failure_policy: skip
+    # A benchmark has no "goal achieved": the judge's stop vote is advisory
+    # and the campaign runs to its budget.
+    honor_agent_stop: false
     # K-way node expansion: the selector emits a ranked top-4 and each is
     # implemented and evaluated on its own parallel lane, PINNED to its
     # own GPU via CUDA_VISIBLE_DEVICES. Threads sized for the on-demand

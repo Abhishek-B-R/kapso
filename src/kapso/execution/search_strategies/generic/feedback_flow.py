@@ -2,8 +2,9 @@
 
 Owns the post-implementation judgment feature: the FeedbackGenerator
 session over a node's evidence, the manifest-of-record score cross-check,
-the handler's finalize_run_selection call at score-of-record time, and the
-structured agent-result extraction (XML tags). Stateless functions only —
+the engine's archive labelling at score-of-record time (the strategy passes
+`label_run_of_record` over its archive glob), and the structured
+agent-result extraction (XML tags). Stateless functions only —
 GenericSearch assembles arguments from its state and delegates here.
 """
 

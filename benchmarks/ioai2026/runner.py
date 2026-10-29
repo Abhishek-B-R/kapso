@@ -661,8 +661,7 @@ def main():
         )
     # Sized to ONE submission round trip (push -> kernel run -> submit ->
     # score), not to a fraction of the run: a campaign that ends before
-    # shipping scores nothing. The handler hands most of it back once a public
-    # score is banked (deliverable_ready_reserve_seconds).
+    # shipping scores nothing.
     reserve_minutes = knobs["finalization_reserve_minutes"]
     session_timeouts = shape_session_timeouts(config, budget_minutes * 60)
 
@@ -700,7 +699,6 @@ def main():
         deadline_ts=campaign_deadline_ts,
         session_caps=session_timeouts,
         kaggle={"competition": competition},
-        insured_reserve_seconds=knobs["insured_reserve_minutes"] * 60,
     )
 
     orchestrator = OrchestratorAgent(
@@ -710,8 +708,8 @@ def main():
         workspace_dir=os.path.join(task_dir, "kapso_campaign"),
         # The statement plus the one fact the feedback judge needs: this goal
         # has no "fully achieved" — the radar rehearsal's judges voted stop at
-        # 0.982/1.0 and ended the campaign 25 min early. The handler's
-        # honor_agent_stop=False is the hard guarantee; this line keeps the
+        # 0.982/1.0 and ended the campaign 25 min early. The override file's
+        # honor_agent_stop: false is the hard guarantee; this line keeps the
         # judges' own feedback from telling lanes "no further iteration is
         # required".
         goal=(statement

@@ -53,6 +53,9 @@ search_strategy:
     judge:
       timeout: 900
     gate_failure_policy: skip
+    # A benchmark has no "goal achieved": the judge's stop vote is advisory
+    # and the campaign runs to its budget.
+    honor_agent_stop: false
     session_env_defaults:
       BASH_DEFAULT_TIMEOUT_MS: "900000"
       BASH_MAX_TIMEOUT_MS: "7200000"
@@ -88,11 +91,9 @@ benchmark:
   # the 60s floor three runs straight. Lanes own their own endgame margin —
   # the handler's loop contract makes the last submission leave room for
   # its scoring — and the post-campaign harvest remains the safety net for
-  # pushed-but-unsubmitted kernels. insured_reserve is inert at reserve 0;
-  # it stays because the handler still takes the argument.
+  # pushed-but-unsubmitted kernels.
   session_budget:
     finalization_reserve_minutes: 0
-    insured_reserve_minutes: 5
     # Zero harvest carve-out (user-set 2026-08-05): the campaign runs to
     # the window end, and lanes own shipping every completed version
     # in-window themselves — slot-free submits plus the cross-lane

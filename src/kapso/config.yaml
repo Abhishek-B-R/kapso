@@ -208,6 +208,10 @@ search_strategy:
       timeout: null
     # A gate the machine cannot serve: skip it, warn and go on, or error.
     gate_failure_policy: "warn"
+    # Whether the judge's stop vote ends the campaign: true for a task with a
+    # goal to reach; false for open-ended maximisation (a contest has no
+    # "achieved", so the vote is advisory and the budget is the only clock).
+    honor_agent_stop: true
     # The branch a new attempt starts from: best (the champion) or baseline.
     parent_policy: "best"
     # Parallel implementation lanes per iteration (the selector ranks that
@@ -317,11 +321,8 @@ budget:
   # the budget, so a short budget keeps its search.
   reserve_minutes: null
   # A round is admitted when the searchable remainder covers the larger
-  # of this floor (seconds) and the previous round's own duration; the
-  # insured floor applies instead once the handler reports a deliverable
-  # (null: the floor above).
+  # of this floor (seconds) and the previous round's own duration.
   min_iteration_seconds: 60
-  min_iteration_seconds_insured: null
   # Below this an agent session cannot do useful work: a session whose
   # deadline would be clamped to it is not launched.
   min_agent_timeout_seconds: 60

@@ -30,9 +30,6 @@ _BUDGET_BLOCK_KEYS = {
     "usd",
     "reserve_minutes",
     "min_iteration_seconds",
-    # Admission floor once the handler reports a confirmed deliverable
-    # (insurance already paid): late, short iterations become admissible.
-    "min_iteration_seconds_insured",
     "min_agent_timeout_seconds",
     # Durable-clock heartbeat interval (consumed by the orchestrator, not
     # BudgetSpec): keeps elapsed_seconds fresh between boundary checkpoints.
@@ -99,10 +96,6 @@ class BudgetSpec:
     # resolves them from its own config; the defaults serve direct
     # construction.
     min_iteration_seconds: float = PACKAGED_BUDGET["min_iteration_seconds"]
-    # Insured floor: applied instead of min_iteration_seconds while the
-    # problem handler reports a confirmed deliverable on disk. None keeps
-    # the single floor for every state.
-    min_iteration_seconds_insured: Optional[float] = None
     min_agent_timeout_seconds: float = PACKAGED_BUDGET["min_agent_timeout_seconds"]
 
     def __post_init__(self) -> None:
@@ -121,11 +114,6 @@ class BudgetSpec:
         _require_finite_non_negative(
             "min_iteration_seconds", self.min_iteration_seconds
         )
-        if self.min_iteration_seconds_insured is not None:
-            _require_finite_non_negative(
-                "min_iteration_seconds_insured",
-                self.min_iteration_seconds_insured,
-            )
         _require_finite_non_negative(
             "min_agent_timeout_seconds", self.min_agent_timeout_seconds
         )
@@ -164,10 +152,6 @@ class BudgetSpec:
         kwargs: Dict[str, Any] = {}
         if "min_iteration_seconds" in block:
             kwargs["min_iteration_seconds"] = block["min_iteration_seconds"]
-        if "min_iteration_seconds_insured" in block:
-            kwargs["min_iteration_seconds_insured"] = block[
-                "min_iteration_seconds_insured"
-            ]
         if "min_agent_timeout_seconds" in block:
             kwargs["min_agent_timeout_seconds"] = block[
                 "min_agent_timeout_seconds"
@@ -206,19 +190,12 @@ class BudgetSpec:
             return seconds
         return min(seconds, RESERVE_FRACTION_BOUND * self.time_budget_seconds)
 
-    def effective_min_iteration_seconds(self, insured: bool) -> float:
-        """The admission floor for the current deliverable state."""
-        if insured and self.min_iteration_seconds_insured is not None:
-            return self.min_iteration_seconds_insured
-        return self.min_iteration_seconds
-
     def to_dict(self) -> Dict[str, Any]:
         return {
             "time_budget_seconds": self.time_budget_seconds,
             "cost_budget_usd": self.cost_budget_usd,
             "finalization_reserve_seconds": self.finalization_reserve_seconds,
             "min_iteration_seconds": self.min_iteration_seconds,
-            "min_iteration_seconds_insured": self.min_iteration_seconds_insured,
             "min_agent_timeout_seconds": self.min_agent_timeout_seconds,
         }
 
