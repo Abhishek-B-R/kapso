@@ -102,7 +102,6 @@ def test_the_benchmark_override_files_resolve():
     for relative in (
         "benchmarks/relbench/config.yaml", "benchmarks/ioai2026/config.yaml",
         "benchmarks/mle/config.yaml", "benchmarks/ale/config.yaml",
-        "benchmarks/ioai2026/past_learning/config.yaml",
         "examples/ml_model_development/e2e/config.e2e.yaml",
         "examples/ml_model_development/e2e/config.e2e-fidelity-off.yaml",
         "examples/ml_model_development/e2e/config.gate.yaml",

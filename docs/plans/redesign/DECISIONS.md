@@ -2558,3 +2558,18 @@ archive root by absolute path, named in the Brief (ALE's task root, the
 seed list, is small and is `data=`). The MLE description rides verbatim
 (the LLM cleaning step is gone) and the hub search is the harness's
 `hf-model-fetch` skill in setup.
+
+## WP8: the IOAI evaluation attributes submissions by content and runs without a maintainer (2026-10-29)
+
+A leaderboard task has no calibration run, so its provided evaluation is
+not registered by the maintainer: the sessions run it as the provided
+suite and report its score, which is the harness's scorer procedure for a
+contest anyway. The evaluation attributes the ledger to a candidate by the
+hash of its kernel source or of its submitted file, never by the session's
+directory: the engine also runs a candidate's evaluation in a materialized
+worktree of its branch, where the directory says nothing. The submission
+procedure mints a token into every message, which is how the competition's
+submissions list is attributed back to the ledger. The organizers' rules
+ride in the Brief's objective as a section, not as a Rules item: the brief
+grammar reads a bulleted line under Rules as a new item, and the rendered
+text must parse back to the same brief for a resume.

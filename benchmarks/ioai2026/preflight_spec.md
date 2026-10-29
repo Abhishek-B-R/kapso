@@ -23,7 +23,11 @@ report formats, limits) must reach the statement — quoted in the statement's
    archives there and delete the zips. A rules-acceptance error (403) means
    the account has not joined the competition on kaggle.com — stop and report
    exactly that; do not guess at another competition.
-2. Write `kaggle.json` in the task directory: `{"competition": "<slug>"}`.
+2. Write `kaggle.json` in the task directory:
+   `{"competition": "<slug>", "higher_is_better": true|false}`, the direction
+   of the evaluation metric read from the competition's evaluation page (a
+   log loss or an error is lower-is-better; an accuracy, an AUC or an F1 is
+   higher-is-better).
 
 The dataset directory is then your **authoritative** source for the data
 layout and the exact submission format: inspect the real files — list the

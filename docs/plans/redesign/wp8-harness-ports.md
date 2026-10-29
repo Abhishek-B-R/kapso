@@ -610,6 +610,30 @@ that is still evidence.
     `test_ioai2026_benchmark.py` moved to the new shape; the evaluator on
     a fixture ledger with pending, missing, rejected and scored entries;
     exact candidate-to-submission attribution.
+    Done (2026-10-29): the runner stages a contest root beside the
+    preflight's task (`task/contest_root/`: `contest.json` with the
+    competition, the ledger's absolute path, the procedure, the metric's
+    direction, the window start and the shared root; `submit.py`;
+    `kernel_slots.py` with its limits; `RULES.md` pinned) and passes it as
+    `data=`, so every session's `kapso_datasets/` carries the harness's
+    conventions while the ledger and the ticket office's state stay in
+    the shared root; `submit.py` submits through the CLI and records the
+    entry with a token in the message and the kernel source's hash (or
+    the file's), which is the attribution: the provided evaluation
+    (`data/generic_eval/evaluate.py`, run by the sessions, no maintainer:
+    a leaderboard has no calibration run) refreshes pending entries from
+    the submissions list by token, matches the candidate's kernel or file
+    by hash, and reports scored, pending (exit 12), rejected (13), out of
+    window (14) and missing (11) as distinct outcomes, banking a newly
+    scored entry in the shared `best_score.log` the ticket office reads;
+    the preflight's `kaggle.json` gains the metric's direction; the Brief
+    is the statement plus the campaign's facts, with the organizers'
+    rules as a section of the objective (a Rules item cannot hold a
+    bulleted document: the grammar would split it); the handler, the
+    knowledge bank staging (`knowledge_bank_dir`), the CLI playbook
+    staging and `past_learning/` with its tests are deleted; the harvest,
+    `run_final_eval` and the audit are kept, the audit over every kernel
+    folder found under the task.
 15. **The IOAI book as a bank**, once the grammar extension lands (or the
     fallback): `book_to_bank.py`, the two banks, the second provenance
     pass with the added columns, `PROVENANCE.md` committed. Tests: the

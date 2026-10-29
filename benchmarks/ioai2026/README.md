@@ -42,14 +42,16 @@ Per task:
 ## How it works
 
 1. **Preflight**: one agent session ingests the official task brief, downloads the data, and
-   writes the task statement. The campaign clock starts at brief-in.
-2. **Campaign**: the Kapso platform runs its experimentation loop (ideation → implementation
-   → judged feedback) in parallel lanes, each lane cycling submit-and-learn rounds through the
-   official submission system: predict the score, submit, bank the result, study the gap, go
-   again.
-3. **Shared learning**: lanes learn from every sibling submission on the board, and ideas are
-   grounded in the campaign [knowledge bank](past_learning/) distilled from past olympiad
-   tasks.
+   writes the task statement with the metric's direction. The campaign clock starts at brief-in.
+2. **Campaign**: the runner launches `build()` with the bundled `competitive-programming`
+   harness. The Brief carries the statement, the competition, the deadline, the submission
+   procedure and the ledger, the session pool and the organizers' rules; the harness carries
+   the discipline (the contest economics, the Kaggle flow, the olympiad playbook, the
+   auditors, the hooks that ask for the insurance submission and refuse a raw submit). Every
+   submission goes through the task root's procedure, which records it in the ledger; the
+   provided evaluation reports each candidate's own recorded submission by its public score.
+3. **Shared learning**: lanes learn from every sibling submission on the board, and a bank of
+   past olympiad solutions is served as experience (`--experience`), never staged.
 
 ## Quickstart
 
@@ -69,9 +71,10 @@ PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root tmp/ioai/task1 --ho
 
 | path | role |
 |---|---|
-| `handler.py` | benchmark handler: the submit-and-learn lane contract |
-| `runner.py` / `preflight.py` | campaign driver and staging / task ingestion |
+| `runner.py` / `preflight.py` | the campaign on `build()` with the contest root staged / task ingestion |
+| `context.py` | the Brief from the preflight's statement and the campaign's facts |
+| `submit.py` | the task root's submission procedure: submits and records the ledger entry |
+| `data/generic_eval/` | the provided evaluation: the candidate's own recorded submission |
 | `kernel_slots.py` | ticket office over the submission platform's per account session limits |
-| `config.yaml` | the override file over the packaged config (the roles, the lanes, the budget); the runner's own settings (the harvest, the session budget, the knowledge bank) under `benchmark:` |
-| `past_learning/` | the harvest factory: runs on past olympiad tasks that feed the knowledge bank |
-| `RULES.md` | organizer rules staged into every run |
+| `config.yaml` | the override file over the packaged config (the roles, the lanes, the budget); the runner's own settings (the harvest, the session budget) under `benchmark:` |
+| `RULES.md` | organizer rules, pinned into every campaign's contest root |

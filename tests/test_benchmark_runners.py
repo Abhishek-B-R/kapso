@@ -276,34 +276,49 @@ def test_relbench_runner_builds_on_the_facade_with_the_bundled_harness(monkeypat
     assert orchestrator._provided_evaluation_manifest
 
 
-def test_ioai_runner_shapes_the_session_deadlines_to_the_run(entered, monkeypatch, tmp_path):
+def test_ioai_runner_builds_on_the_facade_with_the_contest_harness(monkeypatch, tmp_path):
+    """Change 14: the contest root as the data (the descriptor with the
+    ledger's absolute path and the procedure, the ticket office with its
+    limits, the rules pinned), the Brief from the preflight's statement, the
+    session deadlines shaped to the run and the lanes in the runtime file,
+    the budget's mapping, the contest harness; the final evaluation skipped."""
     from benchmarks.ioai2026 import runner
 
+    entered = facade_entered(monkeypatch, tmp_path)
     root = tmp_path / "run"
     task = root / "task"
     (task / "dataset").mkdir(parents=True)
     (task / "dataset" / "statement.md").write_text("# Practice task\n\nPredict the label of every test row.\n")
-    (task / "kaggle.json").write_text(json.dumps({"competition": "ioai-2026-ai-models-track-practice-task-1"}))
-    repo_root = tmp_path / "repo"
-    bank = repo_root / "benchmarks" / "ioai2026" / "knowledge_bank"
-    bank.mkdir(parents=True)
-    (bank / "INDEX.md").write_text("# Index\n")
-    monkeypatch.setattr(runner, "REPO_ROOT", str(repo_root))
+    (task / "kaggle.json").write_text(json.dumps({"competition": "ioai-2026-ai-models-track-practice-task-1", "higher_is_better": True}))
     # The clock frozen: the budget is the two hours, nothing spent.
     monkeypatch.setattr(runner, "time", types.SimpleNamespace(time=lambda: FROZEN_CLOCK))
     no_signal(monkeypatch, runner)
     monkeypatch.setattr(sys, "argv", ["runner", "--root", str(root), "--hours", "2", "--iterations", "5", "--skip-final-eval"])
     runner.main()
     (orchestrator, kwargs), = entered
-    # Two hours, no guard, no harvest window, no reserve (the mode's).
-    assert kwargs == {"experiment_max_iter": 5, "time_budget_minutes": 120, "cost_budget": None, "finalization_reserve_minutes": 0}
+    # Two hours, no guard, no harvest window, no reserve (the mode's: a zero reserve is none).
+    assert kwargs["experiment_max_iter"] == 5 and kwargs["time_budget_minutes"] == 120
+    assert kwargs["cost_budget"] is None and kwargs["finalization_reserve_minutes"] is None
+    contest_root = task / "contest_root"
+    descriptor = json.loads((contest_root / "contest.json").read_text())
+    assert descriptor["competition"] == "ioai-2026-ai-models-track-practice-task-1"
+    assert descriptor["ledger"] == str(contest_root / "submissions.json") and descriptor["procedure"] == "python kapso_datasets/submit.py"
+    assert descriptor["higher_is_better"] is True and descriptor["shared_root"] == str(contest_root)
+    assert json.loads((contest_root / ".kernel_slots_config.json").read_text())["gpu"] == 2
+    for name in ("submit.py", "kernel_slots.py", "RULES.md"):
+        assert (contest_root / name).is_file()
+    workspace = task / "kapso_campaign"
+    launch = launch_record(workspace)
+    assert launch["harness"]["name"] == "competitive-programming" and launch["data_dir"] == str(contest_root)
+    assert launch["eval_dir"] == str(runner.EVALUATION_SUITE) and launch["minutes"] == 120 and launch["experiments"] == 5
+    assert launch["brief"]["objective"].startswith("# Practice task")
+    assert (workspace / "kapso_datasets" / "contest.json").is_file() and (workspace / "kapso_evaluation" / "evaluate.py").is_file()
     runtime = task / ".kapso_runtime" / "config.yaml"
     assert orchestrator.config_path == str(runtime)
-    config = load_config(str(runtime))
-    params = config["search_strategy"]["params"]
-    # The session ceilings shrunk to the run: min(14400, 2h).
+    params = load_config(str(runtime))["search_strategy"]["params"]
+    # The session ceilings shrunk to the run: min(14400, 2h); the task's shared cache.
     assert params["ideation"]["timeout"] == 7200 and params["implementation"]["timeout"] == 7200
-    assert params["node_expansion_value"] == 8
+    assert params["node_expansion_value"] == 8 and params["shared_cache_dir"] == str(task / "shared_cache")
     strategy = orchestrator.search_strategy
     assert facts(strategy.ideation_role) == (*CODEX, 7200.0, True)
     assert facts(strategy.implementation_role) == (*CODEX, 7200.0, True)
@@ -313,58 +328,14 @@ def test_ioai_runner_shapes_the_session_deadlines_to_the_run(entered, monkeypatc
         (*CODEX, None, True), ("claude_code", "claude-fable-5", "max", None, True),
     ]
     assert facts(strategy.ideation_lens_planner) == ("claude_code", "claude-fable-5", "high", 600.0, True)
-    assert facts(strategy.ideation_selector) == (*CODEX, None, True)
     assert strategy.params["ideation"]["candidates_per_member"] == 5
     assert strategy.params["ideation"]["gates"] == ["experiment_history", "repo_memory"]
-    assert strategy.params["implementation"]["gates"] == ["repo_memory"]
-    assert strategy.node_expansion_value == 8
     assert [lane["CUDA_VISIBLE_DEVICES"] for lane in strategy.expansion_lane_env] == [str(index) for index in range(8)]
     assert strategy.inbox_settings["enabled"] is False
     assert orchestrator._config_budget["min_iteration_seconds"] == 900
-    # The runner's own staging beside the task, and its summary.
-    assert (task / "RULES.md").is_file() and (task / "KAGGLE_CLI.md").is_file()
-    assert (task / "knowledge_bank" / "INDEX.md").is_file()
-    assert json.loads((task / ".kernel_slots_config.json").read_text())["gpu"] == 2
-    assert json.loads((root / "results.json").read_text())["hours"] == 2.0
-
-
-def test_past_learning_runner_shapes_the_reserve_and_the_deadlines_to_the_run(entered, monkeypatch, tmp_path):
-    from benchmarks.ioai2026.past_learning import runner
-
-    root = tmp_path / "run"
-    task = root / "task"
-    (task / "dataset").mkdir(parents=True)
-    (task / "dataset" / "statement.md").write_text("# Past contest\n\nClassify the images.\n")
-    (task / "task_meta.json").write_text(json.dumps({
-        "task_name": "ioai-2025-practice", "self_check_command": "python self_check.py", "metric_name": "accuracy",
-    }))
-    no_signal(monkeypatch, runner)
-    monkeypatch.setattr(sys, "argv", ["runner", "--root", str(root), "--hours", "2", "--iterations", "6", "--skip-final-eval"])
-    runner.main()
-    (orchestrator, kwargs), = entered
-    # Two hours less the five-minute guard; the reserve a tenth of that,
-    # within its bounds.
-    assert kwargs == {"experiment_max_iter": 6, "time_budget_minutes": 115, "cost_budget": None, "finalization_reserve_minutes": 11.5}
-    runtime = task / ".kapso_runtime" / "config.yaml"
-    assert orchestrator.config_path == str(runtime)
-    config = load_config(str(runtime))
-    assert config["hosts"]["claude_code"] == {"model": "claude-opus-4-8", "auth_mode": "oauth", "effort": "max"}
-    strategy = orchestrator.search_strategy
-    # Shaped to the run: ideation a fifth of two hours, implementation
-    # three quarters; no web in either role (the leakage protocol).
-    assert facts(strategy.ideation_role) == ("claude_code", "claude-opus-4-8", "max", 1440.0, False)
-    assert facts(strategy.implementation_role) == ("claude_code", "claude-opus-4-8", "max", 5400.0, False)
-    assert strategy.implementation_role.settings == {"auth_mode": "oauth"}
-    assert facts(strategy.judge_role) == ("claude_code", "claude-opus-4-8", "xhigh", 900.0, True)
-    assert [facts(member) for member in strategy.ideation_ensemble] == [
-        (*CODEX, None, False), ("claude_code", "claude-fable-5", "max", None, False),
-    ]
-    assert facts(strategy.ideation_lens_planner) == ("claude_code", "claude-opus-4-8", "xhigh", 600.0, False)
-    assert facts(strategy.ideation_selector) == ("claude_code", "claude-fable-5", "max", None, False)
-    assert strategy.params["ideation"]["candidates_per_member"] == 3
-    assert strategy.inbox_settings["enabled"] is False
-    assert orchestrator._config_budget["min_iteration_seconds"] == 900
-    assert json.loads((root / "results.json").read_text())["task"] == "ioai-2025-practice"
+    results = json.loads((root / "results.json").read_text())
+    assert results["hours"] == 2.0 and results["solution"]["harness"] == "competitive-programming"
+    assert json.loads((root / "run_meta.json").read_text())["run_started_utc"]
 
 
 @pytest.mark.parametrize("benchmark", ["relbench", "mle", "ale", "ioai2026"])

@@ -81,10 +81,6 @@ benchmark:
   run_defaults:
     hours: 2.0
     node_expansion: 8
-  # Curated best-solutions book (repo-root-relative; gitignored, shipped to
-  # boxes by the launch protocol). Staged into <task>/knowledge_bank/ at
-  # runner startup; every module is told it is the FIRST search priority.
-  knowledge_bank_dir: benchmarks/ioai2026/knowledge_bank
   # No per-phase fractions, and NO finalization reserve: every run to date
   # banked a public score long before any wall, while the reserve killed
   # lanes mid-round (5 of 8 in run 5) and starved the feedback sessions to

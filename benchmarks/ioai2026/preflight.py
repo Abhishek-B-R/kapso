@@ -5,7 +5,7 @@ Turns the organizer's starter prompt (or a competition URL, for tasks that
 publish none) into the run root the runner consumes:
     <root>/task/starter_prompt.txt   the launch input, verbatim
     <root>/task/dataset/             competition data + statement.md
-    <root>/task/kaggle.json          {"competition": <slug>}
+    <root>/task/kaggle.json          {"competition": <slug>, "higher_is_better": true|false}
 
 The brief is OPAQUE to this code: no slug parsing here. One `codex exec`
 session receives it verbatim, identifies the competition it names, downloads
@@ -77,9 +77,12 @@ def validate_root(task_dir: str) -> str:
     if not os.path.isfile(kaggle_json):
         sys.exit(f"{kaggle_json} missing after preflight")
     with open(kaggle_json) as f:
-        slug = json.load(f).get("competition", "")
+        meta = json.load(f)
+    slug = meta.get("competition", "")
     if not slug:
         sys.exit(f"{kaggle_json} carries no competition slug")
+    if not isinstance(meta.get("higher_is_better"), bool):
+        sys.exit(f"{kaggle_json} carries no boolean higher_is_better: the metric's direction, from the evaluation page")
     return slug
 
 
