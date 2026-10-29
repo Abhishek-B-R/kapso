@@ -2419,3 +2419,78 @@ shareable bank (the entries whose source licence permits redistribution,
 and our own reimplementations) and a local-only bank (the rest). Both
 live on this machine and in the backup bucket. Whether the shareable bank
 gets a remote, and which, is the owner's call, with the table in hand.
+
+## WP8: the reproductions are read against their recorded populations, preregistered, at the shapes the records give (2026-10-29, after the plan review)
+
+The done-when lines say "within noise of the recorded result at the same
+budget and model". Retrieved: RelBench `rel-trial/study-outcome` was run
+as thirteen campaign lanes (4×A100 boxes, twelve hours, a champion seeded
+across lanes; test AUROC mean 0.775, sd 0.021, best 0.821); the MLE
+submission was three runs of Gemini-3-Pro-Preview at twenty-four hours on
+one H100 (spooky log loss 0.247, 0.230, 0.284); ALE's `ahc008` is one
+number with no launch record; the IOAI practice competition is no longer
+reachable. No arm can match its record exactly: the RelBench lanes were
+warm and the OpenAI keys are exhausted, the MLE model is not served, the
+IOAI task is gone. So each bar is preregistered here against its
+population with the differences named (the Acceptance section), the
+RelBench arm runs at the recorded four-lane shape on a four-GPU spot box,
+cold, and the IOAI arm is a baseline on an open practice competition at
+the recorded cold-start shape. The owner may replace any bar; the
+implementer does not lower one silently.
+
+## WP8: the IOAI book's cards need a reported evidence kind; the request goes to the learning package (2026-10-29)
+
+The card grammar admits only evidence a campaign produced (a learner run,
+a trajectory, a reference, a usage, an effect) with executed verdicts. A
+curated winner's solution has a source, an author, a licence and a public
+score. Rather than fabricate measurement-shaped entries, the conversion
+waits for a `reported` source kind and verdict, outside the executed
+verdicts and the promotion rules, so a converted card is born `candidate`
+and serves as "reported by others". That is a change to `src/kapso/learning/bank.py`,
+owned by neither WP3 nor WP8, requested here; the fallback converts only
+the entries we reproduced ourselves with a trajectory.
+
+## WP8: the sanitized cache is the runner's to build, with the harness's script (2026-10-29)
+
+The port mapping put the sanitized copy in the setup session as a
+prepared resource. Prepared resources are not integrity-verified, the
+setup session's budget is minutes, and the copy is reused across
+campaigns. So the runner builds it before launch, with the one standalone
+script that lives in the harness skill (the domain machinery any
+relational task can use), reuses it under a version marker, and names it
+in the Brief as an absolute read-only path; the setup session verifies it
+and records the regime.
+
+## WP8: the Kaggle session pool is the runner's CLI, not a harness server (2026-10-29)
+
+The ticket office blocks until a slot is granted (its contract), its pool
+sizes are the account's limits (configuration), and its ledger is shared
+by every lane of a campaign (a path the runner knows). A harness server
+runs in a session directory under a tool timeout with no campaign-root
+contract. The harness's skill names the discipline; the task root the
+runner writes provides the office and the submission procedure.
+
+## WP8: the metric's direction is the evaluation directory's to orient (2026-10-29)
+
+The engine optimises one `score`, higher is better. A lower-is-better
+benchmark's grader emits the oriented score and reports the raw metric
+and its direction in the evaluation output; the Brief says both; the
+runner's final report prints the raw metric. No engine field gains a
+direction: the evaluation directory already owns what the score means.
+
+## WP8: three handler behaviours become engine seams; the handler attributes go (2026-10-29)
+
+`honor_agent_stop` becomes a config key read by the orchestrator;
+`finalize_run_selection` becomes the generic feedback flow calling the
+engine's own archive labelling; `deliverable_ready_reserve_seconds` is
+dropped with the IOAI handler (WP4's derived reserve applies). Each is a
+small edit in WP1's or WP4's file, requested in the plan and made once
+the owner says go; after the ports `GenericProblemHandler` is the only
+handler, so the attributes have no second reader.
+
+## WP8: the swaps' bar is zero harness edits; the runner edits are pre-listed (2026-10-29)
+
+A swap tests the harness, not the benchmark adapters. The runner edits
+each swap is known to need are listed in the plan before it runs, so a
+runner change is not mistaken for a harness finding; a harness edit is a
+finding fixed at the source, and the swap runs again.
