@@ -310,13 +310,19 @@ For detailed integration steps, see the [Quickstart](https://docs.leeroo.com/doc
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| [**CUDA Optimization**](examples/cuda_optimization/README.md) | Optimize CUDA kernels for GPU performance |
-| [**PyTorch Optimization**](examples/pytorch_optimization/README.md) | Cut wall-clock and memory — fuse ops, kill sync points and host-device chatter, saturate the GPU without changing numerics |
-| [**ML Model Development**](examples/ml_model_development/README.md) | End-to-end delivery of prediction models — data prep, features, training, and validation evolved into a deployable artifact |
-| [**Harness Optimization**](examples/prompt_engineering/README.md) | Tune the harness around a model — prompts, decoding, parsing, and scoring tuned against a measurable target |
-| [**Agent Optimization**](examples/agentic_scaffold/README.md) | Agents improving agents — workflows, tools, and prompts evolved until the metric climbs |
+Every example is a task: a brief, a starting repository, the data or how to get it, and a driver of at most twelve lines; [examples/README.md](examples/README.md) has the minutes, the one command and whether a result is recorded.
+
+| Example | What it shows |
+|---------|---------------|
+| [**churn-first-build**](examples/churn-first-build/README.md) | Your first build: an evaluator present, a baseline, a target, the record |
+| [**fraud-no-evaluator**](examples/fraud-no-evaluator/README.md) | No evaluator: the campaign builds one from the brief's protocol, then protects it |
+| [**pipeline-dbt**](examples/pipeline-dbt/README.md) | A dbt pipeline on DuckDB whose exports carry defects: the data contract made to hold |
+| [**trading**](examples/trading/README.md) | A harness on the build: a setup session, pages and hooks in every session, verification per attempt |
+| [**full-loop**](examples/full-loop/README.md) | Build, the review, learn, build again served the lesson, deploy: a Kaggle tabular model end to end |
+| [**prompt-harness**](examples/prompt-harness/README.md) | The prompt as the thing under test, scored on AIME problems |
+| [**agent-scaffold**](examples/agent-scaffold/README.md) | A vision-language extractor, scored against ground-truth tables |
+| [**torch-performance**](examples/torch-performance/README.md) | A faster module on CUDA under a numerical tolerance |
+| [**gpu-kernels**](examples/gpu-kernels/README.md) | Multi-head attention on CUDA: flash attention or Triton |
 
 ## Supported Benchmarks
 

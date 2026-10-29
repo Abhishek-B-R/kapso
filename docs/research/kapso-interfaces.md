@@ -150,14 +150,14 @@ load, the `generic` harness is active, which is today's GENERIC mode.
 | Harness | From | Carries |
 |---|---|---|
 | `generic` | mode GENERIC | the default |
-| `predictive-modelling` | benchmarks/mle, examples/ml_model_development | MLE handler, data preparation, stage-aware context |
+| `predictive-modelling` | benchmarks/mle, examples/full-loop | MLE handler, data preparation, stage-aware context |
 | `relational-prediction` | benchmarks/relbench | sanitized cache, task specs, leakage audit, lane GPU pinning |
 | `algorithm-contest` | benchmarks/ale | Docker scorer, contest heuristics |
 | `ai-olympiad` | benchmarks/ioai2026 | submission loop, kernel slots, preflight |
-| `gpu-kernels` | examples/cuda_optimization | profiler judge, numerical tolerance |
-| `torch-performance` | examples/pytorch_optimization | wall-clock and memory judge |
-| `prompt-harness` | examples/prompt_engineering | prompt and decoding search |
-| `agent-scaffold` | examples/agentic_scaffold | agents improving agents |
+| `gpu-kernels` | examples/gpu-kernels | profiler judge, numerical tolerance |
+| `torch-performance` | examples/torch-performance | wall-clock and memory judge |
+| `prompt-harness` | examples/prompt-harness | prompt and decoding search |
+| `agent-scaffold` | examples/agent-scaffold | agents improving agents |
 | `data-pipelines` | new, from the data-quality flow | check suites, retention rules, batch deploy |
 
 The benchmark runners become thin entry points over their harness
