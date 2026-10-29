@@ -130,6 +130,34 @@ def classify_guesses(guesses: Sequence[Guess], guide: str, settings: dict, ask: 
     return out
 
 
+def merge_classifications(first: Sequence[Dict[str, Any]], second: Sequence[Dict[str, Any]], third: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The final class per guess from two blind passes and, for each guess
+    whose passes disagree on the one thing the bar counts (structural or
+    not), the adjudicating pass's class; a guess the passes agree on keeps
+    the first pass's row. Every row carries both passes' classes, so a
+    reader sees what was adjudicated."""
+    adjudicated = {row["index"]: row for row in third}
+    merged = []
+    for one, two in zip(first, second):
+        straddles = (one["class"] == "structural_gap") != (two["class"] == "structural_gap")
+        if straddles and one["index"] not in adjudicated:
+            raise judge_module.JudgeFailure(f"guess {one['index']} straddled the bar and the adjudication did not classify it")
+        source = adjudicated[one["index"]] if straddles else one
+        merged.append({**source, "passes": [one["class"], two["class"]], "adjudicated": straddles})
+    return merged
+
+
+def classify_twice(guesses: Sequence[Guess], guide: str, settings: dict, ask: Callable[[str, dict], str], raw_dir: Path) -> List[Dict[str, Any]]:
+    """Two blind classifications and a third for the guesses that straddle
+    the bar — the judge's rule, so one call's reading of one guess never
+    decides the test's one hard bar on its own."""
+    first = classify_guesses(guesses, guide, settings, ask=ask, raw_path=raw_dir / "classify-write-pass1.txt")
+    second = classify_guesses(guesses, guide, settings, ask=ask, raw_path=raw_dir / "classify-write-pass2.txt")
+    straddling = [guess for guess, one, two in zip(guesses, first, second) if (one["class"] == "structural_gap") != (two["class"] == "structural_gap")]
+    third = classify_guesses(straddling, guide, settings, ask=ask, raw_path=raw_dir / "classify-write-adjudication.txt") if straddling else []
+    return merge_classifications(first, second, third)
+
+
 def structural_gaps(classified: Sequence[Dict[str, Any]]) -> int:
     return sum(1 for row in classified if row["class"] == "structural_gap")
 
@@ -188,23 +216,35 @@ class Author:
             review = self.out / "artifacts" / f"{name}-harness.md"
             review.write_text("\n\n".join(f"=== {path} ===\n{(harness / path).read_text(encoding='utf-8', errors='replace')}" for path in files if (harness / path).suffix in (".md", ".yaml", ".json", ".py", ".txt")), encoding="utf-8")
             artifacts.append(f"artifacts/{name}-harness.md")
-        step = record_step(name, [turn], check.returncode == 0 and bool(files) and bool(guesses), artifacts,
+        # The guide the author read, archived so a later grade classifies
+        # against it (the pin is its hash), never against a changed one.
+        artifacts.append(self.artifact("guide.md", guide_text(self.clone)))
+        # An author with no guess to log is a complete run (a guide that
+        # left nothing undecided is the goal), never a failed one.
+        step = record_step(name, [turn], check.returncode == 0 and bool(files), artifacts,
                            [f"{len(guesses)} guesses; check exited {check.returncode}; {len(files)} files", "the author did not run kapso (the guide forbids it); the driver runs check"])
         step["metrics"] = {"guesses": len(guesses), "check_green": check.returncode == 0, "files": len(files), "structural_gaps": None, "contradictions": None}
         return step
 
 
 def grade(record: Dict[str, Any], out: Path, clone: Path, settings: dict, ask: Optional[Callable[[str, dict], str]] = None) -> Dict[str, Any]:
-    """Classify the write step's guesses on the judge's route; the counts
-    into the record's metrics. The guide classified against is the clone's
-    as it is now: grade a record against the guide its run pinned."""
+    """Classify the write step's guesses on the judge's route, twice with an
+    adjudication, the counts into the record's metrics. The guide classified
+    against is the one the author read: the run's archived `guide.md` when
+    it wrote one, else the clone's pages, and either must hash to the run's
+    pin — a grade under a later guide is a different experiment, and raises."""
     steps = [step for step in record["steps"] if step["name"] == "write"]
     if not steps:
         raise RuntimeError("the record has no write step to grade")
     step = steps[0]
+    archived = out / "artifacts" / "guide.md"
+    guide = archived.read_text(encoding="utf-8") if archived.is_file() else guide_text(clone)
+    pinned, actual = record["pins"]["guide_sha256"], hashlib.sha256(guide.encode("utf-8")).hexdigest()
+    if actual != pinned:
+        raise RuntimeError(f"the guide to grade against hashes to {actual[:12]}, not the run's pin {pinned[:12]}: grade against the guide the author read (check that commit out), never a later one")
     guesses_md = out / "artifacts" / "write-guesses.md"
     guesses = parse_guesses(guesses_md.read_text(encoding="utf-8")) if guesses_md.is_file() else []
-    classified = classify_guesses(guesses, guide_text(clone), settings, ask=ask, raw_path=out / judge_module.JUDGE_DIR / "classify-write.txt")
+    classified = classify_twice(guesses, guide, settings, ask or judge_module.ask, out / judge_module.JUDGE_DIR)
     step["classification"] = classified
     step["metrics"]["structural_gaps"] = structural_gaps(classified)
     step["metrics"]["contradictions"] = len(contradictions(classified))

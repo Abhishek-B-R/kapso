@@ -85,3 +85,41 @@ def test_the_author_rubric_scores_only_the_harness_and_the_classifier_owns_the_c
     # contract rejects extra output); it lives in the author test's classifier.
     assert "classified separately" in rubric
     assert "structural_gap" in author.CLASSIFY and "contradiction" in author.CLASSIFY
+
+
+def test_the_classifier_runs_twice_and_a_straddling_guess_is_adjudicated(tmp_path):
+    # The test's one hard bar (structural gaps, max 0) rested on one
+    # unblinded call; now two blind passes, and a third for each guess the
+    # passes read differently on the one thing the bar counts.
+    guesses = author.parse_guesses("GUESS: a | w | c\nGUESS: b | w | c\nGUESS: d | w | c\n")
+    calls = []
+
+    def ask(prompt, settings):
+        calls.append(prompt)
+        if len(calls) == 1:
+            rows = [("structural_gap", 1), ("already_in_guide", 2), ("domain_decision", 3)]
+        elif len(calls) == 2:
+            rows = [("structural_gap", 1), ("structural_gap", 2), ("domain_decision", 3)]
+        else:
+            assert "2. GUESS: b" in prompt and "1. GUESS: a" not in prompt, "only the straddling guess is adjudicated"
+            rows = [("already_in_guide", 2)]
+        return json.dumps({"classifications": [{"index": index, "class": cls, "why": "because"} for cls, index in rows]})
+
+    merged = author.classify_twice(guesses, "GUIDE", {}, ask, tmp_path)
+    assert [row["class"] for row in merged] == ["structural_gap", "already_in_guide", "domain_decision"]
+    assert [row["adjudicated"] for row in merged] == [False, True, False] and merged[1]["passes"] == ["already_in_guide", "structural_gap"]
+    assert author.structural_gaps(merged) == 1 and (tmp_path / "classify-write-adjudication.txt").is_file()
+    with pytest.raises(judge_module.JudgeFailure, match="straddled the bar"):
+        author.merge_classifications(merged[:1], [{**merged[0], "class": "domain_decision"}], [])
+
+
+def test_a_grade_against_a_guide_other_than_the_one_the_author_read_raises(tmp_path):
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "artifacts" / "guide.md").write_text("the guide as read", encoding="utf-8")
+    record = {"steps": [{"name": "write", "metrics": {}}], "pins": {"guide_sha256": "0" * 64}, "metrics": {}}
+    with pytest.raises(RuntimeError, match="not the run's pin"):
+        author.grade(record, tmp_path, tmp_path, {}, ask=lambda prompt, settings: "{}")
+    import hashlib
+    record["pins"]["guide_sha256"] = hashlib.sha256(b"the guide as read").hexdigest()
+    graded = author.grade(record, tmp_path, tmp_path, {}, ask=lambda prompt, settings: json.dumps({"classifications": []}))
+    assert graded["metrics"]["structural_gaps"] == 0, "no guess: a complete run with nothing undecided"
