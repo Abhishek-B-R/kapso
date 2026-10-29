@@ -20,7 +20,7 @@
 set -euo pipefail
 
 PROJECT="${KAPSO_FRESH_PROJECT:-trans-density-437811-p2}"
-GPU_ZONES="${KAPSO_BENCH_GPU_ZONES:-us-central1-a us-central1-b us-central1-f}"
+GPU_ZONES="${KAPSO_BENCH_GPU_ZONES:-us-central1-a us-central1-b us-central1-c us-central1-f}"
 CPU_ZONE="${KAPSO_FRESH_ZONE:-us-central1-a}"
 GPU_MACHINE_TYPE="a2-highgpu-1g"
 GPU4_MACHINE_TYPE="a2-highgpu-4g"
@@ -30,11 +30,19 @@ CPU_MACHINE_TYPE="e2-standard-8"
 CPU_IMAGE_FAMILY="ubuntu-2404-lts-amd64"
 CPU_IMAGE_PROJECT="ubuntu-os-cloud"
 MAX_RUN="${KAPSO_BENCH_MAX_RUN:-14h}"
+# spot (the default; a preemption deletes the machine, so a long arm fetches
+# its archive as it goes) or standard (no preemption; the on-demand price).
+PROVISIONING="${KAPSO_BENCH_PROVISIONING:-spot}"
 GPU_HOURLY_USD="1.30"    # the spot a2-highgpu-1g price in us-central1 when this was written; the record carries the bill
 GPU4_HOURLY_USD="5.20"   # four times that, the spot a2-highgpu-4g
+GPU_STANDARD_HOURLY_USD="3.70"    # the on-demand a2-highgpu-1g
+GPU4_STANDARD_HOURLY_USD="14.70"  # the on-demand a2-highgpu-4g
 CPU_HOURLY_USD="0.27"
 LABEL="purpose=kapso-bench"
 CLAUDE_SECRET="${KAPSO_FRESH_CLAUDE_SECRET:-claude-oauth-token-3}"
+# A directory holding .credentials.json and claude.json (one managed account's
+# login as the CLI stores it) takes the place of the setup-token secret when set.
+CLAUDE_CREDENTIALS="${KAPSO_CLAUDE_CREDENTIALS:-}"
 OPENAI_SECRET="openai-api-key"
 CODEX_SESSION="${KAPSO_CODEX_SESSION:-/home/ubuntu/.codex-semantic/auth.json}"
 KAGGLE_CREDENTIAL="${KAPSO_KAGGLE_CREDENTIAL:-$HOME/.kaggle/kaggle.json}"
@@ -73,9 +81,11 @@ create_in_zone() {   # create_in_zone <run-id> <kind> <zone>
   if [ "$kind" = gpu ] || [ "$kind" = gpu4 ]; then
     local machine_type="$GPU_MACHINE_TYPE" gpus=1
     if [ "$kind" = gpu4 ]; then machine_type="$GPU4_MACHINE_TYPE"; gpus=4; fi
+    local provisioning=()
+    [ "$PROVISIONING" = spot ] && provisioning=(--provisioning-model SPOT)
     gcloud compute instances create "$name" --project "$PROJECT" --zone "$zone" \
       --machine-type "$machine_type" --accelerator "type=nvidia-tesla-a100,count=$gpus" --maintenance-policy TERMINATE \
-      --provisioning-model SPOT --instance-termination-action DELETE --max-run-duration "$MAX_RUN" \
+      "${provisioning[@]}" --instance-termination-action DELETE --max-run-duration "$MAX_RUN" \
       --image-family "$GPU_IMAGE_FAMILY" --image-project "$GPU_IMAGE_PROJECT" \
       --boot-disk-size 300GB --boot-disk-type pd-balanced --metadata install-nvidia-driver=True \
       --labels "$LABEL,run=$id,kind=$kind" --scopes default --quiet
@@ -93,6 +103,7 @@ cmd_create() {
   mkdir -p "$RUNS/$id"
   date -u +%Y-%m-%dT%H:%M:%SZ > "$RUNS/$id/created_at"
   echo "$kind" > "$RUNS/$id/kind"
+  echo "$PROVISIONING" > "$RUNS/$id/provisioning"
   local zones="$CPU_ZONE"; [ "$kind" != cpu ] && zones="$GPU_ZONES"
   local zone created=""
   for zone in $zones; do
@@ -120,7 +131,16 @@ cmd_install() {
   tar -C "$ROOT" -czf "$RUNS/$id/benchmark.tgz" --exclude='__pycache__' --exclude='*.pyc' "benchmarks/common.py" "benchmarks/$benchmark"
   gcloud compute scp "$wheel" "$RUNS/$id/benchmark.tgz" "ubuntu@$(name_of "$id"):/tmp/" --project "$PROJECT" --zone "$(zone_of "$id")" --quiet
   ssh_run "$id" "bash -s -- $(basename "$wheel") $benchmark $(cat "$RUNS/$id/kind")" < "$HERE/benchmark_machine_install.sh" 2>&1 | tee "$RUNS/$id/install.log"
-  push_secret "$id" CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_SECRET"
+  if [ -n "$CLAUDE_CREDENTIALS" ]; then
+    [ -f "$CLAUDE_CREDENTIALS/.credentials.json" ] && [ -f "$CLAUDE_CREDENTIALS/claude.json" ] \
+      || { echo "no .credentials.json and claude.json under $CLAUDE_CREDENTIALS" >&2; exit 1; }
+    cat "$CLAUDE_CREDENTIALS/.credentials.json" | ssh_run "$id" "umask 077; mkdir -p ~/.claude && cat > ~/.claude/.credentials.json"
+    cat "$CLAUDE_CREDENTIALS/claude.json" | ssh_run "$id" "umask 077; cat > ~/.claude.json"
+    echo "the Claude login is the credentials under $CLAUDE_CREDENTIALS" | tee "$RUNS/$id/claude-login"
+  else
+    push_secret "$id" CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_SECRET"
+    echo "the Claude login is the secret $CLAUDE_SECRET" | tee "$RUNS/$id/claude-login"
+  fi
   push_secret "$id" OPENAI_API_KEY "$OPENAI_SECRET"
   [ -f "$CODEX_SESSION" ] || { echo "no Codex session at $CODEX_SESSION" >&2; exit 1; }
   cat "$CODEX_SESSION" | ssh_run "$id" "umask 077; mkdir -p ~/.codex && cat > ~/.codex/auth.json && echo 'the device-auth ChatGPT session of the owner, pushed by benchmark_machine.sh at $(date -u +%FT%TZ); no Codex credit of the run itself' > ~/.codex/SOURCE"
@@ -164,8 +184,11 @@ cmd_delete() {
   local disks; disks="$(gcloud compute disks list --project "$PROJECT" --filter="name~^$name\$" --format='value(name)')"
   if [ -n "$disks" ]; then echo "leftover disks: $disks" >&2; exit 1; fi
   if [ -f "$RUNS/$id/created_at" ]; then
-    local rate="$CPU_HOURLY_USD"
-    case "$(cat "$RUNS/$id/kind" 2>/dev/null)" in gpu) rate="$GPU_HOURLY_USD" ;; gpu4) rate="$GPU4_HOURLY_USD" ;; esac
+    local rate="$CPU_HOURLY_USD" model; model="$(cat "$RUNS/$id/provisioning" 2>/dev/null || echo spot)"
+    case "$(cat "$RUNS/$id/kind" 2>/dev/null)-$model" in
+      gpu-spot) rate="$GPU_HOURLY_USD" ;; gpu-standard) rate="$GPU_STANDARD_HOURLY_USD" ;;
+      gpu4-spot) rate="$GPU4_HOURLY_USD" ;; gpu4-standard) rate="$GPU4_STANDARD_HOURLY_USD" ;;
+    esac
     local start now hours cost
     start="$(date -u -d "$(cat "$RUNS/$id/created_at")" +%s)"; now="$(date -u +%s)"
     hours="$(awk -v s="$start" -v n="$now" 'BEGIN{printf "%.2f", (n-s)/3600}')"

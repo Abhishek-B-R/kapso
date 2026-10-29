@@ -209,6 +209,9 @@ paper/
 data/
 !benchmarks/*/data/
 
+# An arm's working copy of the benchmark machine script (benchmark_machine.<run-id>.sh)
+scripts/redesign/benchmark_machine.*.sh
+
 # Developer docs (internal documentation)
 developer_docs/
 
