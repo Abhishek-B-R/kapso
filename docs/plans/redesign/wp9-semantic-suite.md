@@ -530,7 +530,7 @@ re-measured a row:
 | S1 (the new stack) | `s1-claude-1` | 5.72 | $0.77 |
 | S1 (the released baseline) | `s1-released-2` | 3.92 | $0.53 |
 | S2, Claude host | `s2-claude-1` 2.68, `s2-claude-2` 6.00 (lost at the cap), `s2-claude-3` 3.79; the targeted arms (inbox ×5, review ×2, propose, data-only) 5.69 | 18.2 | $2.44 |
-| S2, Codex host | `s2-codex-1` (fetched, no report), `s2-codex-4` 2.46 (stopped), `s2-codex-5` 4.31; the inbox arms 0.57 | 7.3 and the first run | about $1.10 |
+| S2, Codex host | `s2-codex-1` (fetched, no report), `s2-codex-4` 2.46 (stopped), `s2-codex-5` 4.31; the inbox arms 0.57; `s2-codex-triggers-1` 0.93 | 8.3 and the first run | about $1.20 |
 | S4 | `s4-claude-1` | 0.12 | $0.02 |
 | S5 | arms 1 to 4 (stopped early), `s5-claude-5` 1.21, `s5-claude-6` 2.72, `s5-claude-7` 4.14 | 8.1 and the first four | about $1.20 |
 | S6 | rounds 1 to 4 (stopped), `s6-claude-5` 2.97, `s6-codex-1` 2.95 | 5.9 and the rest | about $0.80 |
@@ -1425,6 +1425,20 @@ on the worst item — the deploy conversation with nothing to deploy (2, 2, 2)
 and one pass's 1 on harness-export's proactivity — while sixteen of the
 seventeen conversations sit at 4 to 5 on every dimension.
 
+**`s2-codex-triggers-1`** (the trigger suite alone on a fresh Codex
+machine, 2026-10-29 03:16 to 04:12, the sessions unsandboxed by the
+runner's word after the review traced the first run's miss to codex's
+sandbox; report `tests/semantic/reports/s2-codex-triggers-1.md`, a
+targeted arm whose other required steps are absent by design): **the
+bar met** — main `build` 18/18, `harness` 18/18, `kapso` 16/17, `review`
+17/18, `setup` 18/18, holdout 10/10, no cross-skill false positive, no
+run whose sandbox failed; 87 of 89 cases passed every run and the two
+that did not read a forbidden skill after the expected one (a pass under
+the host's rule). The first run's "4 of 18" was the machine's: the
+sessions on codex-cli 0.165 could not start their sandbox on the GCP
+image, and the plugin's skills trigger on that host as they do on the
+development box.
+
 **Calibration, said rather than tuned.** The Claude host's build
 conversations run 14–19 lines against the 12-line budget in every arm
 (`build-churn` 11 → 14–15, `build-pause` 19 → 15, `build-fraud` 15,
@@ -1478,8 +1492,12 @@ its `fetched/out`.
   once, classifies such runs as the machine's failure, and on that image
   runs the trigger sessions unsandboxed by the runner's word (`--sandbox
   danger-full-access`, said in the record); the suite re-ran that way
-  (`s2-codex-triggers-1`, below). Whether the plugin's skills trigger on
-  codex 0.165 is answered by that run, not by the first one.
+  (`s2-codex-triggers-1`, above) and met the bar: 18/18, 18/18, 16/17,
+  17/18, 18/18 per skill, holdout 10/10, no false positive. No regression
+  in the host's skill discovery: the finding is withdrawn, and what
+  stands is the machine fact — a Codex session's own sandbox does not
+  start on that image, which a person running Codex there would meet
+  before any skill.
 - **An exported skill's session answered the question but did not
   satisfy the persona.** The export itself was right on both hosts (the
   skills, delegates and `.mcp.json` placed, the hooks and module pages
