@@ -47,7 +47,7 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 
 - [What is Kapso](https://docs.leeroo.com/docs) — `docs/index.mdx`
 - [Install Kapso and verify your setup with kapso doctor](https://docs.leeroo.com/docs/installation) — `docs/installation.mdx`
-- [Your first Kapso build in ten minutes](https://docs.leeroo.com/docs/first-build) — `docs/first-build.mdx`
+- [Your first build](https://docs.leeroo.com/docs/first-build) — `docs/first-build.mdx`
 - [Docs in your coding agent](https://docs.leeroo.com/docs/agent-access) — `docs/agent-access.mdx`
 - [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills) — `docs/coding-agent-skills.mdx`
 
@@ -56,24 +56,31 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 - [The brief](https://docs.leeroo.com/docs/build/brief) — `docs/build/brief.mdx`
 - [Evaluation](https://docs.leeroo.com/docs/build/evaluation) — `docs/build/evaluation.mdx`
 - [Run and watch](https://docs.leeroo.com/docs/build/run-and-watch) — `docs/build/run-and-watch.mdx`
-- [The inbox](https://docs.leeroo.com/docs/build/inbox) — `docs/build/inbox.mdx`
+- [Inbox](https://docs.leeroo.com/docs/build/inbox) — `docs/build/inbox.mdx`
 - [Review the result](https://docs.leeroo.com/docs/build/review) — `docs/build/review.mdx`
+- [Read the record](https://docs.leeroo.com/docs/build/trace) — `docs/build/trace.mdx`
 - [Resume and budgets](https://docs.leeroo.com/docs/build/resume-and-budgets) — `docs/build/resume-and-budgets.mdx`
+
+**Harnesses**
+
+- [What a harness is](https://docs.leeroo.com/docs/harnesses) — `docs/harnesses/index.mdx`
+- [Use a harness](https://docs.leeroo.com/docs/harnesses/use) — `docs/harnesses/use.mdx`
+- [Predictive modelling](https://docs.leeroo.com/docs/harnesses/bundled/predictive-modelling) — `docs/harnesses/bundled/predictive-modelling.mdx`
+- [Competitive programming](https://docs.leeroo.com/docs/harnesses/bundled/competitive-programming) — `docs/harnesses/bundled/competitive-programming.mdx`
+- [Write a harness](https://docs.leeroo.com/docs/harnesses/write) — `docs/harnesses/write.mdx`
+- [The trading example](https://docs.leeroo.com/docs/harnesses/example-trading) — `docs/harnesses/example-trading.mdx`
 
 **How it works**
 
 - [The engine](https://docs.leeroo.com/docs/evolve/overview) — `docs/evolve/overview.mdx`
 - [Architecture](https://docs.leeroo.com/docs/evolve/architecture) — `docs/evolve/architecture.mdx`
 - [Execution flow](https://docs.leeroo.com/docs/evolve/execution-flow) — `docs/evolve/execution-flow.mdx`
-- [External evaluation](https://docs.leeroo.com/docs/evolve/external-evaluation) — `docs/evolve/external-evaluation.mdx`
 - [Evaluation integrity](https://docs.leeroo.com/docs/evolve/evaluation-integrity) — `docs/evolve/evaluation-integrity.mdx`
-
-*Components*
-
+- [External evaluation](https://docs.leeroo.com/docs/evolve/external-evaluation) — `docs/evolve/external-evaluation.mdx`
 - [Orchestrator](https://docs.leeroo.com/docs/evolve/orchestrator) — `docs/evolve/orchestrator.mdx`
 - [Search strategies](https://docs.leeroo.com/docs/evolve/search-strategies) — `docs/evolve/search-strategies.mdx`
 - [Parent selection](https://docs.leeroo.com/docs/evolve/parent-selection) — `docs/evolve/parent-selection.mdx`
-- [Cost-aware selection](https://docs.leeroo.com/docs/evolve/cost-aware-selection): `docs/evolve/cost-aware-selection.mdx`
+- [Cost-aware selection](https://docs.leeroo.com/docs/evolve/cost-aware-selection) — `docs/evolve/cost-aware-selection.mdx`
 - [MCP gates](https://docs.leeroo.com/docs/evolve/mcp-gates) — `docs/evolve/mcp-gates.mdx`
 - [Model routing](https://docs.leeroo.com/docs/evolve/model-routing-retries) — `docs/evolve/model-routing-retries.mdx`
 - [Coding agents](https://docs.leeroo.com/docs/evolve/coding-agents) — `docs/evolve/coding-agents.mdx`
@@ -81,20 +88,17 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 - [Experiment lifecycle](https://docs.leeroo.com/docs/evolve/experiment-lifecycle) — `docs/evolve/experiment-lifecycle.mdx`
 - [Repo memory](https://docs.leeroo.com/docs/evolve/repo-memory) — `docs/evolve/repo-memory.mdx`
 
-**Knowledge graph**
+**Experience**
 
-- [Knowledge graph](https://docs.leeroo.com/docs/knowledge/overview) — `docs/knowledge/overview.mdx`
-- [Learning pipeline](https://docs.leeroo.com/docs/knowledge/learning-pipeline) — `docs/knowledge/learning-pipeline.mdx`
-- [Search backends](https://docs.leeroo.com/docs/knowledge/search-backends) — `docs/knowledge/search-backends.mdx`
+- [What experience is](https://docs.leeroo.com/docs/experience) — `docs/experience/index.mdx`
+- [Use experience](https://docs.leeroo.com/docs/experience/use) — `docs/experience/use.mdx`
+- [Add a source](https://docs.leeroo.com/docs/experience/add) — `docs/experience/add.mdx`
+- [Share a bank](https://docs.leeroo.com/docs/experience/share) — `docs/experience/share.mdx`
 
-**Trajectory learning**
+**Learn**
 
 - [What learn produces](https://docs.leeroo.com/docs/learn/what-learn-produces) — `docs/learn/what-learn-produces.mdx`
 - [Development mode](https://docs.leeroo.com/docs/learn/development-mode) — `docs/learn/development-mode.mdx`
-
-**Research**
-
-- [Deep web research](https://docs.leeroo.com/docs/research/overview) — `docs/research/overview.mdx`
 
 **Deploy**
 
@@ -112,4 +116,7 @@ Every published page with its rendered address, grouped as in the sidebar. Kept 
 
 - [CLI](https://docs.leeroo.com/docs/reference/cli) — `docs/reference/cli.mdx`
 - [Python API](https://docs.leeroo.com/docs/reference/kapso-api) — `docs/reference/kapso-api.mdx`
+- [Brief format](https://docs.leeroo.com/docs/reference/brief-format) — `docs/reference/brief-format.mdx`
+- [Harness](https://docs.leeroo.com/docs/reference/harness) — `docs/reference/harness.mdx`
+- [Experience](https://docs.leeroo.com/docs/reference/experience) — `docs/reference/experience.mdx`
 - [Configuration](https://docs.leeroo.com/docs/reference/configuration) — `docs/reference/configuration.mdx`

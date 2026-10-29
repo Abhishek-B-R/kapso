@@ -1,0 +1,89 @@
+---
+title: "The competitive-programming harness"
+sidebarTitle: "Competitive programming"
+description: "The harness that ships for timed contests scored by an official scorer on a seed list or by a leaderboard: the time limit as the budget, an insurance submission early, the scorer or the board as the only score. What it ships, where it came from, and how to run a task on it."
+keywords: ["competitive-programming harness", "Kapso harness", "ALE-Bench", "AtCoder heuristic contest", "Kaggle code competition", "IOAI", "submission quota", "scorer"]
+---
+
+`competitive-programming` is the harness for timed contests: a problem scored by an official scorer on a seed list (heuristic-optimisation rounds in the AtCoder style) or by a leaderboard (Kaggle code competitions, olympiad-style machine-learning tasks). The time limit is the budget, the first valid submission goes out early and is improved from there under a submission quota, and the scorer or the board is the only score a session may claim. It ships inside the package and loads by name.
+
+What it holds is the discipline, not the contest: the problem, the scorer or the competition, the seeds or the data and the rules are the task's. The domain stops at the candidate.
+
+## Where it came from
+
+The harness was written from the benchmarks the engine was measured on: first ALE-Bench (the scorer discipline, the heuristic toolbox, the time-limit ladder), then the IOAI campaigns on Kaggle (the contest economics, the olympiad playbook, the submission ledger and the ticket office that meters a shared quota). Every rule is stated as a thing to measure on the contest at hand, never as a benchmark's constant: the package's gate runs `check` over each bundled harness at the packaged page budget and scans it for a benchmark constant. The results on those benchmarks, with who ran them and when, are on [ALE-Bench](/docs/benchmarks/ale-bench) and [IOAI 2026](/docs/benchmarks/ioai-2026).
+
+## What it ships
+
+```bash
+kapso harness check competitive-programming
+```
+
+```text
+check ok (13 skills, 2 agents, 0 servers, 3 hooks)
+name     competitive-programming 0.3.0
+```
+
+Two pages reach every session: `instructions/guardrails.md`, the standing rules (the task statement before anything else, the problem and its scorer, validity before score), and the module's own page, one each for setup, ideation, implementation, verification, feedback and learning. The skills, the delegates and the hooks are defined once and listed per module:
+
+| Module | Skills | Delegates | Hooks |
+|---|---|---|---|
+| `setup` | scorer-cli, contest-preflight, kaggle-cli, hf-model-fetch | | |
+| `ideation` | heuristic-patterns, task-type-playbooks, olympiad-playbook, contest-economics | | |
+| `implementation` | heuristic-patterns, cpp-performance, scorer-cli, kaggle-cli, contest-economics, olympiad-playbook, task-type-playbooks, tabular-modeling, cv-protocol, ensembling, eda-discipline | score-auditor, submission-auditor | require-scorer-run, deny-shell-submit, require-insurance |
+| `verification` | scorer-cli, kaggle-cli, cv-protocol | score-auditor, submission-auditor | |
+| `feedback` | heuristic-patterns, contest-economics, ensembling | | |
+| `learning` | | | |
+
+### The skills
+
+| Skill | What it teaches |
+|---|---|
+| `contest-economics` | How a leaderboard contest's budget is spent: the insurance submission, the round trip, predicting a score before spending one, the calibration gap, the shared board's protocol |
+| `contest-preflight` | What a complete, self-contained task root for a leaderboard contest holds, so a solver never has to visit the contest's site |
+| `cpp-performance` | How a contest program spends its time limit: input and output, the margin, exact operation counts, compiler pragmas, no allocation in loops, the precompute step |
+| `cv-protocol` | How a change is accepted and a score is read: the official validation number as the selection signal and never the tuning target, folds grouped by the repeated unit |
+| `eda-discipline` | What a run prints so the next session can read it: an exploration block at the start, an error-analysis block at the end, timings per stage, a debug mode over a sample |
+| `ensembling` | How a final ensemble is built and judged: members chosen for decorrelation, the blend that fits the metric, measured against the plain combination |
+| `heuristic-patterns` | The algorithm families that win timed optimisation contests (simulated annealing, beam and random search, tree search, random simulation, colony methods, exact methods where they fit) and how each is pushed further |
+| `hf-model-fetch` | How setup finds, screens and pins the pretrained models and companion datasets a task allows from the hub |
+| `kaggle-cli` | The Kaggle command-line flow for a contest: a code competition told from a file-upload one, downloading data, a kernel pushed with the competition attached, polling a version, reading the standings |
+| `olympiad-playbook` | The twists an olympiad-style machine-learning task comes with, the house move to measure first for each, and how to pull the matching cards from a served experience bank |
+| `scorer-cli` | How to run the official scorer on every seed of the task's list, repeated for a randomised solution, and write the results file the finish hook and the verifier read |
+| `tabular-modeling` | The practices for a flat prediction table: many features before any architecture, gradient-boosted trees as the default with their traps, distribution shift, dimensionality |
+| `task-type-playbooks` | The approaches that have won on each kind of prediction task, with the model families that work and the conditions under which they do |
+
+### The delegates
+
+- `score-auditor` reads the scorer's output across every seed of an attempt and reports whether the scores are the scorer's, which category of inputs the solution loses on, and whether the loss is a bug or the method, with evidence.
+- `submission-auditor` audits one contest submission before it is spent, a kernel or a file by the task's modality, for the organizers' rules, external resources, leakage into the validation and the output's format, and reports pass, fail or inconclusive.
+
+### The hooks
+
+- `require-scorer-run`, a stop gate on implementation: no finish without a scorer run over every seed of the task's list (`kapso_datasets/seeds.txt` in the task root).
+- `require-insurance`, a stop gate on implementation of a leaderboard task: no finish before the first submission is in the ledger.
+- `deny-shell-submit`, on the shell: a raw contest submission typed in the shell is denied where the task root names a submission procedure, since a submission spends shared quota and must leave a record in the ledger.
+
+The harness has no `requirements.txt`: the scorer, the compiler and the contest's command-line tool are the task's and the machine's, and `kapso harness check` reports what the task's skills expect of them.
+
+## Run a task on it
+
+```bash
+kapso build --harness competitive-programming --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+```
+
+The task root the harness expects is the one its `contest-preflight` skill describes: the problem statement, and under `kapso_datasets/` either the seed list and the official scorer (a scored contest) or the contest descriptor, the submission procedure and the organizers' rules pinned verbatim (a leaderboard contest), so that no session has to visit the contest's site. With `--experience` naming a bank, the olympiad playbook pulls the cards that match the task's twists.
+
+The benchmark runners build the task root and run on it by default; `--harness` names another:
+
+```bash
+python -m benchmarks.ale.runner --problem <id>
+python -m benchmarks.ioai2026.preflight --task 'Solve the Kaggle competition <slug>. ...' --root ~/kaggle_run
+python -m benchmarks.ioai2026.runner --root ~/kaggle_run --hours 2
+```
+
+The ALE runner loads the problem through the benchmark's own library, writes the public seeds and the scorer into the task root, and judges the delivered candidate once on the private cases. The Kaggle preflight turns an organizer's starter prompt or a competition address into the run root, with the binding rules pinned beside the data; the runner writes the contest root beside it and, after the campaign, reads the score from the leaderboard.
+
+Related pages: [Use a harness](/docs/harnesses/use) · [Predictive modelling](/docs/harnesses/bundled/predictive-modelling) · [Write a harness](/docs/harnesses/write) · [Harness reference](/docs/reference/harness) · [ALE-Bench](/docs/benchmarks/ale-bench) · [IOAI 2026](/docs/benchmarks/ioai-2026)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).
