@@ -13,7 +13,7 @@
     "arm-ale": null,
     "arm-ioai": "s3-ioai-1",
     "swap-relbench": "s3-relbench-swap-1",
-    "swap-ale": null,
+    "swap-ale": "s3-ale-swap-ahc011-1",
     "swap-kaggle": "s3-kaggle-swap-1",
     "swap-ioai": null
   },

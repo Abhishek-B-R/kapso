@@ -864,8 +864,14 @@ that is still evidence.
     The owner accepts this standing for the release (2026-10-29): the
     record keeps the failing bar and the release notes say what was and
     was not measured.
-  - `swap-ale` (`s3-ale-swap-ahc011-1`): the campaign ended at 18:10Z; the
-    final report (the private cases) was computing at the time of writing.
+  - `swap-ale` (`s3-ale-swap-ahc011-1`, ahc011, two hours on the Docker
+    judge, 19:42Z): ran clean, zero harness edits, one experiment delivered;
+    on the private cases the delivered candidate ranks 38 of 699
+    (performance 2297), the judge reporting a time-limit excess on part of
+    the private set; the final report took ninety minutes, the private set
+    running under the judge's containers on an eight-core machine. The
+    runner had died at its final report on the standings fault; the report
+    came from `--final-eval-only` on the delivered workspace.
   - `arm-mle` (`s3-mle-4`, three hours on one A100, 19:48Z): a valid graded
     log loss of 0.2271 on the private answers, silver, at the recorded
     population's best (0.230, 0.247, 0.284) and under the bronze bar
