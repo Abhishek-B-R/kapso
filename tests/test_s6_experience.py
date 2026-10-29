@@ -108,3 +108,14 @@ def test_the_review_names_a_card_by_its_slug_or_its_title_words():
     assert s6.card_named("The card 'Correct specification beats capacity when the form is recoverable' paid: the attempt kept the log-odds form.", card)
     assert not s6.card_named("Two cards were served; the sessions read neither.", card)
     assert not s6.card_named("correct specification", card)   # a fragment is not a name
+
+
+def test_the_review_is_scored_against_the_banks_own_cards_not_the_cards_the_trace_shows_read():
+    # s6-codex-2: the Codex host's review named the one served card and
+    # rightly said no session read it; a rule that counted only read or
+    # load-bearing cards scored that review nothing. The served cards are
+    # the bank's; whether they were read is the comparison's question.
+    cards = ["insights/basis-columns-encode-link-additive-forms.md", "procedures/holdout-noise-bounds-evaluator-spending/card.md"]
+    answer = "- **Served:** exactly one card, basis-columns-encode-link-additive-forms, from bank-one.git.\n- **Used:** no demonstrated card uptake."
+    assert s6.cards_named(answer, cards) == ["insights/basis-columns-encode-link-additive-forms.md"]
+    assert s6.cards_named("Two cards were served; neither was read.", cards) == []

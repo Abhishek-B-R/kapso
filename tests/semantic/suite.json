@@ -98,7 +98,7 @@
     "build-one": {"kind": "build", "minutes": 75},
     "learn-build-one": {"kind": "build", "minutes": 240},
     "build-two": {"kind": "build", "minutes": 75},
-    "review-two": {"kind": "conversation", "messages": 1, "questions": 0, "minutes": 10, "longest_message_lines": 20},
+    "review-two": {"kind": "conversation", "messages": 1, "questions": 1, "minutes": 10, "longest_message_lines": 20},
     "comparison": {"kind": "shell", "minutes": 2},
     "write": {"kind": "conversation", "messages": 6, "questions": 0, "minutes": 40, "longest_message_lines": 80}
   },

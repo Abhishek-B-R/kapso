@@ -533,7 +533,7 @@ re-measured a row:
 | S2, Codex host | `s2-codex-1` (fetched, no report), `s2-codex-4` 2.46 (stopped), `s2-codex-5` 4.31; the inbox arms 0.57; `s2-codex-triggers-1` 0.93 | 8.3 and the first run | about $1.20 |
 | S4 | `s4-claude-1` | 0.12 | $0.02 |
 | S5 | arms 1 to 4 (stopped early), `s5-claude-5` 1.21, `s5-claude-6` 2.72, `s5-claude-7` 4.14 | 8.1 and the first four | about $1.20 |
-| S6 | rounds 1 to 4 (stopped), `s6-claude-5` 2.97, `s6-codex-1` 2.95 | 5.9 and the rest | about $0.80 |
+| S6 | rounds 1 to 4 (stopped), `s6-claude-5` 2.97, `s6-codex-1` 2.95, `s6-codex-2` 3.01 | 8.9 and the rest | about $1.20 |
 | the author test | six rounds of about ten minutes | 1.0 | $0.14 |
 
 Model spend: the Claude Max tokens' windows, read before each launch and
@@ -632,12 +632,15 @@ run"):**
   continuing from their checkpoints, the seeded bank intact after every
   injection; the clean arm met every bar, its one false row the
   engineer's slip on a class arm 6 had passed.
-- **S6: met in the acceptance's second form.** `s6-claude-5` on the Claude
-  host: the pair on the common grid with the spread, the cards read,
-  load-bearing and named by the review, the gap vacuous at one scored
-  observation each and said so; `s6-codex-1` on the Codex host with the
-  grid fix: a real grid, both cards read and load-bearing, the gap −0.0004
-  at every common point, the bar reported unmet with the numbers.
+- **S6: met on the Claude host in the acceptance's second form; unmet
+  on the Codex host, a product finding.** `s6-claude-5` and `s6-codex-1`
+  (both Claude-host pairs, the second on a real grid): the pair on the
+  common grid with the spread, the cards read and load-bearing, the gap
+  vacuous once and −0.0004 at every common point once, reported with the
+  numbers; `s6-codex-2`, the Codex host's round: a real grid, the gap
+  −0.0014 with no checkpoint behind, the review naming the served card —
+  and no session read it, so the "read and cited in the trace" bar fails
+  (the finding under "Findings for later packages").
 - **The author test: met.** `author-claude-4` and `author-codex-2` on the
   guide after four rounds of fixes: `check` green, zero structural gaps,
   zero contradictions, the four judge dimensions passing, the fixes
@@ -1251,7 +1254,34 @@ says `host: claude_code`). The driver now takes `--host`, the campaigns
 run on that coding agent and a review step on that host must name a
 served card (DECISIONS); the Codex host's own round is `s6-codex-2`,
 below. As a second Claude-host pair the round stands: **PASS, 4 of 4
-steps**, and this time the pair sits on a real grid. Build one, served nothing: node 0 at
+steps**, and this time the pair sits on a real grid.
+
+**`s6-codex-2`, the Codex host's round** (2026-10-29 03:16 to 06:16; the
+campaigns' sessions on Codex — `kapso build --coding-agent codex`,
+`gpt-5.6-sol` on the device-auth session — the learn's crews on Opus
+with Codex graders, the review in the Codex CLI with the plugin; 3.01 h
+of machine, about $0.40; report `tests/semantic/reports/s6-codex-2.md`):
+**FAIL on the design's first bar — no served card was read.** Build one,
+served nothing: two scored observations in 40.7 minutes, delivered
+0.8508. The learn, 94 minutes, banked one card
+(`basis-columns-encode-link-additive-forms`). Build two, served that
+bank: two scored observations in 38.8 minutes, delivered 0.8494; the gap
+−0.0014 at every common point with no checkpoint behind (the two Codex
+builds ran on the same clock), within the hold-out's 0.010 standard
+error. But the trace shows the served card read by no session and
+load-bearing in none: the serving staged the bank (`intro.md` names the
+card and the three tools in reading order), the two feedback sessions
+touched the bank's index, and neither the ideation nor the implementation
+session called a bank tool. The Codex host's review (the review skill,
+four lines) named the served card by its slug and said exactly that —
+"no demonstrated card uptake … first ideation explicitly says no usable
+bank card was exposed" — and that build two's +0.0040 over its own first
+attempt is below the standard error. The review's bar passes on
+re-derivation against the bank's own cards (the first rule counted only
+cards the trace showed read, and scored a review that named the served
+card and rightly said it was never read as nothing); `lessons_cited` 0
+fails. The design's S6 holds on the Claude host and not on the Codex
+host, which is a product finding (below), not the pair's noise. Build one, served nothing: node 0 at
 0.8501 in 15.8 min, `goal_achieved`. The learn, 115 min, banked two cards
 (a correct specification beating capacity when the functional form is
 recoverable; the hold-out's noise bounding evaluator spending once gains
@@ -1540,6 +1570,18 @@ its `fetched/out`.
   evaluation protocol and ended with "Nothing is launched"; the Codex host
   launched the same fixture in two messages with a contract-ok evaluator.
   The build skill's wording on when to stop designing and launch is WP7's.
+- **Codex campaign sessions do not take up the served experience.** On
+  the Codex host's S6 round (`s6-codex-2`) the served bank was staged
+  (the intro named its card and the three tools in reading order) and
+  the feedback sessions called the bank's index, but neither the
+  ideation nor the implementation session called `bank_index` or read
+  the card: `read_by` and `load_bearing_by` empty, the review's "first
+  ideation explicitly says no usable bank card was exposed". On the
+  Claude host the same bank's cards were read and load-bearing in both
+  rounds. Whether the Codex sessions need the intro's reading order made
+  imperative, or the tools surfaced in the prompt differently, is WP7's
+  (the adapter) and WP3's (the serving intro); until then a Codex
+  campaign is served experience it does not use.
 - **Fable 5's safeguards and the mining prompt; codex-cli 0.165's
   workspace-write sandbox on a VM** — recorded in DECISIONS (S6).
 - **A build needs a Codex login even on the Claude host.** The second

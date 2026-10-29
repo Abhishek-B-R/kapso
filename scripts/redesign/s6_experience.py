@@ -32,6 +32,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -178,7 +179,8 @@ def card_named(answer: str, card: str) -> bool:
     """Whether a review names a card: by its slug, or by its title's words
     (the slug's words in order, at least the first five), case folded."""
     text = " ".join(answer.lower().replace("-", " ").replace("_", " ").split())
-    slug = card.rsplit("/", 1)[-1].removesuffix(".md").lower()
+    # A procedure is `procedures/<slug>/card.md`, an insight `insights/<slug>.md`: the slug is the named part, never `card`.
+    slug = re.sub(r"/card\.md$", "", card).rsplit("/", 1)[-1].removesuffix(".md").lower()
     words = [word for word in slug.replace("_", "-").split("-") if word]
     if not words:
         return False
@@ -186,6 +188,31 @@ def card_named(answer: str, card: str) -> bool:
         return True
     head = " ".join(words[:5])
     return len(words) >= 5 and head in text
+
+
+def cards_named(answer: str, cards: Sequence[str]) -> List[str]:
+    """The served cards (bank paths such as `insights/<slug>.md`) a review
+    names, by slug or title words."""
+    return sorted({card for card in cards if card_named(answer, card)})
+
+
+def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
+    """The review step read again from its archived answer against the
+    bank's own cards (the first rule counted only cards the trace showed
+    read, and a review that named the served card and rightly said it was
+    never read scored nothing); the run metrics recomputed. Says so."""
+    bank = json.loads((out / "artifacts" / "bank-one.json").read_text(encoding="utf-8"))
+    answer_file = out / "artifacts" / "review-two.txt"
+    for step in record["steps"]:
+        if step["name"] == "review-two" and answer_file.is_file():
+            named = cards_named(answer_file.read_text(encoding="utf-8"), bank.get("cards", []))
+            step["metrics"] = {"review_names_served_cards": len(named)}
+            step["completed"] = bool(named)
+            step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("re-read")],
+                             f"re-read 2026-10-29 against the bank's own cards: served cards the review named: {', '.join(named) or 'none'}"]
+    record["metrics"] = run_metrics(record)
+    record["notes"] = [*[note for note in record.get("notes", []) if not note.startswith("re-derived")], "re-derived 2026-10-29: the review step against the bank's own cards"]
+    return record
 
 
 def delivered_score(trace: Dict[str, Any]) -> Optional[float]:
@@ -345,10 +372,14 @@ class S6:
                   "and did they pay? Name each card by its title or slug, in at most twenty lines.")
         turns = self.ctx.converse("review-two", project, prompt, lambda text, index: None, max_turns=1)
         answer = "\n".join(turn.text for turn in turns)
-        named = sorted(card for card in set(served["read"]) | set(served["load_bearing"]) if card_named(answer, card))
+        # The cards the review may name are the SERVED ones (the bank's), so
+        # a review that names the served card and rightly says no session
+        # read it is a review that did its job (s6-codex-2); whether the
+        # card was read is the trace's question, in the comparison.
+        named = cards_named(answer, bank_head_and_cards(self.bank)["cards"])
         artifacts = [self.ctx.artifact("review-two.txt", answer)]
         step = record_step("review-two", turns, bool(named), artifacts,
-                           [f"cards the review named, of those the trace shows read or load-bearing: {', '.join(named) or 'none'}"])
+                           [f"served cards the review named: {', '.join(named) or 'none'}; read per the trace: {', '.join(served['read']) or 'none'}; load-bearing: {', '.join(served['load_bearing']) or 'none'}"])
         step["metrics"] = {"review_names_served_cards": len(named)}
         return step
 
@@ -380,7 +411,7 @@ class S6:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--clone", required=True)
+    parser.add_argument("--clone", default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model (the token's window for the shipped one spent)")
     parser.add_argument("--cadence", type=float, default=None, help="the grid cadence; default: the engine config's budget.checkpoint_heartbeat_seconds")
@@ -388,7 +419,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--machine", default=os.uname().nodename)
     parser.add_argument("--advisory", default=None)
     parser.add_argument("--steps", default=None)
+    parser.add_argument("--rederive", action="store_true", help="read the review step again from the archive against the bank's own cards; runs nothing")
     args = parser.parse_args(argv)
+    if args.rederive:
+        out = Path(args.out).resolve()
+        record = rederive(json.loads((out / "record.json").read_text(encoding="utf-8")), out)
+        (out / "record.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        print(json.dumps(record["metrics"]))
+        return 0
+    if not args.clone:
+        parser.error("--clone is the checkout the builds run from (omitted only with --rederive)")
     driver = S6(args)
     record_file = driver.out / "record.json"
     started = datetime.now(timezone.utc)
