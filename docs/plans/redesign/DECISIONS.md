@@ -2621,3 +2621,93 @@ blanked before a word is read, because a page must name its skills
 literally (`relbench-api` is a skill, not the library). A zero-hit scan is
 evidence, not proof: the cross-model reviews of each harness read for the
 rest.
+
+## WP8: the IOAI arm runs on the recorded practice competition, not the radar mirror (2026-10-29)
+
+The plan preregistered the IOAI arm on the open `radar-ioai-2025` mirror
+because the recorded practice competition (`timed-deps-12`) was taken to
+be unreachable. The machine said otherwise: the account that ran the
+recorded campaigns has not entered the radar mirror (the rules are
+accepted in a browser, never by the CLI; the download answers 403 and the
+preflight stops, as it should), while the practice competition still
+answers that account — its submissions list reads, its August
+submissions were scored — and is only absent from the search listing. So
+the arm runs on `timed-deps-12`, the task the recorded cold-start shape
+was measured on, with the shareable bank minus that task's own entry (46
+cards); its public leaderboard supplies the median the bar names. The
+radar variant stays prepared (the bank without both radar entries, the
+mirror's task and the at-home near-duplicate) for the day the owner
+accepts the mirror's rules; the record says which competition each run
+used.
+
+## WP8: the long arms run on standard machines, and an arm runs its own copy of the machine script (2026-10-29)
+
+The plan put every arm on a spot machine with the engine's checkpoint as
+the answer to a preemption. The first IOAI smoke machine was preempted
+two minutes after its runner launched, which would have cost a full arm
+its whole evidence trail and the Kaggle submissions already spent. The
+machine script gains `KAPSO_BENCH_PROVISIONING` (spot by default, the
+price the record carries; standard for the arms whose hours a preemption
+would waste), the deletion line bills at the rate of the model used, and
+the twelve- and twenty-four-hour arms run standard; the smokes and the
+swaps stay spot. Separately, bash reads a script as it runs: an edit to
+`benchmark_machine.sh` while three arms were inside it broke each at its
+next function boundary, so every arm script copies the machine script
+beside the original at launch, runs the copy and removes it at exit; the
+copy's name (`benchmark_machine.<run-id>.sh`) is ignored by git. The
+install script's lessons from the smokes are in the script itself: one
+uv-managed Python 3.12 on every kind (the MLE library needs 3.11 or
+later, the GPU image ships 3.10), the bundled harnesses' own requirements
+(the engine refuses a build whose harness needs are unmet), the RelBench
+library pinned at the version the runner and the sanitizer were written
+against (relbench 3 restructured its modules), the engine's `mcp<2`
+re-pinned after the ALE library's extras.
+
+## WP8: the arms are quick runs in parallel on distinct logins, not the recorded budgets (2026-10-29, the owner)
+
+The plan preregistered the four arms at the recorded budgets (RelBench
+twelve hours on four A100s, MLE twenty-four hours) and the owner ruled
+the wait unacceptable: the arms run in parallel on separate machines,
+two to four hours each, on simpler shapes where one exists, each on its
+own Claude login (the owner's managed accounts beside the setup-token
+secrets, so parallel arms never share one login's five-hour window). What
+changes in the record: the RelBench arm keeps `rel-trial/study-outcome`
+(its recorded population, its Claude Code baseline at 75.16 and KumoRFM's
+72.0 are the only offline numbers) at three hours on one A100 with the
+four lanes, so its number is read against the twelve-hour population as
+a short-budget point, with the published entries as the bar it can
+honestly be held to; the MLE arm is three hours of the recorded
+twenty-four, read against the medal thresholds; the ALE arm three hours;
+the IOAI arm the two hours the plan named. Every record states its
+budget beside the recorded one, and the acceptance reads "at the arm's
+budget" where it read "at the same budget". The machine script takes a
+login from a credentials directory as well as from a secret; an arm's
+record names which.
+
+## The release gate runs S1 to S5, not S6 again; the rest in parallel, done by Saturday (2026-10-29, the owner)
+
+S6 (experience pays) was run in WP9 and the owner does not want it run
+again for the release: the gate before the release is S1, S2, S4 and S5
+on both hosts on fresh machines from the release wheel, with S3's record
+from WP8; the S6 reports of WP9 stand as its evidence. The remaining work
+(WP8's arms and swaps, WP10, WP11's gate) runs as parallel as the logins
+and the machines allow, with Saturday 2026-10-31 as the target for the
+release.
+
+## A host's stream splits on the newline alone, and the line a kill cut is the one without its newline (2026-10-29)
+
+The RelBench quick arm (`s3-relbench-1`) died in its first ideation: a
+Codex web-search result's title held a U+2028 line separator, Python's
+`str.splitlines` (which the session record used to split the stream it
+digests) cut that event line in two, and the record raised on the half
+(`JSONDecodeError: Unterminated string`), which killed the campaign. A
+host's event is one newline-terminated line whose text may hold any of
+the separators `str.splitlines` takes for line ends, so `stream_lines`
+(transcripts.py) splits on the newline alone and every stream reader
+goes through it: the session record, the codex adapter's MCP-call
+reader, the ideation's killed-turn messages, the trace fixture builder.
+The cut check follows: a kill leaves the last line without its newline,
+and that, not a missing closing brace (a cut inside a string of code may
+well end on a brace), is the sign of a cut line. Found by the arm, fixed
+in WP8 (the arms run from the rebuilt wheel), noted here because it is
+engine code outside the package's scope.

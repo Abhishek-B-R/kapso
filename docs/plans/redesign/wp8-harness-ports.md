@@ -733,6 +733,11 @@ that is still evidence.
     population, pages in the prompts, skills opened, the delegate's
     reports, the hooks fired, the cards served and cited, the cost and the
     hours, the token spend per provider.
+    Amended 2026-10-29 by the owner (DECISIONS): the arms are quick runs
+    in parallel on distinct logins — RelBench three hours on one A100
+    with the four lanes, MLE three hours, ALE three hours, IOAI two
+    hours — each record stating its budget beside the recorded one; the
+    acceptance reads "at the arm's budget".
 20. **S3 in the suite** and the author test again: the `s3` entry and
     `s3_ports.py --rederive`, `tests/semantic/reports/s3-1.md`; the author
     test re-run on both hosts after the guide fixes with the driver's
@@ -1181,6 +1186,30 @@ both reviews by id (K = Codex, M = Claude), with where it went:
 | `RUN_FINDINGS.md` I-1 to I-6, I-8 to I-11, I-13, the environment notes (lane collapse, the ideation split, the pool cap, the box setup, the `.env`, the checkpoint, orphaned GPU processes, the runner's default, the session pool's three consumers, zone exhaustion, per-model rate limits, the Bedrock trio) | dropped as runner and infrastructure incidents; their fixes live in the runner and the machine scripts |
 | the port mapping's `kernel-slots` server | not a server: the runner's CLI (a decision in DECISIONS) |
 | the port mapping's copied ML skills | `task-type-playbooks`, `cv-protocol`, `ensembling`, `eda-discipline` copied by directory, with a gate test that each copy is identical to its source |
+
+### What the arms found in the engine (2026-10-29)
+
+- **A separator inside an event's text cut the event** (`s3-relbench-1`,
+  died in its first ideation at 16:48Z): a Codex web-search title held a
+  U+2028 line separator; the session record split the stream with
+  `str.splitlines`, which cuts there, and raised on the half-line. Fixed:
+  `stream_lines` splits on the newline alone, every stream reader uses it,
+  and a cut line is one without its newline (DECISIONS.md, 2026-10-29).
+  The arms relaunched from the rebuilt wheel as `s3-relbench-2` and
+  `s3-mle-4`; the arms already running carry the old wheel and are
+  relaunched if the same cut kills one.
+- **The MLE quick arm died in the maintainer's calibration** (`s3-mle-1`,
+  16:33Z, eight minutes in): the calibration run exited 2 with `existing
+  evaluator snapshot is corrupt`. The line is printed by
+  `kapso_evaluation/kapso_eval.py`, which the evaluation-setup session
+  wrote for this campaign: it snapshots the evaluation directory under the
+  archive root by a fingerprint of the tree and refuses a snapshot whose
+  fingerprint no longer matches, and a snapshot that has been run once
+  carries its own bytecode cache. Not engine code, and not the harness's
+  prose either (the smoke on the same task, `s3-mle-smoke-2`, wrote an
+  evaluator without a snapshot); one run's evidence, kept here for the
+  harness review rather than patched. The relaunch (`s3-mle-4`) is the
+  second reading.
 
 ## Hours
 
