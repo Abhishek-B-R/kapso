@@ -57,26 +57,46 @@ def final_texts(rows: Sequence[dict]) -> List[Dict[str, str]]:
     prompts and the persona's replies) and each turn's final text (the
     Claude Code `result` row, or the last Codex `agent_message` before the
     next prompt)."""
-    turns: List[Dict[str, str]] = []
+    turns: List[Dict[str, Any]] = []
     pending: Optional[str] = None
+    # The persona's reply is written once as `persona_reply` and again as
+    # the `proof_prompt` the host then receives: one message, rendered once.
+    # A reply the host never received (the turn cap ended the exchange) is
+    # rendered as such, so the judge reads an unanswered follow-up as the
+    # driver's stop, not as a message the host ignored; a reply of DONE
+    # alone is the persona satisfied, and says so.
+    awaiting: Optional[str] = None
+
+    def flush() -> None:
+        nonlocal pending
+        if pending is not None:
+            turns.append({"role": "assistant", "text": pending})
+            pending = None
+
     for row in rows:
         if "proof_prompt" in row:
-            if pending is not None:
-                turns.append({"role": "assistant", "text": pending})
-                pending = None
+            flush()
+            if awaiting is not None and row["proof_prompt"] == awaiting:
+                awaiting = None
+                continue
+            awaiting = None
             turns.append({"role": "user", "text": row["proof_prompt"]})
         elif "persona_reply" in row:
-            if pending is not None:
-                turns.append({"role": "assistant", "text": pending})
-                pending = None
-            turns.append({"role": "user", "text": row["persona_reply"]})
+            flush()
+            if row.get("done"):
+                turns.append({"role": "user", "text": "(the user is satisfied and ends the exchange: DONE)", "done": True})
+                awaiting = None
+            else:
+                turns.append({"role": "user", "text": row["persona_reply"]})
+                awaiting = row["persona_reply"]
         elif row.get("type") == "result":
             turns.append({"role": "assistant", "text": row.get("result") or ""})
             pending = None
         elif row.get("type") == "item.completed" and (row.get("item") or {}).get("type") == "agent_message":
             pending = row["item"].get("text") or ""
-    if pending is not None:
-        turns.append({"role": "assistant", "text": pending})
+    flush()
+    if awaiting is not None and turns and turns[-1]["role"] == "user" and turns[-1]["text"] == awaiting:
+        turns[-1]["unsent"] = True
     return turns
 
 
@@ -85,7 +105,10 @@ def render_step(name: str, rows: Sequence[dict]) -> str:
     judge cites."""
     lines = [f"# step {name}", ""]
     for turn in final_texts(rows):
-        lines.append(f"[{turn['role']}]")
+        label = turn["role"]
+        if turn.get("unsent"):
+            label = "user, never sent: the step's turn cap ended the exchange here"
+        lines.append(f"[{label}]")
         lines.extend(turn["text"].splitlines() or [""])
         lines.append("")
     return "\n".join(f"L{number}: {line}" for number, line in enumerate(lines, 1)) + "\n"
@@ -93,6 +116,20 @@ def render_step(name: str, rows: Sequence[dict]) -> str:
 
 def transcript_rows(path: Path) -> List[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("{")]
+
+
+def step_transcripts(record_dir: Path, name: str) -> List[Path]:
+    """A step's transcripts in the order the exchange ran: `<name>.jsonl`,
+    then `<name>-2.jsonl`, `<name>-3.jsonl` (a lexical sort put `review-2`
+    before `review` and the judge read the follow-up first). Another step
+    whose name merely begins with this one is not its follow-up."""
+    pattern = re.compile(rf"^{re.escape(name)}(?:-(\d+))?\.jsonl$")
+    found = []
+    for path in (record_dir / "transcripts").glob(f"{name}*.jsonl"):
+        match = pattern.match(path.name)
+        if match:
+            found.append((int(match.group(1) or 1), path))
+    return [path for _, path in sorted(found)]
 
 
 # ----------------------------------------------------------------- contract
@@ -103,12 +140,10 @@ def extract_json(reply: str) -> dict:
         text = match.group(1).strip()
     if not (text.startswith("{") and text.endswith("}")):
         raise JudgeFailure("the reply is not one JSON object")
-    # Model output: a malformed object is a contract break (a judge
-    # failure), not an uncaught crash that leaves a stale block.
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise JudgeFailure(f"the reply is not valid JSON: {error}") from error
+    # Model output that is not JSON raises as it is (Rule 2): judge_record
+    # persisted a non-passing block before any call, so the crash leaves
+    # "judging did not complete" on disk, never a stale pass.
+    data = json.loads(text)
     if not isinstance(data, dict):
         raise JudgeFailure("the reply's JSON is not an object")
     return data
@@ -157,12 +192,16 @@ def quote_on(lines: Sequence[str], label: str, quote: str) -> bool:
         # quote mark, inline emphasis and code marks, and runs of whitespace
         # folded away — a judge quotes the words, not the markdown around
         # them, and drops a different mark each time (both sides fold alike).
+        # An underscore is an emphasis mark only at a word's edge: the one
+        # inside `keep_me` is the token's own and stays, so `keepme` is a
+        # misquote.
         text = re.sub(r"^L\d+:\s?", "", text)
         text = re.sub(r"^(?:[-*+>]|\d+\.|#{1,6})\s+", "", text)
-        return " ".join(re.sub(r"[*_`~]", "", text).split())
+        text = re.sub(r"(?<!\w)_|_(?!\w)", "", text)
+        return " ".join(re.sub(r"[*`~]", "", text).split())
     wanted = folded(quote)
     first = folded(lines[number - 1])
-    window = " ".join([first, *(folded(line) for line in lines[number:number + 3])])
+    window = " ".join([first, *(folded(line) for line in lines[number:])])
     start = window.find(wanted) if wanted else -1
     return 0 <= start < len(first)   # it begins on the cited line, whatever it runs on to
 
@@ -238,7 +277,7 @@ def gather_materials(record_dir: Path, record: dict, inputs: Optional[Sequence[s
     for step in record["steps"]:
         if step.get("deferred") or step.get("kind", "conversation") != "conversation":
             continue
-        transcripts = sorted((record_dir / "transcripts").glob(f"{step['name']}*.jsonl"))
+        transcripts = step_transcripts(record_dir, step["name"])
         if not transcripts and step.get("messages") == 0:
             # No exchange happened (a conversation step the host did not
             # run, recorded with zero messages): nothing to judge, not a

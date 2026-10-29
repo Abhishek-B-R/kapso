@@ -53,7 +53,7 @@ def test_the_reply_must_be_one_json_object_with_the_rubrics_dimensions_and_evide
     assert judge.validate(judge.extract_json("```json\n" + json.dumps(good) + "\n```"), DIMENSIONS, [1, 5], tmp_path, [WATCH])["clear"]["score"] == 4
     with pytest.raises(judge.JudgeFailure, match="not one JSON object"):
         judge.extract_json("Here are my scores: {}")
-    with pytest.raises(judge.JudgeFailure, match="not valid JSON"):
+    with pytest.raises(json.JSONDecodeError):   # model output that is not JSON raises as it is (Rule 2); the pending block on disk is non-passing
         judge.extract_json("{not json,}")
     with pytest.raises(judge.JudgeFailure, match="the dimensions are"):
         judge.validate({"scores": {"clear": {"score": 4, "evidence": [{"where": f"{WATCH}:L4", "quote": "no score yet"}]}}}, DIMENSIONS, [1, 5], tmp_path, [WATCH])
@@ -145,3 +145,50 @@ def test_the_preflight_reads_one_json_object(monkeypatch):
     monkeypatch.setattr(judge, "ask", lambda prompt, settings: "ok")
     with pytest.raises(judge.JudgeFailure):
         judge.preflight(SUITE)
+
+
+def test_the_personas_reply_is_rendered_once_and_an_unsent_follow_up_is_marked():
+    # The driver writes the persona's reply as `persona_reply` and again as
+    # the `proof_prompt` the host receives: one message. A reply the host
+    # never received (the turn cap) is marked as never sent, so the judge
+    # does not read it as a question the host ignored; DONE alone is the
+    # persona satisfied.
+    rows = [
+        {"proof_prompt": "how is the campaign going?"},
+        {"type": "result", "result": "Running, attempt 2 of 3."},
+        {"persona_reply": "what is attempt 2 trying?", "done": False},
+        {"proof_prompt": "what is attempt 2 trying?"},
+        {"type": "result", "result": "A gradient-boosted model."},
+        {"persona_reply": "and attempt 3?", "done": False},
+    ]
+    turns = judge.final_texts(rows)
+    assert [(turn["role"], turn["text"]) for turn in turns] == [
+        ("user", "how is the campaign going?"), ("assistant", "Running, attempt 2 of 3."),
+        ("user", "what is attempt 2 trying?"), ("assistant", "A gradient-boosted model."),
+        ("user", "and attempt 3?"),
+    ]
+    assert turns[-1]["unsent"] is True and "unsent" not in turns[2]
+    rendered = judge.render_step("watch", rows)
+    assert "[user, never sent: the step's turn cap ended the exchange here]" in rendered and rendered.count("[user]") == 2
+    satisfied = judge.final_texts(rows[:5] + [{"persona_reply": "DONE", "done": True}])
+    assert satisfied[-1] == {"role": "user", "text": "(the user is satisfied and ends the exchange: DONE)", "done": True}
+
+
+def test_a_steps_transcripts_are_read_in_the_order_the_exchange_ran(tmp_path):
+    # A lexical sort put `review-2.jsonl` before `review.jsonl` and the
+    # judge read the follow-up first; a step whose name merely begins with
+    # this one is not its follow-up.
+    folder = tmp_path / "transcripts"
+    folder.mkdir()
+    for name in ("review-2.jsonl", "review.jsonl", "review-10.jsonl", "reviewer.jsonl", "review-x.jsonl"):
+        (folder / name).write_text("{}\n", encoding="utf-8")
+    assert [path.name for path in judge.step_transcripts(tmp_path, "review")] == ["review.jsonl", "review-2.jsonl", "review-10.jsonl"]
+
+
+def test_a_quote_keeps_a_tokens_own_underscore_and_may_run_on_over_many_lines():
+    lines = ["L1: the key `keep_me` is read", "L2: one", "L3: two", "L4: three", "L5: four", "L6: five"]
+    assert judge.quote_on(lines, "1", "the key keep_me is read")
+    assert not judge.quote_on(lines, "1", "the key keepme is read"), "an underscore inside a token is not markdown"
+    assert judge.quote_on(["L1: _emphasised_ words"], "1", "emphasised words")
+    assert judge.quote_on(lines, "2", "one two three four five"), "a quotation that starts on the cited line may run on"
+    assert not judge.quote_on(lines, "3", "one two three"), "it must start on the cited line"
