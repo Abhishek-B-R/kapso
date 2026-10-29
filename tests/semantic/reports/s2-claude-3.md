@@ -1,6 +1,6 @@
 # S2 on claude_code
 
-**Advisory: the persona did not correct the planted baseline: the engaging and not-annoying dimensions are advisory for this arm** (an arm run on the development box proves the flow, not its smoothness; never a fresh-machine acceptance)
+**Advisory dimensions: engaging, not annoying** (the persona did not correct the planted baseline; their scores are reported, not binding)
 
 - run: S2-claude_code-20261028T210609Z
 - machine: kapso-fresh-s2-claude-3
@@ -41,15 +41,15 @@
 | campaign-session-isolation | shell | 9.8 | - | yes | 1/1 | pass |
 | cold-start | shell | 0.2 | - | yes | 1/1 | pass |
 
-Judge: gemini vertex_ai/gemini-4-argon via litellm vertex_ai, 2 pass(es), bar 4 (the worst item binds)
+Judge: gemini vertex_ai/gemini-4-argon via litellm vertex_ai, 2 pass(es), bar 4 (the worst eligible item binds; a step's `judged` list in the suite says which dimensions it is scored on)
 
 | dimension | per-pass worst item | adjudicated items | final | verdict |
 |---|---|---|---|---|
-| proactive | 4, 1 | 1 | 1 | FAIL |
-| clear | 4, 4 | 0 | 4 | pass |
-| not annoying | 4, 4 | 0 | 4 | pass |
-| engaging | 2, 2 | 0 | 2 | FAIL |
-| return on attention | 2, 2 | 2 | 2 | FAIL |
+| proactive | 5, 5 | 0 | 5 | pass |
+| clear | 4, 5 | 0 | 4 | pass |
+| not annoying | 2, 2 | 0 | 2 | advisory (reported, not binding) |
+| engaging | 4, 4 | 0 | 4 | advisory (reported, not binding) |
+| return on attention | 2, 2 | 1 | 2 | FAIL |
 
 Step notes:
 - setup: link clicks: judged by hand from the transcript (the logins were present, so none were needed)
@@ -87,6 +87,32 @@ The driver's own acts (named, never the persona's):
 - inbox: the key written where the request's fix line says before the person says so
 - second-engineer-build: the churn fixture copied to the second user's home; the build run as that user with the bank by reference
 - trading-author: the example's README replaced by the repository's own for the persona (no Kapso line, no recorded result)
+
+The user's events (DONE, the turn cap):
+- setup: the persona said DONE after 1 turn(s)
+- build-churn: the persona said DONE after 2 turn(s)
+- build-pause: the persona said DONE after 1 turn(s)
+- watch: the persona said DONE after 1 turn(s)
+- watch-2: the persona said DONE after 1 turn(s)
+- harness-export: the persona said DONE after 1 turn(s)
+- campaign-tools: the persona said DONE after 1 turn(s)
+- inbox: the persona said DONE after 1 turn(s)
+- inbox-reply: the persona said DONE after 1 turn(s)
+- build-fraud: the persona said DONE after 3 turn(s)
+- build-data-only: the persona said DONE after 1 turn(s)
+- build-empty-wish: the persona said DONE after 1 turn(s)
+- harness-new: the persona said DONE after 4 turn(s)
+- review: the persona said DONE after 1 turn(s)
+- review-2: the persona said DONE after 1 turn(s)
+- deploy: the persona said DONE after 1 turn(s)
+- deploy-2: the persona said DONE after 1 turn(s)
+- learn: the persona said DONE after 1 turn(s)
+- session-brief: the persona said DONE after 1 turn(s)
+- experience-share: the persona said DONE after 1 turn(s)
+- harness-improve: the persona said DONE after 2 turn(s)
+
+Notes:
+- re-derived 2026-10-29: the persona's nod moved from the development box's advisory mark to advisory_dimensions (the arm ran on a fresh machine)
 
 Transcripts:
 - transcripts/build-churn.jsonl

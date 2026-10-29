@@ -1398,7 +1398,12 @@ the Codex host's skill wording, under "Findings for later packages". The
 suite now judges `proactive` and `return on attention` only on the steps
 whose intent invites a finding (a step's `judged` list; DECISIONS
 2026-10-29), so a two-line state report no longer binds the run on what
-it was budgeted not to do; the re-judged verdicts are below.
+it was budgeted not to do. Re-judged that way on 2026-10-29: clear 4
+passes; proactive 3 (the deploy conversation with nothing to deploy) and
+return on attention 1 (session-brief on the empty bank; watch, learn and
+deploy at 2) fail — the terseness finding stands where a step invites a
+finding; not annoying 2 and engaging 2 are reported, not binding, the
+persona having nodded.
 
 **`s2-claude-3`** (the clean Claude run under the derived cap, 2026-10-28
 21:06 to 00:48, token-5, the persona on `gpt-5.6-sol`, the learn on Opus;
@@ -1419,11 +1424,30 @@ delivered nothing — node 0 at 0.843, unjudged at the 60-minute deadline —
 so there was nothing to deploy; the host said so and asked), and
 second-engineer-build (the served build died at the engine's preflight for
 want of a Codex login on the second user — the finding below; the user now
-carries the session, `s2-claude-second-1` re-measures it). The judge: clear
-4 and not annoying 4 pass; proactive, engaging and return on attention fail
-on the worst item — the deploy conversation with nothing to deploy (2, 2, 2)
-and one pass's 1 on harness-export's proactivity — while sixteen of the
-seventeen conversations sit at 4 to 5 on every dimension.
+carries the session, `s2-claude-second-1` re-measures it). The judge, run
+again on 2026-10-29 after the review (the exchange in order, the persona's
+reply once, the step's line budget stated, the worst eligible item
+binding): proactive 5 and clear 4 pass; return on attention fails on one
+item, the deploy conversation with nothing to deploy (2, adjudicated on
+build-empty-wish); not annoying 2 — the five conversations over the
+stated budget (build-churn, build-pause, campaign-tools, harness-new,
+review), the calibration below — and engaging 4 are reported, not
+binding, the persona having nodded through the planted baseline; sixteen
+of the seventeen conversations sit at 4 to 5 on the binding dimensions.
+
+**`s2-claude-second-1`** (the targeted second-engineer arm, 2026-10-29
+00:30 to 03:30, token-5; 3.0 h of machine, about $0.40; report
+`tests/semantic/reports/s2-claude-second-1.md`): its six conversations
+pass every binding dimension (proactive 5, clear 5, return on attention
+5; not annoying 2 and engaging 5 reported); the churn build, review,
+learn (97 minutes, two cards) and share true; the served build launched
+as the second user with the bank's two cards served ("Experience:
+file:///tmp/bank-remote.git … 2 cards") and no status file appeared
+within the wait of its ten-minute budget — the driver of that run read a
+score key the product never writes and did not archive the campaign's
+log, so the cause is unrecorded (the review's finding); the budget is
+now one an attempt can score in and the log is archived, and
+`s2-claude-second-2` re-measures it (below).
 
 **`s2-codex-triggers-1`** (the trigger suite alone on a fresh Codex
 machine, 2026-10-29 03:16 to 04:12, the sessions unsandboxed by the

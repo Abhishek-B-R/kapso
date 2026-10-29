@@ -1,6 +1,6 @@
 # S2 on codex
 
-**Advisory: the persona did not correct the planted baseline: the engaging and not-annoying dimensions are advisory for this arm** (an arm run on the development box proves the flow, not its smoothness; never a fresh-machine acceptance)
+**Advisory dimensions: engaging, not annoying** (the persona did not correct the planted baseline; their scores are reported, not binding)
 
 - run: S2-codex-20261028T165026Z
 - machine: kapso-fresh-s2-codex-5
@@ -41,14 +41,14 @@
 | campaign-session-isolation | shell | 9.1 | - | yes | 1/1 | pass |
 | codex-rules-probe | shell | 0.2 | - | yes | 1/1 | pass |
 
-Judge: gemini vertex_ai/gemini-4-argon via litellm vertex_ai, 2 pass(es), bar 4 (the worst item binds)
+Judge: gemini vertex_ai/gemini-4-argon via litellm vertex_ai, 2 pass(es), bar 4 (the worst eligible item binds; a step's `judged` list in the suite says which dimensions it is scored on)
 
 | dimension | per-pass worst item | adjudicated items | final | verdict |
 |---|---|---|---|---|
-| proactive | 1, 1 | 0 | 1 | FAIL |
-| clear | 3, 4 | 1 | 4 | pass |
-| not annoying | 3, 4 | 1 | 4 | pass |
-| engaging | 1, 1 | 1 | 1 | FAIL |
+| proactive | 3, 3 | 0 | 3 | FAIL |
+| clear | 4, 4 | 0 | 4 | pass |
+| not annoying | 2, 2 | 0 | 2 | advisory (reported, not binding) |
+| engaging | 2, 2 | 0 | 2 | advisory (reported, not binding) |
 | return on attention | 1, 1 | 1 | 1 | FAIL |
 
 Step notes:
@@ -58,9 +58,10 @@ Step notes:
 - build-churn: the launch reached: starting; a proposal was offered: True
 - build-churn: the planted baseline: not corrected
 - watch: the status at the read: state=running phase=ideation; the answer reflected it: True
-- triggers: main: {'build': '4/18', 'harness': '4/18', 'kapso': '4/17', 'review': '4/18', 'setup': '4/18'}; cross-skill false positives: none
-- triggers: holdout: {'holdout': '0/10'}; cross-skill false positives: none
+- triggers: main: {'build': '1/18', 'harness': '2/18', 'kapso': '2/17', 'review': '1/18', 'setup': '1/18'}; cross-skill false positives: none; runs whose sandbox never started (not established): 153
+- triggers: holdout: {'holdout': '0/10'}; cross-skill false positives: none; runs whose sandbox never started (not established): 10
 - triggers: the bar: nine of ten of each skill's cases passing every run, no near miss invoking the skill under test; the holdout is read the same way
+- triggers: verdict recomputed from the artifacts after the bar's rule read the held-out cases as their own group
 - inbox: the injected pause arrived: True
 - inbox: the request was replied: True; the campaign resumed (a continued event): True
 - build-fraud: evaluator files written by the session: ['evaluation/evaluate.py']
@@ -89,6 +90,31 @@ The driver's own acts (named, never the persona's):
 - inbox: the key written where the request's fix line says before the person says so
 - second-engineer-build: the churn fixture copied to the second user's home; the build run as that user with the bank by reference
 - trading-author: the example's README replaced by the repository's own for the persona (no Kapso line, no recorded result)
+
+The user's events (DONE, the turn cap):
+- setup: the persona said DONE after 1 turn(s)
+- build-churn: the persona said DONE after 2 turn(s)
+- build-pause: the persona said DONE after 1 turn(s)
+- watch: the turn cap (1) ended the exchange without DONE: the step is incomplete
+- watch-2: the persona said DONE after 1 turn(s)
+- campaign-tools: the persona said DONE after 1 turn(s)
+- inbox: the persona said DONE after 1 turn(s)
+- inbox-reply: the persona said DONE after 1 turn(s)
+- build-fraud: the persona said DONE after 2 turn(s)
+- build-data-only: the persona said DONE after 1 turn(s)
+- build-empty-wish: the persona said DONE after 1 turn(s)
+- harness-new: the persona said DONE after 2 turn(s)
+- review: the persona said DONE after 1 turn(s)
+- review-2: the persona said DONE after 1 turn(s)
+- deploy: the persona said DONE after 1 turn(s)
+- deploy-2: the turn cap (1) ended the exchange without DONE: the step is incomplete
+- learn: the turn cap (1) ended the exchange without DONE: the step is incomplete
+- session-brief: the persona said DONE after 1 turn(s)
+- experience-share: the persona said DONE after 1 turn(s)
+- harness-improve: the persona said DONE after 2 turn(s)
+
+Notes:
+- re-derived 2026-10-29: the persona's nod moved from the development box's advisory mark to advisory_dimensions (the arm ran on a fresh machine)
 
 Transcripts:
 - transcripts/build-churn.jsonl
