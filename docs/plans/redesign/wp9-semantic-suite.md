@@ -1149,6 +1149,31 @@ and watch at proactive 1–2: the state said, the next step never offered)
 where the Claude host's ran 4–5 on the same steps; a product finding for
 the Codex host's skill wording, under "Findings for later packages".
 
+**`s2-claude-3`** (the clean Claude run under the derived cap, 2026-10-28
+21:06 to 00:48, token-5, the persona on `gpt-5.6-sol`, the learn on Opus;
+3.79 h of machine, about $0.51; report `tests/semantic/reports/s2-claude-3.md`):
+**19 of 25 steps**, every predicate of every step met but two. True:
+install, setup, cold-install, watch, triggers (19.7 min), **harness-export
+with the exported skill loaded this time**, campaign-tools, build-fraud
+(launched in 3 messages, 12 lines), build-data-only (1 message, 11 lines),
+build-empty-wish, harness-new (4 messages, 2 questions, 6.2 min, 33 lines),
+harness-probe, learn, **learn-complete in 112 minutes with two cards
+banked**, session-brief (a card read from the bank), experience-share, 
+harness-improve, campaign-session isolation, cold-start. False: build-churn
+and build-pause on lines alone (15 and 13 against 12), review on lines alone
+(20; the branch named — none — and the verdict given), inbox (the pause
+campaign's 40-minute budget spent before the reply, the calibration above;
+passed on `s2-claude-inbox-5` after it), deploy (the churn campaign
+delivered nothing — node 0 at 0.843, unjudged at the 60-minute deadline —
+so there was nothing to deploy; the host said so and asked), and
+second-engineer-build (the served build died at the engine's preflight for
+want of a Codex login on the second user — the finding below; the user now
+carries the session, `s2-claude-second-1` re-measures it). The judge: clear
+4 and not annoying 4 pass; proactive, engaging and return on attention fail
+on the worst item — the deploy conversation with nothing to deploy (2, 2, 2)
+and one pass's 1 on harness-export's proactivity — while sixteen of the
+seventeen conversations sit at 4 to 5 on every dimension.
+
 **Calibration, said rather than tuned.** The Claude host's build
 conversations run 14–19 lines against the 12-line budget in every arm
 (`build-churn` 11 → 14–15, `build-pause` 19 → 15, `build-fraud` 15,
