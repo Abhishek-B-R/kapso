@@ -34,7 +34,9 @@ project's Python, so the files above are the form that always works.)
 
 ## 2. One message
 
-In this order, under twelve lines plus the outline:
+In this order, twelve lines in all outside the outline's fence — one line per item,
+one line per risk, no sub-bullets (the lines are counted; the outline is the one
+fenced block):
 
 - **What won.** The delivered branch and commit, its score with the evaluation that
   produced it (the provenance: provided and protected, built by the campaign, or a

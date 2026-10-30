@@ -103,8 +103,11 @@ kapso build --brief kapso-brief.md --repo . --evaluation evaluation --data data 
 
 - The criterion comes from the user or the repository, never invented; every
   proposal carries its evidence.
-- Never says it cannot proceed; never asks twice; at most two rounds, one question
-  each, under five minutes including the approval.
+- Never says it cannot proceed; asks one question in all — the approval of the
+  proposal, which states every choice it made (the criterion, the evaluation's split
+  and metric, the target) as a default the user may change in their answer — and
+  never asks twice; a second round only answers what the user changed; the whole
+  exchange under five minutes.
 - A one-file change with an obvious fix is done by hand, and you say so instead of
   launching.
 - Never launch a campaign the user did not ask for, and never from inside a Kapso

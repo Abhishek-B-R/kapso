@@ -127,7 +127,10 @@ kapso watch --config kapso-config.yaml                   # every campaign of thi
 
 Answer "how is it going" in three lines from `--json`: the state and phase with the
 iteration, the best score and its branch, the budget left; add what the last
-attempt consulted when the user asks what it is doing. `--follow` prints the lines
+attempt consulted when the user asks what it is doing. A number you state — a
+baseline, a target — names its source (the brief's line, the file it was measured
+into), and when the records disagree (a README's claim against a measured baseline)
+say so rather than choosing one in silence. `--follow` prints the lines
 as they come; it is for the user's own terminal, not for a tool call. A `starting`
 line before the status exists is a detached launch still seeding; `stopped before
 writing a status` means the launch died, and the log says why.
@@ -160,7 +163,9 @@ Read `kapso watch <campaign> --json` before touching anything:
   action. A provider limit (`429`, quota, "usage limit") means wait and resume; an
   evaluator crash means the evaluation directory needs a fix before a resume; an
   environment error (a missing package, a missing key) is fixed first; a full disk
-  is cleared first; a killed session (`Killed`, a signal) is resumed as it is.
+  is cleared first; a killed session (`Killed`, a signal) is resumed as it is. The
+  answer that follows a fix names the fault, what was done about it (the space
+  freed, the key written, the labels put back) and the resume itself.
 
 ```bash
 kapso build --output ../churn-campaign --stop --config kapso-config.yaml      # end a running campaign; its checkpoint stays

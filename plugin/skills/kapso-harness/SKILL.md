@@ -115,9 +115,10 @@ opened. Each is one edit:
   run is no evidence.
 
 Propose the smallest edit in the cheapest form, with the attempt that shows the
-failure (its node and branch). On a word, apply it, bump `version` in
-`harness.yaml`, run `kapso harness check` again. A resume refuses a changed
-harness; the next campaign carries the new version.
+failure (its node and branch), and ask one question in all — the word on the
+proposal; a choice of form is made and stated, not asked. On the word, apply it,
+bump `version` in `harness.yaml`, run `kapso harness check` again. A resume refuses
+a changed harness; the next campaign carries the new version.
 
 ## Export: the harness in an ordinary session
 
