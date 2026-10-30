@@ -657,6 +657,7 @@ class SearchStrategy(ABC):
                     llm=self.llm,
                     initial_repo=self.workspace.initial_repo,
                     max_retries=self.repo_memory_max_retries,
+                    max_payload_chars=self.repo_memory_update_payload_max_chars,
                 )
             else:
                 RepoMemoryManager.ensure_exists_in_worktree(
