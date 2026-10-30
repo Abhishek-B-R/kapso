@@ -3028,3 +3028,103 @@ record, and both S2 gate runs failed the inbox step on it. The
 orchestrator records the setup's answered requests as continued by the
 session that carries the replies, once (`continue_answered`), as a search
 node's session records its own on resume.
+
+## S4's rejection is recorded, never required (2026-10-30)
+
+The gate-to-pass fix of the morning had S4 build a campaign holding both
+of the design's cases, the second by a planted leak committed onto the
+second attempt's branch during its evaluation phase, for the harness's
+verification to void. It could not work: the churn campaign runs under no
+harness, so no verification session ever runs (`_verify_attempt` returns
+at once), and the `evaluation` status phase belongs to the registered and
+deferred evaluations, never to a provided evaluator, so the driver waited
+until the campaign had ended and committed nothing. Both second-wave S4
+runs held the void and no rejection. Read further: every "rejected"
+entry in every archived campaign is an integrity void; the engine has
+never produced a verification or judge rejection in these records, and a
+rejection is the verifier's or the judge's word on an attempt's own work
+— a driver cannot arrange one honestly (a leak planted for an agent to
+keep is a trap, and a leak timed between the session's end and the
+verification's read is a race). So S4 builds its campaign at S5's budget
+(40 minutes, two experiments, which two attempts fit — a hundred minutes
+let Codex's first attempt run 86 of them and the second never ran), with
+the evaluator edited in `main` for the first attempt and restored for the
+second; the bar is the void the integrity check guarantees, and whether
+the campaign holds a rejection is recorded in the fact sheet and the
+report, never required. The readers' question "what was rejected and why"
+stands, answered "nothing rejected" when the record says so — which both
+hosts' readers answered right (6 of 6 on Codex; Claude's grading died on
+a judge misquote, fixed below). The owner is told at the checkpoint that
+this bar changed and why; the design's "a campaign with a void and a
+rejection" is met only when an agent earns one.
+
+## The S1 Python flow is asked for as a short script (2026-10-30)
+
+The DECISIONS entry of 2026-10-27 left the `python_lines` bar's reading to
+the owner: a product finding or a metric calibration ("counting
+statements rather than lines, or excluding pure diagnostics, would
+measure the intent — how much the engineer must write to drive a task —
+more directly"). The second wave read 13 and 22 lines on Claude Code and
+39–41 on Codex: `build()` and `learn()` block (the API reference says so
+and points a shell user to `--detach`), so an engineer told the task is
+done once the campaign runs wraps the CLI's `--detach` in subprocess
+boilerplate, and the Codex engineer adds a polling loop and a worker
+flag of its own style. The bar measures the package, not the engineer's
+style, so the task says what a ticket says — "write a short script (a
+dozen lines or so)" — and the count reads whether the package lets the
+engineer keep to it. The API's lack of a detached launch stays a product
+finding for the owner (three of three build flows wrapped the CLI).
+
+## The trigger probe keeps its own clock (2026-10-30)
+
+At one session at a time (the sandbox fix), the Codex trigger probe's
+178 runs need about two and a half hours; the step's two-hour budget
+ended it from outside, the shell's timeout raised through the driver,
+and the S2 Codex run ended at its watch step with no result for the probe
+at all. The probe takes `--deadline-seconds` from the step (its budget
+less the suite's `deadline_margin_seconds`): a run not started by then is
+recorded as not reached — not established, never a pass, never a miss —
+and every run's row lands in `results.jsonl` as it ends, so a probe cut
+short still leaves what it measured. The step's budget is four hours.
+
+## The judge reads a JSON line's escapes (2026-10-30)
+
+The S4 Claude reading pasted the engine's feedback as JSON; the judge
+quoted the words it read (an em dash) against a line holding `\u2014`,
+the quote check found no match twice, and the grading died. The check
+resolves JSON escapes on both sides before comparing.
+
+## `kapso deploy --status` answers a campaign not yet deployed (2026-10-30)
+
+The cold engineer asked for the status before the first deploy and the
+command exited with an error, which the rig counted as a wrong call of
+the package. A status question has an answer — "has no deployment yet" —
+and exit 0; a `--number` that names no deployment stays an error.
+
+## The baseline memory keeps the update's budget (2026-10-30)
+
+The repo memory's initial inference read the planner's files whole with
+no bound: a 1 MB dataset among them put the call at 1,400,956 characters
+and Codex refused it (its limit 1,048,576), an engine session failed in
+the S1 Claude prerequisite campaign. The initial inference keeps the
+update's budget (`repo_memory_update_payload_max_chars`): a binary or
+over-budget file is listed by name and size and never shown, and the
+files past the first budget's worth reach the model in further calls,
+each patching the model the previous produced.
+
+## The S1 rig: a heredoc, the login shell's PATH, a flow's learn (2026-10-30)
+
+Three rig defects read from the second wave. The command splitter read a
+heredoc's body as shell text, and an apostrophe in a script written by
+heredoc swallowed the launch that followed it (a Codex flow counted no
+execution): a heredoc's body stays with its command. Codex runs each
+command in a login shell whose profile puts the machine's `~/.local/bin`
+(the gate's uv tool install) ahead of the sandbox venv the driver put
+first on PATH, so the engineer's deploy ran the machine's kapso without
+the task's requirements and failed until the engineer put the venv first
+by hand: the sandbox step ends the profile with the venv first, as the
+prompt says it is. And the learn the Python flow started was still mining
+when the CLI flow began, so the engineer rightly declined to start a
+second: the rig stops a flow's learn, with its process group, before the
+next flow, and the learn's goal says the learn keeps running on its own
+after the command returns.
