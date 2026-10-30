@@ -901,10 +901,22 @@ that is still evidence.
     time per in-flight lane under a short budget (a follow-up outside this
     package). A second attempt at six hours on the same shape
     (`s3-relbench-4`) was launched to read the harness past the first
-    iteration; its result replaces this one in the record when it lands,
-    and this attempt stays in the notes; it is the last attempt (the
-    owner, 2026-10-29). The two earlier attempts died on the stream split
-    and on the run folder.
+    iteration, the last attempt by the owner's call (2026-10-29). It landed
+    at 01:51Z: one iteration of four lanes in 164 minutes, the first lane
+    verified valid and the other three void, and a test AUROC of 0.7555 on
+    the runner's selection among the lanes' registered finals, inside the
+    recorded band (the bar 0.741, the population's mean 0.775); yet no
+    candidate was delivered, because at iteration one the evaluation
+    maintainer accepted the campaign's change request and registered a
+    second evaluator averaging the official metric across closed origins,
+    under which every lane's candidate, written to the official contract,
+    exited non-zero; the campaign then stopped, the remaining 152 minutes
+    not covering another 164-minute attempt. The four runners' override
+    configs now file no change request (`max_change_requests: 0`,
+    DECISIONS 2026-10-30): on a benchmark the official evaluation is the
+    protocol. The record's step is this attempt; the three-hour attempt
+    and the two that died on the stream split and the run folder are in
+    the notes.
   - `swap-ioai`: dropped from the release's required steps by the owner
     (2026-10-29: no Kaggle account will be set up; the open practice
     competitions need their rules accepted in a browser); the step

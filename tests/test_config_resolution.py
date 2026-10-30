@@ -107,6 +107,9 @@ def test_the_benchmark_override_files_resolve():
         "examples/ml_model_development/e2e/config.gate.yaml",
     ):
         config = load_config(str(root / relative))
+        if relative.startswith("benchmarks/"):
+            # The official evaluation is the protocol: the maintainer files no change request against it.
+            assert config["evaluation_maintainer"]["max_change_requests"] == 0, relative
         params = config["search_strategy"]["params"]
         check_params(params)
         for role in ROLES:

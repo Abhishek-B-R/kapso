@@ -152,3 +152,9 @@ benchmark:
     effort: high
     timeout: 1800
     web_search: true
+
+evaluation_maintainer:
+  # The official evaluation is the protocol: no change request may replace
+  # it mid-campaign (the RelBench arm's maintainer rewrote the scoring
+  # across origins at iteration one and every candidate failed under it).
+  max_change_requests: 0

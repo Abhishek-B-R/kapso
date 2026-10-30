@@ -40,7 +40,10 @@ evaluation_maintainer:
   enabled: true
   timeout: 1800
   calibration_timeout_seconds: 1200
-  max_change_requests: 3
+  # The official evaluation is the protocol: no change request may replace
+  # it mid-campaign (the RelBench arm's maintainer rewrote the scoring
+  # across origins at iteration one and every candidate failed under it).
+  max_change_requests: 0
 
 # The runner's own settings (benchmarks/ale/runner.py reads these; the
 # engine never does).

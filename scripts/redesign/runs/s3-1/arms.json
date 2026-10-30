@@ -8,7 +8,7 @@
   "ioai_median": 0.8184,
   "started": "2026-10-29T15:51:45Z",
   "runs": {
-    "arm-relbench": "s3-relbench-3",
+    "arm-relbench": "s3-relbench-4",
     "arm-mle": "s3-mle-4",
     "arm-ale": "s3-ale-2",
     "arm-ioai": "s3-ioai-1",
@@ -24,6 +24,7 @@
     "logins: claude-oauth-token-5 (s3-ioai-1, s3-relbench-2), claude-oauth-token-2 (s3-relbench-swap-1, s3-mle-4), a managed account's credentials (s3-kaggle-swap-1, s3-ale-2), another's (s3-ale-swap-ahc011-1)",
     "swap-ioai is dropped from the release's required steps by the owner (2026-10-29): no Kaggle account will be set up; the practice competitions' rules are accepted in a browser only",
     "the owner accepts the arm-ioai standing for the release (2026-10-29): the delivery bar stays failing in this record; the release notes say what was and was not measured",
-    "s3-relbench-3 (three hours, one A100, four lanes, cold) ran one iteration and delivered no candidate: the first lane's attempt voided by verification, the other three unverified and unjudged when the budget ran out (the finishing cut); the selection among the registered finals scored test AUROC 0.558 against the band's 0.741; a six-hour attempt on the same shape, s3-relbench-4, was launched 22:25Z"
+    "s3-relbench-3 (three hours, one A100, four lanes, cold) ran one iteration and delivered no candidate: the first lane's attempt voided by verification, the other three unverified and unjudged when the budget ran out (the finishing cut); the selection among the registered finals scored test AUROC 0.558 against the band's 0.741; a six-hour attempt on the same shape, s3-relbench-4, was launched 22:25Z",
+    "s3-relbench-4 (six hours, one A100, four lanes, cold; the owner's last attempt) reached test AUROC 0.7555 on the runner's selection among the lanes' registered finals, inside the band, and delivered no candidate: the maintainer accepted a change request at iteration one and the candidates failed under the second evaluator; the benchmarks' configs now file no change request"
   ]
 }

@@ -103,7 +103,10 @@ evaluation_maintainer:
   # Registration calibrates via a fast-fidelity run = the candidate's
   # --debug mode; must fit the debug-tier cap.
   calibration_timeout_seconds: 1200
-  max_change_requests: 3
+  # The official evaluation is the protocol: no change request may replace
+  # it mid-campaign (the RelBench arm's maintainer rewrote the scoring
+  # across origins at iteration one and every candidate failed under it).
+  max_change_requests: 0
   # Late-transition freeze: past this fraction of the time budget,
   # evaluator change requests are deferred — a ruler change near the
   # deadline orphans final selection (2026-08-16: a transition at 92%

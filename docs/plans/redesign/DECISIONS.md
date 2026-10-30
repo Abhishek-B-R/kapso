@@ -2777,3 +2777,19 @@ attempt kept in the notes. The same holds for the other benchmarks:
 the MLE and ALE quick arms, the IOAI arm and the three swaps stand as
 recorded, and no further attempt runs on any of them before the
 release.
+
+## A benchmark run files no evaluator change request: the official evaluation is the protocol (2026-10-30)
+
+The six-hour RelBench attempt (`s3-relbench-4`) reached a test AUROC of
+0.7555, inside the recorded band, and delivered nothing: at iteration one
+the evaluation maintainer accepted a change request from the campaign
+("a genuine resolution defect") and registered a second evaluator that
+averages the official metric across closed origins, and every lane's
+candidate, written to the official contract, exited non-zero under the
+new one, so no attempt was admitted and the campaign stopped with no
+successful experiment. The provided bytes stayed immutable, as the
+maintainer promises; the protocol around them did not. On a benchmark
+the official evaluation is the protocol by definition, so the four
+runners' override configs set `evaluation_maintainer.max_change_requests`
+to zero and the config test holds them there. Found by the arm after the
+owner's call that it was the last run, so the fix is recorded, not rerun.
