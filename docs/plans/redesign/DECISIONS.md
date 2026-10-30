@@ -3246,3 +3246,33 @@ the whole suite to `sandbox_fallback`, which must itself start; the
 decision is written beside the results, recorded with the requested
 sandbox, and the step's notes say it. The run was stopped in its probe
 and launched again rather than left to fail two hours later.
+
+## The Python API launches detached (2026-10-30)
+
+`build()` and `learn()` block, and the API reference sent a Python user to
+the shell for a run that outlives the call. Every engineer of the release
+gate's S1, on both hosts and in every wave, reinvented the detached launch
+in Python — a self-relaunching worker script, a shell-out to `kapso learn
+--detach` — and the fourth Codex run met every bar but the judge's docs
+dimension on exactly that flow. The morning's reading had left this a
+finding rather than a feature, since framework changes are the owner's
+call; the gate's standing instruction is that a failure goes back to its
+package, and the fix is the thin wrapper the CLI already had: the launcher
+moves to `kapso.execution.launch`, shared by the CLI's four `--detach`
+verbs and the API so neither imports the other; `build(detach=True)` and
+`learn(detach=True)` compose the CLI's own argv (the brief beside the
+output as the file the child reads, the loaded harness and experience as
+their flags, the budget's set fields as theirs) and hand back a `Launch`
+(pid, log, status). The owner may revert it; the checkpoint says so.
+
+## The trigger runs switch sandboxes on a streak of failures (2026-10-30)
+
+Three probes started under `read-only` on the fourth S2 Codex machine and
+15 of the next 18 runs failed in bubblewrap's loopback setup: the probe's
+sessions run alone, the trigger runs beside the machine's other sessions
+(the earlier steps' campaigns), and the loopback setup fails under that
+company. A probe cannot see it, so the runs decide: `sandbox_switch_after`
+sandbox failures in a row send the rest of the suite to the fallback once
+it starts, every run the sandbox failed is run again under it at the end
+with its first failure kept on the row, and the switch is written beside
+the results and said in the record.
