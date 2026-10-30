@@ -204,11 +204,18 @@ def request_names_no_value(inbox: Path, key_value: str) -> Optional[bool]:
     return "DATA_API_KEY" in text and key_value not in text
 
 
+# The seed commit's author and committer date: a fixture's commit is the same
+# commit every time it is seeded, so the comparison can hold a bank's head
+# against its seed (a clock-dated commit differed across a second boundary).
+SEED_COMMIT_DATE = "2026-01-01T00:00:00Z"
+
+
 def seed_bank(fixture: Path, target: Path) -> Dict[str, Any]:
     """A bare bank at `target` holding the fixture's tree as one commit —
     the seeded bank every S5 campaign is served and the comparison reads
     before and after each injection (a bank with no card compares
-    vacuously). Returns its state."""
+    vacuously). Returns its state. Re-seeding reproduces the commit: the
+    tree, the message and the dates are fixed."""
     if not fixture.is_dir():
         raise FileNotFoundError(f"the bank fixture is missing: {fixture}")
     source = target.with_name(target.name + ".src")
@@ -216,7 +223,8 @@ def seed_bank(fixture: Path, target: Path) -> Dict[str, Any]:
         if path.exists():
             shutil.rmtree(path)
     shutil.copytree(fixture, source)
-    git = lambda *args: subprocess.run(["git", "-C", str(source), "-c", "user.name=kapso-semantic", "-c", "user.email=semantic@kapso.invalid", *args], check=True, capture_output=True, text=True)
+    dated = {**os.environ, "GIT_AUTHOR_DATE": SEED_COMMIT_DATE, "GIT_COMMITTER_DATE": SEED_COMMIT_DATE}
+    git = lambda *args: subprocess.run(["git", "-C", str(source), "-c", "user.name=kapso-semantic", "-c", "user.email=semantic@kapso.invalid", *args], check=True, capture_output=True, text=True, env=dated)
     # On `main`: the engine reads a bank's main branch, whatever git's default is.
     git("init", "-q", "-b", "main")
     git("add", "-A")
