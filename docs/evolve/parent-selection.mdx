@@ -48,16 +48,13 @@ already built on it. Rank, not raw score, keeps the policy independent of the
 metric's scale and direction.
 
 ```yaml
-modes:
-  GENERIC:
-    search_strategy:
-      type: "generic"
-      params:
-        parent_policy: "weighted"
-        parent_sampling:
-          temperature: 1.0
-          offspring_penalty: 1.0
-          seed: 0
+search_strategy:
+  params:
+    parent_policy: "weighted"
+    parent_sampling:
+      temperature: 1.0
+      offspring_penalty: 1.0
+      seed: 0
 ```
 
 | Key | Effect |

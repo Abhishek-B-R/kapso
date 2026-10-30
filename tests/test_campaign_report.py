@@ -3,9 +3,9 @@
 What must hold: the report reads only what the campaign wrote (checkpoint,
 status file, launch record, inbox, branches) and changes none of it; the
 leaderboard and the deliverable follow the campaign's own ranking,
-including minimize metrics and cost-aware selection; the lineage is the
-status view's tree rows; a missing checkpoint or a corrupt state file
-raises.
+including minimize metrics and cost-aware selection; the lineage is drawn
+from the checkpoint's node history; a missing checkpoint or a corrupt
+state file raises.
 """
 
 import json
@@ -24,7 +24,7 @@ from kapso.execution.inbox import (
     record_reply,
     write_launch_record,
 )
-from kapso.execution.observability import BuildStatus, OperationStatusView
+from kapso.execution.observability import BuildStatus
 from kapso.execution.run_checkpoint import (
     RunCheckpoint,
     RunCheckpointCorruptError,
@@ -125,8 +125,12 @@ def test_finished_campaign_report_has_every_section(tmp_path):
     assert "| 1 | 1 | 0.9 | 0 | `generic_exp_1` | gradient boosting \\| tuned |" in report
     assert "| 2 | 0 | 0.4 | main | `generic_exp_0` | logistic regression |" in report
     assert "Top 2 of 2 scored candidates" in report
-    tree = OperationStatusView(workspace).campaign_tree()[2:]
-    assert "## Lineage\n\n```text\n" + "\n".join(tree) + "\n```" in report
+    assert (
+        "## Lineage\n\n```text\n"
+        "  ├─ generic_exp_0 (score=0.4, ok)\n"
+        "  │ └─ generic_exp_1 (score=0.9, ok)\n"
+        "  └─ generic_exp_2 (score=unscored, error)\n```"
+    ) in report
     assert "### Node 1: `generic_exp_1` against `generic_exp_0`" in report
     assert "generic_exp_1.py | 1 +" in report
     assert "generic_exp_0.py" not in report.split("### Node 1")[1].split("### Node 0")[0]
