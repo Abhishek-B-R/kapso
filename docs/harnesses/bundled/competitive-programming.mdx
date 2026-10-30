@@ -21,7 +21,7 @@ kapso harness check competitive-programming
 
 ```text
 check ok (13 skills, 2 agents, 0 servers, 3 hooks)
-name     competitive-programming 0.3.0
+name     competitive-programming 0.3.2
 ```
 
 Two pages reach every session: `instructions/guardrails.md`, the standing rules (the task statement before anything else, the problem and its scorer, validity before score), and the module's own page, one each for setup, ideation, implementation, verification, feedback and learning. The skills, the delegates and the hooks are defined once and listed per module:
@@ -61,7 +61,7 @@ Two pages reach every session: `instructions/guardrails.md`, the standing rules 
 ### The hooks
 
 - `require-scorer-run`, a stop gate on implementation: no finish without a scorer run over every seed of the task's list (`kapso_datasets/seeds.txt` in the task root).
-- `require-insurance`, a stop gate on implementation of a leaderboard task: no finish before the first submission is in the ledger.
+- `require-insurance`, a stop gate on implementation of a leaderboard task: no finish before a submission the site holds (pending its score, or scored) is in the ledger; one the CLI refused or the site failed to score is no insurance.
 - `deny-shell-submit`, on the shell: a raw contest submission typed in the shell is denied where the task root names a submission procedure, since a submission spends shared quota and must leave a record in the ledger.
 
 The harness has no `requirements.txt`: the scorer, the compiler and the contest's command-line tool are the task's and the machine's, and `kapso harness check` reports what the task's skills expect of them.
