@@ -705,11 +705,18 @@ that is still evidence.
     exact task and the runner edit it is known to need, pre-listed so a
     runner edit is not mistaken for a harness finding: a second RelBench
     task with a maximised metric and span zero (`rel-event/user-attendance`
-    in the frozen regime); `ahc011`, inside the lite list only because the
+    in the frozen regime; as run, that task's metric is a minimised MAE,
+    so the maximised-metric condition went unexercised and the swap
+    exercised a second family, entity regression, instead); `ahc011`,
+    inside the lite list only because the
     runner's metadata source is the dictionary until change 13 derives it;
     a Kaggle tabular competition through the IOAI preflight with
     `--harness predictive-modelling` (runner edit: the organizers' rules are
-    the IOAI task's, so the preflight takes a rules file per task); an
+    the IOAI task's, so the preflight takes a rules file per task; as run,
+    the competition was the MLE arm's own text classification,
+    spooky-author-identification, so the tabular condition went
+    unexercised and the swap exercised the preflight-and-runner path under
+    the other harness instead); an
     IOAI 2025 practice competition through the IOAI runner. The bar is
     zero harness edits; a harness edit needed is a finding, fixed at the
     source, and the swap runs again. The two Kaggle swaps run in series on
@@ -724,6 +731,14 @@ that is still evidence.
     |---|---|---|
     | `predictive-modelling` | 0.3.2 | `f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3` |
     | `competitive-programming` | 0.3.1 | `1241d8cc1d821226584a7d6b95f2dfa5e6e514efed35da5f926b90b5e9256183` (re-pinned after the review's finding 9: 0.3.0, `f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1`, ran the arms and the swaps and differs by one line of the kaggle-cli skill; DECISIONS, 2026-10-29) |
+    Amended 2026-10-30: the pull-request review's Codex half changed both
+    harnesses' prose after the arms (the copied tabular skill made
+    self-contained, three rules conditioned, the fetch skill's web claim),
+    so the trees are predictive-modelling 0.3.3 and competitive-programming
+    0.3.2; the pins above stay the trees the arms ran on, the record's
+    zero-edit bar reads each launch against them, and the record carries
+    the current trees' hashes beside (DECISIONS). No arm is rerun for a
+    prose fix.
 19. **The smoke arms, then the full arms**, one machine per arm, the band
     or baseline preregistered under Acceptance, the archives copied to the
     bucket: RelBench on `gpu4` (twelve hours, the four lanes the recorded
@@ -852,12 +867,20 @@ that is still evidence.
   merge rests on only as far as the steps below say):
   - `scan`: zero hits over both trees, live at re-derivation.
   - `swap-relbench` (`s3-relbench-swap-1`, rel-event/user-attendance, two
-    hours): ran clean, zero harness edits, one experiment delivered, test
-    MAE 0.2298 (val 0.2385); the leakage scan's one advisory finding kept.
+    hours): ran to its budget on the pinned tree, one experiment
+    delivered, test MAE 0.2298 (val 0.2385); the leakage scan's one
+    advisory finding kept. A minimised metric and a second family, not
+    the maximised metric change 17 preregistered.
   - `swap-kaggle` (`s3-kaggle-swap-1`, spooky-author-identification through
     the IOAI preflight and runner under predictive-modelling, two hours):
-    ran clean, four ledger submissions, best public log loss 0.30161, two
-    experiments, no shell submit.
+    ran to its budget on the pinned tree: four ledger submissions, the
+    best public log loss 0.30161 (the runner's report had selected
+    0.33053 by maximising a minimised metric; corrected in the review of
+    2026-10-30), two experiments, no shell submit, and no candidate
+    delivered: every candidate's provided evaluation stayed pending
+    because the evaluator compared the CLI's status against the wrong
+    spelling (corrected in the same review). A text classification, not
+    the tabular task change 17 preregistered.
   - `arm-ioai` (`s3-ioai-1`): the tooling established, the score a replay
     of the account's own earlier kernel, no candidate delivered; the
     step's bar now includes a delivered candidate and the arm fails it.
@@ -865,7 +888,8 @@ that is still evidence.
     record keeps the failing bar and the release notes say what was and
     was not measured.
   - `swap-ale` (`s3-ale-swap-ahc011-1`, ahc011, two hours on the Docker
-    judge, 19:42Z): ran clean, zero harness edits, one experiment delivered;
+    judge, 19:42Z): ran to its budget on the pinned tree, one experiment
+    delivered;
     on the private cases the delivered candidate ranks 38 of 699
     (performance 2297), the judge reporting a time-limit excess on part of
     the private set; the final report took ninety minutes, the private set
@@ -1322,6 +1346,44 @@ Clean, per the reviewer: the two harnesses as domain harnesses, the
 engine facts the pages assert, the hooks, the runners, the bank
 extension, the two engine fixes, the tests, the docs sentences.
 
+### The pull-request review (Codex half, 2026-10-30)
+
+The same brief on `12c5eb24`, the Codex reviewer (gpt-6-astra, xhigh)
+once the arms' machines were gone. Twenty-seven findings (five P1,
+twenty P2, two P3), answered in four commits: the IOAI evaluation and
+procedure, RelBench and the graders, the harness prose with the scan,
+the bank, and the record with this plan.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | P1: the evaluator compared the Kaggle status against `complete`, the CLI prints `SubmissionStatus.COMPLETE`; the arm's and the swap's scored submissions stayed pending | the status is the enum's bare word, lowercased, everywhere a row is read (the evaluator, the runner's selection and harvest); the tests use the archived spelling |
+| 2 | P1: the engine's labelling took the first archive under the glob holding the run name; RelBench's glob spans tasks and every task numbers its runs from one | the RelBench runner's override names the task's own archive root; the engine refuses a run name two roots hold (tested with two roots) |
+| 3 | P1: the IOAI runner removed both ledgers before a resume | a new campaign starts them afresh; a resume keeps them (`fresh`) |
+| 4 | P1: the evaluator rewrote the ledger after a network call without the procedure's lock; a submission appended meanwhile vanished, and readers could see a partial file | the listing runs outside the lock, the refresh re-reads and merges under it, and both writers swap a whole file in; tested with an append during the listing |
+| 5 | P1: the kernel digest is the local source at submit time, not the pushed version; the evaluator assumed `kernel/`; absolute paths matched outside the tree | the procedure records repository-relative paths only (absolute or `..` refused) and the evaluator hashes the recorded path; the skill says to submit right after the push; a push receipt bound to the version is a follow-up after the release (DECISIONS) |
+| 6 | P2: the final selection and the ticket office maximised a minimised metric (the swap's report picked 0.33053 over 0.30161) | the direction threads to both; tested on the swap's four scores |
+| 7 | P2: no window end: a late submission or score could count | the runner stamps the window's end at launch (`run_meta.json`, the descriptor); the evaluator and the final selection enforce both bounds; a scored entry carries the time its score was observed; the final report says when it read the list |
+| 8 | P2: one page of the submissions list (twenty rows), and the empty response is a sentence the parser rejected | every page is read (`--page-size` from the config, `--page-token` followed); the empty sentence is an empty list; tested on two pages |
+| 9 | P2: the RelBench grader validated the validation vector only | both splits through one validator (shape, dtype, finiteness, a probability's range), the test split without its labels; tested on a short and a non-finite test vector |
+| 10 | P2: the starter contract and `check_predictions.py` demanded both files under the rolling regime | both are regime-aware: a rolling invocation writes the test file for its snapshot, checked against the snapshot's indices |
+| 11 | P2: "no web in implementation and verification" was false on MLE (`implementation.web: true` inherited, the research gate on) and the copied fetch skill claimed it | MLE's config turns the web and the research gate off in implementation, as RelBench's does; the fetch skill says what it means (a model loads from its pinned path, never from the hub) without claiming the permission |
+| 12 | P2: the contest harness's tabular skill named two modelling skills it does not carry | the skill is self-contained (both copies, byte-identical); a test resolves every skill reference inside every bundled harness's skills |
+| 13 | P2: local text methods conditioned on a hosted API grant | hosted-model extraction needs the grant; local methods follow the task's permissions |
+| 14 | P2: unconditional rules (folds grouped by entity; strictly earlier data; the networks get the card) | each conditioned: on the prediction boundary (unseen units vs later observations; at t where the task admits it) and on measured gain per minute of the card |
+| 15 | P2: the insurance hook accepted an `error` entry | the vocabulary is the evaluator's: `pending` or `complete` is insurance, `rejected` or `error` is not; tested on all four |
+| 16 | P2: the preflight stated an IOAI quota default even under another competition's rules | the default is the supplied rules file's, when it states one; otherwise the quota is written as unstated |
+| 17 | P2: the scan exempted statistical thresholds without context and read `16GB` as one token | a threshold is exempt beside its own name only; an attached unit is read apart; the fixture pins `score 0.05`, `16GB`, `24gb`; both trees still scan clean |
+| 18 | P2: `problem.md` went into every card outside the verdict | the verdict covers it as ours (our summary of the task with its source links), listed under our files on every row; OQ-7 is the audit against the task sources, the owner's before the shareable bank is published (DECISIONS) |
+| 19 | P2: a file class read from the file name (`_reimpl`) | the class is the description's; the restroom row corrected by hand as the converter now renders (the first pass's JSON lives with the book's backup) |
+| 20 | P2: `--table` overwrote the hand-written sections | the generated section sits between markers and a regeneration replaces only it; tested with an appendix |
+| 21 | P2: zero card reads reported; the exposure sits on each served element | counted per element, with the identities (the IOAI arm: four reads) |
+| 22 | P2: procedure tokens read as hook firings; delegates counted without reports | the kinds are apart: hooks mounted, hooks fired where a run reports them (the Claude Code runs report an empty list), runs without a report (every Codex run: the firing is unknown, not absent), delegates invoked, completed and reporting |
+| 23 | P2: the zero-edit metric compared today's tree with hand-typed pins | every launch's hash is checked against its harness's accepted pins (the frozen tree; the 0.3.1 correction no arm ran on); the current trees' hashes are recorded beside; the wheel build per run is listed, the three overwritten builds' hashes recorded as unknown |
+| 24 | P2: the swap record overstated (a maximised metric and a tabular task preregistered, neither run; "ran clean" with no candidate delivered) | change 17 says what each swap exercised instead; the standing says what ran and what did not deliver, and why |
+| 25 | P2: diagnostics clipped on model-facing paths | no clip in the evaluator, the procedure or the ticket office; the runner's own record keeps its tails |
+| 26 | P3: literals (the listing timeout, the graders' poll cadence, the seed 1337) and function-local imports in tests | the listing's timeout and page size come from the config through the descriptor; the graders' poll cadence from the config through `task.json`; the seed is the registered command's, no default (DECISIONS); the function-local imports in the tests stay where they isolate an optional dependency (`importorskip` modules), which Rule 4 allows for tests of optional paths |
+| 27 | P3: the docs omitted `--final-eval-only` and `--rules` | the ALE page and README carry the flag with its `--workspace` prerequisite; the IOAI page and README carry `--rules`, its default and the refusal |
+
 ### What the arms found in the engine (2026-10-29)
 
 - **A separator inside an event's text cut the event** (`s3-relbench-1`,
@@ -1367,10 +1429,12 @@ extension, the two engine fixes, the tests, the docs sentences.
   static audit found no kernel folder under the task directory
   (`audit: {}`); the step's bar includes a delivered candidate since the
   review, and this arm fails it.
-- **The Kaggle swap ran clean** (`s3-kaggle-swap-1`, spooky-author-identification
-  through the IOAI preflight and runner under the predictive-modelling
-  harness, two hours): four submissions through the ledger, best public
-  log loss 0.30161 at 17:00Z, two experiments, no harness edit.
+- **The Kaggle swap ran to its budget on the pinned tree** (`s3-kaggle-swap-1`,
+  spooky-author-identification through the IOAI preflight and runner
+  under the predictive-modelling harness, two hours): four submissions
+  through the ledger, best public log loss 0.30161 at 17:00Z, two
+  experiments, no harness edit, no candidate delivered (the evaluator's
+  status spelling, the review of 2026-10-30).
 - **The MLE quick arm died in the maintainer's calibration** (`s3-mle-1`,
   16:33Z, eight minutes in): the calibration run exited 2 with `existing
   evaluator snapshot is corrupt`. The line is printed by

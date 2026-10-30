@@ -2793,3 +2793,56 @@ the official evaluation is the protocol by definition, so the four
 runners' override configs set `evaluation_maintainer.max_change_requests`
 to zero and the config test holds them there. Found by the arm after the
 owner's call that it was the last run, so the fix is recorded, not rerun.
+
+## The review's fixes after the arms: the pins stand, the trees move (2026-10-30)
+
+The pull-request review's Codex half changed both bundled harnesses'
+prose after the arms ran (the copied tabular skill's references, three
+rules conditioned, the fetch skill's web claim), so predictive-modelling
+is 0.3.3 and competitive-programming 0.3.2. The S3 record's zero-edit bar
+reads each launch's harness hash against the accepted pins of its
+harness (the frozen tree, and the one correction accepted after the
+freeze that no arm ran on), and records the current trees' hashes
+beside them: the arms' evidence is what they ran on, and an edit after
+them is visible, not a failing bar and not a silent drift. No arm is
+rerun for a prose fix (the owner's call of 2026-10-29).
+
+## `problem.md` is covered by the row's verdict as ours (2026-10-30)
+
+The IOAI bank's cards carry each entry's `problem.md` as the situation,
+and the first pass left those files outside the per-row verdict. They
+are our own summaries of the tasks with their source links, so the
+verdict covers them as ours, the table lists them under our files on
+every row, and OQ-7 narrows to the audit for verbatim passages from
+sources with their own licences — the owner's before the shareable bank
+is published anywhere; until then it is served locally. The converter
+reads a file's class from its description, never its name.
+
+## The graders take the seed from the command (2026-10-30)
+
+The three graders defaulted `--seed` to 1337, a copy of the config's
+`subsample_seed`. The registered command the maintainer writes always
+carries the seed, so the graders require it and hold no copy; the
+RelBench grader's rescore echoes the archived manifest's class. The
+graders' poll cadence likewise comes from the config through the task's
+settings, and the IOAI evaluator's listing timeout and page size through
+the contest descriptor.
+
+## MLE implementation sessions have no web and no research gate (2026-10-30)
+
+The predictive-modelling harness promises no web in implementation and
+verification; MLE's override inherited `implementation.web: true` and the
+research gate, and the deny-web hook cannot see Codex's native search.
+The config now says what the harness says, as RelBench's does: a
+competition's test labels exist on the web. The MLE arm ran with the web
+on; it is not rerun (the owner's call), and the release notes say so.
+
+## A push receipt bound to the kernel version is a follow-up (2026-10-30)
+
+The submission procedure attributes a score to the code by the hash of
+the kernel source at submit time, at a repository-relative path; the
+pushed version's content is not available from the CLI at submit time.
+The skill says to submit right after the push, before the source
+changes. Binding the digest to a push receipt (the procedure doing the
+push and recording the version it printed) is the first IOAI item after
+the release.

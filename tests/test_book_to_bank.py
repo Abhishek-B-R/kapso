@@ -19,6 +19,9 @@ from benchmarks.ioai2026.book_to_bank import (
     VERDICTS,
     load_rows,
     render_pass,
+    write_table,
+    GENERATED_BEGIN,
+    GENERATED_END,
     render_table,
     stated_licence,
     write_bank,
@@ -188,6 +191,8 @@ def make_book(tmp_path: Path):
             files_ours=[
                 "solution.py (mechanical extraction of the winner notebook — derivative, same licence)",
                 "__pycache__/solution.cpython-313.pyc (our compiled byproduct; should not ship)",
+                "fusion_reimpl.py (our path-adaptation of the winner notebook; inherits its status)",
+                "metric_reimpl.py (our reimplementation from the write-up — idea only, no copied code)",
             ],
             note="community-contributed notebook: see OQ-3",
         ),
@@ -382,16 +387,43 @@ def test_the_second_pass_columns_are_mechanical(tmp_path):
     book, provenance = make_book(tmp_path)
     rows = load_rows(provenance)
     lines = {line.split(" | ")[0][2:]: line for line in render_table(rows).splitlines()[2:]}
+    # A file's class is its description's, never its name's: the adaptation
+    # named `_reimpl` is a derivative; `problem.md` is ours on every row.
+    problem = "problem.md: ours — our summary of the task, its source links cited (OQ-7)"
     assert (
         "| MIT | yes — attribution kept in the card and this table | shippable-with-attribution → the shareable "
         "bank (OQ-3) | 1 copied: winner.ipynb | solution.py: derivative of the copied file, its licence; "
-        "__pycache__/solution.cpython-313.pyc: byproduct, not shipped | winner N. G. |"
+        "__pycache__/solution.cpython-313.pyc: byproduct, not shipped; "
+        "fusion_reimpl.py: derivative of the copied file, its licence; "
+        f"metric_reimpl.py: our reimplementation — idea only, no copied code, cited; {problem} | winner N. G. |"
     ) in lines["alpha-task"]
-    assert "| unstated | owner's call (licence unstated or restricted) | local-only → the local-only bank | none | idea.md: ours |" in lines["beta-task"]
-    assert "| CC BY-NC-SA 4.0 | owner's call (OQ-1) | excluded → the local-only bank (OQ-1) | 1 copied: main.py | none |" in lines["gamma-task"]
-    assert "| ours (no third-party code) | yes — our own code | ours (shippable) → the shareable bank | none | our_solution.py: ours |" in lines["delta-task"]
+    assert f"| unstated | owner's call (licence unstated or restricted) | local-only → the local-only bank | none | idea.md: ours; {problem} |" in lines["beta-task"]
+    assert f"| CC BY-NC-SA 4.0 | owner's call (OQ-1) | excluded → the local-only bank (OQ-1) | 1 copied: main.py | {problem} |" in lines["gamma-task"]
+    assert f"| ours (no third-party code) | yes — our own code | ours (shippable) → the shareable bank | none | our_solution.py: ours; {problem} |" in lines["delta-task"]
 
     text = render_pass(rows, STAMP)
+    assert text.startswith(GENERATED_BEGIN + "\n") and text.endswith(GENERATED_END + "\n")
     assert "- rows: 4 (bank 3, reserve 1); publish: shareable 2, local-only 2" in text
     assert "- stated licences: CC BY-NC-SA 4.0 1, MIT 1, ours (no third-party code) 1, unstated 1" in text
     assert "## Bank (3 rows)" in text and "## Reserve (1 rows)" in text
+
+
+def test_the_table_regeneration_keeps_the_hand_written_sections(tmp_path):
+    # The organizers' rules, the open questions and the sources are written
+    # by hand after the generated section; a regeneration replaces only the
+    # section between the markers, writes a fresh file whole, and refuses
+    # markers out of order.
+    _book, provenance = make_book(tmp_path)
+    rows = load_rows(provenance)
+    table = tmp_path / "PROVENANCE.md"
+    write_table(table, render_pass(rows, STAMP))
+    first = table.read_text()
+    assert first.startswith(GENERATED_BEGIN) and first.rstrip().endswith(GENERATED_END)
+    appendix = "\n\n## Open questions for a human\n\n- OQ-1 — kept by hand.\n"
+    table.write_text(first.replace("## Bank (3 rows)", "## Bank (3 rows), stale") + appendix)
+    write_table(table, render_pass(rows, STAMP))
+    second = table.read_text()
+    assert second == first + appendix
+    table.write_text(GENERATED_END + "\n" + GENERATED_BEGIN + "\n")
+    with pytest.raises(ValueError, match="out of order"):
+        write_table(table, render_pass(rows, STAMP))

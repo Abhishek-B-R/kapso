@@ -9,8 +9,9 @@
 # `shippable-with-attribution` + `ours (shippable)` and the local-only bank
 # the rest; --exclude drops entries by uid (a campaign on one of the book's
 # tasks is served the bank without its own entry). --table writes the pass's
-# rows with this second pass's columns. docs/plans/redesign/wp8-harness-ports.md
-# change 15.
+# rows with this second pass's columns between two markers, and a file that
+# already carries the markers keeps whatever stands outside them (the
+# hand-written sections). docs/plans/redesign/wp8-harness-ports.md change 15.
 #
 #   python benchmarks/ioai2026/book_to_bank.py --book DIR --provenance provenance.json \
 #       --out DIR --verdicts shippable-with-attribution "ours (shippable)" \
@@ -29,6 +30,9 @@ from kapso.learning.bank import REPORTED_VERDICT, dump_ledger
 from kapso.learning.bank_invariants import BODY_SECTIONS
 
 VERDICTS = ("shippable-with-attribution", "ours (shippable)", "local-only", "excluded")
+GENERATED_BEGIN = "<!-- book_to_bank --table: the generated section begins; the sections after its end marker are kept -->"
+GENERATED_END = "<!-- book_to_bank --table: the generated section ends -->"
+PROBLEM_CLASS = "problem.md: ours — our summary of the task, its source links cited (OQ-7)"
 SHAREABLE_VERDICTS = ("shippable-with-attribution", "ours (shippable)")
 SETS = ("bank", "reserve")
 ROW_KEYS = (
@@ -219,21 +223,27 @@ def third_party_payload(row: Dict[str, Any]) -> str:
 
 
 def our_files(row: Dict[str, Any]) -> str:
-    """Our own files under the entry, each with its class: a derivative of a
-    copied file carries that file's licence; a reimplementation is ours
-    (idea only, no copied code, cited); a byproduct is not shipped."""
+    """Our own files under the entry, each with the class its description
+    states (never its file name): a derivative of a copied file — an
+    extraction or an adaptation — carries that file's licence; a
+    reimplementation is ours (idea only, no copied code, cited); a compiled
+    byproduct is not shipped; the rest is ours. Every entry's `problem.md`,
+    our own summary of the task with its source links, is listed as ours
+    under OQ-7 (the audit against the task sources)."""
     kinds = []
     for item in row["files_ours"]:
-        name, lowered = item.split(" ")[0], item.lower()
-        if "byproduct" in lowered or ".pyc" in lowered:
+        name, _, description = item.partition(" ")
+        lowered = description.lower()
+        if "byproduct" in lowered or name.endswith(".pyc"):
             kinds.append(f"{name}: byproduct, not shipped")
-        elif "reimpl" in lowered:
+        elif "reimplementation" in lowered:
             kinds.append(f"{name}: our reimplementation — idea only, no copied code, cited")
-        elif "derivative" in lowered or "extraction" in lowered:
+        elif "derivative" in lowered or "extraction" in lowered or "adaptation" in lowered:
             kinds.append(f"{name}: derivative of the copied file, its licence")
         else:
             kinds.append(f"{name}: ours")
-    return "; ".join(kinds) if kinds else "none"
+    kinds.append(PROBLEM_CLASS)
+    return "; ".join(kinds)
 
 
 def _cell(text: Any) -> str:
@@ -259,13 +269,15 @@ def render_table(rows: List[Dict[str, Any]]) -> str:
 
 
 def render_pass(rows: List[Dict[str, Any]], stamp: datetime) -> str:
-    """The second pass over every row of the licence table, for the record."""
+    """The second pass over every row of the licence table, for the record:
+    the generated section, between its markers."""
     counts = {which: [row for row in rows if row["set"] == which] for which in SETS}
     shareable = sum(1 for row in rows if row["verdict"] in SHAREABLE_VERDICTS)
     licences: Dict[str, int] = {}
     for row in rows:
         licences[stated_licence(row["licence"])] = licences.get(stated_licence(row["licence"]), 0) + 1
     parts = [
+        GENERATED_BEGIN,
         "# Provenance and licence table — IOAI book, second pass",
         "",
         f"Written by `benchmarks/ioai2026/book_to_bank.py --table` on {stamp:%Y-%m-%d} from the first "
@@ -274,9 +286,12 @@ def render_pass(rows: List[Dict[str, Any]], stamp: datetime) -> str:
         "source, or \"unstated\"), the use verdict (whether the owner's own runs may be served the "
         "entry), the publish verdict (the bank the entry goes to: shareable for "
         "`shippable-with-attribution` and `ours (shippable)`, local-only for the rest), the "
-        "third-party payload under `solution/`, and our own files with their class (a derivative of "
-        "a copied file carries its licence; a reimplementation is ours — idea only, no copied code, "
-        "cited; a byproduct is not shipped). The first pass's verdict column is carried whole; its "
+        "third-party payload under `solution/`, and our own files with the class their description "
+        "states (a derivative of a copied file — an extraction or an adaptation — carries its licence; "
+        "a reimplementation is ours — idea only, no copied code, cited; a byproduct is not shipped), "
+        "`problem.md` among them on every row: our own summary of the task with its source links, "
+        "covered by the publish verdict as ours and carried into the card as the situation, under "
+        "OQ-7. The first pass's verdict column is carried whole; its "
         "open questions (OQ-n) qualify a verdict and are the owner's to answer. They are defined under "
         "\"Open questions for a human\" at the end of this file, beside the first pass's reading of the "
         "organizers' rules. A row's set is the first pass's: `bank` rows were converted to cards, `reserve` "
@@ -291,7 +306,26 @@ def render_pass(rows: List[Dict[str, Any]], stamp: datetime) -> str:
     for which in SETS:
         if counts[which]:
             parts += ["", f"## {which.capitalize()} ({len(counts[which])} rows)", "", render_table(counts[which])]
-    return "\n".join(parts) + "\n"
+    return "\n".join(parts + [GENERATED_END]) + "\n"
+
+
+def write_table(path: Path, rendered: str) -> None:
+    """The generated section into the file: a file that carries the markers
+    keeps everything outside them (the organizers' rules, the open
+    questions, the sources, written by hand after the first pass); a file
+    without them is written whole. Markers out of order raise."""
+    if not path.is_file():
+        path.write_text(rendered, encoding="utf-8")
+        return
+    current = path.read_text(encoding="utf-8")
+    begin, end = current.find(GENERATED_BEGIN), current.find(GENERATED_END)
+    if begin < 0 and end < 0:
+        path.write_text(rendered, encoding="utf-8")
+        return
+    if begin < 0 or end < begin:
+        raise ValueError(f"{path}: the generated section's markers are incomplete or out of order")
+    tail = current[end + len(GENERATED_END):]
+    path.write_text(current[:begin] + rendered.rstrip("\n") + tail, encoding="utf-8")
 
 
 # ---------------------------------------------------------------- the card
@@ -568,7 +602,7 @@ def main() -> None:
     chosen = write_bank(args.book, rows, args.out, args.verdicts, args.exclude, args.set, stamp)
     print(f"{args.out}: {len(chosen)} cards ({', '.join(args.verdicts)}) — {', '.join(chosen)}")
     if args.table:
-        args.table.write_text(render_pass(rows, stamp), encoding="utf-8")
+        write_table(args.table, render_pass(rows, stamp))
         print(f"{args.table}: the second pass over {len(rows)} rows")
 
 

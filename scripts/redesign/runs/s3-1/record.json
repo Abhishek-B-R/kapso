@@ -7,19 +7,24 @@
   "advisory_dimensions": null,
   "package": {
     "version": "0.8.0.dev1",
-    "wheel_sha256": "784a0136ef22d80230d6cb1da54d0b844eab0a46e922d7a591e5d44e616f99e8"
+    "wheel_sha256": "8fe4f7356af279ec3f266b9f9a4cd9598640a1001f2bd823e3c7abaef8018300"
   },
   "pins": {
     "suite_sha256": "3d3cafbd1cf9de66fcb1650a1894194f3f7d85119d16a9ba7af521ca7903d026",
-    "wheel_sha256": "784a0136ef22d80230d6cb1da54d0b844eab0a46e922d7a591e5d44e616f99e8",
-    "harness_predictive-modelling": "f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3",
-    "harness_competitive-programming": "1241d8cc1d821226584a7d6b95f2dfa5e6e514efed35da5f926b90b5e9256183"
+    "wheel_sha256": "8fe4f7356af279ec3f266b9f9a4cd9598640a1001f2bd823e3c7abaef8018300",
+    "harness_predictive-modelling": [
+      "f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3"
+    ],
+    "harness_competitive-programming": [
+      "1241d8cc1d821226584a7d6b95f2dfa5e6e514efed35da5f926b90b5e9256183",
+      "f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1"
+    ]
   },
   "user": {
     "kind": "scripted"
   },
   "started": "2026-10-29T15:51:45Z",
-  "finished": "2026-10-30T01:55:04Z",
+  "finished": "2026-10-30T03:06:49Z",
   "steps": [
     {
       "name": "scan",
@@ -134,8 +139,13 @@
           "protect-prepared"
         ],
         "hooks_fired": {},
+        "hook_evidence": {
+          "runs_reporting": 2,
+          "runs_without_report": 23
+        },
         "bank_tools": {},
-        "delegates": 1,
+        "delegates_invoked": 1,
+        "delegates_completed": 1,
         "delegate_reports": 0,
         "claude_cost_usd": 5.75,
         "tokens": {
@@ -151,11 +161,22 @@
         "shell_submit_attempts": 0,
         "bank_index_calls": 0,
         "cards_read": 0,
+        "cards_read_uids": [],
         "machine_hours": 3.47,
-        "machine_usd": 12.84
+        "machine_usd": 12.84,
+        "harness_launch": {
+          "name": "predictive-modelling",
+          "version": "0.3.2",
+          "hash": "f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3",
+          "pinned": true
+        },
+        "wheel": {
+          "built": "2026-10-29T19:08Z",
+          "sha256": "8fe4f7356af279ec3f266b9f9a4cd9598640a1001f2bd823e3c7abaef8018300"
+        }
       },
       "notes": [
-        "run s3-relbench-4; harness predictive-modelling 0.3.2 (f38e6e5a43a6)"
+        "run s3-relbench-4; harness predictive-modelling 0.3.2 (f38e6e5a43a6, an accepted pin); wheel built 2026-10-29T19:08Z"
       ]
     },
     {
@@ -226,8 +247,13 @@
           "protect-prepared"
         ],
         "hooks_fired": {},
+        "hook_evidence": {
+          "runs_reporting": 2,
+          "runs_without_report": 12
+        },
         "bank_tools": {},
-        "delegates": 4,
+        "delegates_invoked": 4,
+        "delegates_completed": 4,
         "delegate_reports": 0,
         "claude_cost_usd": 3.1,
         "tokens": {
@@ -243,11 +269,22 @@
         "shell_submit_attempts": 0,
         "bank_index_calls": 0,
         "cards_read": 0,
+        "cards_read_uids": [],
         "machine_hours": 2.65,
-        "machine_usd": 9.8
+        "machine_usd": 9.8,
+        "harness_launch": {
+          "name": "predictive-modelling",
+          "version": "0.3.2",
+          "hash": "f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3",
+          "pinned": true
+        },
+        "wheel": {
+          "built": "2026-10-29T17:08Z",
+          "sha256": null
+        }
       },
       "notes": [
-        "run s3-mle-4; harness predictive-modelling 0.3.2 (f38e6e5a43a6)"
+        "run s3-mle-4; harness predictive-modelling 0.3.2 (f38e6e5a43a6, an accepted pin); wheel built 2026-10-29T17:08Z"
       ]
     },
     {
@@ -303,8 +340,13 @@
           "require-scorer-run"
         ],
         "hooks_fired": {},
+        "hook_evidence": {
+          "runs_reporting": 4,
+          "runs_without_report": 20
+        },
         "bank_tools": {},
-        "delegates": 3,
+        "delegates_invoked": 3,
+        "delegates_completed": 3,
         "delegate_reports": 0,
         "claude_cost_usd": 11.98,
         "tokens": {
@@ -320,11 +362,22 @@
         "shell_submit_attempts": 11,
         "bank_index_calls": 0,
         "cards_read": 0,
+        "cards_read_uids": [],
         "machine_hours": 3.02,
-        "machine_usd": 0.82
+        "machine_usd": 0.82,
+        "harness_launch": {
+          "name": "competitive-programming",
+          "version": "0.3.0",
+          "hash": "f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1",
+          "pinned": true
+        },
+        "wheel": {
+          "built": "2026-10-29T18:10Z",
+          "sha256": "784a0136ef22d80230d6cb1da54d0b844eab0a46e922d7a591e5d44e616f99e8"
+        }
       },
       "notes": [
-        "run s3-ale-2; harness competitive-programming 0.3.0 (f061926e76c6)"
+        "run s3-ale-2; harness competitive-programming 0.3.0 (f061926e76c6, an accepted pin); wheel built 2026-10-29T18:10Z"
       ]
     },
     {
@@ -410,11 +463,16 @@
           "require-scorer-run"
         ],
         "hooks_fired": {},
+        "hook_evidence": {
+          "runs_reporting": 2,
+          "runs_without_report": 8
+        },
         "bank_tools": {
           "bank_index": 4,
           "bank_get_card": 1
         },
-        "delegates": 1,
+        "delegates_invoked": 1,
+        "delegates_completed": 1,
         "delegate_reports": 0,
         "claude_cost_usd": 6.24,
         "tokens": {
@@ -429,12 +487,28 @@
         },
         "shell_submit_attempts": 4,
         "bank_index_calls": 4,
-        "cards_read": 0,
+        "cards_read": 4,
+        "cards_read_uids": [
+          "aicc-r0-brain-tumors",
+          "aicc-r2-face-matching",
+          "neoai-2025-cuties",
+          "roai-magic-words"
+        ],
         "machine_hours": 1.34,
-        "machine_usd": 4.96
+        "machine_usd": 4.96,
+        "harness_launch": {
+          "name": "competitive-programming",
+          "version": "0.3.0",
+          "hash": "f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1",
+          "pinned": true
+        },
+        "wheel": {
+          "built": "2026-10-29T15:18Z",
+          "sha256": null
+        }
       },
       "notes": [
-        "run s3-ioai-1; harness competitive-programming 0.3.0 (f061926e76c6)"
+        "run s3-ioai-1; harness competitive-programming 0.3.0 (f061926e76c6, an accepted pin); wheel built 2026-10-29T15:18Z"
       ]
     },
     {
@@ -557,8 +631,13 @@
           "protect-prepared"
         ],
         "hooks_fired": {},
+        "hook_evidence": {
+          "runs_reporting": 2,
+          "runs_without_report": 22
+        },
         "bank_tools": {},
-        "delegates": 12,
+        "delegates_invoked": 12,
+        "delegates_completed": 12,
         "delegate_reports": 0,
         "claude_cost_usd": 5.06,
         "tokens": {
@@ -574,11 +653,22 @@
         "shell_submit_attempts": 0,
         "bank_index_calls": 0,
         "cards_read": 0,
+        "cards_read_uids": [],
         "machine_hours": 2.11,
-        "machine_usd": 7.81
+        "machine_usd": 7.81,
+        "harness_launch": {
+          "name": "predictive-modelling",
+          "version": "0.3.2",
+          "hash": "f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3",
+          "pinned": true
+        },
+        "wheel": {
+          "built": "2026-10-29T15:18Z",
+          "sha256": null
+        }
       },
       "notes": [
-        "run s3-relbench-swap-1; harness predictive-modelling 0.3.2 (f38e6e5a43a6)"
+        "run s3-relbench-swap-1; harness predictive-modelling 0.3.2 (f38e6e5a43a6, an accepted pin); wheel built 2026-10-29T15:18Z"
       ]
     },
     {
@@ -634,8 +724,13 @@
           "require-scorer-run"
         ],
         "hooks_fired": {},
+        "hook_evidence": {
+          "runs_reporting": 1,
+          "runs_without_report": 8
+        },
         "bank_tools": {},
-        "delegates": 0,
+        "delegates_invoked": 0,
+        "delegates_completed": 0,
         "delegate_reports": 0,
         "claude_cost_usd": 1.52,
         "tokens": {
@@ -651,11 +746,22 @@
         "shell_submit_attempts": 5,
         "bank_index_calls": 0,
         "cards_read": 0,
+        "cards_read_uids": [],
         "machine_hours": 4.08,
-        "machine_usd": 1.1
+        "machine_usd": 1.1,
+        "harness_launch": {
+          "name": "competitive-programming",
+          "version": "0.3.0",
+          "hash": "f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1",
+          "pinned": true
+        },
+        "wheel": {
+          "built": "2026-10-29T15:18Z",
+          "sha256": null
+        }
       },
       "notes": [
-        "run s3-ale-swap-ahc011-1; harness competitive-programming 0.3.0 (f061926e76c6)"
+        "run s3-ale-swap-ahc011-1; harness competitive-programming 0.3.0 (f061926e76c6, an accepted pin); wheel built 2026-10-29T15:18Z"
       ]
     },
     {
@@ -758,8 +864,13 @@
           "protect-prepared"
         ],
         "hooks_fired": {},
+        "hook_evidence": {
+          "runs_reporting": 4,
+          "runs_without_report": 15
+        },
         "bank_tools": {},
-        "delegates": 3,
+        "delegates_invoked": 3,
+        "delegates_completed": 3,
         "delegate_reports": 0,
         "claude_cost_usd": 9.41,
         "tokens": {
@@ -775,11 +886,22 @@
         "shell_submit_attempts": 0,
         "bank_index_calls": 0,
         "cards_read": 0,
+        "cards_read_uids": [],
         "machine_hours": 1.76,
-        "machine_usd": 6.51
+        "machine_usd": 6.51,
+        "harness_launch": {
+          "name": "predictive-modelling",
+          "version": "0.3.2",
+          "hash": "f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3",
+          "pinned": true
+        },
+        "wheel": {
+          "built": "2026-10-29T15:18Z",
+          "sha256": null
+        }
       },
       "notes": [
-        "run s3-kaggle-swap-1; harness predictive-modelling 0.3.2 (f38e6e5a43a6)"
+        "run s3-kaggle-swap-1; harness predictive-modelling 0.3.2 (f38e6e5a43a6, an accepted pin); wheel built 2026-10-29T15:18Z"
       ]
     },
     {
@@ -790,6 +912,10 @@
   "metrics": {
     "scan_hits": 0,
     "harness_edits": 0,
+    "harness_current": {
+      "competitive-programming": "d66ece2bce50cdc6ec08fea3aa38dbd9ae143e8519941cec17c84e16adbc8622",
+      "predictive-modelling": "a490b58879eacd5f5e0c1c4c52fd17011fe0479f2937afe410cae1d368b1a96f"
+    },
     "relbench_test_auroc": 0.7555392103447024,
     "mle_log_loss": 0.2271,
     "ale_rating": 1363,
@@ -799,15 +925,16 @@
   },
   "judge": null,
   "notes": [
-    "re-derived 2026-10-30T01:55:04Z from the arm archives under scripts/redesign/runs/; 8 of 9 steps run",
+    "re-derived 2026-10-30T03:06:49Z from the arm archives under scripts/redesign/runs/; 8 of 9 steps run",
     "competitive-programming is pinned at 0.3.1; the arms and the swaps ran on 0.3.0 (f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1), which differs by one line of the kaggle-cli skill (the pages command's -c flag)",
-    "three builds of the 0.8.0.dev1 wheel served the arms: 15:18Z (s3-ioai-1, s3-kaggle-swap-1, s3-relbench-swap-1, s3-ale-swap-ahc011-1), 17:08Z with the stream split (s3-relbench-2, s3-mle-4), 18:10Z with the ALE runner and run-folder fixes (s3-ale-2); the record's wheel is the last",
     "s3-ioai-1's public score is a replay of the Kaggle account's own earlier kernel for the competition, with no candidate delivered: the tooling is established, a cold start is not",
     "logins: claude-oauth-token-5 (s3-ioai-1, s3-relbench-2), claude-oauth-token-2 (s3-relbench-swap-1, s3-mle-4), a managed account's credentials (s3-kaggle-swap-1, s3-ale-2), another's (s3-ale-swap-ahc011-1)",
     "swap-ioai is dropped from the release's required steps by the owner (2026-10-29): no Kaggle account will be set up; the practice competitions' rules are accepted in a browser only",
     "the owner accepts the arm-ioai standing for the release (2026-10-29): the delivery bar stays failing in this record; the release notes say what was and was not measured",
     "s3-relbench-3 (three hours, one A100, four lanes, cold) ran one iteration and delivered no candidate: the first lane's attempt voided by verification, the other three unverified and unjudged when the budget ran out (the finishing cut); the selection among the registered finals scored test AUROC 0.558 against the band's 0.741; a six-hour attempt on the same shape, s3-relbench-4, was launched 22:25Z",
-    "s3-relbench-4 (six hours, one A100, four lanes, cold; the owner's last attempt) reached test AUROC 0.7555 on the runner's selection among the lanes' registered finals, inside the band, and delivered no candidate: the maintainer accepted a change request at iteration one and the candidates failed under the second evaluator; the benchmarks' configs now file no change request"
+    "s3-relbench-4 (six hours, one A100, four lanes, cold; the owner's last attempt) reached test AUROC 0.7555 on the runner's selection among the lanes' registered finals, inside the band, and delivered no candidate: the maintainer accepted a change request at iteration one and the candidates failed under the second evaluator; the benchmarks' configs now file no change request",
+    "the review of 2026-10-30 changed both harnesses' prose after the arms (predictive-modelling 0.3.3, competitive-programming 0.3.2): the record's `harness_current` carries the trees' hashes at re-derivation, the pins stay the trees the arms ran on, and the zero-edit bar reads each launch against its pins",
+    "four builds of the 0.8.0.dev1 wheel served the runs (the `wheels` list, each with its runs by its install stamp): 15:18Z, 17:08Z with the stream split, 18:10Z with the ALE runner and run-folder fixes (784a0136\u2026, the record's wheel until the next build), 19:08Z with the superseded-scan entry (8fe4f735\u2026, the file that survives on the development box; the earlier files were overwritten in place, so the first two builds' hashes are not recorded and are null); the record's wheel is the last build"
   ],
   "transcripts": []
 }

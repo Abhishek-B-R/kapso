@@ -8,8 +8,10 @@ re-derived from the arm archives without live state.
 
 The record directory holds `arms.json`, written by hand as the arms run:
 
-    {"wheel_sha256": "<the wheel every machine installed>",
-     "harness_pins": {"predictive-modelling": "<hash>", "competitive-programming": "<hash>"},
+    {"wheel_sha256": "<the record's wheel, the last build>",
+     "wheels": [{"built": "<stamp>", "sha256": "<hash or null>", "runs": ["s3-ale-1", ...]}, ...],
+     "harness_pins": {"predictive-modelling": {"<hash>": "<the version and why it is accepted>"},
+                      "competitive-programming": {"<hash>": "...", "<hash>": "..."}},
      "ioai_median": 0.8184,
      "runs": {"arm-ale": "s3-ale-1", "swap-ale": null, ...}}
 
@@ -20,12 +22,19 @@ the arm scripts leave it: `arm.log` (the step timestamps and the
 deletion line), `fetched/bench/runs/<name>/campaign/.kapso/` (the launch
 record and the sessions) and the benchmark's final report. The step's
 metrics are what those files evidence: the score, the sessions by kind,
-the skills staged, the hooks mounted and fired, the delegates' reports, the cards
-served, the cost, the machine hours and the tokens per model. The
-run-level bars read the record's metrics; the scan runs live over the
-bundled trees and the harness hashes are compared with the pins, so a
-harness edit after the freeze is a failing bar, not a silent drift.
-The verdict is report.py's, as for every test."""
+the skills staged, the hooks mounted (and fired, where a run's record
+reports them: in these arms the Claude Code runs report an empty list
+and the Codex runs report nothing, so a Codex hook's firing is
+unknown), the delegates
+invoked, completed and reporting, the cards served by identity, the
+cost, the machine hours, the tokens per model, the harness and the wheel
+each launch ran on. The run-level bars read the record's metrics; the
+scan runs live over the bundled trees, and every launch's harness hash
+is checked against the accepted pins of its harness (the frozen tree, and
+the one correction accepted after the freeze), so an arm that ran on an
+unpinned tree is a failing bar, not a silent drift; the bundled trees'
+current hashes are recorded beside them. The verdict is report.py's, as
+for every test."""
 
 import argparse
 import hashlib
@@ -88,22 +97,26 @@ def _campaign_dir(run_dir: Path) -> Path:
 
 
 def _session_facts(campaign: Path) -> Dict[str, Any]:
-    """What the sessions' records evidence: the sessions by module, the
-    pages and skills staged into them (staged, not opened: what the host
-    loaded is not in the record), the hooks mounted and the hooks fired by
-    outcome where the host reports them (Claude Code; Codex reports none,
-    so a Codex arm evidences a hook by its effect, the ledger's token on
-    every submission), the bank tool
-    calls, the delegates with a report, the Claude cost, the tokens per
-    model, and the raw `kaggle competitions submit` commands seen in the
-    streams (the hook's business; the ledger says what went through)."""
+    """What the sessions' records evidence, each kind apart: the sessions
+    by module, the pages and skills staged into them (staged, not opened:
+    what the host loaded is not in the record), the hooks mounted, the
+    hooks fired by outcome where a run's record reports them and the count
+    of runs that report none (a hook's firing is unknown there, not
+    absent; a procedure's token in the ledger evidences the procedure, not
+    the hook), the bank tool calls, the delegates invoked, completed and
+    reporting, the Claude cost, the tokens per model, and the raw `kaggle
+    competitions submit` commands seen in the streams (what the hook is
+    for; the ledger says what went through the procedure)."""
     modules: Counter = Counter()
     pages: set = set()
     skills: set = set()
     mounted: set = set()
     hooks: Counter = Counter()
+    runs_reporting_hooks = 0
+    runs_without_hook_report = 0
     bank_tools: Counter = Counter()
     delegates = 0
+    completed = 0
     reports = 0
     cost = 0.0
     tokens: Dict[str, Counter] = {}
@@ -115,6 +128,10 @@ def _session_facts(campaign: Path) -> Dict[str, Any]:
         skills.update(str(s) for s in record.get("skills") or [])
         mounted.update(str(h) for h in record.get("hooks") or [])
         for run in record.get("runs", []):
+            if run.get("hooks") is None:
+                runs_without_hook_report += 1
+            else:
+                runs_reporting_hooks += 1
             for hook in run.get("hooks") or []:
                 hooks[f"{hook.get('name') or hook.get('event')}:{hook.get('outcome')}"] += 1
             for tool, count in (run.get("tools") or {}).items():
@@ -122,6 +139,7 @@ def _session_facts(campaign: Path) -> Dict[str, Any]:
                     bank_tools[tool.split("__")[-1]] += int(count)
             for delegate in run.get("delegates") or []:
                 delegates += 1
+                completed += 1 if delegate.get("status") == "completed" else 0
                 reports += 1 if delegate.get("report") else 0
             if run.get("cost_usd") is not None:
                 cost += float(run["cost_usd"])
@@ -137,22 +155,29 @@ def _session_facts(campaign: Path) -> Dict[str, Any]:
     return {
         "sessions": dict(modules), "pages": sorted(pages), "skills_staged": sorted(skills),
         "hooks_mounted": sorted(mounted), "hooks_fired": dict(hooks),
-        "bank_tools": dict(bank_tools), "delegates": delegates, "delegate_reports": reports,
+        "hook_evidence": {"runs_reporting": runs_reporting_hooks, "runs_without_report": runs_without_hook_report},
+        "bank_tools": dict(bank_tools),
+        "delegates_invoked": delegates, "delegates_completed": completed, "delegate_reports": reports,
         "claude_cost_usd": round(cost, 2), "tokens": {model: dict(counts) for model, counts in tokens.items()},
         "shell_submit_attempts": attempts,
     }
 
 
-def _served(campaign: Path) -> Dict[str, int]:
-    """The pull log: index calls, and card reads at the two depths."""
+def _served(campaign: Path) -> Dict[str, Any]:
+    """The pull log: index calls, and the cards read at the two depths,
+    each served element carrying its own exposure, by identity."""
     counts: Counter = Counter()
+    read: set = set()
     for log in campaign.glob(".kapso/serving/serving-pull.jsonl"):
         for line in log.read_text(encoding="utf-8").splitlines():
             entry = json.loads(line)
             counts[str(entry.get("tool"))] += 1
-            if entry.get("exposure") in ("read", "evidence-read"):
-                counts["cards_read"] += len(entry.get("served") or entry.get("cards") or [])
-    return {"bank_index_calls": counts.get("bank_index", 0), "cards_read": counts.get("cards_read", 0)}
+            for element in entry.get("served") or []:
+                if element.get("exposure") in ("read", "evidence-read"):
+                    counts["cards_read"] += 1
+                    read.add(str(element["card"]))
+    return {"bank_index_calls": counts.get("bank_index", 0), "cards_read": counts.get("cards_read", 0),
+            "cards_read_uids": sorted(read)}
 
 
 def _score(step: str, run_dir: Path) -> Dict[str, Any]:
@@ -203,7 +228,16 @@ def _score(step: str, run_dir: Path) -> Dict[str, Any]:
     raise ValueError(f"no score reader for step {step}")
 
 
-def build_step(step: str, run_id: str, record_dir: Path) -> Dict[str, Any]:
+def _wheel_of(arms: Dict[str, Any], run_id: str) -> Dict[str, Any]:
+    """The wheel build that served the run, from the record's list; a run
+    no build names is an error in the record, not a guess."""
+    builds = [wheel for wheel in arms["wheels"] if run_id in wheel["runs"]]
+    if len(builds) != 1:
+        raise ValueError(f"{run_id}: {len(builds)} wheel builds name it in arms.json; exactly one must")
+    return {"built": builds[0]["built"], "sha256": builds[0]["sha256"]}
+
+
+def build_step(step: str, run_id: str, record_dir: Path, arms: Dict[str, Any]) -> Dict[str, Any]:
     run_dir = RUNS / run_id
     if not run_dir.is_dir():
         raise FileNotFoundError(f"{step}: no run directory {run_dir}")
@@ -214,8 +248,14 @@ def build_step(step: str, run_id: str, record_dir: Path) -> Dict[str, Any]:
     minutes = round((stamps["fetch"] - stamps["launch"]).total_seconds() / 60, 1)
     campaign = _campaign_dir(run_dir)
     launch = _read_json(campaign / ".kapso" / "launch.json")
-    metrics = {**_score(step, run_dir), **_session_facts(campaign), **_served(campaign), **_machine_bill(log)}
     harness = launch.get("harness") or {}
+    accepted = arms["harness_pins"][harness["name"]]
+    metrics = {
+        **_score(step, run_dir), **_session_facts(campaign), **_served(campaign), **_machine_bill(log),
+        "harness_launch": {"name": harness["name"], "version": harness.get("version"), "hash": harness["hash"],
+                           "pinned": harness["hash"] in accepted},
+        "wheel": _wheel_of(arms, run_id),
+    }
     artifacts = [
         str(Path("..") / run_id / "arm.log"),
         str(Path("..") / run_id / campaign.relative_to(run_dir) / ".kapso" / "launch.json"),
@@ -223,7 +263,9 @@ def build_step(step: str, run_id: str, record_dir: Path) -> Dict[str, Any]:
     return {
         "name": step, "kind": "build", "minutes": minutes, "completed": not metrics.get("error"),
         "artifacts": artifacts, "metrics": metrics,
-        "notes": [f"run {run_id}; harness {harness.get('name')} {harness.get('version')} ({str(harness.get('hash'))[:12]})"],
+        "notes": [f"run {run_id}; harness {harness.get('name')} {harness.get('version')} ({str(harness.get('hash'))[:12]}"
+                  f"{', an accepted pin' if harness['hash'] in accepted else ', NOT a pinned tree'}); "
+                  f"wheel built {metrics['wheel']['built']}"],
     }
 
 
@@ -236,8 +278,12 @@ def scan_step() -> Dict[str, Any]:
             "metrics": {"scan_hits": total, "hits": hits}, "notes": [f"{len(hits)} harnesses scanned live at re-derivation"]}
 
 
-def harness_edits(pins: Dict[str, str]) -> int:
-    return sum(1 for name, pinned in pins.items() if harness_hash(BUNDLED_ROOT / name) != pinned)
+def harness_edits(steps: List[Dict[str, Any]]) -> int:
+    """The launches whose harness tree is not an accepted pin of its
+    harness: the frozen tree, or the one correction accepted after the
+    freeze. Zero says every arm and swap ran on a pinned tree."""
+    return sum(1 for step in steps if not step.get("deferred") and step["kind"] == "build"
+               and not step["metrics"]["harness_launch"]["pinned"])
 
 
 def rederive(record_dir: Path) -> Dict[str, Any]:
@@ -248,11 +294,15 @@ def rederive(record_dir: Path) -> Dict[str, Any]:
         if run_id is None:
             steps.append({"name": step, "deferred": "not run yet"})
         else:
-            steps.append(build_step(step, run_id, record_dir))
+            steps.append(build_step(step, run_id, record_dir, arms))
     by_name = {s["name"]: s for s in steps if not s.get("deferred")}
     metrics: Dict[str, Any] = {
         "scan_hits": by_name["scan"]["metrics"]["scan_hits"],
-        "harness_edits": harness_edits(arms["harness_pins"]),
+        "harness_edits": harness_edits(steps),
+        # The bundled trees as they stand at re-derivation, beside the pins
+        # the arms ran on: an edit after the arms is visible here, never
+        # mistaken for a launch off its pin.
+        "harness_current": {name: harness_hash(BUNDLED_ROOT / name) for name in sorted(arms["harness_pins"])},
     }
     for key, step in (("relbench_test_auroc", "arm-relbench"), ("mle_log_loss", "arm-mle"), ("ale_rating", "arm-ale")):
         if step in by_name:
@@ -268,7 +318,8 @@ def rederive(record_dir: Path) -> Dict[str, Any]:
         "test": TEST, "host": HOST, "machine": "GCP benchmark machines (benchmark_machine.sh), one per arm",
         "run_id": f"{TEST}-{HOST}-{record_dir.name}", "advisory": None, "advisory_dimensions": None,
         "package": {"version": arms.get("version", "0.8.0.dev1"), "wheel_sha256": arms["wheel_sha256"]},
-        "pins": {"suite_sha256": hashlib.sha256(report.SUITE_PATH.read_bytes()).hexdigest(), "wheel_sha256": arms["wheel_sha256"], **{f"harness_{k}": v for k, v in arms["harness_pins"].items()}},
+        "pins": {"suite_sha256": hashlib.sha256(report.SUITE_PATH.read_bytes()).hexdigest(), "wheel_sha256": arms["wheel_sha256"],
+                 **{f"harness_{name}": sorted(accepted) for name, accepted in arms["harness_pins"].items()}},
         "user": {"kind": "scripted"},
         "started": arms.get("started", now), "finished": now,
         "steps": steps, "metrics": metrics, "judge": None,
