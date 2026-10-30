@@ -3232,3 +3232,17 @@ the launch. And the Python flow is asked for as a script of at most a
 dozen lines — the bar's own figure, said in the ticket — while the
 finding stands that the API's blocking `build()` makes the engineer
 reinvent the detached launch in eight of those lines on every host.
+
+## The trigger probe falls back when bubblewrap fails the probes (2026-10-30)
+
+The suite's Codex sessions run under the `read-only` sandbox, and the
+design already said that a machine whose bubblewrap cannot start runs
+them under `danger-full-access`, said in the record. One probe decided
+it, and one probe passed on the third wave's machine while 113 of the 139
+runs that followed failed in the loopback setup at one session at a time
+with three tries each: the failure is the machine's and persistent, not
+intermittent. The probe runs `sandbox_probes` sessions; any failure sends
+the whole suite to `sandbox_fallback`, which must itself start; the
+decision is written beside the results, recorded with the requested
+sandbox, and the step's notes say it. The run was stopped in its probe
+and launched again rather than left to fail two hours later.
