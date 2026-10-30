@@ -147,3 +147,22 @@ def test_a_run_the_deadline_passed_is_not_reached_and_each_run_lands_in_the_ledg
     assert codex_triggers.regrade(out) == 1
     graded = json.loads((out / "results.json").read_text(encoding="utf-8"))["results"]
     assert [row["passed"] for row in graded] == [True, False] and graded[1]["environment"] is None
+
+
+def test_the_probe_decides_the_sandbox_from_several_sessions_and_falls_back_when_bubblewrap_fails(tmp_path, monkeypatch):
+    # One probe passed on the release gate's machine and 113 of 139 runs then
+    # failed in bubblewrap's loopback setup, one session at a time with three
+    # tries each. The probe runs the suite's count of sessions; any failure
+    # sends the suite to the fallback sandbox (which must itself start), the
+    # decision written beside the results and said in the record.
+    outcomes = iter([None, "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted", None, None])
+    monkeypatch.setattr(codex_triggers, "_probe_once", lambda sandbox, project: next(outcomes))
+    assert codex_triggers.probe_sandbox("read-only", tmp_path) == codex_triggers.SUITE["triggers"]["sandbox_fallback"]
+    decision = json.loads((tmp_path / "sandbox.json").read_text(encoding="utf-8"))
+    assert decision["requested"] == "read-only" and decision["used"] == "danger-full-access" and len(decision["probes"]) == 3
+    monkeypatch.setattr(codex_triggers, "_probe_once", lambda sandbox, project: None)
+    assert codex_triggers.probe_sandbox("read-only", tmp_path) == "read-only"
+    always = iter(["bwrap: x"] * 10)
+    monkeypatch.setattr(codex_triggers, "_probe_once", lambda sandbox, project: next(always))
+    with pytest.raises(RuntimeError, match="no sandbox starts"):
+        codex_triggers.probe_sandbox("read-only", tmp_path)

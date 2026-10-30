@@ -896,6 +896,11 @@ def trigger_verdict(ctx: Context) -> Dict[str, Any]:
             verdict = trigger_bar(out_dir, ctx.host.name)
             verdicts.append(verdict["met"])
             notes.append(f"{label}: {verdict['per_skill']}; cross-skill false positives: {verdict['false_positives'] or 'none'}; runs whose sandbox never started (not established): {verdict['environment']}")
+            # The probe's own decision: a machine whose bubblewrap fails the
+            # probes runs the suite under the fallback sandbox, said here.
+            document = json.loads(result_file.read_text(encoding="utf-8")) if ctx.host.name == "codex" else {}
+            if document.get("sandbox") and document.get("sandbox") != document.get("sandbox_requested"):
+                notes.append(f"{label}: the Codex sessions ran under --sandbox {document['sandbox']}; the suite's {document['sandbox_requested']} failed the probe on this machine (the probe's decision, in sandbox.json beside the results)")
         else:
             verdicts.append(False)
             notes.append(f"{label}: the suite wrote no result file")

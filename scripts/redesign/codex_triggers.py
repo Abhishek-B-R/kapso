@@ -68,17 +68,35 @@ def sandbox_failure(stream_file: Path) -> Optional[str]:
     return None
 
 
-def probe_sandbox(sandbox: str, out: Path) -> None:
-    """One session under the chosen sandbox before the suite runs: a
-    sandbox that cannot start fails every run the same way, so the suite
-    stops here with the fix named rather than grading a hundred broken runs."""
-    project = out / "work" / "sandbox-probe"
-    project.mkdir(parents=True, exist_ok=True)
+def _probe_once(sandbox: str, project: Path) -> Optional[str]:
     probe = subprocess.run(["timeout", "180", "codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", sandbox, "-C", str(project), "reply with the word ok"],
                            capture_output=True, text=True, cwd=str(project))
     failure = SANDBOX_FAILURE.search(probe.stderr + probe.stdout)
-    if failure:
-        raise RuntimeError(f"codex's {sandbox} sandbox does not start on this machine ({failure.group(0).strip()}); run with --sandbox danger-full-access and say so in the record")
+    return failure.group(0).strip() if failure else None
+
+
+def probe_sandbox(sandbox: str, out: Path) -> str:
+    """The sandbox the suite runs under, decided before the runs: the
+    chosen one when `sandbox_probes` sessions start under it; the suite's
+    `sandbox_fallback` when any probe fails on bubblewrap, since a machine
+    whose loopback setup fails intermittently fails most runs the same way
+    (one probe passed on the release gate's machine, then 113 of 139 runs
+    failed at one session at a time with three tries each). The decision
+    is written beside the results and said in the record; a fallback that
+    does not start either stops the suite with the fix named."""
+    project = out / "work" / "sandbox-probe"
+    project.mkdir(parents=True, exist_ok=True)
+    probes = [_probe_once(sandbox, project) for _ in range(int(SUITE["triggers"]["sandbox_probes"]))]
+    used = sandbox
+    if any(probes):
+        used = SUITE["triggers"]["sandbox_fallback"]
+        fallback = _probe_once(used, project)
+        if fallback:
+            raise RuntimeError(f"codex's {sandbox} sandbox fails on this machine ({next(p for p in probes if p)}) and so does {used} ({fallback}); no sandbox starts")
+    (out / "sandbox.json").write_text(json.dumps({"requested": sandbox, "used": used, "probes": probes}, indent=1) + "\n", encoding="utf-8")
+    if used != sandbox:
+        print(f"the {sandbox} sandbox failed {sum(1 for p in probes if p)} of {len(probes)} probes ({next(p for p in probes if p)}); the suite runs under {used}, said in the record")
+    return used
 
 
 def cases(evals: Path = EVALS, tag: Optional[str] = None, pattern: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -304,7 +322,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     skipped = [case["name"] for case in selected if SKIPPED_KIND in case["tags"]]
     selected = [case for case in selected if SKIPPED_KIND not in case["tags"]]
     jobs = [(case, run) for case in selected for run in range(1, args.runs + 1)]
-    probe_sandbox(args.sandbox, out)
+    sandbox = probe_sandbox(args.sandbox, out)
     deadline = time.monotonic() + args.deadline_seconds if args.deadline_seconds is not None else None
     # Each run's row is appended as it ends, so a probe cut short from
     # outside still leaves what it measured; a run the deadline passed is
@@ -317,7 +335,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if deadline is not None and time.monotonic() >= deadline:
             row = not_reached(case, run, args.deadline_seconds)
         else:
-            row = run_case(case, run, out, args.model, args.effort, args.timeout, args.sandbox)
+            row = run_case(case, run, out, args.model, args.effort, args.timeout, sandbox)
         with lock, open(ledger, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(row) + "\n")
         return row
@@ -325,7 +343,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(one, jobs))
     (out / "results.json").write_text(json.dumps({
-        "model": args.model, "effort": args.effort, "runs": args.runs, "tag": args.tag, "sandbox": args.sandbox,
+        "model": args.model, "effort": args.effort, "runs": args.runs, "tag": args.tag, "sandbox": sandbox, "sandbox_requested": args.sandbox,
         "skipped": skipped, "results": results,
     }, indent=1) + "\n", encoding="utf-8")
     text = report(results, skipped)
