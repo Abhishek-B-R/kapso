@@ -860,6 +860,7 @@
     "sandbox_retry_seconds": 5,
     "sandbox_probes": 3,
     "sandbox_fallback": "danger-full-access",
+    "sandbox_switch_after": 3,
     "deadline_margin_seconds": 900
   },
   "released": {

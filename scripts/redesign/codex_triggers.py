@@ -298,6 +298,11 @@ def regrade(out: Path) -> int:
     return 0 if all(r["passed"] for r in document["results"]) else 1
 
 
+def row_case(selected: Sequence[Dict[str, Any]], row: Dict[str, Any]) -> Dict[str, Any]:
+    """The case a result row belongs to, by name."""
+    return next(case for case in selected if case["name"] == row["case"])
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tag", default="main")
@@ -322,29 +327,63 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     skipped = [case["name"] for case in selected if SKIPPED_KIND in case["tags"]]
     selected = [case for case in selected if SKIPPED_KIND not in case["tags"]]
     jobs = [(case, run) for case in selected for run in range(1, args.runs + 1)]
-    sandbox = probe_sandbox(args.sandbox, out)
     deadline = time.monotonic() + args.deadline_seconds if args.deadline_seconds is not None else None
     # Each run's row is appended as it ends, so a probe cut short from
     # outside still leaves what it measured; a run the deadline passed is
     # recorded as not reached rather than started.
     ledger, lock = out / "results.jsonl", threading.Lock()
     ledger.write_text("", encoding="utf-8")
+    # The sandbox is the probe's decision, and then the runs' own: three
+    # probes started under `read-only` on the fourth launch of the release
+    # gate's S2 on Codex and 15 of the next 18 runs failed in bubblewrap's
+    # loopback setup — the failure comes and goes with the machine's other
+    # sessions, which no probe sees. `sandbox_switch_after` failures in a
+    # row send the rest of the suite to the fallback (once it starts), and
+    # every run that failed in the sandbox is run again under it at the end;
+    # the switch is written beside the results and said in the record.
+    fallback, switch_after = SUITE["triggers"]["sandbox_fallback"], int(SUITE["triggers"]["sandbox_switch_after"])
+    state: Dict[str, Any] = {"sandbox": probe_sandbox(args.sandbox, out), "streak": 0, "switched_after_runs": None, "runs": 0}
+
+    def append(row: Dict[str, Any]) -> None:
+        with open(ledger, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row) + "\n")
 
     def one(job: Any) -> Dict[str, Any]:
         case, run = job
         if deadline is not None and time.monotonic() >= deadline:
             row = not_reached(case, run, args.deadline_seconds)
         else:
-            row = run_case(case, run, out, args.model, args.effort, args.timeout, sandbox)
-        with lock, open(ledger, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(row) + "\n")
+            with lock:
+                sandbox_now = state["sandbox"]
+            row = {**run_case(case, run, out, args.model, args.effort, args.timeout, sandbox_now), "sandbox": sandbox_now}
+        with lock:
+            state["runs"] += 1
+            state["streak"] = state["streak"] + 1 if row.get("environment") else 0
+            if state["sandbox"] != fallback and state["streak"] >= switch_after and _probe_once(fallback, out / "work" / "sandbox-probe") is None:
+                state["sandbox"], state["switched_after_runs"] = fallback, state["runs"]
+                print(f"the {args.sandbox} sandbox failed {state['streak']} runs in a row after {state['runs']} runs; the rest run under {fallback}, said in the record")
+            append(row)
         return row
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(one, jobs))
+    if state["switched_after_runs"] is not None:
+        # The runs the sandbox failed, run again under the fallback: their
+        # first failure is kept on the row, so the record says what the
+        # machine did before it says what the skill did.
+        for index, row in enumerate(results):
+            if row.get("environment") and not row.get("not_reached") and (deadline is None or time.monotonic() < deadline):
+                again = {**run_case(row_case(selected, row), row["run"], out, args.model, args.effort, args.timeout, fallback), "sandbox": fallback, "first_sandbox_failure": row["environment"]}
+                results[index] = again
+                append(again)
+    decision = out / "sandbox.json"
+    probes = json.loads(decision.read_text(encoding="utf-8"))["probes"] if decision.is_file() else []
+    decision.write_text(json.dumps({
+        "requested": args.sandbox, "used": state["sandbox"], "switched_after_runs": state["switched_after_runs"], "probes": probes,
+    }, indent=1) + "\n", encoding="utf-8")
     (out / "results.json").write_text(json.dumps({
-        "model": args.model, "effort": args.effort, "runs": args.runs, "tag": args.tag, "sandbox": sandbox, "sandbox_requested": args.sandbox,
-        "skipped": skipped, "results": results,
+        "model": args.model, "effort": args.effort, "runs": args.runs, "tag": args.tag, "sandbox": state["sandbox"], "sandbox_requested": args.sandbox,
+        "switched_after_runs": state["switched_after_runs"], "skipped": skipped, "results": results,
     }, indent=1) + "\n", encoding="utf-8")
     text = report(results, skipped)
     print(text)

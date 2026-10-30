@@ -166,3 +166,33 @@ def test_the_probe_decides_the_sandbox_from_several_sessions_and_falls_back_when
     monkeypatch.setattr(codex_triggers, "_probe_once", lambda sandbox, project: next(always))
     with pytest.raises(RuntimeError, match="no sandbox starts"):
         codex_triggers.probe_sandbox("read-only", tmp_path)
+
+
+def test_the_runs_switch_to_the_fallback_after_a_streak_of_sandbox_failures_and_the_failed_runs_are_run_again(tmp_path, monkeypatch, capsys):
+    # The fourth launch of the gate's S2 on Codex: three probes started under
+    # read-only, then 15 of 18 runs failed in bubblewrap. A streak of the
+    # suite's length sends the rest of the suite to the fallback, the runs the
+    # sandbox failed are run again under it at the end, and the record says so.
+    cases = [{"name": f"build-c0{index}", "tags": [], "prompt": "p", "graders": [{"name": "build", "input_match": "build", "min": 1, "max": None}]} for index in range(1, 6)]
+    monkeypatch.setattr(codex_triggers, "cases", lambda tag, pattern=None: cases)
+    monkeypatch.setattr(codex_triggers, "_probe_once", lambda sandbox, project: None)
+    seen = []
+
+    def fake_run(case, run, out, model, effort, timeout, sandbox):
+        seen.append((case["name"], sandbox))
+        failed = sandbox == "read-only" and len([s for s in seen if s[1] == "read-only"]) <= 3
+        loaded = [] if failed else ["kapso-build"]
+        return {"case": case["name"], "run": run, "exit": 1 if failed else 0, "seconds": 1.0, "started": not failed, "loaded": loaded,
+                "graders": codex_triggers.grade(case["graders"], loaded, not failed), "environment": "bwrap: loopback: Failed RTM_NEWADDR" if failed else None, "passed": not failed}
+
+    monkeypatch.setattr(codex_triggers, "run_case", fake_run)
+    out = tmp_path / "probe"
+    assert codex_triggers.main(["--out", str(out), "--runs", "1", "-j", "1"]) == 0
+    assert [s[1] for s in seen] == ["read-only"] * 3 + ["danger-full-access"] * 5, "the streak switches the rest, and the three failed runs are run again under the fallback"
+    document = json.loads((out / "results.json").read_text(encoding="utf-8"))
+    assert document["sandbox"] == "danger-full-access" and document["sandbox_requested"] == "read-only" and document["switched_after_runs"] == 3
+    assert all(row["passed"] and row["sandbox"] == "danger-full-access" for row in document["results"])
+    assert [row.get("first_sandbox_failure") for row in document["results"]][:3] == ["bwrap: loopback: Failed RTM_NEWADDR"] * 3
+    decision = json.loads((out / "sandbox.json").read_text(encoding="utf-8"))
+    assert decision["used"] == "danger-full-access" and decision["switched_after_runs"] == 3
+    assert "the rest run under danger-full-access" in capsys.readouterr().out
