@@ -71,8 +71,10 @@ it there.
   the metric there and in `Measured by` together.
 - The data: `generate.py` (seed 20261024) writes `data/`, `private/` and
   `MANIFEST.json` with the hash of every file; `baseline.py` records
-  `baseline.json` (0.797, bootstrap standard error 0.010). A gradient
-  boosting model with no feature work scores 0.832, so there is room.
+  `baseline.json` (0.797, bootstrap standard error 0.010, measured on the
+  generated data when the example was built, 2026-10-24). A gradient
+  boosting model with no feature work scores 0.832 on the same data, so
+  there is room.
 
 The hold-out is not sealed by this example: the labels sit outside the two
 directories the engine copies into the workspace, and nothing more. Sealing

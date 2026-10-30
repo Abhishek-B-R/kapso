@@ -1,15 +1,15 @@
 ---
 title: "IOAI 2026: Kapso outscored all 471 human contestants"
 sidebarTitle: "IOAI 2026"
-description: "Kapso competed in the IOAI 2026 AI Model Track, scoring 536.07 across six tasks in two fully autonomous six-hour sessions, and took the Grand Master Trophy."
-keywords: ["IOAI 2026", "International Olympiad in AI", "IOAI2", "AI Model Track", "autonomous AI competition", "Grand Master Trophy"]
+description: "Kapso competed in the IOAI 2026 AI Model Track, scoring 536.07 across six tasks in two unattended six-hour sessions, and took the Grand Master Trophy."
+keywords: ["IOAI 2026", "International Olympiad in AI", "IOAI2", "AI Model Track", "unattended AI competition", "Grand Master Trophy"]
 ---
 
 The [International Olympiad in Artificial Intelligence](https://ioai-official.org) is the IMO of the AI era. At IOAI 2026 in Astana, **471 contestants from 108 countries and territories** sat expert-designed problems spanning computer vision, language and optimization, all under a single-GPU budget.
 
-In 2026 the olympiad opened a second arena. [IOAI², the AI Model Track](https://ioai-official.org/ai-model-track/), puts AI systems in the same exam hall: the same [six contest tasks](https://github.com/IOAI-official/IOAI-2026), **two fully autonomous six-hour sessions** of three tasks each, up to 50 submission attempts per task, every solution scored on standardized single-GPU hardware.
+In 2026 the olympiad opened a second arena. [IOAI², the AI Model Track](https://ioai-official.org/ai-model-track/), puts AI systems in the same exam hall: the same [six contest tasks](https://github.com/IOAI-official/IOAI-2026), **two unattended six-hour sessions** of three tasks each, up to 50 submission attempts per task, every solution scored on standardized single-GPU hardware.
 
-Once a session starts, no human may solve, correct, or improve anything. Fourteen AI labs entered as Founding AI Participants. Kapso was one of them. The olympiad's own account of the inaugural track: [What happens when autonomous AI takes on the same tasks as the world's top young AI talents?](https://ioai-official.org/what-happens-when-autonomous-ai-takes-on-the-same-tasks-as-the-worlds-top-young-ai-talents/)
+Once a session starts, no human may solve, correct, or improve anything. Fourteen AI labs entered as Founding AI Participants. Kapso was one of them. The olympiad's own account of the inaugural track: [the organizers' write-up of the AI Model Track's first edition](https://ioai-official.org/what-happens-when-autonomous-ai-takes-on-the-same-tasks-as-the-worlds-top-young-ai-talents/)
 
 ## Results
 
@@ -30,6 +30,14 @@ Once a session starts, no human may solve, correct, or improve anything. Fourtee
 | 5 | Adversarial machine learning: craft imperceptible image perturbations that steer two different vision architectures at once | 97.17 |
 | 6 | Extreme model compression: fit a hidden field with a network under 20k parameters that must generalize and quantify its own uncertainty | 73.23 |
 | | **Total** | **536.07** |
+
+The scores are the organizers': every submission was scored on the track's standardized single-GPU
+hardware during the two unattended six-hour sessions of IOAI 2026 in Astana, and the totals are the
+olympiad's published results for the AI Model Track. Kapso's sessions were launched by Leeroo and ran
+without a human in the loop, as the track requires; the contest sessions' own records are not in
+this repository. The runner as it ships (below) routes every submission through the task root's
+procedure, which records it in the campaign's ledger (the procedure and the organizers' rules are in
+the [benchmark directory](https://github.com/Leeroo-AI/kapso/tree/main/benchmarks/ioai2026)).
 
 ## How Kapso runs it
 
@@ -87,6 +95,6 @@ Full integration notes are in [`benchmarks/ioai2026/`](https://github.com/Leeroo
   </Card>
 </CardGroup>
 
-Related pages: [MLE-Bench](/docs/benchmarks/mle-bench) · [RelBench](/docs/benchmarks/relbench) · [MLE-Bench](/docs/benchmarks/mle-bench)
+Related pages: [MLE-Bench](/docs/benchmarks/mle-bench) · [ALE-Bench](/docs/benchmarks/ale-bench) · [Competitive programming](/docs/harnesses/bundled/competitive-programming)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

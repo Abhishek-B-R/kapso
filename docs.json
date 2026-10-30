@@ -29,7 +29,6 @@
               "docs/index",
               "docs/installation",
               "docs/first-build",
-              "docs/agent-access",
               "docs/coding-agent-skills"
             ]
           },
@@ -50,33 +49,10 @@
             "pages": [
               "docs/harnesses/index",
               "docs/harnesses/use",
+              "docs/harnesses/bundled/predictive-modelling",
+              "docs/harnesses/bundled/competitive-programming",
               "docs/harnesses/write",
               "docs/harnesses/example-trading"
-            ]
-          },
-          {
-            "group": "How it works",
-            "pages": [
-              "docs/evolve/overview",
-              "docs/evolve/architecture",
-              "docs/evolve/execution-flow",
-              "docs/evolve/evaluation-integrity",
-              "docs/evolve/external-evaluation",
-              {
-                "group": "Components",
-                "pages": [
-                  "docs/evolve/orchestrator",
-                  "docs/evolve/search-strategies",
-                  "docs/evolve/parent-selection",
-                  "docs/evolve/cost-aware-selection",
-                  "docs/evolve/mcp-gates",
-                  "docs/evolve/model-routing-retries",
-                  "docs/evolve/coding-agents",
-                  "docs/evolve/feedback-generator",
-                  "docs/evolve/experiment-lifecycle",
-                  "docs/evolve/repo-memory"
-                ]
-              }
             ]
           },
           {
@@ -89,21 +65,37 @@
             ]
           },
           {
-            "group": "Trajectory learning",
-            "pages": [
-              "docs/learning/overview",
-              "docs/learning/bank",
-              "docs/learning/pipeline",
-              "docs/learning/graders",
-              "docs/learning/serving",
-              "docs/learning/development"
-            ]
-          },
-          {
             "group": "Deploy",
             "pages": [
               "docs/deploy/targets",
               "docs/deploy/write-a-target-skill"
+            ]
+          },
+          {
+            "group": "Learn",
+            "pages": [
+              "docs/learn/what-learn-produces",
+              "docs/learn/development-mode"
+            ]
+          },
+          {
+            "group": "How it works",
+            "pages": [
+              "docs/evolve/overview",
+              "docs/evolve/architecture",
+              "docs/evolve/execution-flow",
+              "docs/evolve/evaluation-integrity",
+              "docs/evolve/external-evaluation",
+              "docs/evolve/orchestrator",
+              "docs/evolve/search-strategies",
+              "docs/evolve/parent-selection",
+              "docs/evolve/cost-aware-selection",
+              "docs/evolve/mcp-gates",
+              "docs/evolve/model-routing-retries",
+              "docs/evolve/coding-agents",
+              "docs/evolve/feedback-generator",
+              "docs/evolve/experiment-lifecycle",
+              "docs/evolve/repo-memory"
             ]
           },
           {
@@ -137,6 +129,10 @@
   },
   "redirects": [
     {
+      "source": "/docs/agent-access",
+      "destination": "/docs/coding-agent-skills"
+    },
+    {
       "source": "/docs/deployment/overview",
       "destination": "/docs/deploy/targets"
     },
@@ -162,7 +158,7 @@
     },
     {
       "source": "/docs/evolve/cognitive-memory",
-      "destination": "/docs/learning/overview"
+      "destination": "/docs/learn/what-learn-produces"
     },
     {
       "source": "/docs/evolve/budget-aware-experimentation",
@@ -267,6 +263,30 @@
     {
       "source": "/docs/evolve/resuming-runs",
       "destination": "/docs/build/resume-and-budgets"
+    },
+    {
+      "source": "/docs/learning/overview",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/bank",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/serving",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/pipeline",
+      "destination": "/docs/learn/development-mode"
+    },
+    {
+      "source": "/docs/learning/graders",
+      "destination": "/docs/learn/development-mode"
+    },
+    {
+      "source": "/docs/learning/development",
+      "destination": "/docs/learn/development-mode"
     }
   ],
   "footer": {

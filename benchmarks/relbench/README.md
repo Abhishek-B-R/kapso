@@ -36,7 +36,7 @@ Board read 2026-10-11:
 | Regression · 9 tasks | NMAE, lower is better | 0.2711 (RT-J; KumoRFM-v2 0.2847) | **0.2476** | 8.7% less error |
 | Recommendations · 10 tasks | MAP, higher is better | 9.3 (ID-GNN) | **18.4** | +97% |
 
-The first two panels of the chart are drawn from a truncated axis (76 AUROC, 0.20 NMAE), because
+The first two panels of the chart are drawn from a truncated axis, its origin at 76 AUROC and 0.20 NMAE, because
 both metrics live in a narrow band far from zero, and a zero-based bar renders a two-point
 AUROC margin as no margin at all. The recommendations panel starts at zero: a near-doubling
 needs no help, and a floor just under 9.3 would draw it as an eightfold gap. The table is the

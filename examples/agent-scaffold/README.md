@@ -2,9 +2,11 @@
 
 An hour-long build that improves the vision-language extractor in
 `repo/optimize.py`, which turns a chart image into the CSV table it shows,
-from about 0.30 to 0.35 accuracy toward the brief's 0.50, with the
-repository's own `evaluate.py` as the judge: 20 percent header match, 80
-percent SMAPE similarity of the numbers, over 100 line charts.
+from wherever the shipped extractor starts (the repository's own
+`evaluate.py`, which you run first, measures it; expected near 0.30 to
+0.35, no run recorded) toward the brief's 0.50, with that `evaluate.py`
+as the judge: 20 percent header
+match, 80 percent SMAPE similarity of the numbers, over 100 line charts.
 
 Recorded result: not recorded yet.
 

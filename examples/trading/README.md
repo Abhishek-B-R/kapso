@@ -3,7 +3,8 @@
 The author's example: a harness (`../harnesses/trading`), a task on it, and
 the probe run an author reads to improve the harness. The task is a daily
 strategy on three synthetic instruments with a trend in them; the shipped
-20/100 moving-average cross scores a Sharpe of 0.14 out of sample, the
+20/100 moving-average cross scores a Sharpe of 0.14 out of sample (measured
+on 2026-10-25 by the example's evaluator, in the recorded run below), the
 brief asks for 1.0, and a faster cross or a volatility-targeted momentum
 signal gets there, so there is room. The harness adds what a bare build
 lacks: a setup session that pins the data as a prepared snapshot, pages on

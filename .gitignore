@@ -240,9 +240,6 @@ leeroopedia_mcp_backend/
 services/leeroopedia-mcp/
 services/backend_search/
 services/wiki-service-backend/
-# E2E track run artifacts
-examples/ml_model_development/e2e/runs/
-
 # fetched run artifacts (large, regenerable from GCS)
 
 # Claim prediction arrays: multi-hundred-MB float dumps that breach GitHub's

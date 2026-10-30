@@ -9,14 +9,28 @@ name: Docs
 # The CLI package and kapso.py are in the path list because the coverage
 # check below guards the docs against *them*. A new command added without a
 # docs page is exactly the drift this workflow exists to catch, and that
-# change touches no file under docs/.
+# change touches no file under docs/. The plugin's skills and manifests, the
+# marketplace, the Context7 file, the benchmarks' READMEs and the package's
+# description are there because the claims lint reads them.
 on:
   pull_request:
     paths:
       - 'docs/**'
       - 'docs.json'
       - '.mintignore'
+      - 'README.md'
+      - 'examples/**'
+      - 'benchmarks/*/README.md'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - 'context7.json'
+      - 'pyproject.toml'
       - 'scripts/check_docs_coverage.py'
+      - 'scripts/check_snippets.py'
+      - 'scripts/check_docs_geo.py'
+      - 'scripts/check_claims.py'
+      - 'scripts/words_out.txt'
+      - 'scripts/docs_mirror.py'
       - 'src/kapso/cli/**'
       - 'src/kapso/kapso.py'
       - '.github/workflows/docs.yml'
@@ -26,7 +40,19 @@ on:
       - 'docs/**'
       - 'docs.json'
       - '.mintignore'
+      - 'README.md'
+      - 'examples/**'
+      - 'benchmarks/*/README.md'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - 'context7.json'
+      - 'pyproject.toml'
       - 'scripts/check_docs_coverage.py'
+      - 'scripts/check_snippets.py'
+      - 'scripts/check_docs_geo.py'
+      - 'scripts/check_claims.py'
+      - 'scripts/words_out.txt'
+      - 'scripts/docs_mirror.py'
       - 'src/kapso/cli/**'
       - 'src/kapso/kapso.py'
       - '.github/workflows/docs.yml'
@@ -73,6 +99,8 @@ jobs:
       # pages and the examples are one source.
       - name: Check quoted snippets match their files
         run: python3 scripts/check_snippets.py
+      - name: Claims (the words-out list; a result with no provenance)
+        run: python3 scripts/check_claims.py
 
       # Gates only the objective GEO rules — a page opening with prose, an
       # internal link, no banned marketing word or terminology alias. The
@@ -80,3 +108,6 @@ jobs:
       # buys the number at the cost of the prose.
       - name: Check the GEO rules
         run: python3 scripts/check_docs_geo.py
+
+      - name: Check the navigation mirror
+        run: python3 scripts/docs_mirror.py --check

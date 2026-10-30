@@ -18,7 +18,7 @@ kapso experience share https://github.com/acme/kapso-bank.git
 your bank /home/me/.kapso/bank.git shares to https://github.com/acme/kapso-bank.git
 ```
 
-`share` attaches the URL as the bank's `origin` and pushes `main` with its tags, plain, never forced: a remote holding unrelated history is refused in git's words, and so is one your credentials cannot reach, before anything is touched. A bank that does not exist yet is created first. From then on every [`learn()`](/docs/learning/overview) pushes its lesson commit there, `kapso experience update` pulls the remote's `main` (fast-forward; a history that does not is an error), and the intro a campaign reads says the cards are *measured by you and your team*. The repository is yours to create, with `gh` or in the browser; `kapso experience list` shows where your bank shares to.
+`share` attaches the URL as the bank's `origin` and pushes `main` with its tags, plain, never forced: a remote holding unrelated history is refused in git's words, and so is one your credentials cannot reach, before anything is touched. A bank that does not exist yet is created first. From then on every [`learn()`](/docs/learn/what-learn-produces) pushes its lesson commit there, `kapso experience update` pulls the remote's `main` (fast-forward; a history that does not is an error), and the intro a campaign reads says the cards are *measured by you and your team*. The repository is yours to create, with `gh` or in the browser; `kapso experience list` shows where your bank shares to.
 
 ```python
 kapso.share_experience("https://github.com/acme/kapso-bank.git")
@@ -60,8 +60,8 @@ Loading never pulls, so `update` is the one network step: `mine` takes its remot
   <Card title="Use experience on a build" icon="play" href="/docs/experience/use">
     Load what you share or read; what the sessions see
   </Card>
-  <Card title="The lesson bank" icon="database" href="/docs/learning/bank">
-    What is on a card, and the repository's layout
+  <Card title="The lesson bank" icon="database" href="/docs/learn/development-mode">
+    The repository's layout and invariants; what is on a card is under What learn produces
   </Card>
   <Card title="Add a source" icon="plus" href="/docs/experience/add">
     Your bank, the hosted gate, an index
@@ -71,6 +71,6 @@ Loading never pulls, so `update` is the one network step: `mine` takes its remot
   </Card>
 </CardGroup>
 
-Related pages: [What experience is](/docs/experience) · [Use experience on a build](/docs/experience/use) · [Add a source](/docs/experience/add) · [The lesson bank](/docs/learning/bank) · [Experience reference](/docs/reference/experience)
+Related pages: [What experience is](/docs/experience) · [Use experience on a build](/docs/experience/use) · [Add a source](/docs/experience/add) · [The lesson bank](/docs/learn/what-learn-produces) · [Experience reference](/docs/reference/experience)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

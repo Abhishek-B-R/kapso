@@ -10,12 +10,12 @@ computer vision and language to optimization under a single GPU budget.
 
 In 2026 the olympiad opened a second arena. [IOAI², the AI Model Track](https://ioai-official.org/ai-model-track/),
 puts AI systems in the same exam hall: the same
-[six contest tasks](https://github.com/IOAI-official/IOAI-2026), two fully autonomous 6 hour
+[six contest tasks](https://github.com/IOAI-official/IOAI-2026), two unattended 6 hour
 sessions with three tasks each, up to 50 submission attempts per task, every solution scored
 on standardized single GPU hardware. Once a session starts, no human may solve, correct, or
 improve anything. Fourteen AI labs entered as Founding AI Participants; Kapso was one of them.
 The olympiad's own account of the inaugural track:
-[What happens when autonomous AI takes on the same tasks as the world's top young AI talents?](https://ioai-official.org/what-happens-when-autonomous-ai-takes-on-the-same-tasks-as-the-worlds-top-young-ai-talents/)
+[the organizers' write-up of the AI Model Track's first edition](https://ioai-official.org/what-happens-when-autonomous-ai-takes-on-the-same-tasks-as-the-worlds-top-young-ai-talents/)
 
 ## Results
 

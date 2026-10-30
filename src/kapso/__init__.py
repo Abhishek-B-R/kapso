@@ -1,6 +1,6 @@
 # Kapso Agent
 #
-# Long-running agents that optimize AI and Data systems, and learn from every experience.
+# Turn coding-agent output into verified outcomes, not review debt: plug in the harness for your domain, set the goal, every step traced.
 #
 # Usage:
 #     from kapso import Kapso

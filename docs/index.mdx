@@ -1,13 +1,15 @@
 ---
-title: "Kapso: long-running agents for AI and Data"
+title: "Kapso: verified outcomes from coding agents"
 sidebarTitle: "What is Kapso"
-description: "Kapso, by Leeroo, is a team of long-running agents that optimize AI and Data systems, and learn from every experience: write a brief and it runs a campaign of candidate solutions, measured against your evaluator, until the objective is met."
-keywords: ["Kapso", "long-running agents", "automated ML", "experiment campaigns", "optimization engine", "MLE-Bench", "RelBench"]
+description: "Kapso, by Leeroo, turns coding-agent output into verified outcomes, not review debt: plug in the harness for your domain, set the goal, and it works the goal with an evaluation the agents cannot touch, every step traced."
+keywords: ["Kapso", "coding agents", "verified outcomes", "harness", "experiment campaigns", "MLE-Bench", "RelBench"]
 ---
 
-Kapso is a team of long-running agents that optimize AI and Data systems. Write a brief and it runs a campaign: it designs candidate solutions, has coding agents implement each one on its own branch, measures how far each is from the objective with an evaluator it cannot touch, and keeps refining the closest until the objective is met. The result ships to your infrastructure.
+Coding agents burn tokens and hand back diffs you have to review. Kapso runs them differently. You plug in a harness for your domain and set a goal; it works the goal until it is met or the budget is spent, measuring every attempt with an evaluation the agents cannot touch and keeping every step on record. What comes back is a verified outcome: the branch that met the goal, or the best the budget reached, with the evaluation that measured it, ready to deploy as running software.
 
-Kapso learns from every experience. When a campaign ends, it studies its own work: which ideas closed the distance to the objective, which did not, and under what conditions. Each finding is kept as a lesson with the evidence that earned it, and a lesson stays trusted only as long as it keeps holding up. Kapso also reads outside your walls, repositories and papers, and folds what it finds into the same knowledge hub. Every new campaign begins from that hub, so it starts with what earlier work already established, about the problem and about your systems.
+A harness teaches Kapso one kind of work: how to propose, build, measure and, where the domain needs it, deploy there, and the tools it needs. Two ship with Kapso, predictive modelling and competitive programming; the examples carry a trading harness, and you write your own for anything with an evaluation.
+
+It learns from experience, and the lessons carry their receipts: one rule per card, the condition it applies under, the measured effect from each run that tested it, a reliability score with its rationale.
 
 Kapso is an open-source Python framework by [Leeroo](https://leeroo.com). The source lives at [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) and the package installs with `pip install leeroo-kapso`.
 
@@ -36,10 +38,10 @@ The same from a shell: `kapso build --brief kapso-brief.md --evaluation evaluati
   <Card title="Build" icon="hammer" href="/docs/build/brief">
     **`build()`** takes a brief and runs the campaign: candidates on their own branches, measured by an evaluator you provide or the campaign builds from your protocol, the best kept. When a session needs a credential or a file only you can provide, the campaign asks and pauses until you reply.
   </Card>
-  <Card title="Deploy" icon="rocket" href="/docs/deployment/overview">
+  <Card title="Deploy" icon="rocket" href="/docs/deploy/targets">
     **`deploy()`** turns a solution into running software, locally, in Docker, or on a cloud platform such as Modal.
   </Card>
-  <Card title="Learn" icon="brain" href="/docs/learning/overview">
+  <Card title="Learn" icon="brain" href="/docs/learn/what-learn-produces">
     **`learn()`** mines a finished campaign into evidence-priced lesson cards the next campaign is served.
   </Card>
   <Card title="Experience" icon="magnifying-glass" href="/docs/experience">
@@ -55,7 +57,7 @@ The same from a shell: `kapso build --brief kapso-brief.md --evaluation evaluati
 
 <CardGroup cols={2}>
   <Card title="IOAI 2026" icon="trophy" href="/docs/benchmarks/ioai-2026">
-    Competing fully autonomously in the AI Model Track, Kapso scored 536.07 — above every one of the 471 human contestants — and took the IOAI² Grand Master Trophy, top 3 among all AI systems entered.
+    In two unattended sessions of the AI Model Track, Kapso scored 536.07, graded by the organizers on their hardware, above every one of the 471 human contestants, and took the IOAI² Grand Master Trophy, top 3 among all AI systems entered.
   </Card>
   <Card title="RelBench" icon="database" href="/docs/benchmarks/relbench">
     First on all three official leaderboards of Stanford's benchmark for predictive ML over relational data: classification, regression and recommendations, ahead of Stanford STAR's RT-J and KumoRFM-v2.
@@ -87,7 +89,7 @@ The [technical report](https://arxiv.org/abs/2601.21526) describes the system in
 | Orchestrator | Runs the experiment loop and tracks the budget |
 | Search strategy | Explores candidate solutions as a tree |
 | Coding agents | Pluggable implementers: Claude Code, Codex, Gemini, OpenHands, OSS Claude Code |
-| Judge | Validates each evaluation against the brief and decides when to stop |
+| Feedback generator | Validates each evaluation against the brief and decides when to stop |
 | Evaluation registry | The evaluator versions a campaign measured with, provided or built, protected |
 | Lesson bank | Evidence-priced cards mined from finished campaigns |
 | Knowledge graph | Repository and research knowledge, searched over Weaviate and Neo4j |
@@ -112,6 +114,6 @@ Kapso connects to [Leeroopedia](https://leeroopedia.com), a curated knowledge ba
   </Card>
 </CardGroup>
 
-Related pages: [Your first build](/docs/first-build) · [The brief](/docs/build/brief) · [Harnesses](/docs/harnesses) · [Deploy](/docs/deployment/overview) · [Learn](/docs/learning/overview) · [Knowledge](/docs/knowledge/overview) · [IOAI 2026](/docs/benchmarks/ioai-2026) · [RelBench](/docs/benchmarks/relbench) · [MLE-Bench](/docs/benchmarks/mle-bench) · [ALE-Bench](/docs/benchmarks/ale-bench) · [Install](/docs/installation) · [CLI reference](/docs/reference/cli)
+Related pages: [Your first build](/docs/first-build) · [The brief](/docs/build/brief) · [Harnesses](/docs/harnesses) · [Deploy](/docs/deploy/targets) · [Learn](/docs/learn/what-learn-produces) · [Experience](/docs/experience) · [IOAI 2026](/docs/benchmarks/ioai-2026) · [RelBench](/docs/benchmarks/relbench) · [MLE-Bench](/docs/benchmarks/mle-bench) · [ALE-Bench](/docs/benchmarks/ale-bench) · [Install](/docs/installation) · [CLI reference](/docs/reference/cli)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

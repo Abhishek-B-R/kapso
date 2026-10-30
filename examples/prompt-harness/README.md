@@ -1,9 +1,10 @@
 # Prompt engineering: a better AIME prompt
 
 An hour-long build that rewrites the prompt template in `repo/optimize.py`
-until accuracy on a subset of AIME 2024 problems climbs from the shipped
-0.10 to 0.20 toward the brief's 0.30 to 0.50, with the repository's own
-`evaluate.py` as the judge.
+until accuracy on a subset of AIME 2024 problems climbs from wherever the
+shipped prompt starts (the repository's own `evaluate.py`, which you run
+first, measures it; expected near 0.10 to 0.20, no run recorded) toward
+the brief's 0.30 to 0.50, with that `evaluate.py` as the judge.
 
 Recorded result: not recorded yet.
 

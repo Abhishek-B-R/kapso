@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     """The CLI's parser, every verb registered: what `main` parses with,
     and what a test parses a documented line against."""
     parser = argparse.ArgumentParser(
-        description="Kapso: Long-running agents that optimize AI and Data systems, and learn from every experience",
+        description="Kapso: turn coding-agent output into verified outcomes, not review debt. Plug in the harness for your domain, set the goal, every step traced",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Commands:
