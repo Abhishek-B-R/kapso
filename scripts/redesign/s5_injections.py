@@ -109,9 +109,10 @@ CLASS_WORDS = {
     "evaluator-crash": re.compile(r"evaluat\w*\s+(crash|fail|error|broke|could not)|labels?\s+(file\s+)?(is\s+|was\s+|were\s+)?(missing|gone|not found|moved|absent)|holdout_labels|hold-?out labels|FileNotFound", re.I),
     "missing-key": re.compile(r"DATA_API_KEY|missing (the )?(api )?key|api key|waiting (on|for) (the|a|your) (key|reply|answer)|inbox request|asked (you )?for the key", re.I),
     "killed-session": re.compile(r"session\s+(was\s+)?(killed|died|terminated|ended|crashed)|(killed|died|terminated)\s+(mid|during)|SIGKILL|exit(ed)?\s+(code\s+)?(137|-9)|run entry (ended|ends) in error|session (ended|exited) (abnormally|in error)", re.I),
-    # "the writer process died", "PID 16983 was gone" (rel-s5-codex) name
-    # the class as plainly as "the writer died" does.
-    "killed-writer": re.compile(r"\bdead\b|writer(\s+process)?\s+(is\s+|was\s+)?(gone|dead|killed|died)|pid \d+ (is|was) gone|no longer running|not running|process\s+(is\s+|was\s+)?(gone|died|killed)|heartbeat\s+(stopped|stale|is old)", re.I),
+    # "the writer process died", "PID 16983 was gone", "the campaign died …
+    # PID 16763 disappeared, leaving a stale 'running' status" (rel-s5-codex)
+    # all name the writer gone as plainly as "the writer died".
+    "killed-writer": re.compile(r"\bdead\b|(writer|campaign|main)(\s+process)?\s+(is\s+|was\s+)?(gone|dead|killed|died)|pid \d+ (is |was )?(gone|dead|disappeared)|no longer running|not running|process\s+(is\s+|was\s+)?(gone|died|killed)|heartbeat\s+(stopped|stale|is old)|stale\s+.{0,12}status", re.I),
     "full-disk": re.compile(r"no space left|ENOSPC|disk\s+(is\s+|was\s+)?full|out of (disk )?space|tmpfs|ran out of space", re.I),
     "tampering": re.compile(r"integrity|tamper|modified evaluator|evaluat\w*\s+(was\s+)?(edited|changed|modified|altered)|hash\s+(mismatch|check)|\bvoided\b", re.I),
 }
@@ -119,11 +120,14 @@ FIX_WORDS = {
     "provider-limit": re.compile(r"\bwait\b|retry|retried|rode it out|window|resume", re.I),
     "evaluator-crash": re.compile(r"restore|put (it|them|the labels) back|move (it|them) back|then resume|resume", re.I),
     "missing-key": re.compile(r"kapso inbox reply|\breply\b|\.env|provide the key|set (the )?key", re.I),
-    "killed-session": re.compile(r"went on|carried on|continued|next attempt|moved on|nothing to (do|resume|stop)|no action|on its own|finished normally|completed normally|the (next|second) (iteration|attempt)|iteration 2", re.I),
+    # "recovered from a killed implementation session and finished", "Second
+    # attempt: delivered" (rel-s5-codex) name the fix — the campaign went on
+    # by itself and finished — as plainly as "it carried on".
+    "killed-session": re.compile(r"went on|carried on|continued|recovered|\bfinished\b|next attempt|moved on|nothing to (do|resume|stop)|no action|on its own|finished normally|completed normally|(the |a )?(next|second) (iteration|attempt)|iteration 2", re.I),
     # A resume by another name is the fix named: the second S5 of the release
     # gate found the tmpfs with room again (the driver had removed its filler
     # before asking) and said "relaunch with the same command", which is it.
-    "killed-writer": re.compile(r"--resume|\bresume\b|relaunch|restart|re-?run|run (it )?again", re.I),
+    "killed-writer": re.compile(r"--resume|\bresum(e|ed|ing)\b|relaunch|restart|re-?run|run (it )?again", re.I),
     "full-disk": re.compile(r"free (up )?(the )?(disk|space)|clear (up )?space|delete|remove .*(file|filler)|resume|relaunch|restart|re-?run|run (it )?again", re.I),
     # "requesting restoration of the evaluator", "not as a valid scored
     # result" (rel-s5-codex) name the fix as "restore the evaluator" does.
@@ -294,6 +298,25 @@ def evaluator_crashed(campaign: Path, attempt: Dict[str, Any]) -> bool:
     if CRASH_ON_LABELS.search(f"{evaluation.get('output') or ''}\n{evaluation.get('integrity_error') or ''}"):
         return True
     return session_mentions(campaign, attempt, CRASH_ON_LABELS)
+
+
+def crash_occurred(campaign: Path, trace: Dict[str, Any]) -> bool:
+    """Whether the evaluator crashed on the missing labels at all this
+    campaign — in any attempt's evaluation output, integrity error or
+    sessions — even when a capable agent then restored the labels from a
+    workspace copy (WP7's readability finding) and the attempt went on to
+    score. The injection bit and the plugin had a crash to diagnose; the
+    recovery is the finding, not a miss (rel-s5-codex: the agent restored
+    a hash-matching fixture itself and scored 0.8481, and no attempt was
+    left scoreless, though the crash was in the record and the plugin
+    named it)."""
+    for attempt in trace.get("attempts", []):
+        evaluation = attempt.get("evaluation") or {}
+        if CRASH_ON_LABELS.search(f"{evaluation.get('output') or ''}\n{evaluation.get('integrity_error') or ''}"):
+            return True
+        if session_mentions(campaign, attempt, CRASH_ON_LABELS):
+            return True
+    return False
 
 
 def bank_state(bank: Path) -> Dict[str, Any]:
@@ -487,6 +510,7 @@ class S5:
         # the session did — so both are read. Paired with a null score it
         # stays specific to the crash (a healthy attempt carries a score).
         crashed = [attempt for attempt in trace.get("attempts", []) if evaluator_crashed(campaign, attempt)]
+        crash_seen = bool(crashed) or crash_occurred(campaign, trace)
         turn_1 = self.ask(name, project, f"why did the later attempt of the kapso campaign at ../s5-{name} fail?")
         # A labels file back in a protected directory before the driver
         # restores it was written by the campaign — the thing the record
@@ -501,11 +525,15 @@ class S5:
         turn_2 = self.ask(name + "-2", project, f"the labels file is back where it was; continue the campaign at ../s5-{name}")
         resumed = resumed_after(campaign, asked_at)
         diagnosis = names_class_and_fix(turn_1.text, name)
-        metrics = {"attempts_with_the_crash": len(crashed), "labels_rebuilt_by_campaign": rebuilt_by_campaign, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis, "resumed": resumed}
+        metrics = {"attempts_with_the_crash": len(crashed), "crash_occurred": crash_seen, "labels_rebuilt_by_campaign": rebuilt_by_campaign, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis, "resumed": resumed}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.shell(f"kapso build --output {campaign} --stop", check=False)
+        # The crash is what the plugin had to diagnose; whether an agent then
+        # restored the labels from a workspace copy and re-scored (WP7's
+        # readability finding) does not unmake it. The pass is the crash seen
+        # in the record, the plugin naming the class and the fix, and a resume.
         return self.record_injection(name, [turn_1, turn_2], metrics, artifacts, ["the hold-out labels moved away before the first evaluation: the protected evaluator crashes on every invocation, the engine's own included"],
-                                     bool(crashed) and diagnosis["names_class"] and diagnosis["names_fix"] and resumed, started)
+                                     crash_seen and diagnosis["names_class"] and diagnosis["names_fix"] and resumed, started)
 
     def step_missing_key(self) -> Dict[str, Any]:
         started = time.monotonic()
@@ -761,7 +789,7 @@ def class_completed(name: str, metrics: Dict[str, Any], state: Optional[str]) ->
     driver's), in which case the completion stays as recorded."""
     needed = {
         "provider-limit": ("failures_with_the_limit", "names_class", "names_fix", "resumed"),
-        "evaluator-crash": ("attempts_with_the_crash", "names_class", "names_fix", "resumed"),
+        "evaluator-crash": ("crash_occurred", "names_class", "names_fix", "resumed"),
         "missing-key": ("paused", "request_names_no_value", "authorised_table_fetch_after_reply", "scored_after_resume", "resumed"),
         "killed-session": ("session_killed", "failures", "names_class", "names_fix"),
         "killed-writer": ("injected", "shown_dead", "names_class", "names_fix", "resumed", "attempts_kept"),
@@ -774,7 +802,7 @@ def class_completed(name: str, metrics: Dict[str, Any], state: Optional[str]) ->
     if name == "provider-limit":
         return bool(m["failures_with_the_limit"] and m["names_class"] and m["names_fix"] and (m["resumed"] or state == "done"))
     if name == "evaluator-crash":
-        return bool(m["attempts_with_the_crash"] and m["names_class"] and m["names_fix"] and m["resumed"])
+        return bool(m["crash_occurred"] and m["names_class"] and m["names_fix"] and m["resumed"])
     if name == "missing-key":
         return bool(m["paused"] and m["request_names_no_value"] and m["authorised_table_fetch_after_reply"] and m["scored_after_resume"] and m["resumed"])
     if name == "killed-session":
@@ -805,7 +833,9 @@ def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
             trace_file = out / "artifacts" / f"{name}-trace.json"
             if trace_file.is_file():
                 trace = json.loads(trace_file.read_text(encoding="utf-8"))
-                metrics["attempts_with_the_crash"] = sum(1 for attempt in trace.get("attempts", []) if evaluator_crashed(out / "work" / f"s5-{name}", attempt))
+                campaign = out / "work" / f"s5-{name}"
+                metrics["attempts_with_the_crash"] = sum(1 for attempt in trace.get("attempts", []) if evaluator_crashed(campaign, attempt))
+                metrics["crash_occurred"] = bool(metrics["attempts_with_the_crash"]) or crash_occurred(campaign, trace)
         if "attempts_kept" in metrics and not metrics.get("attempts_before"):
             metrics["attempts_kept"] = None
         if name == "missing-key" and metrics.get("paused"):

@@ -193,6 +193,14 @@ def test_a_crash_is_read_from_the_attempts_own_sessions(tmp_path):
     assert s5.session_mentions(campaign, attempt, "holdout_labels.csv")
     assert not s5.session_mentions(campaign, attempt, "ENOSPC")
     assert not s5.session_mentions(campaign, {"sessions": [{"label": "missing"}]}, "holdout_labels.csv")
+    # The crash counts even when a capable agent then restored the labels and
+    # the attempt went on to score (rel-s5-codex: the crash sat in the session,
+    # the attempt scored 0.8481, and the plugin named the crash): the injection
+    # bit and the plugin had a crash to diagnose, which is what is under test.
+    assert s5.evaluator_crashed(campaign, attempt) and s5.crash_occurred(campaign, {"attempts": [attempt]})
+    scored = {"node": 1, "sessions": [{"label": "generic_exp_1", "module": "implementation"}], "evaluation": {"score": 0.8481}}
+    assert not s5.evaluator_crashed(campaign, scored), "a scored attempt is not a scoreless crash"
+    assert s5.crash_occurred(campaign, {"attempts": [scored]}), "but the crash in its session still occurred"
 
 
 def test_the_request_names_the_variable_and_never_a_value_and_the_diagnosis_names_its_class(tmp_path):
@@ -230,6 +238,9 @@ def test_the_diagnosis_vocabularies_are_disjoint_and_name_the_class(tmp_path):
     assert s5.names_class_and_fix("the writer is dead (pid 19524 is gone); run kapso build --output ../s5-killed-writer --resume", "killed-writer") == {"names_class": True, "names_fix": True}
     # rel-s5-codex's plugin named the class as plainly, in other words.
     assert s5.names_class_and_fix("The campaign's writer process died at the start of iteration 1's implementation. `watch` correctly detected that PID 16983 was gone. I resumed the existing campaign with `--resume --detach`.", "killed-writer") == {"names_class": True, "names_fix": True}
+    # rel-s5-codex's two phrasings, both correct: the campaign/pid gone, the campaign recovered and finished.
+    assert s5.names_class_and_fix("The campaign died at iteration 1's implementation phase: PID 16763 disappeared, leaving a stale 'running' status. I resumed it from its checkpoint.", "killed-writer") == {"names_class": True, "names_fix": True}
+    assert s5.names_class_and_fix("First attempt: terminated by SIGKILL (exit -9). The campaign recovered and finished. Second attempt: delivered a three-model ensemble.", "killed-session") == {"names_class": True, "names_fix": True}
     assert s5.names_class_and_fix("the evaluator is fine", "evaluator-crash") == {"names_class": False, "names_fix": False}
     assert s5.names_class_and_fix("the evaluator crashed: holdout_labels.csv was missing; restore it, then resume", "evaluator-crash") == {"names_class": True, "names_fix": True}
     # s5-claude-8's engineer, rightly: the session got SIGKILL, the campaign finished normally, nothing to resume.
