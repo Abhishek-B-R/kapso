@@ -2876,3 +2876,16 @@ integer beside a rating word as a result, and lets a target or rule mark
 cover its own clause only; its words-out rule reads every visible
 string. The shipped pages were brought to the form rather than the form
 loosened to the pages.
+
+## The repo-memory update withholds what it cannot read (2026-10-30)
+
+`main`'s windowing of the update (#167) sent a file larger than the
+payload budget whole, in a call of its own, so that every line the model
+re-cites is before it. The gate's campaigns commit the example's 1 MB
+dataset, and that file put every update past Codex's input limit: the
+memory never updated after an experiment, on `main` and on the branch
+alike. The update now withholds a changed file that is binary or whose
+payload alone exceeds `repo_memory_update_payload_max_chars` and lists it
+by name and size in the first call, with its evidence kept as it is; the
+budget bounds every call. A file that large is a dataset or a model dump,
+not code the memory cites, so nothing the model is told is cut.

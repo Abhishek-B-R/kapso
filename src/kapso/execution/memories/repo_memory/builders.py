@@ -250,6 +250,24 @@ def _build_toc_from_sections(sections: Dict[str, Any]) -> List[Dict[str, str]]:
     return toc
 
 
+# The NUL heuristic version control uses: a NUL byte in the first 8 KiB marks
+# a binary file.
+_BINARY_PROBE_BYTES = 8192
+
+
+def _is_text_file(path: str) -> bool:
+    with open(path, "rb") as f:
+        return b"\0" not in f.read(_BINARY_PROBE_BYTES)
+
+
+def _format_withheld(withheld: List[Tuple[str, int]]) -> str:
+    """The changed files the update does not show, each by name and size, so
+    the model knows they changed and that their lines are never cited."""
+    return _FILE_SEPARATOR.join(
+        f"=== FILE: {path} ({size} bytes, not shown) ===" for path, size in withheld
+    )
+
+
 def _format_file_payload(file_blobs: List[Tuple[str, Optional[str]]]) -> str:
     """
     Format line-numbered file blobs (see `_read_numbered_text`) into a payload.
@@ -278,8 +296,9 @@ def _window_file_blobs(
     """
     Group file blobs into batches whose formatted payload fits the budget.
 
-    A file is never split: the model must see every line it re-cites, so a
-    file larger than the budget still goes whole, in a batch of its own.
+    A file is never split: the model must see every line it re-cites. The
+    update withholds a file larger than the budget before windowing, so a
+    batch holds at most the budget's worth of whole files.
     """
     batches: List[List[Tuple[str, Optional[str]]]] = [[]]
     batch_chars = 0
@@ -597,27 +616,42 @@ def infer_repo_model_update(
     When the changed files do not fit in `max_payload_chars`, they are
     windowed: one call per batch of whole files, each patching the model the
     previous call produced and validated against that batch's files.
+
+    The memory cites lines of code. A binary file has none, and a file whose
+    payload alone exceeds the budget is a dataset or a model dump, not code
+    (a campaign commits its datasets, and a CLI refuses a prompt past its
+    input limit): neither is shown. The first call lists them by name and
+    size instead, so nothing is cut from what the model is told, and their
+    evidence is kept as it is.
     """
     changed_blobs: List[Tuple[str, Optional[str]]] = []
+    withheld: List[Tuple[str, int]] = []
     for rel in changed_files:
         abs_path = os.path.join(repo_root, rel)
         # A changed file missing from a call's contents belongs to another
         # call, so the call that carries a deleted file has to say so.
-        content = None
-        if os.path.exists(abs_path):
-            content = _read_numbered_text(abs_path)
-        changed_blobs.append((rel, content))
+        if not os.path.exists(abs_path):
+            changed_blobs.append((rel, None))
+            continue
+        blob = (rel, _read_numbered_text(abs_path)) if _is_text_file(abs_path) else None
+        if blob is None or len(_format_file_payload([blob])) > max_payload_chars:
+            withheld.append((rel, os.path.getsize(abs_path)))
+            continue
+        changed_blobs.append(blob)
 
     template = load_prompt("execution/memories/repo_memory/prompts/infer_repo_model_update.md")
     model = previous_model
-    for batch in _window_file_blobs(changed_blobs, max_payload_chars):
+    for index, batch in enumerate(_window_file_blobs(changed_blobs, max_payload_chars)):
         batch_files = [rel for rel, _ in batch]
+        payload = _format_file_payload(batch)
+        if index == 0 and withheld:
+            payload = _FILE_SEPARATOR.join(part for part in (_format_withheld(withheld), payload) if part)
         prompt = render_prompt(
             template,
             {
                 "diff_summary": diff_summary,
                 "previous_model_json": json.dumps(model, indent=2),
-                "changed_payload": _format_file_payload(batch),
+                "changed_payload": payload,
             },
         )
         model = _complete_repo_model(

@@ -34,7 +34,7 @@ This release lands the redesign as one change from the integration branch (`docs
 
 - One packaged `config.yaml` with one override file per project; no modes and no `defaults:` layer (an unknown key is refused by name). `hosts:` carries each role's host and model; `harness:`, `experience:` and `deployment:` are new blocks; `deployment.target` names the default target; `report.leaderboard_size` sizes `kapso report`'s leaderboard.
 - Retired: `serving.enabled` and `serving_scope` (what is loaded is what is served; a source's `scope` rides on its reference, `mine:all` lifts it), `strategies.yaml` and the deploy strategy classes (target skills instead), `budget.min_iteration_seconds_insured` and the handlers' insured floor, the `feedback_generator:` and `coding_agent:` blocks (routes per role under `hosts:`), `knowledge_search.use_knowledge_graph`.
-- From `main` since the branch: `search_strategy.params.parent_policy: weighted` with `parent_sampling` (temperature, offspring penalty, seed); `repo_memory_update_payload_max_chars`; one `expansion_lane_env` entry per lane.
+- From `main` since the branch: `search_strategy.params.parent_policy: weighted` with `parent_sampling` (temperature, offspring penalty, seed); `repo_memory_update_payload_max_chars` (a changed file that is binary or larger than that budget on its own is listed by name and size in the update, never sent: the bundled example's dataset had put every update past Codex's input limit); one `expansion_lane_env` entry per lane.
 
 ## The records
 
