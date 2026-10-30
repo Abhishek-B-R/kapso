@@ -267,10 +267,12 @@ def _header(campaign, status, record, checkpoint, launch, sessions, nodes, sourc
             checkpoint.completed_iterations if checkpoint is not None else None,
             0,
         ),
-        "rejected": (
-            record.rejected_candidates if record is not None
-            else sum(not node["evaluation_valid"] for node in nodes)
-        ),
+        # The design's two words, counted as the VOIDED OR REJECTED section
+        # classifies them (the engine's own `rejected_candidates` counts an
+        # integrity void as rejected, and a reader who followed it called
+        # the void a rejection, 2026-10-30).
+        "voided": sum(entry["reason"].startswith("voided") for entry in _voided(nodes)),
+        "rejected": sum(entry["reason"].startswith("rejected") for entry in _voided(nodes)),
         "delivered": {
             "branch": record.branch if record is not None else None,
             "commit": record.commit if record is not None else None,
@@ -592,6 +594,8 @@ def _header_lines(data: Dict[str, Any]) -> List[str]:
     if header["stop_note"]:
         stopped += f": {header['stop_note']}"
     experiments = f"{header['experiments']} experiment{'s' if header['experiments'] != 1 else ''}"
+    if header["voided"]:
+        experiments += f", {header['voided']} voided"
     if header["rejected"]:
         experiments += f", {header['rejected']} rejected"
     lines.append(_row("stopped", f"{stopped}; {experiments}"))

@@ -106,6 +106,9 @@ def test_the_trading_build_lays_out_the_void_the_timeout_and_the_cards():
     # The harness's void verdict is a rejection in the design's two words (voided
     # is the integrity check's), so a reader tells the two apart by the reason.
     assert void["node"] == 0 and void["reason"].startswith("rejected: the verification found ") and len(void["evidence"]) == 2
+    # The header counts by the same two words (the engine's `rejected_candidates`
+    # counts an integrity void as rejected, and a reader followed it).
+    assert (data["header"]["voided"], data["header"]["rejected"]) == (0, 1)
     assert [(failure["label"], failure["exit"], failure["every_run"]) for failure in data["failures"]] == [
         ("feedback/generic_exp_1", EXIT_ERROR, False), ("generic_exp_0", EXIT_ERROR, False),
         ("generic_exp_1", EXIT_TIMEOUT, False), ("verification/generic_exp_0", EXIT_ERROR, False),
