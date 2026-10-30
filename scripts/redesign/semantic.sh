@@ -79,7 +79,7 @@ driver_cmd() {
             case " ${DRIVER_FLAGS[*]:-} " in *" released "*) wheel_flag="" ;; esac
             echo "python3 scripts/redesign/s1_cold_engineer.py --clone \$PWD --out ~/out --host $HOST $wheel_flag" ;;
     s2)     echo "python3 scripts/redesign/plugin_proof.py --clone \$PWD --out ~/out --host $HOST --user persona:ml-engineer $wheel_flag" ;;
-    s5)     echo "python3 scripts/redesign/s5_injections.py --clone \$PWD --out ~/out" ;;
+    s5)     echo "python3 scripts/redesign/s5_injections.py --clone \$PWD --out ~/out --host $HOST $wheel_flag" ;;
     s6)     echo "python3 scripts/redesign/s6_experience.py --clone \$PWD --out ~/out --host $HOST" ;;
     author) echo "python3 scripts/redesign/author_test.py --clone \$PWD --out ~/out --host $HOST" ;;
     s4)     echo "python3 scripts/redesign/s4_reading.py --clone \$PWD --out ~/out --campaign ~/tampering-campaign" ;;

@@ -66,7 +66,7 @@ from typing import Any, Dict, List, Optional, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plugin_proof  # noqa: E402
 import status_timeline  # noqa: E402
-from plugin_proof import CAMPAIGN_GRACE_SECONDS, SUITE, ClaudeHost, Context, UserMode, codex_session_note, record_step, shell_step, status_of, wait_for  # noqa: E402
+from plugin_proof import CAMPAIGN_GRACE_SECONDS, SUITE, ClaudeHost, CodexHost, Context, UserMode, codex_session_note, record_step, shell_step, status_of, wait_for  # noqa: E402
 from status_timeline import heartbeat_seconds  # noqa: E402
 
 BUDGET = SUITE["builds"]["s5"]
@@ -118,8 +118,11 @@ FIX_WORDS = {
     "evaluator-crash": re.compile(r"restore|put (it|them|the labels) back|move (it|them) back|then resume|resume", re.I),
     "missing-key": re.compile(r"kapso inbox reply|\breply\b|\.env|provide the key|set (the )?key", re.I),
     "killed-session": re.compile(r"went on|carried on|continued|next attempt|moved on|nothing to (do|resume|stop)|no action|on its own|finished normally|completed normally|the (next|second) (iteration|attempt)|iteration 2", re.I),
-    "killed-writer": re.compile(r"--resume|\bresume\b", re.I),
-    "full-disk": re.compile(r"free (up )?(the )?(disk|space)|clear (up )?space|delete|remove .*(file|filler)|resume", re.I),
+    # A resume by another name is the fix named: the second S5 of the release
+    # gate found the tmpfs with room again (the driver had removed its filler
+    # before asking) and said "relaunch with the same command", which is it.
+    "killed-writer": re.compile(r"--resume|\bresume\b|relaunch|restart|re-?run|run (it )?again", re.I),
+    "full-disk": re.compile(r"free (up )?(the )?(disk|space)|clear (up )?space|delete|remove .*(file|filler)|resume|relaunch|restart|re-?run|run (it )?again", re.I),
     "tampering": re.compile(r"not counted|discarded|restore the evaluator|leave the evaluator|do not (edit|modify)|unedited|revert|unchanged", re.I),
 }
 STEP_NAMES = ["provider-limit", "evaluator-crash", "missing-key", "killed-session", "killed-writer", "full-disk", "tampering", "bank-compare"]
@@ -186,6 +189,25 @@ def fixture_row_count(project: Path) -> int:
 
 def names_class_and_fix(text: str, injection: str) -> Dict[str, bool]:
     return {"names_class": bool(CLASS_WORDS[injection].search(text)), "names_fix": bool(FIX_WORDS[injection].search(text))}
+
+
+def launched_after(campaign: Path, since: datetime) -> bool:
+    """Whether the campaign was launched again after ``since``, from its
+    records: the status file's `started_at` (a resume writes the
+    relaunch's time) or the launch receipt's. The release gate's second
+    S5 read three resumes as none by looking for `running` in the minutes
+    after the turn — the plugin had waited inside its turn until the
+    resumed campaign was done."""
+    status = status_of(campaign) or {}
+    resolved = Path(campaign).resolve()
+    receipt_path = resolved.with_name(resolved.name + ".launch.json")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8")) if receipt_path.is_file() else {}
+    times = [status.get("started_at"), receipt.get("started_at")]
+    return any(stamp and datetime.fromisoformat(stamp) > since for stamp in times)
+
+
+def resumed_after(campaign: Path, since: datetime, seconds: int = 300) -> bool:
+    return wait_for(lambda: launched_after(campaign, since), seconds, every=10)
 
 
 def scored_after(scores_before: Dict[Any, Any], attempts: Sequence[Dict[str, Any]]) -> bool:
@@ -296,7 +318,14 @@ class S5:
         self.out = Path(args.out).resolve()
         self.work = self.out / "work"
         self.work.mkdir(parents=True, exist_ok=True)
-        self.ctx = Context(ClaudeHost(), self.clone, self.work, self.out, None, args.machine, user=UserMode("scripted", "claude_code"))
+        # The plugin's host is the run's (`--host`): the release gate's second
+        # S5 ran the plugin on Claude Code under a machine named for Codex,
+        # since the driver took no host. The wheel is pinned in the record
+        # as S2 pins it (`--wheel`), where the first gate runs named the
+        # version alone.
+        host = CodexHost() if args.host == "codex" else ClaudeHost()
+        wheel = Path(args.wheel).resolve() if args.wheel else None
+        self.ctx = Context(host, self.clone, self.work, self.out, wheel, args.machine, user=UserMode("scripted", args.host))
         self.cadence = heartbeat_seconds() if args.cadence is None else args.cadence
         # The bank every campaign is served: the one given, else the seeded
         # fixture (three cards of a real learn) as a bare repo under out/.
@@ -402,8 +431,9 @@ class S5:
         trace = self.trace(campaign)
         failures = [f for f in trace.get("failures", []) if "429" in json.dumps(f) or "rate_limit" in json.dumps(f)]
         turn_1 = self.ask(name, project, f"what happened to the kapso campaign at ../s5-{name}? it does not look right")
+        asked_at = datetime.now(timezone.utc)
         turn_2 = self.ask(name + "-2", project, f"the window is over; continue the campaign at ../s5-{name}")
-        resumed = wait_for(lambda: (status_of(campaign) or {}).get("state") == "running", 300, every=10)
+        resumed = resumed_after(campaign, asked_at)
         diagnosis = names_class_and_fix(turn_1.text, name)
         metrics = {"shim_fired": (shim / "fired").read_text(encoding="utf-8").count("\n") if (shim / "fired").is_file() else 0, "failures_with_the_limit": len(failures),
                    "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis, "resumed": resumed}
@@ -454,8 +484,9 @@ class S5:
         # must say (observed: a session rebuilt it from the generator).
         rebuilt_by_campaign = labels.exists()
         moved.rename(labels)
+        asked_at = datetime.now(timezone.utc)
         turn_2 = self.ask(name + "-2", project, f"the labels file is back where it was; continue the campaign at ../s5-{name}")
-        resumed = wait_for(lambda: (status_of(campaign) or {}).get("state") == "running", 300, every=10)
+        resumed = resumed_after(campaign, asked_at)
         diagnosis = names_class_and_fix(turn_1.text, name)
         metrics = {"attempts_with_the_crash": len(crashed), "labels_rebuilt_by_campaign": rebuilt_by_campaign, "truthful": truthful_within(self.timeline(name), injected_at, self.cadence, expect_terminal=False), **diagnosis, "resumed": resumed}
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text + "\n\n---\n\n" + turn_2.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
@@ -563,8 +594,9 @@ class S5:
         shown_dead = wait_for(lambda: (self.timeline(name) or [{}])[-1].get("shown") in ("DEAD", "FAILED"), int(3 * self.cadence) + 60, every=5)
         shown_after = (self.timeline(name) or [{}])[-1].get("shown")
         turn_1 = self.ask(name, project, f"what happened to the kapso campaign at ../s5-{name}? kapso watch says something is wrong")
+        asked_at = datetime.now(timezone.utc)
         turn_2 = self.ask(name + "-2", project, second_prompt)
-        resumed = wait_for(lambda: (status_of(campaign) or {}).get("state") == "running" and status_timeline.sample(campaign).get("shown") == "RUNNING", 300, every=10)
+        resumed = resumed_after(campaign, asked_at)
         # The resumed campaign is watched for what is left of the step's own
         # budget, not to its end: the claim is that it continues from its
         # checkpoint with the attempts kept, read from the trace, and a
@@ -660,19 +692,22 @@ class S5:
         name = "tampering"
         project = self.project(name)
         campaign = self.launch(name, project)
-        self.wait_phase(campaign, "implementation", 1800)
-        # The implementation runs in a git CLONE of the campaign under
-        # sessions/<branch>/; editing THAT working tree before it commits
-        # carries the edit into the committed branch the integrity check
-        # materialises and verifies. (The campaign root's working tree is
-        # never committed, so an edit there would not reach the check.)
-        def session_evaluators():
-            return [path for path in (campaign / "sessions").glob("*/kapso_evaluation/evaluate.py")]
-        wait_for(lambda: bool(session_evaluators()), 900, every=10)
-        edited = session_evaluators()
-        for evaluator in edited:
-            with open(evaluator, "a", encoding="utf-8") as out:
-                out.write("\n# S5: an edit to the protected evaluator inside the running attempt's session clone\n")
+        # The edit lands in the campaign's own `main` as a commit during the
+        # first ideation: after the harness setup session, which works in
+        # the campaign root, and before the attempt's session clone, which
+        # is made from main's tip — so the clone inherits the edited
+        # evaluator with no diff against its parent for the writer to
+        # notice. (The release gate's first S5 edited the running clone's
+        # working tree; the writer diffed against the parent, restored the
+        # pristine file, and nothing was voided.) The integrity check
+        # materialises the committed branch and reads its evaluator against
+        # the sealed manifest: the void, with the hash evidence.
+        self.wait_phase(campaign, "ideation", 1800)
+        evaluator = campaign / "kapso_evaluation" / "evaluate.py"
+        with open(evaluator, "a", encoding="utf-8") as out:
+            out.write("\n# S5: an edit to the protected evaluator in the campaign's main branch, before the attempt's clone\n")
+        self.ctx.shell(f"git -C {campaign} add kapso_evaluation/evaluate.py && git -C {campaign} -c user.name=S5 -c user.email=s5@kapso.invalid commit -q -m 'S5: the protected evaluator edited in main'")
+        edited = [evaluator]
         injected_at = datetime.now(timezone.utc)
         status = self.finish(name, campaign)
         trace = self.trace(campaign)
@@ -686,7 +721,7 @@ class S5:
         artifacts = [self.ctx.artifact(f"{name}-answers.txt", turn_1.text), self.ctx.artifact(f"{name}-status.json", json.dumps(status, indent=2)), self.ctx.artifact(f"{name}-trace.json", json.dumps(trace, indent=2))]
         self.ctx.state["tampering_campaign"] = str(campaign)
         self.ctx.save()
-        return self.record_injection(name, [turn_1], metrics, artifacts, ["the evaluator edited inside the running attempt's session clone; the integrity check voids the attempt with the hash evidence; this campaign is S4's (left running to its end, never stopped)"],
+        return self.record_injection(name, [turn_1], metrics, artifacts, ["the protected evaluator edited in the campaign's main during the first ideation, before the attempt's clone, so the writer sees no diff to restore; the integrity check voids the attempt with the hash evidence; the campaign is left running to its end, never stopped"],
                                      bool(edited) and bool(integrity_voids) and diagnosis["names_class"], started)
 
     def step_bank_compare(self) -> Dict[str, Any]:
@@ -801,6 +836,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--clone", default=None)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--host", choices=["claude_code", "codex"], default="claude_code", help="the host the plugin's conversations run on")
+    parser.add_argument("--wheel", default=None, help="the wheel the machine installed, pinned in the record by its sha256")
     parser.add_argument("--rederive", action="store_true", help="read an archived run again under the current rules where the archive allows (on the development box); runs nothing")
     parser.add_argument("--bank", default=None, help="a bank with at least one card, loaded into every campaign and compared before and after each injection")
     parser.add_argument("--cadence", type=float, default=None, help="the sampler's cadence; default: the engine config's budget.checkpoint_heartbeat_seconds")
@@ -820,10 +857,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     driver = S5(args)
     record_file = driver.out / "record.json"
     started = datetime.now(timezone.utc)
+    wheel_sha256 = hashlib.sha256(driver.ctx.wheel.read_bytes()).hexdigest() if driver.ctx.wheel else "-"
     record = json.loads(record_file.read_text()) if record_file.exists() else {
-        "test": "S5", "host": "claude_code", "machine": args.machine, "run_id": f"S5-claude_code-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
-        "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": "-"},
-        "pins": {"suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "cadence_seconds": driver.cadence, "bank": str(driver.bank) if driver.bank else None},
+        "test": "S5", "host": args.host, "machine": args.machine, "run_id": f"S5-{args.host}-{started.strftime('%Y%m%dT%H%M%SZ')}", "advisory": args.advisory,
+        "package": {"version": subprocess.run(["kapso", "--version"], capture_output=True, text=True).stdout.strip().split()[-1], "wheel_sha256": wheel_sha256},
+        "pins": {"wheel_sha256": wheel_sha256, "suite_sha256": hashlib.sha256(plugin_proof.SUITE_PATH.read_bytes()).hexdigest(), "cadence_seconds": driver.cadence, "bank": str(driver.bank) if driver.bank else None},
         "user": {"kind": "scripted", "card": None, "interventions": [], "events": [], "pushback": None},
         "started": started.isoformat(timespec="seconds"), "finished": None, "steps": [], "metrics": {}, "notes": [RECONSTRUCTED_LIMIT["note"], *[note for note in [codex_session_note()] if note]], "transcripts": [],
     }

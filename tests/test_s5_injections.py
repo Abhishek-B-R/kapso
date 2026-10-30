@@ -259,3 +259,20 @@ def test_a_score_after_the_reply_may_land_on_the_paused_node_itself():
     assert s5.scored_after(before, [{"node": 0, "evaluation": {"score": None}}, {"node": 1, "evaluation": {"score": 0.8}}])
     assert not s5.scored_after({0: 0.84}, [{"node": 0, "evaluation": {"score": 0.84}}]), "a score the record held before the reply is not one after it"
     assert not s5.scored_after(before, [{"node": 0, "evaluation": {"score": None}}])
+
+
+def test_a_resume_is_read_from_the_campaigns_records_not_from_a_running_state_after_the_turn(tmp_path):
+    # The second S5 of the release gate read three resumes as none: the plugin
+    # waited inside its turn until the resumed campaign had finished, and the
+    # driver looked for `running` afterwards. The records say when the campaign
+    # was launched again: the status's started_at, or the launch receipt's.
+    campaign = tmp_path / "s5-full-disk"
+    (campaign / ".kapso").mkdir(parents=True)
+    asked = datetime(2026, 10, 30, 8, 43, tzinfo=timezone.utc)
+    (campaign / ".kapso" / "status.json").write_text(json.dumps({"state": "done", "started_at": "2026-10-30T07:54:00+00:00"}), encoding="utf-8")
+    assert not s5.launched_after(campaign, asked), "the first launch, before the ask, is no resume"
+    (campaign / ".kapso" / "status.json").write_text(json.dumps({"state": "done", "started_at": "2026-10-30T08:45:10+00:00"}), encoding="utf-8")
+    assert s5.launched_after(campaign, asked), "a campaign relaunched after the ask and already done is a resume"
+    (campaign / ".kapso" / "status.json").write_text(json.dumps({"state": "running", "started_at": "2026-10-30T07:54:00+00:00"}), encoding="utf-8")
+    (tmp_path / "s5-full-disk.launch.json").write_text(json.dumps({"pid": 1, "log": "x", "argv": [], "started_at": "2026-10-30T08:44:00+00:00"}), encoding="utf-8")
+    assert s5.launched_after(campaign, asked), "the launch receipt's time counts before the status is rewritten"
