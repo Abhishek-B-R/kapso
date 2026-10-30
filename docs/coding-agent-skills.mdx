@@ -46,7 +46,7 @@ Six skills, the procedures the commands follow and the agent reaches on its own 
 | Skill | When it fires | What it holds |
 |---|---|---|
 | `kapso-setup` | "set up kapso", a red `doctor` | Detect before asking; install with the method the machine has; the logins; the keys, never printed; `doctor` to green; three closing lines |
-| `kapso-build` | "build X and verify it", "get the AUC above 0.85", `/kapso:build` | Listen for the two things; discover in silence; the brief in one message; at most one more round; the detached launch and the handoff |
+| `kapso-build` | "build X and verify it", "get the AUC above the 0.85 target", `/kapso:build` | Listen for the two things; discover in silence; the brief in one message; at most one more round; the detached launch and the handoff |
 | `kapso-evaluation` | called by `kapso-build` | The evaluator contract; an evaluator found is audited, a criterion without one gets an evaluator built, neither gets candidates proposed; one approval |
 | `kapso-harness` | "write a harness for X", "the attempts keep doing Y" | A first harness proposed from the repository within two minutes; one question per silent module; `check` to green; the improve loop from a trace |
 | `kapso-review` | "what did it do", "is it safe to merge" | The trace and the record read; one message: the diff in outline, the evidence with its version, the voided attempts, the spend, the next action |
@@ -109,7 +109,7 @@ codex mcp add kapso -- kapso-mcp --experience mine:all
 
 ## The docs in the same agent
 
-The plugin gives the agent the procedures; the documentation gives it the facts. The site runs a Model Context Protocol server at `https://docs.leeroo.com/mcp` that exposes search and retrieval over every published page, so an agent can look up a configuration key or a flag and quote the [CLI reference](/docs/reference/cli) or the [Python API](/docs/reference/kapso-api) at the release you installed. The server is read-only and needs no key.
+The plugin gives the agent the procedures; the documentation gives it the facts. The site runs a Model Context Protocol server at `https://docs.leeroo.com/mcp` that exposes search and retrieval over every published page, so an agent can look up a configuration key or a flag and quote the [CLI reference](/docs/reference/cli) or the [Python API](/docs/reference/kapso-api) as published from `main`; the server has one endpoint and no version selection, so what it serves is the latest published documentation, which can run ahead of the release you installed. The server is read-only and needs no key.
 
 <Tabs>
   <Tab title="Claude Code">

@@ -39,7 +39,7 @@ Edits: `docs/` (pages, `docs.json`, `docs/README.md`), `README.md`, `examples/` 
 7. **Start and Experience named per the design**: `agent-access` merged into `coding-agent-skills` as "Kapso in your coding agent" with a redirect, keeping the docs MCP server lines per host and the `llms.txt` rendition; the Experience pages' sidebar titles per the design. Done 2026-10-29: the plugin page is "Kapso in your coding agent" with the docs server's three install lines and the Markdown rendition as a section, `agent-access` deleted behind a redirect (the navigation test pins it), the README's link moved; the Experience sidebar reads What experience is, Your bank on a build, Leeroopedia and indexes, Share a bank, with a Provenance section on the overview.
 8. **The benchmark pages' provenance**: one paragraph per table saying who ran it, on what and when, from WP8's records. Done 2026-10-29: RelBench (the leaderboard submission of 2026-08-26, the July-August campaigns on A100 machines, the official evaluator), MLE-bench (the official submission's three runs: the model, the budget, the machine, the grader), ALE-Bench (one run per problem under its time budget with the official scorer; no date survives, said so), IOAI 2026 (the organizers' scoring on their hardware during the two sessions).
 9. **The examples**: `full-loop` from `ml_model_development` with its old drivers deleted, the four renames, the table, `tests/test_examples_drivers.py`. Done 2026-10-29: `full-loop/run.py` is the loop in twelve lines of code (build, the review, learn, the bank loaded, build again, deploy to `local`) and its README says the loop from the shell and "not recorded yet"; the three old drivers, `e2e/`, their config-test rows and the ignore line are gone, as are five broken gitlinks (old run outputs once committed as submodule entries with no repository behind them); the four renames; `examples/README.md` is the one table with a Result column; the root README's table follows; the drivers' test holds every `run.py` to twelve lines and the API's keywords and every example to a brief, a README and a driver.
-10. **The docs checks green** (`mint validate`, `broken-links`, coverage, snippets, GEO, claims) and the gate; the pull-request review (cross-model), answered here; the rebase onto `redesign` once WP8 merges; the merge. In progress 2026-10-29: the checks and the gate green on every commit; the Claude half of the review answered (the table below); the Codex half, the rebase and the merge follow the arms.
+10. **The docs checks green** (`mint validate`, `broken-links`, coverage, snippets, GEO, claims) and the gate; the pull-request review (cross-model), answered here; the rebase onto `redesign` once WP8 merges; the merge. Done 2026-10-30: the checks and the gate green on every commit; the Claude half of the review answered (the table below); the branch rebased onto `redesign` at WP8's merge (5092a5bc) with the bundled-harness pages brought to the versions and the hook rule that merge carries; the Codex half run on the rebased branch and answered (its table below); the pull request #172.
 
 ## Tests
 
@@ -147,6 +147,45 @@ Clean, per the reviewer: the bundled pages against their sources, every
 config value the Learn pages quote, the condensation's bookkeeping, the
 redirects, the renames, the coverage check's plugin surface, the plugin
 page's merge, the learning claim-safety rule, CLAUDE.md on the diff.
+
+### The pull-request review (Codex half, 2026-10-30)
+
+The same brief, re-pointed at the branch's own diff after the rebase
+(`5092a5bc...HEAD`), the Codex reviewer (gpt-6-astra, xhigh) once the
+arms' machines were gone. Twenty-three findings (two P1, eighteen P2,
+three P3), answered in one commit.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | P1: the development page promised behaviour scenarios and A/B arms block promotion; `develop` promotes on the scorecard's accept, with the gauntlet rolled in, and nothing else | the page and its diagram say so: one wired gate, two operator checks whose verdicts (a semantic FAIL, the A/B `blocking` flag) a person reads (DECISIONS) |
+| 2 | P1: the full-loop shell steps deployed a detached build at once; `deploy` opens a solution record that exists only when the build has finished | `kapso watch campaign-2 --follow` before the deploy, and the sentence that says why; `run.py` builds synchronously |
+| 3 | P2: the front pages promised "the branch that met the goal"; a build can stop short of it | "until it is met or the budget is spent" and "the branch that met the goal, or the best the budget reached, with the evaluation that measured it", on both front pages and in the direction document's TL;DR, with a note of the amendment |
+| 4 | P2: the examples table said the fraud campaign "then protects" the evaluator it builds; the maintainer ships off | the row says what happens: the first node builds the evaluator and every candidate is measured against it |
+| 5 | P2: "an agent-written number is never aggregated", but the report writer's validated scores are what `grade_full` aggregates | the page says what the frame does: the corridor check and the verifier admit a writer's scores, and the frame alone computes the aggregates, deltas and calibration |
+| 6 | P2: twenty observations "per bucket"; any non-empty base forbids null | the thresholds as the config holds them: `calibration_min` pooled in all (a bucket may hold one), accuracy null below `min_settlements` |
+| 7 | P2: "the network is never on the campaign path"; the first load of a bank's URL clones it | the sentence says when the network is touched (the first load, `update`) and how to put the clone in place before an offline launch |
+| 8 | P2: "every card and every page a session reads" is in the pull log; the log is the bank tools' | scoped to bank reads on the Experience overview and the Learn page; a hosted gate's and an index's reads are the session's own record |
+| 9 | P2: the two stop hooks described as unconditional gates; both pass a continuing session and defer to the verifier | the page says: sent back once with the reason, asks once, the verifier is the check |
+| 10 | P2: `harness check` said to report the scorer, compiler and CLI the skills expect | it checks what the manifest declares; the setup session and the preflight establish the tools |
+| 11 | P2: the MLE provenance named one model and three runs without the submission's qualifications | the submission date, GPT-5 and GPT-5-mini on a subset of modules, the hardware, and the padding rule the submission's footnote states, read from the pull request |
+| 12 | P2: the RelBench provenance assigned a run history to every task from one task's records | the submission date kept; the thirteen-lane history scoped to `rel-trial/study-outcome`; the board is the record for the rest |
+| 13 | P2: the ALE provenance made one observation a complete history | one observation per problem, no launch record or run date, the one recorded observation named (ahc008 at 1221) |
+| 14 | P2: the IOAI page asserted the contest submissions' ledgers without a record | the contest sessions' records are not in the repository; the procedure is described as the runner that ships |
+| 15 | P2: two examples' baseline ranges presented as measurements | expected ranges, no run recorded, measured by the reader's first `evaluate.py` run |
+| 16 | P2: the words-out rule skipped headings, card titles, alt text and captions, folded front matter and a phrase wrapped over a line | all read: `visible_strings`, a hand-parsed front matter with continuation lines, `\s+` between a phrase's words; tested on each |
+| 17 | P2: the examples' index README, the package description, the CLI's help line and the Codex manifest's nested strings were outside the lint | all in: every string leaf of a manifest, `project.description`, the parser description; tested on fixtures of each |
+| 18 | P2: the provenance heuristic took a bare verb, an empty table cell, and missed integers beside a rating word; a named person with a date was flagged | provenance is a verb with an actor, a date or a link; a provenance table is read row by row; an integer beside Elo, rating or rank is a result; a mark covers its own clause; tested on the reviewer's cases, and the shipped pages brought to the rule (the ALE README's and the trading, churn and RelBench pages' sentences) |
+| 19 | P2: the docs workflow's triggers omitted the surfaces the lint reads | the plugin, the marketplace, the Context7 file, the benchmarks' READMEs and `pyproject.toml` on both trigger lists |
+| 20 | P2: the drivers' test parsed without compiling and bound nothing | every driver compiles; every call on the Kapso instance names a method the API has and binds its arguments against the signature |
+| 21 | P3: the docs server promised the installed release's reference | it serves the pages published from `main`, which can run ahead of the release installed |
+| 22 | P3: the full-loop README promised output the handles do not print | what `lesson.explain()` and the software handle print, and where the reliability, the evidence, the proof and the record are |
+| 23 | P3: the probe's cost rule reduced to "a cost clause" | the operational rule restored on the Learn page: optional, never the default gate, adopted only where affordable and said so, queued when ignored |
+
+Clean, per the reviewer: the navigation, its mirror and the redirects;
+the renamed examples and their fixtures; `full-loop/run.py` against the
+API (statically); the bundled pages' inventories against the manifests
+and `harness check`; the plugin command coverage; no words-out hit in
+the changed copy; CLAUDE.md on the diff.
 
 ### Decisions taken (How it works ships as it is, with a truth pass; the plugin page is the one copy of its commands; the four domain examples are renamed, not re-harnessed; 2026-10-29)
 

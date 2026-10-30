@@ -60,11 +60,11 @@ Two pages reach every session: `instructions/guardrails.md`, the standing rules 
 
 ### The hooks
 
-- `require-scorer-run`, a stop gate on implementation: no finish without a scorer run over every seed of the task's list (`kapso_datasets/seeds.txt` in the task root).
-- `require-insurance`, a stop gate on implementation of a leaderboard task: no finish before a submission the site holds (pending its score, or scored) is in the ledger; one the CLI refused or the site failed to score is no insurance.
+- `require-scorer-run`, a stop hook on implementation: a finish with no scorer run over every seed of the task's list (`kapso_datasets/seeds.txt` in the task root) is sent back once with the reason. The hook asks once (a session already continuing because of a stop hook passes), so a broken scorer cannot trap a session; the verifier's reproduction of the numbers is the check.
+- `require-insurance`, a stop hook on implementation of a leaderboard task: a finish before a submission the site holds (pending its score, or scored) is in the ledger is sent back once with the reason; one the CLI refused or the site failed to score is no insurance. The hook asks once, as above; the verifier reads the submission on the site.
 - `deny-shell-submit`, on the shell: a raw contest submission typed in the shell is denied where the task root names a submission procedure, since a submission spends shared quota and must leave a record in the ledger.
 
-The harness has no `requirements.txt`: the scorer, the compiler and the contest's command-line tool are the task's and the machine's, and `kapso harness check` reports what the task's skills expect of them.
+The harness has no `requirements.txt`: the scorer, the compiler and the contest's command-line tool are the task's and the machine's. `kapso harness check` checks what the manifest declares (its structure and its `environment`), which here names none of them; the setup session and the contest preflight are where their presence is established.
 
 ## Run a task on it
 

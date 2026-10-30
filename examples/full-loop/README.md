@@ -46,8 +46,14 @@ kapso watch campaign --follow
 kapso trace campaign
 kapso learn campaign
 kapso build --brief kapso-brief.md --repo repo --output campaign-2 --experience mine --detach
+kapso watch campaign-2 --follow
 kapso deploy campaign-2 --target local
 ```
+
+A detached build returns at once; `deploy` opens the campaign's solution
+record, which exists only once the build has finished, so the second
+`watch --follow` waits for it (`run.py` builds synchronously and needs no
+wait).
 
 The second build starts from what the first one established. Whether it
 ends higher is the experiment; this file will carry the numbers once a run
@@ -61,13 +67,18 @@ is recorded.
 - `cd campaign && python evaluate.py --data-dir ./data --seed 0`: re-measured by hand.
 - `kapso trace campaign`: every attempt with its sessions and runs, its
   score and the judge's words, what was rejected and why, what it cost.
-- `lesson.explain()`: the card the first campaign wrote, with its
-  reliability and its evidence.
+- `lesson.explain()`: the lesson's summary, the bank's head before and
+  after, the cards created or updated; the card itself, with its
+  reliability and its evidence, is in the bank (`kapso experience list`
+  names it) and the lesson's reports are beside the trajectory.
 - `campaign-2/.kapso/launch.json`: the second build's experience list, the
   bank pinned at its head; `kapso trace campaign-2` shows what its sessions
   read from it.
-- `campaign-2/.kapso/deployments/1/`: the deployment's record; the handle
-  prints the address the software answers at and the one call that proved it.
+- `campaign-2/.kapso/deployments/1/`: the deployment's record, which
+  `software.record` names; the handle prints its number, target and state,
+  `software.proof` is the call the session proved it with, and
+  `software.run(inputs)` makes another (a `local` deployment is a function
+  call, with no address).
 
 ## Change it
 

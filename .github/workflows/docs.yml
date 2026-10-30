@@ -9,7 +9,9 @@ name: Docs
 # The CLI package and kapso.py are in the path list because the coverage
 # check below guards the docs against *them*. A new command added without a
 # docs page is exactly the drift this workflow exists to catch, and that
-# change touches no file under docs/.
+# change touches no file under docs/. The plugin's skills and manifests, the
+# marketplace, the Context7 file, the benchmarks' READMEs and the package's
+# description are there because the claims lint reads them.
 on:
   pull_request:
     paths:
@@ -18,7 +20,11 @@ on:
       - '.mintignore'
       - 'README.md'
       - 'examples/**'
-      - 'plugin/commands/**'
+      - 'benchmarks/*/README.md'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - 'context7.json'
+      - 'pyproject.toml'
       - 'scripts/check_docs_coverage.py'
       - 'scripts/check_snippets.py'
       - 'scripts/check_docs_geo.py'
@@ -36,7 +42,11 @@ on:
       - '.mintignore'
       - 'README.md'
       - 'examples/**'
-      - 'plugin/commands/**'
+      - 'benchmarks/*/README.md'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - 'context7.json'
+      - 'pyproject.toml'
       - 'scripts/check_docs_coverage.py'
       - 'scripts/check_snippets.py'
       - 'scripts/check_docs_geo.py'

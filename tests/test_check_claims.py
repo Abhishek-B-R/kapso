@@ -1,12 +1,16 @@
 """scripts/check_claims.py: the two claim rules of the docs design
 (docs/plans/docs-and-examples-redesign.md, Checks) on fixture pages — a
 words-out phrase in prose fails, with an `s` or `ly` ending, in the front
-matter and in a manifest's strings, and in code does not; the front-page-only
+matter (folded over lines or not), in a heading, in a tag's visible text,
+across a line break and in a manifest's strings at any depth (the package's
+and the CLI's descriptions too), and in code does not; the front-page-only
 section binds only the front pages; a result beside a metric word with no
-provenance fails while one with provenance, a provenance table's row, a
-rule's number, a target and a heading do not; a paragraph that runs into a
-fence is still read — and the shipped pages pass, and the list is the
-direction document's."""
+provenance fails while one with provenance (a verb with who or when), a
+provenance table's row whose cell is filled, a rule's number, a target and
+a heading do not, a mark belongs to its nearest number, and an integer
+beside a rating word is a result; a paragraph that runs into a fence is
+still read — and the shipped pages pass, and the list is the direction
+document's."""
 
 import importlib.util
 import json
@@ -64,14 +68,44 @@ def test_the_front_matter_is_prose_for_the_words_out_rule(tmp_path, monkeypatch)
 
 
 def test_the_manifests_strings_are_prose_for_the_words_out_rule(tmp_path, monkeypatch):
-    # Regression: the marketplace manifest kept the retired tagline after every plugin manifest lost it.
+    # Regression: the marketplace manifest kept the retired tagline after
+    # every plugin manifest lost it; the Codex manifest's interface strings,
+    # the package's description and the CLI's help line were outside the rule.
     monkeypatch.setattr(check_claims, "REPO", tmp_path)
-    monkeypatch.setattr(check_claims, "MANIFESTS", ("store.json", "ctx.json"))
+    monkeypatch.setattr(check_claims, "MANIFESTS", ("store.json", "ctx.json", "codex.json"))
     page(tmp_path, "store.json", json.dumps({"description": "the long-running agents", "plugins": [{"description": "clean"}]}))
     page(tmp_path, "ctx.json", json.dumps({"description": "clean", "rules": ["Run it autonomously."]}))
+    page(tmp_path, "codex.json", json.dumps({"interface": {"shortDescription": "A team of agents", "defaultPrompt": ["Be autonomous"]}}))
+    page(tmp_path, "pyproject.toml", '[project]\nname = "x"\ndescription = "A self-improving loop"\n')
+    page(tmp_path, "src/kapso/cli/__init__.py", 'parser = argparse.ArgumentParser(description="Kapso: the software factory")\n')
     assert check_claims.scan_manifests(LISTS) == [
         "store.json: words-out 'long-running agent' in description",
         "ctx.json: words-out 'autonomous' in rules[0]",
+        "codex.json: words-out 'team of agents' in interface.shortDescription",
+        "codex.json: words-out 'autonomous' in interface.defaultPrompt[0]",
+        "pyproject.toml: words-out 'self-improving' in project.description",
+    ]
+    assert check_claims.scan_manifests({"everywhere": ["software factory"], "front": []}) == [
+        "src/kapso/cli/__init__.py: words-out 'software factory' in parser description",
+    ]
+
+
+def test_headings_tag_text_folded_front_matter_and_wrapped_phrases_are_read(tmp_path, monkeypatch):
+    # Regression: a heading, a card's title, an image's alt text, a folded
+    # description and a phrase broken over a line all passed the rule.
+    monkeypatch.setattr(check_claims, "REPO", tmp_path)
+    inner = page(tmp_path, "docs/x.mdx", (
+        "---\ntitle: X\ndescription: >\n  a team of\n  agents at work\nkeywords:\n  - clean\n  - autonomous AI\n---\n\n"
+        "## An autonomous software factory\n\n<CardGroup>\n  <Card title=\"Self-improving agents\" href=\"/x\">\n    Clean.\n  </Card>\n</CardGroup>\n\n"
+        "<img src=\"a.png\" alt=\"a team of agents\" />\n\nA team of\nagents, wrapped.\n"
+    ))
+    assert findings(inner) == [
+        "words-out 'team of agents' in the front matter's description",
+        "words-out 'autonomous' in the front matter's keywords",
+        "words-out 'autonomous' in a heading or a tag's text",
+        "words-out 'self-improving' in a heading or a tag's text",
+        "words-out 'team of agents' in a heading or a tag's text",
+        "words-out 'team of agents'",
     ]
 
 
@@ -93,6 +127,8 @@ def test_a_result_beside_a_metric_word_needs_provenance(tmp_path, monkeypatch):
     assert findings(sourced) == []
     table = page(tmp_path, "docs/c.mdx", "| Task | Score | Who ran it |\n|---|---|---|\n| churn | 0.82 AUROC | our campaign, 2026-10-01 |\n")
     assert findings(table) == []
+    blank_cell = page(tmp_path, "docs/c2.mdx", "| Task | Score | Who ran it |\n|---|---|---|\n| churn | 0.82 AUROC | |\n| fraud | 0.71 AUROC | us, 2026-10-01 |\n")
+    assert findings(blank_cell) == ["a number with no provenance: 0.82 beside 'auroc'"]
     threshold = page(tmp_path, "docs/d.mdx", "The frame rejects any score outside centre ± 0.2.\n")
     assert findings(threshold) == []
     heading = page(tmp_path, "docs/e.mdx", "### 3. Extract score\n\nThe generator parses the score.\n")
@@ -111,6 +147,49 @@ def test_the_product_name_is_not_provenance_and_one_decimal_is_a_result(tmp_path
     assert findings(short) == ["a number with no provenance: 81.2 beside 'auroc'"]
     ranked = page(tmp_path, "docs/c.mdx", "The rank of 3.5 came from a run graded by the official scorer on 2026-10-11.\n")
     assert findings(ranked) == []
+
+
+def test_provenance_is_a_verb_with_who_or_when(tmp_path, monkeypatch):
+    # Regression: "measured." alone passed as provenance, a named person with
+    # an ISO date was flagged, and an integer beside a rating word escaped.
+    monkeypatch.setattr(check_claims, "REPO", tmp_path)
+    bare_verb = page(tmp_path, "docs/a.mdx", "Accuracy is 0.91, measured.\n")
+    assert findings(bare_verb) == ["a number with no provenance: 0.91 beside 'accuracy'"]
+    named = page(tmp_path, "docs/b.mdx", "Alice measured accuracy_score at 0.91 on 2026-10-01.\n")
+    assert findings(named) == []
+    linked = page(tmp_path, "docs/c.mdx", "An accuracy of 0.91, recorded in [the run's report](https://example.org/r).\n")
+    assert findings(linked) == []
+    elo = page(tmp_path, "docs/d.mdx", "Kapso reaches a final rating of 1909 Elo against the other agent's 1879.\n")
+    assert findings(elo) == ["a number with no provenance: 1909 beside 'rating'"]     # 1879 sits out of a rating word's reach
+    sourced_elo = page(tmp_path, "docs/e.mdx", "A final rating of 1909 Elo in runs by Leeroo, scored by the official scorer.\n")
+    assert findings(sourced_elo) == []
+    plain_integer = page(tmp_path, "docs/f.mdx", "The score over 12 tasks and 100 charts.\n")
+    assert findings(plain_integer) == []
+
+
+def test_a_mark_covers_the_numbers_of_its_own_clause(tmp_path, monkeypatch):
+    # Regression: a "toward" beside the target exempted the measured
+    # baseline in the clause before it.
+    monkeypatch.setattr(check_claims, "REPO", tmp_path)
+    close = page(tmp_path, "docs/a.mdx", "The shipped model's accuracy is 0.30, toward 0.50.\n")
+    assert findings(close) == ["a number with no provenance: 0.30 beside 'accuracy'"]
+    own = page(tmp_path, "docs/b.mdx", "An accuracy expected near 0.10 to 0.20, no run recorded, toward the brief's 0.50.\n")
+    assert findings(own) == []
+    span = page(tmp_path, "docs/c.mdx", "From a dummy at about 0.50 accuracy toward the brief's 0.78 on the data.\n")
+    assert findings(span) == []
+
+
+def test_a_tag_line_is_read_for_words_and_not_as_a_paragraph(tmp_path, monkeypatch):
+    # Regression: an image's alt text repeating the figure's numbers was a
+    # paragraph of its own, with no provenance of its own; its words are
+    # still read.
+    monkeypatch.setattr(check_claims, "REPO", tmp_path)
+    figure = page(tmp_path, "docs/a.mdx", (
+        "Runs by Leeroo, recorded on 2026-10-11: a rating of 1909 Elo.\n\n"
+        '<Frame caption="A rating of 1909 Elo by a team of agents">\n  <img\n    src="/x.png"\n    alt="Kapso at 1909 Elo"\n  />\n</Frame>\n\n'
+        "![Kapso at 1909 Elo](x.png)\n"
+    ))
+    assert findings(figure) == ["words-out 'team of agents' in a heading or a tag's text"]
 
 
 def test_a_target_or_a_rule_is_read_beside_its_number_not_per_paragraph(tmp_path, monkeypatch):

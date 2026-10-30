@@ -20,10 +20,13 @@ deliberate: "applied research", "auto-research", "iteration engine",
 
 Coding agents burn tokens and hand back diffs you have to review. Kapso runs
 them differently. You plug in a harness for your domain and set a goal; it
-works the goal until it is met, measuring every attempt with an evaluation
-the agents cannot touch and keeping every step on record. What comes back is
-a verified outcome: the branch that met the goal, the evaluation that proved
-it, deployed as running software.
+works the goal until it is met or the budget is spent, measuring every
+attempt with an evaluation the agents cannot touch and keeping every step on
+record. What comes back is a verified outcome: the branch that met the goal,
+or the best the budget reached, with the evaluation that measured it,
+deployed as running software. (The budget clause and "the best the budget
+reached" were added 2026-10-30 by WP10's review: a build can stop short of
+its goal, and the front pages must not promise otherwise.)
 
 A harness teaches Kapso one kind of work: how to propose, build, measure,
 judge and deploy there, and the tools it needs. Harnesses ship for ML

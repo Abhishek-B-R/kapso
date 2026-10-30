@@ -2846,3 +2846,33 @@ The skill says to submit right after the push, before the source
 changes. Binding the digest to a push receipt (the procedure doing the
 push and recording the version it printed) is the first IOAI item after
 the release.
+
+## A learner version is promoted on the scorecard alone; the behaviour and A/B checks are the operator's (2026-10-30)
+
+The learning design wired three gates after grading. What ships promotes
+on the scorecard's `accept`, with the gauntlet's verdict rolled into the
+scorecard; the behaviour scenarios and the A/B arms run as their own
+commands and their verdicts are read by a person. WP10's review found
+the development page promising the three gates; the page now says what
+ships, and wiring the two checks into `develop` is a package after the
+release, not a doc fix.
+
+## The front pages' outcome sentence carries the budget (2026-10-30)
+
+The direction document's TL;DR promised "the branch that met the goal";
+a build can exhaust its budget short of the goal, and the examples say
+so. The sentence on the README, the docs index and the direction
+document now reads "until it is met or the budget is spent" and "the
+branch that met the goal, or the best the budget reached, with the
+evaluation that measured it"; the direction document notes the
+amendment beside its text, as for the deploy clause before it.
+
+## Provenance is a form the lint checks, not a word (2026-10-30)
+
+The claims lint had passed a result on any verb of measurement in its
+paragraph. It now needs the verb with who or when (an actor, a date, a
+link to the record), reads a provenance table row by row, counts an
+integer beside a rating word as a result, and lets a target or rule mark
+cover its own clause only; its words-out rule reads every visible
+string. The shipped pages were brought to the form rather than the form
+loosened to the pages.

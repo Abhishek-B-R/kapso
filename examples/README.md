@@ -15,7 +15,7 @@ directory.
 | Example | Minutes | What it shows | The one command | Result |
 |---|---|---|---|---|
 | [churn-first-build](churn-first-build/README.md) | 45 | your first build: an evaluator present, a baseline, a target, the record | `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach` | recorded in its README |
-| [fraud-no-evaluator](fraud-no-evaluator/README.md) | 45 | no evaluator: the campaign builds one from the brief's protocol, then protects it | `kapso build --brief kapso-brief.md --data data --repo repo --output campaign --detach` | not recorded yet |
+| [fraud-no-evaluator](fraud-no-evaluator/README.md) | 45 | no evaluator: the campaign's first node builds one from the brief's protocol and every candidate is measured against it | `kapso build --brief kapso-brief.md --data data --repo repo --output campaign --detach` | not recorded yet |
 | [pipeline-dbt](pipeline-dbt/README.md) | 30 | a dbt pipeline on DuckDB whose exports carry defects: the data contract made to hold at the staging layer; the third domain a harness author writes for | `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach` | not yet run as a build |
 | [trading](trading/README.md) | 75 | a harness on the build: a setup session, pages and hooks in every session, verification per attempt | `kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach` | recorded in its README |
 | [full-loop](full-loop/README.md) | 45, then the loop | build, the review, learn, build again served the lesson, deploy: a Kaggle tabular model end to end | `python run.py` | not recorded yet |

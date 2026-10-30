@@ -58,7 +58,7 @@
 
 ## What is KAPSO?
 
-Coding agents burn tokens and hand back diffs you have to review. Kapso runs them differently. You plug in a harness for your domain and set a goal; it works the goal until it is met, measuring every attempt with an evaluation the agents cannot touch and keeping every step on record. What comes back is a verified outcome: the branch that met the goal, the evaluation that proved it, ready to deploy as running software.
+Coding agents burn tokens and hand back diffs you have to review. Kapso runs them differently. You plug in a harness for your domain and set a goal; it works the goal until it is met or the budget is spent, measuring every attempt with an evaluation the agents cannot touch and keeping every step on record. What comes back is a verified outcome: the branch that met the goal, or the best the budget reached, with the evaluation that measured it, ready to deploy as running software.
 
 A harness teaches Kapso one kind of work: how to propose, build, measure and, where the domain needs it, deploy there, and the tools it needs. Two ship with Kapso, predictive modelling and competitive programming; the examples carry a trading harness, and you write your own for anything with an evaluation.
 
@@ -315,7 +315,7 @@ Every example is a task: a brief, a starting repository, the data or how to get 
 | Example | What it shows |
 |---------|---------------|
 | [**churn-first-build**](examples/churn-first-build/README.md) | Your first build: an evaluator present, a baseline, a target, the record |
-| [**fraud-no-evaluator**](examples/fraud-no-evaluator/README.md) | No evaluator: the campaign builds one from the brief's protocol, then protects it |
+| [**fraud-no-evaluator**](examples/fraud-no-evaluator/README.md) | No evaluator: the campaign's first node builds one from the brief's protocol and every candidate is measured against it |
 | [**pipeline-dbt**](examples/pipeline-dbt/README.md) | A dbt pipeline on DuckDB whose exports carry defects: the data contract made to hold |
 | [**trading**](examples/trading/README.md) | A harness on the build: a setup session, pages and hooks in every session, verification per attempt |
 | [**full-loop**](examples/full-loop/README.md) | Build, the review, learn, build again served the lesson, deploy: a Kaggle tabular model end to end |

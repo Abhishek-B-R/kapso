@@ -76,7 +76,7 @@ The bank is a git repository at `learning.bank.local_path` (shipped as `~/.kapso
 
 ## How the next campaign reads it
 
-A campaign reads a bank exactly when it loads it: `kapso build --experience mine`, the brief's `Experience` line, or `load_experience("mine")`. There is no serving switch; a build that loads nothing is served nothing, and the network is never on the campaign path: `mine` reads your bank's home, a bank you read is served from its clone in the store, and `kapso experience update` is the one network step.
+A campaign reads a bank exactly when it loads it: `kapso build --experience mine`, the brief's `Experience` line, or `load_experience("mine")`. There is no serving switch; a build that loads nothing is served nothing. `mine` reads your bank's home and a bank you read is served from its clone in the store, so no campaign step touches the network once the clone exists: the first load of a bank's URL clones it into the store, and `kapso experience update <url>` refreshes the clone, which is how to put it in place before a launch with no network.
 
 Serving is an introduction, not an injection. At launch the frame clones each bank at a **pinned head** (a resume re-pins the same head even when the bank moved since), compiles an introduction with one line per source and its provenance, and stages three tools under `.kapso/serving/` in the campaign; the agent decides what to open.
 
@@ -86,9 +86,9 @@ Serving is an introduction, not an injection. At launch the frame clones each ba
 | `bank_get_card(cards, source=)` | Full card bodies; a procedure's code path with it (`source` picks the bank when more than one is loaded) | You want the advice |
 | `bank_get_card_with_evidence(cards, source=)` | The card plus its reliability block and evidence trail | Before you stake real budget on it |
 
-The index is the whole eligible set in plain reliability order, with no `k` cap and no relevance cut. Two things are filtered, and the frame says which: **scope** (under a [harness](/docs/harnesses), `mine` serves the cards scoped `domain` or `harness:<name>`; a card outside is refused by name with the reason; `mine:all` serves every card you measured; a bank you read serves everything it holds) and **quarantine**, silently (decoys and the non-serving states). A card may carry a measurement offer, a *probe*, which rides card reads only, with a cost clause, under `learning.retriever.probe_budget` (shipped at `1`) and for `mine` alone.
+The index is the whole eligible set in plain reliability order, with no `k` cap and no relevance cut. Two things are filtered, and the frame says which: **scope** (under a [harness](/docs/harnesses), `mine` serves the cards scoped `domain` or `harness:<name>`; a card outside is refused by name with the reason; `mine:all` serves every card you measured; a bank you read serves everything it holds) and **quarantine**, silently (decoys and the non-serving states). A card may carry a measurement offer, a *probe*. It rides card reads only, never the index or the introduction; it is optional and never the default gate: the agent adopts its protocol only where that is affordable at the data's scale, and says so, and an ignored probe stays queued; at most `learning.retriever.probe_budget` offers ride a campaign (shipped at `1`), and offers ride `mine` alone, since a bank you read is not yours to measure for.
 
-Every read is logged. The pull log shows which cards the agent opened, at what depth and from which source, which is what grading scores serving from and what credits a cited lesson to the source it was read from.
+Every bank read is logged. The pull log is the bank tools' record: which cards the agent opened, at what depth and from which bank, which is what grading scores serving from and what credits a cited lesson to the bank it was read from (a hosted gate's or an index's reads are in the session's own record).
 
 ## Related
 
