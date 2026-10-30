@@ -105,3 +105,17 @@ def test_a_sandbox_that_never_started_is_the_machines_failure_not_a_miss(tmp_pat
     text = codex_triggers.report(results, [])
     assert text.splitlines()[2].startswith("| build-c01 | 2 | 1/2 |") and text.splitlines()[2].endswith("| 0 | 1 |")
     assert "1 run(s) failed in the sandbox before any skill could be read" in text
+
+
+def test_a_run_whose_sandbox_failed_is_tried_again_before_it_counts(monkeypatch):
+    # The release gate's S2 on Codex: 151 of 178 runs failed in the sandbox,
+    # intermittently, at two sessions at once — the machine's failure; a run is
+    # tried again up to the suite's count, and the last try is the run.
+    outcomes = iter(["bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted", "bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted", None])
+    monkeypatch.setattr(codex_triggers.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(codex_triggers, "_run_case_once", lambda *args: {"environment": next(outcomes), "passed": False})
+    assert codex_triggers.run_case({"name": "build-c01"}, 1, None, "m", "medium", 600, "read-only") == {"environment": None, "passed": False, "tries": 3}
+    always = iter(["bwrap: x"] * 10)
+    monkeypatch.setattr(codex_triggers, "_run_case_once", lambda *args: {"environment": next(always), "passed": False})
+    tries = int(codex_triggers.SUITE["triggers"]["sandbox_tries"])
+    assert codex_triggers.run_case({"name": "build-c01"}, 1, None, "m", "medium", 600, "read-only") == {"environment": "bwrap: x", "passed": False, "tries": tries}

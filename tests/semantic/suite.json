@@ -844,7 +844,10 @@
   "turn_timeout": 1800,
   "triggers": {
     "bar": 0.9,
-    "codex_sandbox": "read-only"
+    "codex_sandbox": "read-only",
+    "codex_jobs": 1,
+    "sandbox_tries": 3,
+    "sandbox_retry_seconds": 5
   },
   "released": {
     "version": "0.7.10"

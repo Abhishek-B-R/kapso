@@ -42,7 +42,8 @@ PLUGIN = ROOT / "plugin"
 EVALS = PLUGIN / "evals"
 ROLLOUTS = Path.home() / ".codex" / "sessions"
 SUITE_PATH = ROOT / "tests" / "semantic" / "suite.json"
-DEFAULT_SANDBOX = json.loads(SUITE_PATH.read_text(encoding="utf-8"))["triggers"]["codex_sandbox"]
+SUITE = json.loads(SUITE_PATH.read_text(encoding="utf-8"))
+DEFAULT_SANDBOX = SUITE["triggers"]["codex_sandbox"]
 SKILL_FILE = re.compile(r"skills/([\w-]+)/SKILL\.md")
 SKILL_TAG = re.compile(r"<skill>\s*<name>([\w-]+)</name>")
 SKIPPED_KIND = "explicit"
@@ -180,6 +181,21 @@ def rollout_lines(thread: str, wait_seconds: float = 10.0) -> List[str]:
 
 
 def run_case(case: Dict[str, Any], run: int, out: Path, model: str, effort: str, timeout: int, sandbox: str) -> Dict[str, Any]:
+    """One case's run, tried again when the host's sandbox failed to start
+    (bubblewrap's loopback setup on a fresh machine, intermittent even at
+    two parallel sessions: 151 of 178 runs in the release gate's S2 on
+    Codex — the machine's failure, never a miss), up to the suite's
+    `sandbox_tries`; the last try's outcome is the run's, with the count."""
+    tries = int(SUITE["triggers"]["sandbox_tries"])
+    for attempt in range(1, tries + 1):
+        result = _run_case_once(case, run, out, model, effort, timeout, sandbox)
+        if result["environment"] is None or attempt == tries:
+            return {**result, "tries": attempt}
+        time.sleep(float(SUITE["triggers"]["sandbox_retry_seconds"]))
+    raise AssertionError("unreachable: the last try returns")
+
+
+def _run_case_once(case: Dict[str, Any], run: int, out: Path, model: str, effort: str, timeout: int, sandbox: str) -> Dict[str, Any]:
     project = out / "work" / f"{case['name']}-{run}"
     if project.exists():
         shutil.rmtree(project)
@@ -256,7 +272,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--effort", default="medium")
     parser.add_argument("--timeout", type=int, default=600, help="seconds per run; a run that overstays ends with exit 124 and counts as it stands")
     parser.add_argument("--sandbox", default=DEFAULT_SANDBOX, help="codex's sandbox for the sessions (the suite's triggers.codex_sandbox); a machine whose bwrap cannot start needs danger-full-access, said in the record")
-    parser.add_argument("-j", "--jobs", type=int, default=2)
+    parser.add_argument("-j", "--jobs", type=int, default=int(SUITE["triggers"]["codex_jobs"]),
+                        help="sessions at once (the suite's triggers.codex_jobs: one, since the sandbox failed under two on a fresh machine)")
     parser.add_argument("--out", default=None)
     parser.add_argument("--regrade", default=None, help="a run's output directory: grade its results again, run nothing")
     args = parser.parse_args(argv)
