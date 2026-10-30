@@ -782,7 +782,9 @@
     "model": "vertex_ai/gemini-4-argon",
     "passes": 2,
     "vertex_project": "gen-lang-client-0664337543",
-    "vertex_location": "global"
+    "vertex_location": "global",
+    "transport_retries": 2,
+    "timeout_seconds": 600
   },
   "readers": {
     "claude_code": {

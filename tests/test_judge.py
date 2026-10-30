@@ -193,7 +193,14 @@ def test_a_quote_keeps_a_tokens_own_underscore_and_may_run_on_over_many_lines():
     assert not judge.quote_on(lines, "1", "the key keepme is read"), "an underscore inside a token is not markdown"
     assert judge.quote_on(["L1: _emphasised_ words"], "1", "emphasised words")
     assert judge.quote_on(lines, "2", "one two three four five"), "a quotation that starts on the cited line may run on"
-    assert not judge.quote_on(lines, "3", "one two three"), "it must start on the cited line"
+    # It must start on the cited line, or the one before or after it: a judge
+    # counting past a fence or a brace cites one off (rel-s4-codex cited the
+    # `{` line for the `"branch"` line below it, twice); two lines off is not
+    # the citation.
+    assert judge.quote_on(lines, "3", "one two three"), "one line before the citation is the material's"
+    assert judge.quote_on(lines, "1", "one two"), "one line after the citation is the material's"
+    assert not judge.quote_on(lines, "4", "one two three"), "two lines off is not the citation"
+    assert not judge.quote_on(lines, "6", "three four"), "nor two lines the other way"
     # A line that is a JSON string carries its escapes; the judge quotes the
     # words it reads (rel-s4-claude's grading died on `—` against an em dash).
     escaped = ['L1:     "feedback": "## Verdict: 0.8471 vs target 0.85 \\u2014 gap 0.0029. \\"Not achieved.\\"\\nNext line",']

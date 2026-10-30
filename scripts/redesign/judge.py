@@ -216,23 +216,35 @@ def quote_on(lines: Sequence[str], label: str, quote: str) -> bool:
         text = text.replace('\\"', '"').replace("\\n", " ").replace("\\t", " ").replace("\\\\", "\\")
         return " ".join(re.sub(r"[*`~]", "", text).split())
     wanted = folded(quote)
-    first = folded(lines[number - 1])
     if not wanted:
         # A quote that is nothing but marks (a fence line, cited as the brief
         # the host quoted back) is on its line when the line is that exact
         # mark; an empty quote matches nothing (three re-judges died on it).
         raw = re.sub(r"^L\d+:\s?", "", lines[number - 1]).strip()
         return bool(raw) and quote.strip() == raw
-    window = " ".join([first, *(folded(line) for line in lines[number:])])
-    start = window.find(wanted)
-    return 0 <= start < len(first)   # it begins on the cited line, whatever it runs on to
+    # It begins on the cited line, whatever it runs on to — or on the line
+    # before or after it: a judge counting past a fence or a brace cites
+    # one off (rel-s4-codex: `"branch": "generic_exp_1",` cited at L41, the
+    # line above it `{`, in two of three replies), and a quote one line
+    # from its citation is the material's, never an invention.
+    for index in range(max(1, number - 1), min(len(lines), number + 1) + 1):
+        first = folded(lines[index - 1])
+        window = " ".join([first, *(folded(line) for line in lines[index:])])
+        start = window.find(wanted)
+        if 0 <= start < len(first):
+            return True
+    return False
 
 
 # ------------------------------------------------------------------- calls
 def ask(prompt: str, settings: dict) -> str:
+    # The transport's own retries and a bound on the wait: the S4 Codex
+    # grading of the third wave died on a Vertex connection timeout with
+    # both readings archived, and the readings were judged again by hand.
     response = litellm.completion(
         model=settings["model"], messages=[{"role": "user", "content": prompt}],
         vertex_project=settings["vertex_project"], vertex_location=settings["vertex_location"],
+        num_retries=int(settings["transport_retries"]), timeout=float(settings["timeout_seconds"]),
     )
     return response.choices[0].message.content or ""
 
