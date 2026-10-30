@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from kapso.execution.coding_agents.factory import CodingAgentFactory
-from kapso.execution.inbox import launch_receipt_path
+from kapso.execution.inbox import beside, launch_receipt_path
 
 
 # Available coding agents
@@ -56,7 +56,7 @@ def _inside(path: Path, directory: Path) -> bool:
 def _default_log(campaign: Path) -> Path:
     """The detached run's log: a sibling of the campaign directory, which
     must stay empty for seeding and holds only the campaign itself."""
-    return campaign.with_name(campaign.name + ".log")
+    return beside(campaign, ".log")
 
 
 
@@ -116,6 +116,7 @@ def build_handoff(campaign: Path) -> List[str]:
         f"status:  {campaign / '.kapso' / 'status.json'}",
         f"follow:  kapso watch {campaign} --follow",
         f"inbox:   kapso inbox {campaign}",
+        "runs:    on its own until it ends; this terminal is free",
     ]
 
 

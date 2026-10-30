@@ -484,12 +484,21 @@ def register_campaign(registry_path: str | Path, workspace_dir: str | Path, goal
         fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def beside(campaign: Path, suffix: str) -> Path:
+    """The file that lies beside a campaign directory, named after it: the
+    log, the launch receipt, the learn log. The path is resolved first, so
+    a campaign named `.` or `..` (an empty name, which `with_name`
+    refuses) is the directory it stands for."""
+    resolved = Path(campaign).resolve()
+    return resolved.with_name(resolved.name + suffix)
+
+
 def launch_receipt_path(campaign: Path) -> Path:
     """The detached launch's receipt, beside the log: the child's pid, the
     log's path, the argv and the time, written before the child starts, so
     `kapso watch` can tell a campaign that is starting from one that died
     before writing its status (wp6-observability.md, change 7)."""
-    return campaign.with_name(campaign.name + ".launch.json")
+    return beside(campaign, ".launch.json")
 
 
 def read_launch_receipt(campaign: Path) -> Optional[Dict[str, Any]]:
