@@ -911,11 +911,18 @@ def step_triggers(ctx: Context) -> Dict[str, Any]:
     # notes it, so a verdict on an unsandboxed session is read as such.
     sandbox = f" --sandbox {ctx.triggers_sandbox}" if ctx.host.name == "codex" and ctx.triggers_sandbox else ""
     # The two suites share the step's own budget: the main cases take most
-    # of it, the ten held-out cases a quarter (a run past it reads as the
-    # step's failure on minutes, never an unbounded subprocess).
+    # of it, the ten held-out cases a quarter. The Codex probe keeps that
+    # clock itself (a run not started by the deadline is recorded as not
+    # reached, and the result is written all the same); the shell's own
+    # timeout stands above it as the last resort. The release gate's S2 on
+    # Codex ran the probe one session at a time past the step's two hours,
+    # and the shell timeout alone ended the driver with no result at all.
     budget = step_seconds("triggers")
-    main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main{sandbox}", cwd=ctx.clone, timeout=budget, check=False)
-    holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1{sandbox}", cwd=ctx.clone, timeout=budget // 4, check=False)
+    margin = int(SUITE["triggers"]["deadline_margin_seconds"])
+    main_seconds, holdout_seconds = budget - margin, budget // 4 - margin
+    deadline = (lambda seconds: f" --deadline-seconds {seconds}") if ctx.host.name == "codex" else (lambda seconds: "")
+    main = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag main{sandbox}{deadline(main_seconds)}", cwd=ctx.clone, timeout=budget, check=False)
+    holdout = ctx.shell(f"bash scripts/redesign/plugin_round.sh {which} --tag holdout --runs 1{sandbox}{deadline(holdout_seconds)}", cwd=ctx.clone, timeout=budget // 4, check=False)
     artifacts = []
     for label, run in (("main", main), ("holdout", holdout)):
         out_dir = run.stdout.strip().splitlines()[-1] if run.stdout.strip() else ""

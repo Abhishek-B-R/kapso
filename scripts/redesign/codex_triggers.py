@@ -30,6 +30,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -223,6 +224,18 @@ def _run_case_once(case: Dict[str, Any], run: int, out: Path, model: str, effort
     }
 
 
+def not_reached(case: Dict[str, Any], run: int, deadline_seconds: float) -> Dict[str, Any]:
+    """A run the probe's deadline passed before it could start: never a
+    pass, never a miss — not established, said in the row and the report
+    (the release gate's S2 on Codex ran one session at a time and its step's
+    two hours ended with the probe's result unwritten)."""
+    return {
+        "case": case["name"], "run": run, "exit": None, "seconds": 0.0, "started": False, "loaded": [],
+        "graders": grade(case["graders"], [], False), "environment": None, "passed": False,
+        "not_reached": f"the probe's deadline of {deadline_seconds:.0f} s passed before this run started",
+    }
+
+
 def report(results: List[Dict[str, Any]], skipped: List[str]) -> str:
     by_case: Dict[str, List[Dict[str, Any]]] = {}
     for result in results:
@@ -239,10 +252,12 @@ def report(results: List[Dict[str, Any]], skipped: List[str]) -> str:
         broken = sum(1 for r in runs if r.get("environment"))
         environment += broken
         lines.append(f"| {name} | {len(runs)} | {passed}/{len(runs)} | {', '.join(first) or '(none)'} | {', '.join(loaded) or '(none)'} | {later} | {broken} |")
+    unreached = sum(1 for r in results if r.get("not_reached"))
     lines.append("")
     lines.append(f"{len(by_case) - failed} of {len(by_case)} cases passed every run; "
                  f"{read_after} case(s) read a forbidden skill after the expected one (a pass under the host's rule, a first read would have failed); "
                  f"{environment} run(s) failed in the sandbox before any skill could be read (the machine's failure, not established, never a miss); "
+                 f"{unreached} run(s) not reached before the probe's deadline (not established, never a miss); "
                  f"{len(skipped)} explicit case(s) skipped (Codex's explicit form is `$kapso-<skill>`).")
     return "\n".join(lines)
 
@@ -254,8 +269,10 @@ def regrade(out: Path) -> int:
     graders = {case["name"]: case["graders"] for case in cases(tag=document["tag"])}
     for result in document["results"]:
         result["graders"] = grade(graders[result["case"]], result["loaded"], result.get("started", True))
-        result["environment"] = sandbox_failure(out / "streams" / f"{result['case']}-{result['run']}.jsonl")
-        result["passed"] = result["environment"] is None and all(g["passed"] for g in result["graders"])
+        # A run the deadline passed has no stream to read: not established stands.
+        if not result.get("not_reached"):
+            result["environment"] = sandbox_failure(out / "streams" / f"{result['case']}-{result['run']}.jsonl")
+        result["passed"] = result["environment"] is None and not result.get("not_reached") and all(g["passed"] for g in result["graders"])
     (out / "results.json").write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     text = report(document["results"], document["skipped"])
     (out / "REPORT.md").write_text(text + "\n", encoding="utf-8")
@@ -275,6 +292,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("-j", "--jobs", type=int, default=int(SUITE["triggers"]["codex_jobs"]),
                         help="sessions at once (the suite's triggers.codex_jobs: one, since the sandbox failed under two on a fresh machine)")
     parser.add_argument("--out", default=None)
+    parser.add_argument("--deadline-seconds", type=float, default=None,
+                        help="the probe's own wall clock: a run not started by then is recorded as not reached, and the result is written all the same")
     parser.add_argument("--regrade", default=None, help="a run's output directory: grade its results again, run nothing")
     args = parser.parse_args(argv)
     if args.regrade:
@@ -286,8 +305,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     selected = [case for case in selected if SKIPPED_KIND not in case["tags"]]
     jobs = [(case, run) for case in selected for run in range(1, args.runs + 1)]
     probe_sandbox(args.sandbox, out)
+    deadline = time.monotonic() + args.deadline_seconds if args.deadline_seconds is not None else None
+    # Each run's row is appended as it ends, so a probe cut short from
+    # outside still leaves what it measured; a run the deadline passed is
+    # recorded as not reached rather than started.
+    ledger, lock = out / "results.jsonl", threading.Lock()
+    ledger.write_text("", encoding="utf-8")
+
+    def one(job: Any) -> Dict[str, Any]:
+        case, run = job
+        if deadline is not None and time.monotonic() >= deadline:
+            row = not_reached(case, run, args.deadline_seconds)
+        else:
+            row = run_case(case, run, out, args.model, args.effort, args.timeout, args.sandbox)
+        with lock, open(ledger, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row) + "\n")
+        return row
+
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(lambda job: run_case(job[0], job[1], out, args.model, args.effort, args.timeout, args.sandbox), jobs))
+        results = list(pool.map(one, jobs))
     (out / "results.json").write_text(json.dumps({
         "model": args.model, "effort": args.effort, "runs": args.runs, "tag": args.tag, "sandbox": args.sandbox,
         "skipped": skipped, "results": results,

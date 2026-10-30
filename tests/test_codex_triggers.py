@@ -119,3 +119,31 @@ def test_a_run_whose_sandbox_failed_is_tried_again_before_it_counts(monkeypatch)
     monkeypatch.setattr(codex_triggers, "_run_case_once", lambda *args: {"environment": next(always), "passed": False})
     tries = int(codex_triggers.SUITE["triggers"]["sandbox_tries"])
     assert codex_triggers.run_case({"name": "build-c01"}, 1, None, "m", "medium", 600, "read-only") == {"environment": "bwrap: x", "passed": False, "tries": tries}
+
+
+def test_a_run_the_deadline_passed_is_not_reached_and_each_run_lands_in_the_ledger_as_it_ends(tmp_path, monkeypatch, capsys):
+    # rel-s2-codex: one session at a time ran past the step's two hours, the
+    # shell's timeout ended the driver, and no result was written. The probe
+    # keeps the clock itself: a run not started by the deadline is recorded as
+    # not reached (never a pass, never a miss), each run's row lands as it
+    # ends, and the result and the report are written all the same.
+    case = {"name": "build-c01", "tags": [], "prompt": "p", "graders": [{"name": "build", "input_match": "build", "min": 1, "max": None}]}
+    monkeypatch.setattr(codex_triggers, "cases", lambda tag, pattern=None: [case])
+    monkeypatch.setattr(codex_triggers, "probe_sandbox", lambda sandbox, out: None)
+    clock = iter([0.0, 0.0, 100.0])   # the deadline's reading, the first run's check, the second's
+    monkeypatch.setattr(codex_triggers.time, "monotonic", lambda: next(clock, 100.0))
+    monkeypatch.setattr(codex_triggers, "run_case", lambda case, run, *rest: {
+        "case": case["name"], "run": run, "exit": 0, "seconds": 1.0, "started": True, "loaded": ["kapso-build"],
+        "graders": codex_triggers.grade(case["graders"], ["kapso-build"]), "environment": None, "passed": True})
+    out = tmp_path / "probe"
+    assert codex_triggers.main(["--out", str(out), "--runs", "2", "-j", "1", "--deadline-seconds", "60"]) == 1
+    rows = [json.loads(line) for line in (out / "results.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [(row["run"], row["passed"], row["started"]) for row in rows] == [(1, True, True), (2, False, False)]
+    assert rows[1]["not_reached"] == "the probe's deadline of 60 s passed before this run started"
+    document = json.loads((out / "results.json").read_text(encoding="utf-8"))
+    assert [row.get("not_reached") is not None for row in document["results"]] == [False, True]
+    assert "1 run(s) not reached before the probe's deadline" in capsys.readouterr().out
+    # Graded again, a run not reached stays not established: no stream to read, never a pass.
+    assert codex_triggers.regrade(out) == 1
+    graded = json.loads((out / "results.json").read_text(encoding="utf-8"))["results"]
+    assert [row["passed"] for row in graded] == [True, False] and graded[1]["environment"] is None
