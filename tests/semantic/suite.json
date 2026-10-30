@@ -207,11 +207,13 @@
     "S4": {
       "required_steps": {
         "claude_code": [
+          "campaign",
           "fact-sheet",
           "reading-claude_code",
           "reading-codex"
         ],
         "codex": [
+          "campaign",
           "fact-sheet",
           "reading-claude_code",
           "reading-codex"
@@ -648,6 +650,10 @@
       "kind": "shell",
       "minutes": 1
     },
+    "campaign": {
+      "kind": "build",
+      "minutes": 110
+    },
     "fact-sheet": {
       "kind": "shell",
       "minutes": 5
@@ -801,6 +807,10 @@
     },
     "s5": {
       "minutes": 40,
+      "experiments": 2
+    },
+    "s4": {
+      "minutes": 100,
       "experiments": 2
     },
     "second_engineer": {

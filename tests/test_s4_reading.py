@@ -92,6 +92,15 @@ def test_the_steps_and_the_questions_match_the_suite():
     assert all(text in s4.PROMPT for _, text in s4.QUESTIONS) and "not established" in s4.PROMPT
 
 
+def test_the_leak_the_campaign_step_commits_is_the_prohibited_flow_and_runs_as_python():
+    # The second attempt's branch gets the hold-out labels written over the
+    # predictions, through the evaluation's own pointer: the flow the harness's
+    # verification voids. It must parse, or the leak would be a crash instead.
+    compile(s4.LEAK, "leak", "exec")
+    assert "kapso_evaluation/private_dir.txt" in s4.LEAK and "holdout_labels.csv" in s4.LEAK and '"churn_probability"' in s4.LEAK
+    assert s4.SUITE["builds"]["s4"]["experiments"] == 2, "a void on the first attempt, the leak on the second"
+
+
 def _item(scores):
     return {key: {"score": score, "evidence": []} for (key, _), score in zip(s4.QUESTIONS, scores)}
 
