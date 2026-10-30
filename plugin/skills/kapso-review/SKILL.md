@@ -37,8 +37,10 @@ project's Python, so the files above are the form that always works.)
 In this order, twelve lines in all outside the outline's fence — one line per item,
 one line per risk and at most four risks, the gravest first, no sub-bullets, no
 headline above the items (the lines are counted; the outline is the one fenced
-block). A follow-up question ("is it safe to merge?") is answered in the same twelve
-lines, the verdict in the first:
+block). A follow-up question ("is it safe to merge?") is answered in the same six
+items and no other — scratch files, the rules' holding, what was not checked are
+said inside what changed or inside a risk, never as items of their own — the
+verdict as the first line, twelve lines in all:
 
 - **What won.** The delivered branch and commit, its score with the evaluation that
   produced it (the provenance: provided and protected, built by the campaign, or a

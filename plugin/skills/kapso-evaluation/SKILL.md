@@ -55,7 +55,9 @@ never "versioned".
    measure), each with its evidence, recommend one with a target or "maximise
    within budget", and get the single approval before anything is measured. A
    criterion the data at hand cannot measure is said plainly, with the data that
-   would make it measurable.
+   would make it measurable. Asked what the candidates were, answer one line per
+   candidate with its evidence and measured figure, at most four, and one line for
+   the recommendation — twelve lines in all, no table, no optional additions.
 
 ## The approval message
 
