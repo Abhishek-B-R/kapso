@@ -1163,14 +1163,21 @@ class Kapso:
                 # the process environment keeps precedence.
                 if record.get("dotenv_path"):
                     load_dotenv(record["dotenv_path"])
+                # The budget a resume asks for is the caller's own, a field
+                # left None keeping the launch's (the Budget contract); the
+                # brief-merged figures above would pass the checkpoint
+                # brief's budget off as the caller's and the record's would
+                # never apply (a campaign launched at 40 minutes resumed at
+                # the brief's 45, the release gate's S5, 2026-10-30).
+                requested = budget or Budget()
                 arguments = resume_arguments(record, {
                     "host": coding_agent,
                     "eval_dir": eval_dir,
                     "data_dir": data_dir,
-                    "experiments": max_iterations,
-                    "minutes": time_budget_minutes,
-                    "usd": cost_budget,
-                    "reserve_minutes": finalization_reserve_minutes,
+                    "experiments": requested.experiments,
+                    "minutes": requested.minutes,
+                    "usd": requested.usd,
+                    "reserve_minutes": requested.reserve_minutes,
                 })
                 # The loaded experience is campaign identity: a resume with
                 # nothing loaded takes the record's list and re-pins each

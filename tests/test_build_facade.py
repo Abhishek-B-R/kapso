@@ -1,5 +1,6 @@
 """`Kapso.build()`: the brief is the engine's goal, whole; budgets resolve
-call over brief over launch record over config; a resume reads the brief
+call over brief over config, and on a resume call over launch record over
+brief over config; a resume reads the brief
 back from the checkpoint; every path reaches the engine absolute; the
 record a build writes has one pinned shape and `Solution.open` reads it
 back."""
@@ -209,7 +210,12 @@ def _launch_record(workspace, **values):
 def test_a_resume_reads_the_brief_from_the_checkpoint_and_the_budget_from_the_record(tmp_path, monkeypatch):
     workspace = tmp_path / "ws"
     git_workspace(workspace)
-    brief = Brief(objective="Raise accuracy above 0.85", rules=["no peeking at the test set"])
+    # The brief carries its own budget: a bare resume must still run on the
+    # launch's (the record's 60 minutes and 3 experiments), not the brief's
+    # 45 and 5 — a campaign launched at 40 minutes resumed at its brief's 45
+    # when the brief-merged figures were passed off as the caller's (the
+    # release gate's S5 on Claude Code, 2026-10-30).
+    brief = Brief(objective="Raise accuracy above 0.85", rules=["no peeking at the test set"], budget=Budget(minutes=45, experiments=5))
     RunCheckpointStore(str(workspace)).save(_checkpoint(brief.render()))
     _launch_record(workspace)
     captured = fake_orchestrator(monkeypatch, workspace, solve_result(cumulative_iterations=3))

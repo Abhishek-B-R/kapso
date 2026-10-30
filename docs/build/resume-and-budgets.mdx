@@ -59,8 +59,10 @@ Four dials, every one optional:
 | Model spend, USD | `usd=25` | `--budget-usd 25` | `Budget(usd=25)` | `budget.usd` |
 | Reserve, kept out of the search for finishing | `reserve_minutes=5` | `--budget-reserve-minutes 5` | `Budget(reserve_minutes=5)` | `budget.reserve_minutes` |
 
-Precedence, dial by dial: the flag or the `budget=` argument, then the
-brief's `Budget` line, then on a resume the launch record, then the
+Precedence, dial by dial: the flag or the `budget=` argument, then on a
+resume the launch record (the launch's own figures, so a bare `--resume`
+runs on what the campaign was launched with, not the brief's line), then
+the brief's `Budget` line, then the
 [config's `budget` block](/docs/reference/configuration#budget).
 `experiments` is the number this call may run; the clock is durable across
 resumes (paused time does not count), and the result keeps both counts:
