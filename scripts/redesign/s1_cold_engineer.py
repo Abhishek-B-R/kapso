@@ -52,7 +52,7 @@ TASKS = [
     {"number": 3, "goal": "start the churn campaign again, under the harness at ./harness, at 10 minutes and 1 experiment, into ./campaign-3 (the task's deviation: the harness is named by its path, since no bundled harness ships yet); the campaign runs on its own, and the task is done once it is running",
      "verb": "build", "evidence": "campaign-3", "harness": True},
     {"number": 4, "restore": "campaign-prereq", "goal": "the delivered result of the campaign at ./campaign-prereq deployed to the local target, then called once", "verb": "deploy", "evidence": "deployment"},
-    {"number": 5, "restore": "campaign-prereq", "clear_learning": True, "goal": "lessons learned from the campaign at ./campaign-prereq (start the learn; it runs on its own)", "verb": "learn", "evidence": "learn-status"},
+    {"number": 5, "restore": "campaign-prereq", "clear_learning": True, "goal": "lessons learned from the campaign at ./campaign-prereq: start the learn so that it keeps running on its own after your command returns (it takes hours); the task is done once it is running", "verb": "learn", "evidence": "learn-status"},
     {"number": 6, "restore": "campaign-killed", "goal": "the campaign at ./campaign-killed was interrupted before it finished; continue it from where it stopped, on its own: the task is done once it is running again", "verb": "resume", "evidence": "resumed"},
 ]
 # The counted verb's shapes on each surface, per package: the branch's
@@ -84,12 +84,19 @@ WRAPPERS = ("nohup", "sudo", "env", "exec")
 SHELL_WRAPPER = re.compile(r"^(?:/bin/)?(?:ba)?sh\s+-lc\s+(['\"])(.*)\1\s*$", re.S)
 
 
+HEREDOC = re.compile(r"<<-?\s*(?:'([^']*)'|\"([^\"]*)\"|([^\s;|&<]+))")
+
+
 def _split_outside_quotes(command: str) -> List[str]:
     """The command cut at `&&`, `||`, `;`, `|` and newlines that stand
     outside quotes, read the shell's way (a `|` inside a quoted pattern
     splits nothing — the splitter that cut `rg 'config|kapso build'` into
-    an invocation counted a search as a wrong call)."""
-    segments, current, quote, index = [], [], None, 0
+    an invocation counted a search as a wrong call). A heredoc's body is
+    not shell syntax: the lines after a `<<WORD` command up to the
+    terminator stay with that command, whatever quotes they hold (an
+    apostrophe in a script written by heredoc swallowed the launch that
+    followed it, and a Codex flow counted no execution)."""
+    segments, current, quote, heredocs, index = [], [], None, [], 0
     while index < len(command):
         char = command[index]
         if quote:
@@ -111,10 +118,33 @@ def _split_outside_quotes(command: str) -> List[str]:
             current.append(command[index:index + 2])
             index += 2
             continue
+        if command.startswith("<<", index) and not command.startswith("<<<", index):
+            opened = HEREDOC.match(command, index)
+            if opened:
+                heredocs.append(next(word for word in opened.groups() if word is not None))
+                current.append(opened.group(0))
+                index = opened.end()
+                continue
         if command[index:index + 2] in ("&&", "||"):
             segments.append("".join(current))
             current = []
             index += 2
+            continue
+        if char == "\n" and heredocs:
+            # The bodies follow this line, one per `<<WORD` in order, each
+            # ending at its terminator's line; they are the command's.
+            index += 1
+            for word in heredocs:
+                while index < len(command):
+                    end = command.find("\n", index)
+                    line = command[index:] if end < 0 else command[index:end]
+                    current.append("\n" + line)
+                    index = len(command) if end < 0 else end + 1
+                    if line.strip() == word:
+                        break
+            heredocs = []
+            segments.append("".join(current))
+            current = []
             continue
         if char in ";|\n":
             segments.append("".join(current))
@@ -479,6 +509,18 @@ class S1:
         # wheel alone met every build as a refusal or an in-session install.
         requirements = sorted((self.clone / "examples").glob("*/requirements.txt")) + sorted((self.clone / "examples" / "harnesses").glob("*/requirements.txt"))
         self.shell(f"{self.venv}/bin/pip install -q " + " ".join(f"-r {path}" for path in requirements), cwd=self.out, timeout=900)
+        # Codex runs each command in a login shell, whose profile puts the
+        # machine's own ~/.local/bin (the gate's uv tool install of the
+        # package) ahead of the venv the driver put first on PATH: the
+        # engineer's deploy ran the machine's kapso, without the task's
+        # requirements, and failed until the engineer put the venv first by
+        # hand. The profile ends with the sandbox's venv first, as the prompt
+        # says it is.
+        profile = Path.home() / ".profile"
+        export = f'export PATH="{self.venv / "bin"}:$PATH"   # the S1 sandbox\n'
+        if not (profile.is_file() and export in profile.read_text(encoding="utf-8")):
+            with open(profile, "a", encoding="utf-8") as out:
+                out.write("\n" + export)
         task_view(self.clone / "examples" / "churn-first-build", self.sandbox / "task")
         task_view(self.clone / "examples" / "fraud-no-evaluator", self.sandbox / "task-fraud")
         if (self.sandbox / "harness").exists():
@@ -509,6 +551,33 @@ class S1:
                 os.kill(int(pid), signal.SIGTERM)
             return
         self.shell(f"kapso build --output {campaign} --stop", check=False)
+
+    def _stop_learns(self) -> List[int]:
+        """Every learn still running from an earlier flow — the engineer's
+        own detached script or `kapso learn --detach`, with the crews in
+        its process group — stopped before the next flow: the CLI flow of
+        task 5 found the python flow's learn still mining and rightly
+        declined to start a second (rel-s1-claude). A process is the
+        sandbox's when its command line names the sandbox or it runs from
+        inside it, and a learn's when its command line says `learn` (the
+        verb, or the engineer's own `learn_prereq.py`)."""
+        stopped = []
+        for entry in Path("/proc").iterdir():
+            if not entry.name.isdigit() or int(entry.name) == os.getpid() or entry.stat().st_uid != os.getuid():
+                continue
+            words = [word.decode("utf-8", "replace") for word in (entry / "cmdline").read_bytes().split(b"\0") if word]
+            if not any("learn" in word for word in words):
+                continue
+            cwd = os.readlink(entry / "cwd")
+            if not (any(str(self.sandbox) in word for word in words) or cwd == str(self.sandbox) or cwd.startswith(f"{self.sandbox}/")):
+                continue
+            os.killpg(os.getpgid(int(entry.name)), signal.SIGTERM)
+            stopped.append(int(entry.name))
+        wait_for(lambda: not any(pid_alive(pid) for pid in stopped), 20, every=1)
+        for pid in stopped:
+            if pid_alive(pid):
+                os.killpg(os.getpgid(pid), signal.SIGKILL)
+        return stopped
 
     def _build(self, name: str, example: str, minutes: int, experiments: int, kill_after: Optional[int] = None) -> Dict[str, Any]:
         started = time.monotonic()
@@ -561,7 +630,11 @@ class S1:
 
     def step_attempt(self, task: Dict[str, Any], surface: str) -> Dict[str, Any]:
         name = f"task{task['number']}-{surface}"
-        how = "in Python: write a script in this directory and run it with ./venv/bin/python" if surface == "python" else "on the command line, with the kapso command on PATH"
+        # The Python flow is asked for as a ticket would ask: a short script.
+        # The bar measures how much the package makes an engineer write to
+        # drive a task, which a script padded by style (a 39-line launcher
+        # with its own polling loop) does not show.
+        how = "in Python: write a short script (a dozen lines or so) in this directory and run it with ./venv/bin/python" if surface == "python" else "on the command line, with the kapso command on PATH"
         prompt = (
             "You are an engineer who has never used Kapso. The package is installed in this directory's venv (./venv/bin/python; the kapso command is on PATH); "
             "its documentation is under ./docs (start at docs/index.mdx and docs/installation.mdx). Read only what is in this directory; you have no web access "
@@ -575,6 +648,7 @@ class S1:
         if task.get("restore"):
             self._restore(task["restore"])
         if task.get("clear_learning"):
+            self._stop_learns()
             for status in self.sandbox.glob("**/learning/status"):
                 if status.is_dir():
                     shutil.rmtree(status)

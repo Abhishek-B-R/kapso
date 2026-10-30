@@ -262,6 +262,24 @@ def test_the_splitter_reads_quotes_and_subshells_as_the_shell_does(tmp_path):
     assert s1.command_segments("rg -n 'a|b' x | grep c; (kapso build --output c &)") == ["rg -n 'a|b' x", "grep c", "kapso build --output c"]
 
 
+def test_a_launch_after_a_heredoc_in_the_same_command_is_counted(tmp_path):
+    # rel-s1-codex's second python flow wrote its script by heredoc and ran it
+    # in the same command; the apostrophe in the script's docstring opened a
+    # quote the splitter never closed, and the launch after the terminator was
+    # read as part of the heredoc: no execution counted, the step's first try
+    # lost. A heredoc's body is the command's, whatever quotes it holds.
+    (tmp_path / "s.py").write_text("\"\"\"Kapso's API.\"\"\"\nfrom kapso import Kapso\nKapso().build(brief=1)\n", encoding="utf-8")
+    heredoc = "cat > s.py <<'PY'\n\"\"\"Kapso's API.\"\"\"\nfrom kapso import Kapso\nKapso().build(brief=1)\nPY\n./venv/bin/python s.py && echo done"
+    segments = s1.command_segments(heredoc)
+    assert segments[-2:] == ["./venv/bin/python s.py", "echo done"]
+    assert segments[0].startswith("cat > s.py <<'PY'") and segments[0].rstrip().endswith("PY") and len(segments) == 3
+    rows = _codex_stream([(f"/bin/bash -lc \"{heredoc}\"", 0)])
+    assert [entry["errored"] for entry in s1.executions(rows, "build", "python", tmp_path)] == [False]
+    # Two heredocs on one line, and `<<<` (a here-string) is not a heredoc.
+    assert s1._split_outside_quotes("cat <<A <<B\na\nA\nb\nB\nkapso build") == ["cat <<A <<B\na\nA\nb\nB", "kapso build"]
+    assert s1.command_segments("grep x <<< 'a\nb'; kapso build") == ["grep x <<< 'a b'", "kapso build"]
+
+
 def test_an_execution_errs_by_the_hosts_exit_status_not_by_its_outputs_words(tmp_path):
     # A deploy streams its agent's session log — probes, tracebacks — and exits 0.
     rows = _stream([("kapso deploy campaign-prereq --target local", False)])
