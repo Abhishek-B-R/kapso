@@ -137,6 +137,9 @@ Edits: the ports of `main`'s changes into the modules they land in (the one exce
    - **Also read from the second wave's S5 on Claude Code: a bare resume ran on the brief's 45 minutes where the launch had said 40** — the resume passed the checkpoint brief's budget off as the caller's and the launch record's never applied; fixed in the package (`f074bc44`), the docs' precedence corrected.
    - **The S4 Codex grading's transport timeout** and the one-line citation slip of two of three replies: the judge's model call carries the suite's transport retries and timeout, and a citation one line off reads as the line (`417f4a43`).
 
+   | `rel-s4-claude` (fourth launch, 18:24Z) | `token-2` | **PASS** 4/4 (landed 18:55Z): the campaign held the void at 40 minutes; both readers 6 of 6 in both passes under the trace header's two words |
+   | `rel-s2-claude` (third launch, 18:59Z from `c22570c8`) | `token-2`, the learn on Opus | running — the skills' shapes, the harness path, the deployment's proof and the second engineer's pointer in the tree (archive of the second wave: `rel-s2-claude-second/`) |
+
 4. The owner's checkpoint: the eight reports, S3's record and S6's reports read; the release branch merged into `redesign` and `redesign` into `main` with its history kept, and pushed.
 5. The tag and the release with the notes; `publish.yml` watched to PyPI green; `pip install leeroo-kapso==0.8.0` in a fresh venv, `kapso doctor`, the plugin's install line on Claude Code and on Codex, the docs site read once at its new navigation.
 
