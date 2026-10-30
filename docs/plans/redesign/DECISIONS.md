@@ -3276,3 +3276,29 @@ sandbox failures in a row send the rest of the suite to the fallback once
 it starts, every run the sandbox failed is run again under it at the end
 with its first failure kept on the row, and the switch is written beside
 the results and said in the record.
+
+## S5's diagnosis vocabularies take the plugin's own correct words (2026-10-30)
+
+The third S5 Codex launch failed three injections, each the plugin
+diagnosing correctly in words the rig's `names_class`/`names_fix` regexes
+did not hold: "the campaign died", "PID N disappeared", "a stale running
+status", "resumed" (not "resume"), "recovered", "finished", "Second
+attempt". The bar is whether the plugin named the failure class and the
+fix, and it did; the regexes take these phrasings now. The vocabularies
+stay disjoint (a word that names the class cannot also name the fix),
+the test that pins that holds, and the full-disk and killed injections
+that had failed only on the first-turn resume read pass with the earlier
+`8c771d9a` fix.
+
+## S5's evaluator-crash counts the crash, not an unrecovered attempt (2026-10-30)
+
+The evaluator-crash injection moves the hold-out labels so the evaluator
+crashes; the plugin's job is to diagnose it. A capable agent restored the
+labels from a workspace copy (WP7's readability finding — a read is not
+prevented) and the attempt went on to score 0.8481, so no attempt was
+left scoreless, though the crash was in the record and the plugin named
+it. The step now passes on the crash having occurred (in any attempt's
+evaluation output, integrity error or sessions), the plugin naming the
+class and the fix, and a resume — not on an attempt ending scoreless,
+which would require the agent to be incompetent. The agent's self-repair
+of protected data, accepted by the judge, remains a finding for the owner.
