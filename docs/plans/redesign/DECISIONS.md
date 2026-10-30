@@ -2889,3 +2889,142 @@ payload alone exceeds `repo_memory_update_payload_max_chars` and lists it
 by name and size in the first call, with its evidence kept as it is; the
 budget bounds every call. A file that large is a dataset or a model dump,
 not code the memory cites, so nothing the model is told is cut.
+
+## The judge is kept its reserve before one has been observed (2026-10-30)
+
+A round's reserve kept the judge at the floor (60 s) until a judge had
+been observed in the campaign, and the finishing stages' obligations
+counted it the same. In the S2 Codex gate's hour the first attempt's
+verification was given the remainder less that floor, ran to its
+deadline, and left 59 s for the judge — under the floor, so the attempt
+went unjudged and the campaign ended with nothing to deploy or learn. The
+config's `budget.judge_reserve_seconds` (300) is the judge's reserve
+before an observation, in the round's reserve and in what the evaluation
+and the verification leave standing; a judge that has been observed is
+kept its own last duration, as before. The evaluation and the verification
+stay at the floor in the obligations: a verification cut short is
+unverified, and the judge still speaks.
+
+## The Codex registration gives Kapso's MCP server a minute (2026-10-30)
+
+Codex drops an MCP server that has not answered within ten seconds, and in
+exec mode says nothing; `kapso-mcp` imports the package before it answers
+(the experiment store's embedding backend brings litellm, the bank gate
+the learners), four to five seconds on an idle box and more on a busy one.
+A plugin session of the S2 Codex gate ran without the campaign tools on
+that account. The setup skill writes `startup_timeout_sec = 60` under the
+server's table in `config.toml` after the `codex mcp add` line, and the
+docs and the README say so for a registration by hand. `kapso.core` no
+longer re-exports the LLM backend (nothing imported it that way); that
+cleanup does not shorten the startup, since the gates import the backend
+through the experiment store, and a faster server stays a finding.
+
+## The trace words a void and a rejection apart (2026-10-30)
+
+The trace listed every attempt the campaign did not count under one
+heading with one word for the integrity check ("rejected: Provided
+evaluation integrity check failed") and another for the harness's
+verification verdict ("void: …"), the reverse of the design's two
+questions — what was voided and on what evidence, what was rejected and
+why — and one S4 reader took the integrity void for a rejection. The
+trace now words the integrity check's `voided:` (the protected evaluation
+changed, the hash evidence beside it) and the harness's verification
+verdict and the judge's invalidation `rejected:`, the split the S4 driver
+reads by the engine's own semantics. The goldens were re-rendered.
+
+## The plugin's answers keep the suite's line and question budgets (2026-10-30)
+
+Five S2 steps on Claude Code failed on the suite's counts alone: the
+review's twelve lines grew sub-bullets under the risks, the build and the
+evaluation asked the approval and a choice, the improve flow asked twice.
+The bars are the product's promises (WP7's design, WP9's suite), so the
+skills say the counts in their own words: the review's twelve lines are
+the whole message outside the outline's fence, one line per risk; the
+build asks one question in all, the approval, which carries its choices as
+defaults the user may change; the harness improve flow asks for the word
+on the proposal and no more; a stated baseline names its source and a
+disagreement between records is said (the watch step's planted baseline);
+the answer after a fix names the fault, the fix and the resume.
+
+## S4 builds the campaign it reads (2026-10-30)
+
+S4's design read S5's tampering campaign for a void and a rejection in
+one record. No campaign ever held both — the tampering voids the one
+attempt its budget holds, and nothing in the suite makes the verifier or
+the judge reject — so the bar `campaign_has_rejection` read unmet on every
+S4 run. S4 now builds its own campaign when none is given: the churn
+example at a hundred minutes and two experiments, the protected evaluator
+edited in `main` during the first ideation (the attempt's clone inherits
+it, with no diff for the writer to notice; the integrity check voids it on
+the hash evidence) and restored during the second, then the hold-out
+labels written over the predictions on the second attempt's branch during
+its evaluation phase — after its evaluation materialised the branch and
+before its verification does — the prohibited flow the harness's
+verification voids, which the driver reads as the rejection. A campaign
+given on the command line is read as it is, as before. S4 no longer waits
+for S5, and the eight gate runs launch together.
+
+## S5 edits the parent, takes a host, pins the wheel, reads a resume from the records (2026-10-30)
+
+The tampering injection edited the evaluator in the running attempt's
+session clone; a writer that diffs against its parent sees the edit and
+restores the pristine file (the gate's first S5), and nothing is voided.
+The edit now lands in the campaign's `main` as a commit during the first
+ideation, before the attempt's clone, which inherits it with no diff. The
+driver takes `--host` (the gate's second S5 ran the plugin on Claude Code
+under a machine named for Codex) and `--wheel` (the record named the
+version alone). A resume is read from the campaign's records — the status
+file's or the launch receipt's `started_at` after the ask — rather than
+from a `running` state in the five minutes after the turn, which read
+three resumes as none when the plugin waited inside its turn until the
+resumed campaign had finished. The fix words accept a relaunch, a restart
+and a rerun: a resume by another name.
+
+## The S1 rig reads the engineer as the design says (2026-10-30)
+
+Four of the six failed S1 steps were the engineer waiting: the goal read
+"a better churn model… into ./campaign-1", so the engineer followed the
+campaign to its end, and "continue it from where it stopped" kept it in a
+foreground resume. The goals now say the task is done once the campaign
+runs on its own, and the resume the same — what a ticket says. The
+sandbox venv holds what the task views say to install (the examples'
+requirements), since an engineer with no web cannot; "use no web" is said
+of the engineer, not of the campaign's settings, which one engineer
+rewrote in a 39-line script. A flow's lines are logical lines (a call
+across six physical lines is one line of the flow); the splitter reads
+quotes and subshells as the shell does; an execution errs by the host's
+exit status, not by its output's words; a command still running at the
+turn's end is counted with its outcome unknown. No bar was touched.
+
+## The second engineer installs as the docs say (2026-10-30)
+
+Both S2 gate runs had the served build refused at its launch for the
+bundled harness's requirements: the rig's second user installed with `uv
+tool`, whose interpreter is off the `python3` the harness's commands name,
+and the system's python3 refuses pip as externally managed. The lean
+install of 2026-08-26 stands (pandas and pyarrow are not the package's
+dependencies); the rig's second engineer builds from a project venv as
+the docs install it, the wheel and the project's requirements first on
+PATH, and follows the launch's printed remedy for the harness's
+requirements before launching again. The `cold-install` step keeps
+measuring the uv tool install.
+
+## The trigger probe tries a failed sandbox again, one session at a time (2026-10-30)
+
+151 of 178 Codex trigger sessions of the S2 Codex gate failed in
+bubblewrap's loopback setup before any skill could be read, at two
+sessions at once, on a machine whose preflight had passed. A run whose
+sandbox failed is tried again, up to the suite's `sandbox_tries` with a
+pause between, before it counts; the probe runs one session at a time
+(`codex_jobs`). The machine's failure stays named in the record, never a
+miss.
+
+## A restarted setup session continues its answered requests (2026-10-30)
+
+A harness setup session's inbox requests (node -1) were met by running
+the setup session again with the replies, and the record never marked
+them `continued`: the request's promise of a resumption was unkept in the
+record, and both S2 gate runs failed the inbox step on it. The
+orchestrator records the setup's answered requests as continued by the
+session that carries the replies, once (`continue_answered`), as a search
+node's session records its own on resume.
