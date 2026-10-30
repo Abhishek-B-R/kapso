@@ -52,7 +52,11 @@ TASKS = [
     {"number": 3, "goal": "start the churn campaign again, under the harness at ./harness, at 10 minutes and 1 experiment, into ./campaign-3 (the task's deviation: the harness is named by its path, since no bundled harness ships yet); the campaign runs on its own, and the task is done once it is running",
      "verb": "build", "evidence": "campaign-3", "harness": True},
     {"number": 4, "restore": "campaign-prereq", "goal": "the delivered result of the campaign at ./campaign-prereq deployed to the local target, then called once", "verb": "deploy", "evidence": "deployment"},
-    {"number": 5, "restore": "campaign-prereq", "clear_learning": True, "goal": "lessons learned from the campaign at ./campaign-prereq: start the learn so that it keeps running on its own after your command returns (it takes hours); the task is done once it is running", "verb": "learn", "evidence": "learn-status"},
+    # The learn runs on the campaign as task 4 left it, deployed: a restore
+    # here wiped the deployment record, and the comprehension turn — a fresh
+    # session reading the sandbox — could not say what the deploy returned
+    # (rel-s1-claude, 17 of 17 steps and the comprehension 0).
+    {"number": 5, "clear_learning": True, "goal": "lessons learned from the campaign at ./campaign-prereq: start the learn so that it keeps running on its own after your command returns (it takes hours); the task is done once it is running", "verb": "learn", "evidence": "learn-status"},
     {"number": 6, "restore": "campaign-killed", "goal": "the campaign at ./campaign-killed was interrupted before it finished; continue it from where it stopped, on its own: the task is done once it is running again", "verb": "resume", "evidence": "resumed"},
 ]
 # The counted verb's shapes on each surface, per package: the branch's
