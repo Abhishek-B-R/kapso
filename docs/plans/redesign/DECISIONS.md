@@ -3151,3 +3151,59 @@ the top line is the verdict. A resume is any relaunch after the writer
 went, the first answer's included. The vocabularies take "the writer
 process died", "PID … was gone", "restoration of the evaluator" and
 "not as a valid scored result".
+
+## The plugin's answers are shaped in counts (2026-10-30)
+
+The build skill asked for "three lines of prose around the brief" and the
+review for "twelve lines in all", and the second wave's Claude Code
+answers ran 13–17 lines: headings, sub-bullets under the evaluation's
+approval, six risks. A count the model keeps is a shape it can fill, so
+the skills say the shape — the build's prose at most ten lines outside the
+brief's fence (one per thing found, two for a built evaluation, one for
+the approval), its handoff at most eight, the review's risks at most four
+with a follow-up in the same twelve lines, no headings and no sub-bullets
+anywhere. The budgets themselves stand.
+
+## A harness goes where the repository loads it from (2026-10-30)
+
+The plugin wrote a green harness one directory above the path the
+repository's `load_harness("../harnesses/trading")` resolves to from the
+project, and the gate's probe found none. The skill says where: the
+repository's own loading path, resolved from the repository's directory,
+named as an absolute path in the proposal.
+
+## A deployment's proof is the delivered prediction reproduced (2026-10-30)
+
+The deploy session scored the proof row against a training reference
+because the delivered model rank-blends within its batch, and answered a
+different number than the delivered predictions file. The deployment
+prompt says the proof is parity with the delivered prediction: a solution
+that scores rows relative to one another keeps the batch it was delivered
+with, and a different number is no proof.
+
+## A bare resume runs on the launch's budget (2026-10-30)
+
+`Budget` promises that a field left None keeps the launch's value on a
+resume, and the docs listed the brief above the launch record. The resume
+passed the brief-merged figures off as the caller's, so the record's never
+applied: a campaign launched at 40 minutes resumed at its brief's 45 (the
+plugin noticed, S5 on Claude Code). The resume asks for the caller's own
+budget and takes the record's for the rest; the precedence reads call,
+then on a resume the launch record, then the brief, then the config.
+
+## The judge's citation may be one line off, and its call retries (2026-10-30)
+
+Two of three replies grading the S4 Codex readings cited the `{` line for
+the `"branch"` line below it; the quote check read them as misquotes and
+the grading died, as it had on a Vertex connection timeout before. A
+citation one line from the quote is the material's, never an invention,
+so the check accepts it (two lines off is still no citation); the model
+call carries the suite's `transport_retries` and `timeout_seconds`.
+
+## The second engineer's copy points at its own labels (2026-10-30)
+
+The rig copied the first user's churn project whole, its
+`evaluation/private_dir.txt` naming the first user's private directory,
+unreadable to the second user; the evaluator died on every attempt and
+the served build ended unscored on both second-wave S2 runs. The copy's
+pointer names its own `private/`.
