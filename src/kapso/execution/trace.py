@@ -416,22 +416,25 @@ def _lessons(sources, pulls, nodes) -> List[Dict[str, Any]]:
 
 
 def _voided(nodes) -> List[Dict[str, Any]]:
-    """Every attempt the campaign did not count, with the evidence: the
-    harness's void verdict and its findings, the integrity rejection and
-    the evaluation's output, or the judge's invalidation."""
+    """Every attempt the campaign did not count, with the evidence, in the
+    design's two words: *voided* is the integrity check's — the protected
+    evaluation changed, the hash evidence in the evaluation's output;
+    *rejected* is the harness's verification verdict with its findings,
+    or the judge's invalidation. A reader of the trace told an integrity
+    void from a rejection by these words (the S4 reading, 2026-10-30)."""
     voided = []
     for node in nodes:
         if node["evaluation_valid"]:
             continue
         verification = node["verification"]
         if verification is not None and verification["verdict"] == VOID:
-            reason = f"void: {verification['summary']}"
+            reason = f"rejected: the verification found {verification['summary']}"
             evidence = [f"{finding['rule']}: {finding['evidence']}" for finding in verification["findings"]]
         elif node["evaluation_integrity_error"]:
-            reason = f"rejected: {node['evaluation_integrity_error']}"
+            reason = f"voided: {node['evaluation_integrity_error']}"
             evidence = [node["evaluation_output"]] if node["evaluation_output"] else []
         else:
-            reason = "judged not valid (the judge's words are in the attempt)"
+            reason = "rejected: judged not valid (the judge's words are in the attempt)"
             evidence = [node["evaluation_output"]] if node["evaluation_output"] else []
         voided.append({"node": node["node_id"], "branch": node["branch_name"], "reason": reason, "evidence": evidence})
     return voided

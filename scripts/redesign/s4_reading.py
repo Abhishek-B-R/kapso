@@ -80,15 +80,18 @@ def fact_sheet(trace: Dict[str, Any], labels: Optional[bool]) -> Dict[str, Any]:
     attempts = {attempt["branch"]: attempt for attempt in trace["attempts"]}
     winner = attempts.get(delivered.get("branch")) if delivered else None
     voided = trace.get("voided") or []
-    # The trace's `voided` holds both: an integrity/harness void and a
-    # judge rejection, each with its reason. Split them by the engine's own
-    # semantics, not by the reason's words: the entry's attempt carries
+    # The trace's `voided` holds both: an integrity void and a rejection
+    # (the harness's verification verdict or the judge's invalidation),
+    # each with its reason. Split them by the engine's own semantics, not
+    # by the reason's words: the entry's attempt carries
     # `evaluation.integrity_error` when the integrity check voided it (the
-    # design's "voided on the hash evidence"), and none when the judge
-    # rejected it. The engine words an integrity void "rejected: Provided
-    # evaluation integrity check failed (changed: evaluate.py)" (s4-claude-1),
-    # which a classification by words had to know. An entry whose attempt
-    # the trace does not hold is read by its reason's first word.
+    # design's "voided on the hash evidence"), and none when the verifier
+    # or the judge rejected it. Since the release gate the trace's words
+    # agree ("voided: …" for the integrity check, "rejected: …" for the
+    # rest); a run from an older wheel worded an integrity void "rejected:
+    # Provided evaluation integrity check failed" (s4-claude-1), which a
+    # classification by words had to know. An entry whose attempt the
+    # trace does not hold is read by its reason's first word.
     by_node = {attempt.get("node"): attempt for attempt in trace["attempts"]}
 
     def is_void(entry: Dict[str, Any]) -> bool:
