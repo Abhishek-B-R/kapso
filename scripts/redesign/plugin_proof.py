@@ -1303,13 +1303,31 @@ def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
     project = Path(ctx.state["churn_project"])
     budget = SUITE["builds"]["second_engineer"]
     ensure_second_user(ctx)
-    ctx.shell(f"sudo rm -rf /home/proof2/churn-second /home/proof2/second-campaign /home/proof2/second-campaign.log; sudo cp -r {project} /home/proof2/churn-second; sudo chown -R proof2:proof2 /home/proof2/churn-second")
-    launch = ctx.shell(
-        "sudo -u proof2 -H bash -lc 'cd ~/churn-second; export PATH=$HOME/.local/bin:$PATH; "
+    ctx.shell(f"sudo rm -rf /home/proof2/churn-second /home/proof2/second-campaign /home/proof2/second-campaign.log /home/proof2/env; sudo cp -r {project} /home/proof2/churn-second; sudo chown -R proof2:proof2 /home/proof2/churn-second")
+    # The second engineer's project environment, as the docs install it: a
+    # venv holding the wheel and the project's requirements, first on PATH,
+    # so `python3` — the interpreter the harness's commands name — is it
+    # (the uv tool install above keeps the tool's interpreter off PATH, and
+    # the system's python3 refuses pip as externally managed). A launch the
+    # harness refuses for its requirements prints the remedy, `python3 -m
+    # pip install -r <the harness's requirements>`; the engineer follows
+    # it as printed and launches again (the bundled harness's requirements
+    # are not the package's, by the lean-install decision of 2026-08-26).
+    wheel = stage_wheel_for_second_user(ctx)
+    ctx.shell(f"sudo -u proof2 -H bash -lc 'cd ~; python3 -m venv ~/env && ~/env/bin/pip install -q /tmp/{wheel.name} -r ~/churn-second/requirements.txt'", timeout=1200)
+    build_line = (
+        "cd ~/churn-second; export PATH=$HOME/env/bin:$PATH; "
         "kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output ~/second-campaign "
-        f"--experience file:///tmp/bank-remote.git --budget-minutes {budget['minutes']} --budget-experiments {budget['experiments']} --detach'",
-        check=False, timeout=600,
+        f"--experience file:///tmp/bank-remote.git --budget-minutes {budget['minutes']} --budget-experiments {budget['experiments']} --detach"
     )
+    launch = ctx.shell(f"sudo -u proof2 -H bash -lc {shlex.quote(build_line)}", check=False, timeout=600)
+    remedies = sorted(set(re.findall(r"python3 -m pip install -r (\S+)", launch.stdout + launch.stderr)))
+    launches = [launch.stdout + launch.stderr]
+    if launch.returncode != 0 and remedies:
+        for requirements in remedies:
+            ctx.shell(f"sudo -u proof2 -H bash -lc 'export PATH=$HOME/env/bin:$PATH; python3 -m pip install -q -r {requirements}'", timeout=1200)
+        launch = ctx.shell(f"sudo -u proof2 -H bash -lc {shlex.quote(build_line)}", check=False, timeout=600)
+        launches.append(f"--- after the printed remedy ({', '.join(remedies)}) ---\n" + launch.stdout + launch.stderr)
     campaign = Path("/home/proof2/second-campaign")
     read_status = lambda: json.loads(ctx.shell(f"sudo cat {campaign}/.kapso/status.json", check=False).stdout or "null")
     done = wait_for(lambda: (read_status() or {}).get("state") in ("done", "failed"), budget["minutes"] * 60 + 600, every=30)
@@ -1323,7 +1341,7 @@ def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
     # the campaign names the shared bank).
     scored = solution.get("score") is not None
     read_bank = "bank-remote" in ctx.shell(f"sudo cat {campaign}/.kapso/experiment_history.json 2>/dev/null; sudo cat {campaign}/.kapso/solution.json", check=False).stdout
-    artifacts = [ctx.artifact("second-engineer-launch.txt", launch.stdout + launch.stderr)]
+    artifacts = [ctx.artifact("second-engineer-launch.txt", "\n".join(launches))]
     if solution_text.strip():
         artifacts.append(ctx.artifact("second-engineer-solution.json", solution_text))
     # The second user's campaign log and status, so a failure has an
@@ -1331,7 +1349,11 @@ def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
     # had none).
     artifacts.append(ctx.artifact("second-engineer-campaign.log", ctx.shell("sudo cat /home/proof2/second-campaign.log", check=False).stdout))
     artifacts.append(ctx.artifact("second-engineer-status.json", ctx.shell(f"sudo cat {campaign}/.kapso/status.json", check=False).stdout))
-    ctx.user.interventions.append("second-engineer-build: the churn fixture copied to the second user's home; the build run as that user with the bank by reference")
+    ctx.user.interventions.append(
+        "second-engineer-build: the churn fixture copied to the second user's home; a venv with the wheel and the project's requirements first on its PATH; "
+        + (f"the launch refused for the harness's requirements and the printed remedy followed ({', '.join(remedies)}); " if remedies else "")
+        + "the build run as that user with the bank by reference"
+    )
     return shell_step("second-engineer-build", launch.returncode == 0 and done and final_state == "done" and served and scored, artifacts, (time.monotonic() - started) / 60,
                       [f"served the shared bank: {served}; a scored delivery: {scored}; the bank in the build's records: {read_bank}; final state: {final_state}"], kind="build")
 
