@@ -152,6 +152,12 @@ Edits: the ports of `main`'s changes into the modules they land in (the one exce
    | `rel-s1-claude` (fourth launch) | `token-5` | **FAIL** 16/17 (landed 20:52Z) on task3-cli alone: every bar met (nine first tries, no wrong call, the comprehension right on the kept deployment record, nine lines of python and six commands, the judge's three dimensions 1); the harness build was launched right (`--detach`, exit 0) and its status, with the harness field, landed just after the turn — this run's wheel was built at 19:07Z from `2732092d`, before the evidence-grace fix (`fa50800c`). Relaunched 20:54Z on `token-5` from the current tree (archive: `rel-s1-claude-fourth/`) |
    | `rel-s2-codex` (fifth launch, 20:53Z from `2957ee7a`) | `token-4`, the learn on Opus | running — the trigger runs' sandbox switch in the tree (run directory of the stopped fourth: `rel-s2-codex-fourth/`) |
 
+   **Four pass (22:20Z): S1 and S4 on both hosts.**
+   | run | login | standing |
+   |---|---|---|
+   | `rel-s1-claude` (fifth launch) | `token-5` | **PASS** 17/17 (22:15Z): every bar met, the judge's three dimensions 1; the harness campaign's status caught in the evidence grace |
+   | `rel-s1-codex` (fifth launch) | `token-3` | **PASS** 17/17 (22:19Z): every bar met, five lines of python and one command; the engineer drove every flow with the detached API (`build(detach=True)`, `learn(detach=True)`), so the docs dimension that had failed on the shelled-out learn now passes |
+
 4. The owner's checkpoint: the eight reports, S3's record and S6's reports read; the release branch merged into `redesign` and `redesign` into `main` with its history kept, and pushed.
 5. The tag and the release with the notes; `publish.yml` watched to PyPI green; `pip install leeroo-kapso==0.8.0` in a fresh venv, `kapso doctor`, the plugin's install line on Claude Code and on Codex, the docs site read once at its new navigation.
 
