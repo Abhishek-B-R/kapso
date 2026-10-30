@@ -363,11 +363,23 @@ class EvidenceWatcher:
                 return
             self._stop.wait(self.every)
 
-    def stop(self) -> Optional[float]:
+    def stop(self, grace_seconds: float = 0.0) -> Optional[float]:
+        """Ends the sampling: one last look, and up to `grace_seconds` of
+        looking after the turn — a detached launch's child writes its
+        status seconds after the command returns, and a host whose turn ends
+        at the launch (Codex: two launches at 0.5 and 0.9 minutes,
+        rel-s1-codex) left the evidence to land just after the look. The
+        launch clock still stops at the evidence."""
         self._stop.set()
         self._thread.join()
-        if self.held_at is None and self.predicate():
-            self.held_at = time.time()
+        deadline = time.time() + grace_seconds
+        while self.held_at is None:
+            if self.predicate():
+                self.held_at = time.time()
+            elif time.time() >= deadline:
+                break
+            else:
+                time.sleep(self.every)
         return self.held_at
 
 
@@ -638,7 +650,7 @@ class S1:
         # The bar measures how much the package makes an engineer write to
         # drive a task, which a script padded by style (a 39-line launcher
         # with its own polling loop) does not show.
-        how = "in Python: write a short script (a dozen lines or so) in this directory and run it with ./venv/bin/python" if surface == "python" else "on the command line, with the kapso command on PATH"
+        how = "in Python: write a short script of at most a dozen lines in this directory and run it with ./venv/bin/python" if surface == "python" else "on the command line, with the kapso command on PATH"
         prompt = (
             "You are an engineer who has never used Kapso. The package is installed in this directory's venv (./venv/bin/python; the kapso command is on PATH); "
             "its documentation is under ./docs (start at docs/index.mdx and docs/installation.mdx). Read only what is in this directory; you have no web access "
@@ -666,7 +678,7 @@ class S1:
         watcher.start()
         turn, transcript = self.turn(name, prompt)
         turn_minutes = (time.time() - started) / 60
-        evidence_at = watcher.stop()
+        evidence_at = watcher.stop(float(SUITE["waits"]["evidence_grace_seconds"]))
         rows = plugin_proof_rows(transcript)
         found = executions(rows, task["verb"], surface, self.sandbox, self.args.package)
         evidence = evidence_at is not None

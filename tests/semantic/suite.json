@@ -617,11 +617,11 @@
     },
     "task4-python": {
       "kind": "attempt",
-      "minutes": 15
+      "minutes": 20
     },
     "task4-cli": {
       "kind": "attempt",
-      "minutes": 15
+      "minutes": 20
     },
     "task5-python": {
       "kind": "attempt",
@@ -835,7 +835,8 @@
   },
   "waits": {
     "campaign_grace_minutes": 15,
-    "trace_and_stop_seconds": 120
+    "trace_and_stop_seconds": 120,
+    "evidence_grace_seconds": 120
   },
   "injections": {
     "provider_limit_count": 3,
