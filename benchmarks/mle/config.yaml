@@ -22,7 +22,13 @@ search_strategy:
       cli: claude_code
       gates: [research, experiment_history, repo_memory, bank]
     implementation:
-      gates: [research, repo_memory, bank]
+      gates: [repo_memory, bank]
+      # The harness's standing rule, no web in implementation and
+      # verification, is the engine's permission here too: the deny-web
+      # hook cannot see Codex's native search, only this switch turns it
+      # off, and the research gate is web as well. A competition's test
+      # labels exist on the web.
+      web: false
       # One experiment = implement + run the registered full evaluation
       # (the candidate's debug run, then its full run under
       # `benchmark.timeouts`) inside the session.
@@ -66,3 +72,5 @@ benchmark:
     lower_is_better: 1000000000.0
   # Packages a candidate may not import: incompatible with the environment.
   forbidden_packages: [torchaudio, mmcv, openmem, faiss, pcdet]
+  # How often the staged grader polls the candidate it runs (seconds).
+  grader_poll_seconds: 1

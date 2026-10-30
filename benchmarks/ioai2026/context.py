@@ -48,7 +48,8 @@ def build_brief(
         f"The campaign's deadline is {deadline_utc} (UTC): a submission counts when it has finished "
         "scoring before it.",
         f"Every submission goes through the task root's procedure, `{PROCEDURE}` (`--kernel "
-        "<owner>/<slug> --version <n>` for a code competition, `--file <path>` for a file upload, "
+        "<owner>/<slug> --version <n>` for a code competition, `--file <path>` for a file upload, the "
+        "paths relative to the repository root, "
         "`-m \"<idea> local=<score>\"` always), which submits and records the submission in the "
         f"ledger at `{ledger_path}`; a raw `kaggle competitions submit` records nothing and is "
         "refused. The evaluation in `kapso_evaluation/` reads your candidate's recorded submission "

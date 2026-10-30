@@ -8,7 +8,9 @@ submissions are recorded in, and the procedure that submits and records,
 when one exists (the kaggle-cli and contest-preflight skills). A task root
 without `contest.json` is not a leaderboard contest here, and the hook has
 no opinion. The ledger is `{"submissions": [...]}`; one entry for this
-competition with a submission id, of any status, is the insurance.
+competition with a submission id that is on the site (`pending`, awaiting
+its score, or `complete`, scored) is the insurance; one the CLI refused
+(`rejected`) or the site failed to score (`error`) is not.
 
 The hook asks once (it stays silent when the event says the session is
 already continuing because of a stop hook) and catches a mistake, not a
@@ -65,10 +67,11 @@ def main() -> None:
     recorded = [entry for entry in submissions
                 if isinstance(entry, dict) and entry.get("competition") == contest["competition"]
                 and isinstance(entry.get("submission_id"), str) and entry["submission_id"]
-                and entry.get("status") != "rejected"]
+                and entry.get("status") in ("pending", "complete")]
     if not recorded:
         block(f"No submission yet: {ledger_path} records none for {contest['competition']} with a submission id "
-              "that was not rejected. Ship the insurance submission and record it before finishing.")
+              "that is pending or complete (a rejected or errored one is no insurance). Ship the insurance "
+              "submission and record it before finishing.")
         return
     sys.exit(0)
 

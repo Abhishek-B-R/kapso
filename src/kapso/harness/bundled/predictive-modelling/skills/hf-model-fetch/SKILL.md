@@ -25,6 +25,6 @@ alone grants the first; nothing here assumes the other two.
 - Download the shortlisted weights and the screened data in setup, pinned
   by revision, under `prepared/models/` and `prepared/data/`, and record
   the local path of each beside its name in the domain statement.
-  Implementation and verification have no web: a model is loaded from its
-  pinned path, and a load that fails is an error, not a fallback.
+  Implementation and verification load a model from its pinned path, never
+  from the hub: a load that fails is an error, not a fallback.
 - Deduplicate across everything found before recording; one shortlist.

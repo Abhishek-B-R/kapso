@@ -80,7 +80,9 @@ search_strategy:
     # Durable-archive recovery root for the registered evaluation (Issue
     # 2): the grader archives runs (incl. manifest.txt) here, outside the
     # session workspace, so a completed eval's score is recoverable even
-    # after session teardown. The same root as `benchmark.work_root`.
+    # after session teardown. The layout under `benchmark.work_root`; the
+    # runner's per-run override names the task's own root (every task's
+    # archive numbers its runs from one, and a label must never cross).
     registered_evaluation_archive_glob: "tmp/relbench/*/runs"
 
 # Time-budgeted campaigns: the search decides its own iteration count;
@@ -137,3 +139,5 @@ benchmark:
   # What the Brief grants the candidates beyond the data: a hosted model
   # API (`openai`, with the key in the campaign's .env) or `none`.
   hosted_model_api: none
+  # How often the staged grader polls the candidate it runs (seconds).
+  grader_poll_seconds: 1

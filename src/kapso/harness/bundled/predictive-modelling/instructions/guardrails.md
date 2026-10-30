@@ -13,9 +13,9 @@ rules the task adds. The task's numbers win over anything written here.
   (features, selectors, calibrators, thresholds, early stopping, stackers,
   blend weights) never saw validation labels; the test-predicting chain may
   refit on them (the two-model contract, the cv-protocol skill).
-- Every feature for a row stamped at time t is computed from data stamped
-  before t. A join that reaches past the row's own time is a leak, and a
-  leak voids the attempt whatever it scores.
+- Every feature for a row stamped at time t is computed from data before
+  t, or at t where the task statement admits it (a seed time that includes
+  its own stamp); a join past that boundary is a leak and voids the attempt.
 - When the task statement says the data is a relational database with a
   temporal cutoff, work from the sanitized copy the statement names (the
   sanitized-copy skill says what one holds and builds it for a relational

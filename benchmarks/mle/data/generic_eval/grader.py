@@ -48,7 +48,6 @@ MANIFEST_MARKER = "KAPSO_EVAL_MANIFEST"
 TASK_FILE = "task.json"
 SUBMISSION = "final_submission.csv"
 SCORE_TAG = re.compile(r"<score>\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)\s*</score>")
-POLL_SECONDS = 1.0
 
 
 def task_settings() -> dict:
@@ -69,7 +68,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _run_child(cmd: list, cwd: Path, env: dict, deadline: float) -> str:
+def _run_child(cmd: list, cwd: Path, env: dict, deadline: float, poll_seconds: float) -> str:
     """Run the candidate to completion or the deadline, streaming its output
     and returning it whole (the score tag is read from it)."""
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as log:
@@ -89,7 +88,7 @@ def _run_child(cmd: list, cwd: Path, env: dict, deadline: float) -> str:
                 proc.wait()
                 print("[grader] candidate exceeded its time limit and was killed")
                 sys.exit(4)
-            time.sleep(POLL_SECONDS)
+            time.sleep(poll_seconds)
         log.seek(0)
         output = log.read()
     if proc.returncode != 0:
@@ -111,7 +110,7 @@ def run_candidate(settings: dict, debug: bool) -> str:
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     print(f"[grader] running candidate: {' '.join(cmd)} (timeout {timeout}s)")
-    return _run_child(cmd, root, env, time.time() + timeout)
+    return _run_child(cmd, root, env, time.time() + timeout, float(settings["poll_seconds"]))
 
 
 def check_submission(settings: dict) -> None:
@@ -139,7 +138,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fidelity", choices=["fast", "full"], required=True)
     parser.add_argument("--fraction", type=float, default=1.0)
-    parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument("--seed", type=int, required=True,
+                        help="the registered subsample seed; the engine's command carries it")
     args = parser.parse_args()
 
     settings = task_settings()

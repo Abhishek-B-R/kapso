@@ -53,8 +53,9 @@ def test_the_rules_on_a_fixture(tmp_path):
     # Regression: the scan's four decisions — a library name is a page's
     # constant and a skill's vocabulary; the harness's own skill name is
     # never read as the library; fenced code is not prose; a number counts
-    # only beside a quota, deadline, score or hardware word, and a version
-    # string or a statistical threshold never does.
+    # only beside a quota, deadline, score or hardware word (a unit attached
+    # to it is read apart), and a version string or a statistical threshold
+    # beside its own name never does; the threshold beside a score word does.
     root = write_harness(
         tmp_path / "h",
         page=(
@@ -63,6 +64,7 @@ def test_the_rules_on_a_fixture(tmp_path):
             "```\nrel-amazon has 24 GB of parquet\n```\n"
             "Version 0.3.1 of the harness; a p-value under 0.05 is the gate; two GPUs.\n"
             "The ahc rounds and the rel-f1 database; mle-bench says so.\n"
+            "A score of 0.05 is the floor; the box has 16GB and a 24gb card.\n"
         ),
         skill=(
             "---\nname: relbench-api\n---\n\nThe relbench API loads a database; set RELBENCH_CACHE_DIR.\n"
@@ -81,5 +83,8 @@ def test_the_rules_on_a_fixture(tmp_path):
         Finding(page, 9, "rel-f1", NEVER),
         Finding(page, 9, "mle-bench", NEVER),
         Finding(page, 9, "ahc", NEVER),
+        Finding(page, 10, "0.05 score", "number"),
+        Finding(page, 10, "16 gb", "number"),
+        Finding(page, 10, "24 gb", "number"),
         Finding(skill, 6, "3 attempts", "number"),
     ]

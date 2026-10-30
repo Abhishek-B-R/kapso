@@ -117,6 +117,9 @@ benchmark:
       ttl_seconds: 600
       reap_interval_seconds: 60
       verify_timeout_seconds: 120
+      # How often a queued lane re-polls the office; a waiter that missed
+      # six polls is dropped from the line.
+      poll_seconds: 5
       # Queue ordering ages a waiting request one tier step per this many
       # seconds (never into ship), so evidence-based ordering cannot starve
       # a weak-scored lane behind a stream of stronger arrivals.
@@ -128,6 +131,10 @@ benchmark:
   # that takes.
   final_eval:
     timeout_seconds: 900
+    # The submissions list is read page by page (the CLI's page holds
+    # twenty rows by default, two hundred at most); the provided evaluation
+    # reads the same pages with the same timeout.
+    submissions_page_size: 200
     harvest_unsubmitted: true
     # The competition's own sample file in dataset/, used to check a
     # harvested kernel's output has the right ids before submitting it.

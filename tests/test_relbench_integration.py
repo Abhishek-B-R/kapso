@@ -341,7 +341,7 @@ class TestProvidedGrader:
         (root / "kapso_evaluation" / "task.json").write_text(json.dumps({
             "dataset": "rel-f1", "task": "driver-position", "primary_metric": "mae",
             "higher_is_better": False, "work_dir": str(tmp_path / "work"),
-            "full_timeout": 300, "debug_timeout": 300, "cache_dir": str(RELBENCH_CACHE),
+            "full_timeout": 300, "debug_timeout": 300, "poll_seconds": 1, "cache_dir": str(RELBENCH_CACHE),
             "rolling_root": None,
         }))
         env = os.environ.copy()
@@ -354,6 +354,20 @@ class TestProvidedGrader:
                 cwd=root, env=env, capture_output=True, text=True, timeout=300,
             )
         return root, tmp_path / "work", run
+
+    def test_an_invalid_test_vector_fails_before_it_is_archived(self, tmp_path):
+        # The retired handler checked both splits; a wrong-sized or
+        # non-finite test vector must fail at the search's evaluation, not
+        # at the final grade after the run was archived as valid.
+        root, work, run = self._repo(tmp_path)
+        main = (root / "main.py").read_text()
+        (root / "main.py").write_text(main.replace("np.full(n_test, 13.0)", "np.full(n_test - 1, 13.0)"))
+        proc = run("full")
+        assert proc.returncode == 6 and "test predictions wrong length or non-finite" in proc.stdout
+        assert not (work / "runs").exists()
+        (root / "main.py").write_text(main.replace("np.full(n_test, 13.0)", "np.full(n_test, np.nan)"))
+        proc = run("full")
+        assert proc.returncode == 6 and "test predictions wrong length or non-finite" in proc.stdout
 
     def test_fast_scores_without_archiving(self, tmp_path):
         _root, work, run = self._repo(tmp_path)
@@ -458,7 +472,7 @@ def _governed_head(work_dir):
     source = stage_evaluation(GENERIC_EVAL_DIR, work_dir, {
         "dataset": "rel-f1", "task": "driver-position", "primary_metric": "mae",
         "higher_is_better": False, "work_dir": str(work_dir), "full_timeout": 300,
-        "debug_timeout": 300, "cache_dir": str(RELBENCH_CACHE), "rolling_root": None,
+        "debug_timeout": 300, "poll_seconds": 1, "cache_dir": str(RELBENCH_CACHE), "rolling_root": None,
     })
     (source / "kapso_eval.py").write_text(FORWARDING_WRAPPER)
     head = sandbox.fingerprint_tree(source)

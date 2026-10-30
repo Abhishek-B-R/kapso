@@ -7,8 +7,9 @@ conventions (the descriptor, the procedure, the ticket office, the rules);
 the submission procedure submits and records; the provided evaluation
 attributes the ledger to the candidate by content and reports scored,
 pending, rejected, out-of-window and missing as distinct outcomes; the
-runner's leaderboard parsing survives CLI pagination noise and windows
-submissions to the run; the preflight's root is validated fail-loud.
+submissions list is read page by page in the CLI's own status spelling,
+and the final selection follows the metric's direction inside the run
+window; the preflight's root is validated fail-loud.
 """
 
 import hashlib
@@ -26,6 +27,7 @@ import yaml
 from kapso.handles import Brief
 from benchmarks.ioai2026 import kernel_slots
 from benchmarks.ioai2026.context import PROCEDURE, build_brief
+from benchmarks.ioai2026.data.generic_eval.evaluate import list_submissions, normalize_status, parse_submissions_page
 from benchmarks.ioai2026.preflight import RULES_PATH, SPEC_PATH, build_prompt, validate_root
 from benchmarks.ioai2026.runner import (
     CONTEST_ROOT,
@@ -35,15 +37,14 @@ from benchmarks.ioai2026.runner import (
     audit_kernel,
     banked_kernel_refs,
     best_public_score,
-    classify_submit_output,
     discover_run_kernels,
     kernel_metadata_dirs,
-    parse_submissions_json,
     rank_harvest_candidates,
     kernels_run_since,
     stage_contest_root,
     submission_matches_template,
 )
+from benchmarks.ioai2026.submit import classify_submit_output
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "benchmarks", "ioai2026", "config.yaml")
 
@@ -96,32 +97,63 @@ def test_harvest_template_is_found_wherever_the_dataset_nests_it(tmp_path):
     assert matches and matches[0].endswith(os.path.join("archive", "submission.csv"))
 
 
-def test_parse_submissions_json_tolerates_pagination_noise():
+def test_a_submissions_page_yields_its_rows_and_the_next_token():
+    # The CLI's status is its enum's repr (the archived list of 2026-10-29:
+    # `SubmissionStatus.COMPLETE`); the token line sits beside the payload;
+    # a competition without a submission prints a sentence, not JSON.
     raw = (
         "Next Page Token = CfDJ8ABC\n"
-        '[{"date": "2026-07-22 15:30:00", "status": "complete", '
+        '[{"date": "2026-07-22 15:30:00", "status": "SubmissionStatus.COMPLETE", '
         '"publicScore": "0.71", "description": "baseline"}]'
     )
-    subs = parse_submissions_json(raw)
-    assert subs[0]["publicScore"] == "0.71"
+    rows, token = parse_submissions_page(raw)
+    assert rows[0]["publicScore"] == "0.71" and token == "CfDJ8ABC"
+    assert parse_submissions_page('[{"date": "x"}]\nNext Page Token = tail\n') == ([{"date": "x"}], "tail")
+    assert parse_submissions_page("No submissions found\n") == ([], None)
     with pytest.raises(ValueError, match="JSON payload"):
-        parse_submissions_json("no brackets here")
+        parse_submissions_page("no brackets here")
+    assert normalize_status("SubmissionStatus.COMPLETE") == "complete"
+    assert normalize_status("SubmissionStatus.ERROR") == "error" and normalize_status(None) == ""
 
 
-def test_best_public_score_windows_to_run_start():
-    submissions = [
-        {"date": "2026-07-22 10:00:00", "status": "complete",
-         "publicScore": "0.99", "description": "yesterday's run"},
-        {"date": "2026-07-22 15:30:00", "status": "complete",
-         "publicScore": "0.41", "description": "insurance"},
-        {"date": "2026-07-22 16:10:00", "status": "complete",
-         "publicScore": "0.78", "description": "distill"},
-        {"date": "2026-07-22 16:40:00", "status": "pending",
-         "publicScore": "", "description": "still scoring"},
+def test_the_listing_walks_every_page(tmp_path):
+    # Twenty rows a page by default: the listing asks for the page size the
+    # config sets and follows the token until the last page.
+    log = tmp_path / "args.log"
+    page_one = ('[{"date": "2026-07-22 15:30:00", "status": "SubmissionStatus.PENDING", "publicScore": "", '
+                '"description": "newer"}]')
+    page_two = ('[{"date": "2026-07-22 10:00:00", "status": "SubmissionStatus.COMPLETE", "publicScore": "0.5", '
+                '"description": "older"}]')
+    env = fake_kaggle(tmp_path / "bin", f"echo \"$*\" >> {log}\ncase \"$*\" in\n  *'--page-token p2'*) echo '{page_two}' ;;\n"
+                      f"  *) echo 'Next Page Token = p2'; echo '{page_one}' ;;\nesac")
+    rows = list_submissions(env["PATH"].split(":")[0] + "/kaggle", "spooky", 200, 30)
+    assert [row["description"] for row in rows] == ["newer", "older"]
+    calls = log.read_text().splitlines()
+    assert len(calls) == 2 and all("--page-size 200" in call for call in calls)
+    assert "--page-token" not in calls[0] and calls[1].endswith("--page-token p2")
+
+
+def test_the_final_selection_follows_the_metrics_direction_inside_the_window():
+    # The Kaggle swap's four scored submissions (a log loss, 2026-10-29):
+    # the best is the lowest, 0.30161, not the 0.33053 a maximum picks; a
+    # submission dated after the window's end counts no more than one
+    # before its start.
+    swap = [
+        ("2026-10-29 16:52:25", "0.33053"), ("2026-10-29 17:00:55", "0.30161"),
+        ("2026-10-29 17:29:39", "0.32387"), ("2026-10-29 17:37:16", "0.32479"),
     ]
-    report = best_public_score(submissions, "2026-07-22T15:00:00+00:00")
-    assert report["best"]["score"] == 0.78
-    assert len(report["submissions"]) == 3  # pre-run entry excluded
+    submissions = [{"date": date, "status": "SubmissionStatus.COMPLETE", "publicScore": score, "description": "x"}
+                   for date, score in swap]
+    submissions += [
+        {"date": "2026-10-29 10:00:00", "status": "SubmissionStatus.COMPLETE", "publicScore": "0.1", "description": "yesterday"},
+        {"date": "2026-10-29 19:00:00", "status": "SubmissionStatus.COMPLETE", "publicScore": "0.2", "description": "late"},
+        {"date": "2026-10-29 17:40:00", "status": "SubmissionStatus.PENDING", "publicScore": "", "description": "still scoring"},
+    ]
+    window = ("2026-10-29T16:50:00+00:00", "2026-10-29T18:50:00+00:00")
+    lower = best_public_score(submissions, *window, higher_is_better=False)
+    assert lower["best"]["score"] == 0.30161 and lower["best"]["status"] == "complete"
+    assert len(lower["submissions"]) == 5 and {row["status"] for row in lower["submissions"]} == {"complete", "pending"}
+    assert best_public_score(submissions, *window, higher_is_better=True)["best"]["score"] == 0.33053
 
 
 def test_audit_kernel_flags_external_pulls(tmp_path):
@@ -167,13 +199,13 @@ def test_submission_matches_template_gates_on_ids_not_just_size(tmp_path):
     assert not submission_matches_template(str(short), str(template))
 
 
-def make_slots_task(tmp_path, gpu=2, cpu=5, ttl=600, aging=900):
+def make_slots_task(tmp_path, gpu=2, cpu=5, ttl=600, aging=900, higher_is_better=True):
     task = tmp_path / "task"
     task.mkdir(exist_ok=True)
     (task / ".kernel_slots_config.json").write_text(json.dumps(
         {"gpu": gpu, "cpu": cpu, "ttl_seconds": ttl,
          "reap_interval_seconds": 60, "verify_timeout_seconds": 30,
-         "aging_seconds": aging}))
+         "aging_seconds": aging, "poll_seconds": 5, "higher_is_better": higher_is_better}))
     return str(task)
 
 
@@ -207,6 +239,22 @@ def test_queue_orders_by_banked_evidence_within_a_tier(tmp_path):
     assert grab_as(task, "lane2", "o/upper6-lora", now=t0 + 3)["ticket"] is None
     assert grab_as(task, "lane6", "o/imprinted-head", now=t0 + 4)["ticket"] is None
     assert grab_as(task, "lane1", "o/fresh-idea", now=t0 + 5)["ticket"]
+
+
+def test_queue_orders_banked_evidence_in_the_metrics_direction(tmp_path):
+    # The Kaggle swap's metric is a log loss (2026-10-29): the lane whose
+    # banked score is LOWER holds the stronger evidence and goes first.
+    task = make_slots_task(tmp_path, gpu=1, higher_is_better=False)
+    held = grab_as(task, "holder", "o/holder-k")["ticket"]
+    t0 = time.time()
+    assert grab_as(task, "lane-anchor", "o/anchor", now=t0)["ticket"] is None
+    assert grab_as(task, "lane-gated", "o/gated", now=t0 + 1)["ticket"] is None
+    bank(task, 0.33053, "o/anchor")
+    bank(task, 0.30161, "o/gated")
+    kernel_slots.release(task, held)
+    assert grab_as(task, "lane-anchor", "o/anchor", now=t0 + 2)["ticket"] is None
+    assert grab_as(task, "lane-gated", "o/gated", now=t0 + 3)["ticket"]
+    assert kernel_slots.status(task)["gpu"]["queue"][0]["best_public"] == 0.33053
 
 
 def test_queue_aging_promotes_weak_lanes_but_never_into_ship(tmp_path):
@@ -257,8 +305,8 @@ def test_lane_identity_survives_shell_quote_artifacts(tmp_path):
     bank(task, 0.83369, "o/lda-lane7")
     kernel_slots.release(task, held)
     ledger = kernel_slots.read_ledger(os.path.join(task, ".kernel_slots.json"))
-    assert kernel_slots.lane_best_public(task, ledger, "lane7'") == 0.83369
-    assert kernel_slots.lane_best_public(task, ledger, "lane7") == 0.83369
+    assert kernel_slots.lane_best_public(task, ledger, "lane7'", True) == 0.83369
+    assert kernel_slots.lane_best_public(task, ledger, "lane7", True) == 0.83369
 
 
 def grab(task, pool="gpu", kind="push", lane="lane", priority=None,
@@ -483,7 +531,10 @@ def test_kaggle_config_minimal_knobs():
 # ---------------------------------------------------------------------------
 
 COMPUTE = {"has_gpu": True, "gpu_name": "NVIDIA A100-SXM4-40GB, 40960 MiB", "num_cpus": 12, "mem_gb": 85}
-LIMITS = {"gpu": 2, "cpu": 5, "ttl_seconds": 600, "reap_interval_seconds": 60, "verify_timeout_seconds": 120, "aging_seconds": 900}
+LIMITS = {"gpu": 2, "cpu": 5, "ttl_seconds": 600, "reap_interval_seconds": 60, "verify_timeout_seconds": 120,
+          "poll_seconds": 5, "aging_seconds": 900}
+LISTING = {"submissions_page_size": 200, "timeout_seconds": 900}
+WINDOW = ("2026-10-29T10:00:00+00:00", "2026-10-29T16:00:00+00:00")
 
 
 def test_the_brief_is_the_statement_plus_the_campaigns_facts_and_the_rules(tmp_path):
@@ -516,16 +567,22 @@ def test_the_contest_root_carries_the_harness_conventions(tmp_path):
     task.mkdir()
     shutil.copy2(RULES_PATH, task / "RULES.md")                          # the preflight's pinned copy
     (task / CONTEST_ROOT).mkdir()
-    (task / CONTEST_ROOT / kernel_slots.LEDGER_NAME).write_text("{}")   # a stale ticket ledger goes
-    root = stage_contest_root(str(task), "ioai-practice-1", True, "2026-10-29T10:00:00+00:00", LIMITS)
+    for ledger in (kernel_slots.LEDGER_NAME, LEDGER):                    # an earlier launch's ledgers
+        (task / CONTEST_ROOT / ledger).write_text("{}")
+    # A resume keeps the campaign's state: scored submissions, attribution, tickets.
+    root = stage_contest_root(str(task), "ioai-practice-1", True, WINDOW, LIMITS, LISTING, fresh=False)
+    assert all((task / CONTEST_ROOT / ledger).read_text() == "{}" for ledger in (kernel_slots.LEDGER_NAME, LEDGER))
+    # A new campaign starts afresh: an earlier launch's submission is not its insurance.
+    root = stage_contest_root(str(task), "ioai-practice-1", True, WINDOW, LIMITS, LISTING, fresh=True)
     assert root == str(task / CONTEST_ROOT)
     descriptor = json.loads((task / CONTEST_ROOT / "contest.json").read_text())
     assert descriptor == {
         "competition": "ioai-practice-1", "ledger": str(task / CONTEST_ROOT / LEDGER), "procedure": PROCEDURE,
-        "higher_is_better": True, "window_start": "2026-10-29T10:00:00+00:00", "shared_root": root,
+        "higher_is_better": True, "window_start": WINDOW[0], "window_end": WINDOW[1], "shared_root": root,
+        "list_page_size": 200, "list_timeout_seconds": 900,
     }
-    assert json.loads((task / CONTEST_ROOT / kernel_slots.CONFIG_NAME).read_text()) == LIMITS
-    assert not (task / CONTEST_ROOT / kernel_slots.LEDGER_NAME).exists()
+    assert json.loads((task / CONTEST_ROOT / kernel_slots.CONFIG_NAME).read_text()) == {**LIMITS, "higher_is_better": True}
+    assert not any((task / CONTEST_ROOT / ledger).exists() for ledger in (kernel_slots.LEDGER_NAME, LEDGER))
     for name in ("submit.py", "kernel_slots.py", "RULES.md"):
         assert (task / CONTEST_ROOT / name).is_file()
     assert "cuda:0" in (task / CONTEST_ROOT / "RULES.md").read_text()
@@ -540,7 +597,7 @@ def fake_kaggle(directory: Path, body: str) -> dict:
     return {**os.environ, "PATH": f"{directory}:{os.environ['PATH']}"}
 
 
-def candidate_repo(tmp_path, higher_is_better=False, window_start="2026-10-29T10:00:00+00:00"):
+def candidate_repo(tmp_path, higher_is_better=False, window=WINDOW):
     """A session clone as the engine lays it out: the data with the
     descriptor, the provided evaluation, a kernel folder."""
     repo = tmp_path / "repo"
@@ -550,7 +607,8 @@ def candidate_repo(tmp_path, higher_is_better=False, window_start="2026-10-29T10
     shutil.copy2(SUBMIT_PATH, repo / "kapso_datasets" / "submit.py")
     (repo / "kapso_datasets" / "contest.json").write_text(json.dumps({
         "competition": "ioai-practice-1", "ledger": str(shared_root / LEDGER), "procedure": PROCEDURE,
-        "higher_is_better": higher_is_better, "window_start": window_start, "shared_root": str(shared_root),
+        "higher_is_better": higher_is_better, "window_start": window[0], "window_end": window[1],
+        "shared_root": str(shared_root), "list_page_size": 200, "list_timeout_seconds": 30,
     }))
     (repo / "kapso_evaluation").mkdir()
     shutil.copy2(EVALUATION_SUITE / "evaluate.py", repo / "kapso_evaluation" / "evaluate.py")
@@ -582,6 +640,13 @@ def test_the_procedure_submits_and_records_the_entry_by_content(tmp_path):
     entries = json.loads(ledger.read_text())["submissions"]
     assert len(entries) == 2 and entries[1]["file"] == "out.csv" and entries[1]["status"] == "rejected"
     assert entries[1]["verdict"] == "rejected-403" and entries[1]["file_sha256"] == hashlib.sha256(b"id,y\n1,0\n").hexdigest()
+    # The recorded paths are relative to the repository root and inside it:
+    # the evaluation finds the same file in the candidate's tree.
+    for arguments in (["--file", str(repo / "out.csv")], ["--file", "../out.csv"],
+                      ["--kernel", "me/kernel-a", "--version", "3", "--kernel-dir", str(repo / "kernel")]):
+        refused = run_in(repo, ["kapso_datasets/submit.py", *arguments, "-m", "x"], env)
+        assert refused.returncode == 1 and "relative to the repository root" in refused.stderr
+    assert len(json.loads(ledger.read_text())["submissions"]) == 2
 
 
 def write_ledger(ledger: Path, entries: list) -> None:
@@ -600,7 +665,9 @@ def mine(**overrides) -> dict:
     return entry
 
 
-OTHER = mine(submission_id="kapso-bb22", message="other [kapso-bb22]", kernel_sha256="0" * 64, status="complete", public_score=0.99)
+SCORED_AT = "2026-10-29T11:10:00+00:00"
+OTHER = mine(submission_id="kapso-bb22", message="other [kapso-bb22]", kernel_sha256="0" * 64, status="complete",
+             public_score=0.99, scored_at=SCORED_AT)
 
 
 class TestProvidedEvaluation:
@@ -616,20 +683,44 @@ class TestProvidedEvaluation:
         assert done.returncode == 11 and "no submission of this candidate" in done.stdout
 
     def test_a_scored_submission_is_refreshed_attributed_and_oriented(self, tmp_path):
+        # The row's status is the CLI's own spelling (the arm's archive,
+        # 2026-10-29): the shorter word left every scored submission pending.
         repo, ledger, shared = candidate_repo(tmp_path, higher_is_better=False)
         write_ledger(ledger, [OTHER, mine()])
-        rows = json.dumps([{"ref": 777, "date": "2026-10-29 11:05:00", "status": "complete", "publicScore": "0.42",
-                            "description": "blend local=0.91 [kapso-aa11]"}])
-        env = fake_kaggle(tmp_path / "bin", f"echo 'Next Page Token = x'; echo '{rows}'")
+        rows = json.dumps([{"ref": 777, "date": "2026-10-29 11:05:00", "status": "SubmissionStatus.COMPLETE",
+                            "publicScore": "0.42", "description": "blend local=0.91 [kapso-aa11]"}])
+        env = fake_kaggle(tmp_path / "bin", f"echo '{rows}'")
         done = self.evaluate(repo, env)
         assert done.returncode == 0, done.stdout + done.stderr
         line = [line for line in done.stdout.splitlines() if line.startswith("KAPSO_EVAL_MANIFEST")][-1]
         result = json.loads(line.split(" ", 1)[1])
-        assert result == {"score": -0.42, "raw_score": 0.42, "higher_is_better": False, "submission_id": "kapso-aa11",
-                          "ref": 777, "submitted_at": "2026-10-29T11:00:00+00:00"}
         refreshed = json.loads(ledger.read_text())["submissions"][1]
+        assert result == {"score": -0.42, "raw_score": 0.42, "higher_is_better": False, "submission_id": "kapso-aa11",
+                          "ref": 777, "submitted_at": "2026-10-29T11:00:00+00:00", "scored_at": refreshed["scored_at"]}
         assert refreshed["status"] == "complete" and refreshed["public_score"] == 0.42 and refreshed["ref"] == 777
+        assert refreshed["scored_at"].endswith("+00:00")
         assert (shared / "best_score.log").read_text().startswith("0.42 2026-10-29T11:00:00+00:00 me/kernel-a blend")
+
+    def test_the_refresh_keeps_a_submission_made_during_the_listing(self, tmp_path):
+        # The listing runs outside the lock; a lane's submission appended
+        # meanwhile survives the merge, and the merged file is whole.
+        repo, ledger, _shared = candidate_repo(tmp_path)
+        write_ledger(ledger, [mine()])
+        rows = json.dumps([{"ref": 5, "date": "2026-10-29 11:05:00", "status": "SubmissionStatus.COMPLETE",
+                            "publicScore": "0.42", "description": "blend local=0.91 [kapso-aa11]"}])
+        appender = tmp_path / "append.py"
+        appender.write_text(
+            "import json, sys\nfrom pathlib import Path\n"
+            f"path = Path({str(ledger)!r})\nledger = json.loads(path.read_text())\n"
+            f"ledger['submissions'].append({mine(submission_id='kapso-bb22', message='late [kapso-bb22]')!r})\n"
+            "path.write_text(json.dumps(ledger))\n"
+        )
+        env = fake_kaggle(tmp_path / "bin", f"{sys.executable} {appender}\necho '{rows}'")
+        assert self.evaluate(repo, env).returncode == 0
+        first, second = json.loads(ledger.read_text())["submissions"]
+        assert first["status"] == "complete" and first["public_score"] == 0.42
+        assert second["submission_id"] == "kapso-bb22" and second["status"] == "pending"
+        assert not ledger.with_name(ledger.name + ".tmp").exists()
 
     def test_pending_rejected_and_out_of_window_are_distinct_outcomes(self, tmp_path):
         repo, ledger, _shared = candidate_repo(tmp_path)
@@ -640,19 +731,23 @@ class TestProvidedEvaluation:
         write_ledger(ledger, [mine(status="rejected", verdict="rejected-403", output="403 Client Error")])
         done = self.evaluate(repo, env)
         assert done.returncode == 13 and "403 Client Error" in done.stdout
-        errored = json.dumps([{"ref": 1, "status": "error", "errorDescription": "Evaluation exception",
+        errored = json.dumps([{"ref": 1, "status": "SubmissionStatus.ERROR", "errorDescription": "Evaluation exception",
                                "publicScore": "", "description": "blend local=0.91 [kapso-aa11]"}])
         write_ledger(ledger, [mine()])
         done = self.evaluate(repo, fake_kaggle(tmp_path / "binerr", f"echo '{errored}'"))
         assert done.returncode == 13 and "Evaluation exception" in done.stdout
-        write_ledger(ledger, [mine(status="complete", public_score=0.5, submitted_at="2026-10-29T09:00:00+00:00")])
-        assert self.evaluate(repo, env).returncode == 14
+        for outside in ("2026-10-29T09:00:00+00:00", "2026-10-29T16:00:01+00:00"):
+            write_ledger(ledger, [mine(status="complete", public_score=0.5, submitted_at=outside, scored_at=SCORED_AT)])
+            assert self.evaluate(repo, env).returncode == 14
+        write_ledger(ledger, [mine(status="complete", public_score=0.5, submitted_at=WINDOW[1], scored_at=SCORED_AT)])
+        assert self.evaluate(repo, env).returncode == 0
 
     def test_the_latest_of_this_candidates_submissions_is_reported(self, tmp_path):
         repo, ledger, _shared = candidate_repo(tmp_path, higher_is_better=True)
         write_ledger(ledger, [
-            mine(status="complete", public_score=0.7, submitted_at="2026-10-29T11:00:00+00:00"),
-            mine(submission_id="kapso-cc33", status="complete", public_score=0.6, submitted_at="2026-10-29T12:00:00+00:00"),
+            mine(status="complete", public_score=0.7, submitted_at="2026-10-29T11:00:00+00:00", scored_at=SCORED_AT),
+            mine(submission_id="kapso-cc33", status="complete", public_score=0.6, submitted_at="2026-10-29T12:00:00+00:00",
+                 scored_at=SCORED_AT),
         ])
         done = self.evaluate(repo, fake_kaggle(tmp_path / "bin", "echo '[]'"))
         assert done.returncode == 0 and '"raw_score": 0.6' in done.stdout and '"submission_id": "kapso-cc33"' in done.stdout

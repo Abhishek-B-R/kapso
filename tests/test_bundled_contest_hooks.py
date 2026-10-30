@@ -207,9 +207,16 @@ def test_a_finish_is_blocked_before_the_first_submission_is_in_the_ledger(contes
     assert "records none" in run_hook("require-insurance", "require_insurance.py", contest, event)["reason"]
     ledger.write_text(json.dumps({"submissions": [None, {"competition": "other", "submission_id": "1"}, {"competition": "my-contest"}]}))
     assert "records none" in run_hook("require-insurance", "require_insurance.py", contest, event)["reason"]
-    ledger.write_text(json.dumps({"submissions": [{"competition": "my-contest", "kernel_ref": "me/kernel", "version": 1,
-                                                   "submission_id": "7", "status": "pending"}]}))
-    assert run_hook("require-insurance", "require_insurance.py", contest, event) == {}
+    # The evaluator's vocabulary: a refused (`rejected`) or failed (`error`)
+    # submission is no insurance; one awaiting its score or scored is.
+    for status in ("rejected", "error"):
+        ledger.write_text(json.dumps({"submissions": [{"competition": "my-contest", "kernel_ref": "me/kernel", "version": 1,
+                                                       "submission_id": "7", "status": status}]}))
+        assert "records none" in run_hook("require-insurance", "require_insurance.py", contest, event)["reason"]
+    for status in ("pending", "complete"):
+        ledger.write_text(json.dumps({"submissions": [{"competition": "my-contest", "kernel_ref": "me/kernel", "version": 1,
+                                                       "submission_id": "7", "status": status}]}))
+        assert run_hook("require-insurance", "require_insurance.py", contest, event) == {}
 
 
 @pytest.mark.parametrize("descriptor, fragment", [

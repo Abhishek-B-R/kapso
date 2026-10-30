@@ -60,13 +60,19 @@ Per task:
 # from the repository root
 pip install -e .
 
-# ingest a task (URL or organizer brief) into a run root
+# ingest a task (URL or organizer brief) into a run root, with the task's binding rules
 PYTHONPATH=src:. python -m benchmarks.ioai2026.preflight \
-    --task <task url or brief> --root tmp/ioai/task1
+    --task <task url or brief> --root tmp/ioai/task1 \
+    --rules benchmarks/ioai2026/RULES.md
 
 # run the campaign for one 6 hour session
 PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root tmp/ioai/task1 --hours 6
 ```
+
+`--rules` pins the task's binding rules under the task (the default is the IOAI AI Models Track
+rules beside the script); another competition's rules file turns the preflight and the runner to
+that competition, whose quota and report requirements the statement then carries. The preflight
+refuses to run without a rules file at the path given.
 
 ## The book as a bank
 

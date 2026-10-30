@@ -69,7 +69,6 @@ import kapso_eval_archive as archive_contract
 
 MANIFEST_MARKER = "KAPSO_EVAL_MANIFEST"
 TASK_FILE = "task.json"
-POLL_SECONDS = 1.0
 
 
 def task_settings() -> dict:
@@ -119,7 +118,7 @@ def _session_id() -> str:
     return _repo_root().name
 
 
-def _run_child(cmd: list, cwd: Path, env: dict, deadline: float) -> None:
+def _run_child(cmd: list, cwd: Path, env: dict, deadline: float, poll_seconds: float) -> None:
     """Run the candidate to completion or the deadline, streaming its output.
 
     The child writes to a log file and the loop prints what arrived while it
@@ -142,7 +141,7 @@ def _run_child(cmd: list, cwd: Path, env: dict, deadline: float) -> None:
                 proc.wait()
                 print("[grader] candidate exceeded its time limit and was killed")
                 sys.exit(4)
-            time.sleep(POLL_SECONDS)
+            time.sleep(poll_seconds)
     if proc.returncode != 0:
         print(f"[grader] candidate exited non-zero ({proc.returncode})")
         sys.exit(5)
@@ -168,7 +167,7 @@ def run_candidate(settings: dict, fidelity: str, run_data_dir: Path) -> None:
     env["KAPSO_RUN_DATA_DIR"] = str(run_data_dir)
     env["PYTHONUNBUFFERED"] = "1"
     print(f"[grader] running candidate: {' '.join(cmd)} (timeout {timeout}s)")
-    _run_child(cmd, _repo_root(), env, time.time() + timeout)
+    _run_child(cmd, _repo_root(), env, time.time() + timeout, float(settings["poll_seconds"]))
 
 
 def run_candidate_rolling(settings: dict, fidelity: str, run_data_dir: Path, rolling_root: Path) -> None:
@@ -197,7 +196,7 @@ def run_candidate_rolling(settings: dict, fidelity: str, run_data_dir: Path, rol
             env["PYTHONUNBUFFERED"] = "1"
             print(f"[grader] rolling tick {snap.name} "
                   f"({int(deadline - time.time())}s left)")
-            _run_child(cmd, root, env, deadline)
+            _run_child(cmd, root, env, deadline, float(settings["poll_seconds"]))
             task_dirs = list((stage / "cache").glob("*/tasks/*"))
             idx = np.load(task_dirs[0] / "indices.npy")
             pred_path = tick_out / "test_predictions.npy"
@@ -222,6 +221,30 @@ def run_candidate_rolling(settings: dict, fidelity: str, run_data_dir: Path, rol
     print(f"[grader] rolling assembly complete: val={vectors['val']} test={vectors['test']} rows")
 
 
+def validated(task, split: str, pred, n: int):
+    """The split's prediction vector against the contract: the shape and
+    dtype for the task type, every value finite, a probability inside
+    [0, 1]. The same rules for both splits, the test split without its
+    labels: an invalid test vector fails here, before it is archived and
+    the final grade finds it."""
+    if isinstance(task, RecommendationTask):
+        expected = (n, task.eval_k)
+        if pred.shape != expected or not np.issubdtype(pred.dtype, np.integer):
+            print(f"[grader] contract violation: {split} predictions must be int {expected}, got {pred.shape} {pred.dtype}")
+            sys.exit(6)
+        return pred
+    arr = np.asarray(pred, dtype=np.float64)
+    if arr.ndim == 2 and arr.shape[1] == 1 and task.task_type != TaskType.MULTICLASS_CLASSIFICATION:
+        pred = arr[:, 0]
+    if len(pred) != n or not np.all(np.isfinite(np.asarray(pred, dtype=np.float64))):
+        print(f"[grader] contract violation: {split} predictions wrong length or non-finite")
+        sys.exit(6)
+    if task.task_type == TaskType.BINARY_CLASSIFICATION and (np.min(pred) < 0 or np.max(pred) > 1):
+        print(f"[grader] contract violation: {split} predictions are not probabilities in [0, 1]")
+        sys.exit(6)
+    return pred
+
+
 def load_and_score(settings: dict, run_data_dir: Path):
     primary = settings["primary_metric"]
     task = open_task(settings)
@@ -231,26 +254,13 @@ def load_and_score(settings: dict, run_data_dir: Path):
 
     val_path = run_data_dir / "val_predictions.npy"
     test_path = run_data_dir / "test_predictions.npy"
-    for p, n in ((val_path, n_val), (test_path, n_test)):
+    for p in (val_path, test_path):
         if not p.exists():
             print(f"[grader] contract violation: {p.name} was not written")
             sys.exit(6)
 
-    val_pred = np.load(val_path, allow_pickle=False)
-    test_pred = np.load(test_path, allow_pickle=False)
-
-    if isinstance(task, RecommendationTask):
-        expected = (n_val, task.eval_k)
-        if val_pred.shape != expected or not np.issubdtype(val_pred.dtype, np.integer):
-            print(f"[grader] contract violation: val predictions must be int {expected}, got {val_pred.shape} {val_pred.dtype}")
-            sys.exit(6)
-    else:
-        val_arr = np.asarray(val_pred, dtype=np.float64)
-        if val_arr.ndim == 2 and val_arr.shape[1] == 1 and task.task_type != TaskType.MULTICLASS_CLASSIFICATION:
-            val_pred = val_arr[:, 0]
-        if len(val_pred) != n_val or not np.all(np.isfinite(np.asarray(val_pred, dtype=np.float64))):
-            print(f"[grader] contract violation: val predictions wrong length or non-finite")
-            sys.exit(6)
+    val_pred = validated(task, "val", np.load(val_path, allow_pickle=False), n_val)
+    test_pred = validated(task, "test", np.load(test_path, allow_pickle=False), n_test)
 
     val_metrics = {k: float(v) for k, v in task.evaluate(val_pred, val_table).items()}
     if primary not in val_metrics:
@@ -335,10 +345,14 @@ def rescore_archived_run(run_path: str) -> None:
     primary, higher = settings["primary_metric"], bool(settings["higher_is_better"])
     val_metrics, _val_pred, _test_pred, n_val = load_and_score(settings, run_dir)
     label = json.loads((run_dir / "private" / "selection.json").read_text())
+    # The archived manifest line says which grant produced the run; the
+    # rescore echoes its class (fidelity, fraction, seed) beside the
+    # recomputed score.
+    archived = json.loads((run_dir / "manifest.txt").read_text().split(" ", 1)[1])
     manifest = {
-        "fidelity": "full",
-        "fraction": 1.0,
-        "seed": 1337,
+        "fidelity": archived["fidelity"],
+        "fraction": archived["fraction"],
+        "seed": archived["seed"],
         "items": n_val,
         "total_items": n_val,
         "score": oriented(val_metrics[primary], higher),
@@ -359,7 +373,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fidelity", choices=["fast", "full"])
     parser.add_argument("--fraction", type=float, default=1.0)
-    parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument("--seed", type=int, help="the registered subsample seed; the engine's command carries it")
     parser.add_argument("--void", metavar="RUN",
                         help="disqualify one of this session's archived runs")
     parser.add_argument("--reason", default="",
@@ -375,8 +389,8 @@ def main() -> None:
     if args.rescore:
         rescore_archived_run(args.rescore)
         return
-    if not args.fidelity:
-        parser.error("--fidelity is required unless --void/--rescore is given")
+    if not args.fidelity or args.seed is None:
+        parser.error("--fidelity and --seed are required unless --void/--rescore is given")
 
     settings = task_settings()
     primary, higher = settings["primary_metric"], bool(settings["higher_is_better"])

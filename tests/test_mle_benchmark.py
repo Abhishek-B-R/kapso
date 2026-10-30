@@ -74,7 +74,7 @@ def load_grader(repo: Path, higher_is_better: bool, monkeypatch):
     shutil.copy2(GRADER, suite / "grader.py")
     (suite / "task.json").write_text(json.dumps({
         "competition_id": "spooky-author-identification", "higher_is_better": higher_is_better,
-        "data_dir": str(repo / "data"), "full_timeout": 60, "debug_timeout": 60, "floor_score": 1e9,
+        "data_dir": str(repo / "data"), "full_timeout": 60, "debug_timeout": 60, "poll_seconds": 1, "floor_score": 1e9,
     }))
     monkeypatch.setattr(sys, "dont_write_bytecode", True)
     spec = importlib.util.spec_from_file_location("mle_grader", suite / "grader.py")
@@ -103,7 +103,7 @@ class TestProvidedGrader:
         repo = tmp_path / "repo"
         grader = load_grader(repo, higher_is_better=False, monkeypatch=monkeypatch)
         (repo / "main.py").write_text(CANDIDATE)
-        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast"])
+        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast", "--seed", "1337"])
         grader.main()
         manifest = manifest_of(capsys.readouterr().out)
         assert manifest["fidelity"] == "fast" and manifest["raw_score"] == 0.62
@@ -114,7 +114,7 @@ class TestProvidedGrader:
         repo = tmp_path / "repo"
         grader = load_grader(repo, higher_is_better=True, monkeypatch=monkeypatch)
         (repo / "main.py").write_text(CANDIDATE)
-        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "full"])
+        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "full", "--seed", "1337"])
         grader.main()
         manifest = manifest_of(capsys.readouterr().out)
         assert manifest["score"] == manifest["raw_score"] == 0.42
@@ -128,7 +128,7 @@ class TestProvidedGrader:
         repo = tmp_path / "repo"
         grader = load_grader(repo, higher_is_better=True, monkeypatch=monkeypatch)
         (repo / "main.py").write_text(candidate)
-        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast"])
+        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast", "--seed", "1337"])
         with pytest.raises(SystemExit) as stopped:
             grader.main()
         assert stopped.value.code == 6 and problem in capsys.readouterr().out
@@ -138,7 +138,7 @@ class TestProvidedGrader:
         grader = load_grader(repo, higher_is_better=True, monkeypatch=monkeypatch)
         (repo / "main.py").write_text(CANDIDATE)
         monkeypatch.setattr(grader, "validate_submission", lambda path, competition: (False, "wrong columns"))
-        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast"])
+        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast", "--seed", "1337"])
         with pytest.raises(SystemExit) as stopped:
             grader.main()
         assert stopped.value.code == 6 and "wrong columns" in capsys.readouterr().out
@@ -151,7 +151,7 @@ class TestProvidedGrader:
         (repo / "data").mkdir()
         (repo / "data" / "sample_submission.csv").write_text("id,EAP,HPL,MWS\nid1,0.4,0.3,0.3\n")
         shutil.copy2(REPO_ROOT / "benchmarks" / "mle" / "data" / "generic_baseline" / "main.py", repo / "main.py")
-        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast"])
+        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast", "--seed", "1337"])
         grader.main()
         manifest = manifest_of(capsys.readouterr().out)
         assert manifest["raw_score"] == 1e9 and manifest["score"] == -1e9

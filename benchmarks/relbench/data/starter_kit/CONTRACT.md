@@ -12,8 +12,12 @@ After each run it loads, validates, and officially scores:
 
 Rules:
 
-1. Both files must exist after EVERY run (debug included), with rows aligned
-   positionally to `task.get_table("val")` / `task.get_table("test")`.
+1. Under the standard regime both files must exist after EVERY run (debug
+   included), with rows aligned positionally to `task.get_table("val")` /
+   `task.get_table("test")`. Under the rolling regime (the Brief says when;
+   the snapshot's `val.parquet` is empty) an invocation writes
+   `test_predictions.npy` for the snapshot it is handed, in order, and no
+   `val_predictions.npy`: the evaluation assembles the ticks.
    Val predictions must be OUT-OF-SAMPLE: produced by a model that never saw
    val labels in training. Training on train+val is allowed only for the
    model that produces test predictions (the two-model contract).
@@ -29,7 +33,8 @@ Rules:
    physically absent, and `download=True` is never passed. Do not probe for
    what the copy does not hold.
 5. You may run `python kapso_datasets/check_predictions.py` yourself after writing
-   predictions to pre-validate shapes before the evaluation does.
+   predictions to pre-validate shapes before the evaluation does; it reads the
+   regime from the task's settings and checks what that regime asks for.
 6. Session lifetime: your session exists only while you are actively working —
    the moment you stop responding it ends and every process it started is
    killed; no completion notification can ever reach you. Run evaluations and

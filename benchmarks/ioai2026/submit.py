@@ -5,22 +5,26 @@
     python kapso_datasets/submit.py --file <path> -m "<idea> local=<score>"
 
 Run from the repository root. It reads `kapso_datasets/contest.json` (the
-competition and the ledger's absolute path), submits through the kaggle CLI,
-classifies the CLI's text (the exit code carries no signal on every
+competition and the ledger's absolute path), submits through the kaggle
+CLI, classifies the CLI's text (the exit code carries no signal on every
 version), and appends one entry to the ledger under a lock: the submission
 id (a token this procedure minted and put in the message, which is how the
 evaluation attributes the competition's submissions list to this entry),
 the kernel reference and version with the kernel source's hash, or the
 file's path and hash, the message, the time, the verdict and the CLI's
-output. The entry starts `pending`; the evaluation refreshes it from the
-competition's submissions list. Stdlib-only and standalone: it is staged
-into every session.
+output. The paths it records (`--kernel-dir`, `--file`) are relative to the
+repository root and inside it: the evaluation finds the same file in the
+candidate's tree and attributes the score by its hash, so a submission is
+made right after its push, before the source changes. The entry starts
+`pending`; the evaluation refreshes it from the competition's submissions
+list. Stdlib-only and standalone: it is staged into every session.
 """
 
 import argparse
 import fcntl
 import hashlib
 import json
+import os
 import secrets
 import re
 import shutil
@@ -61,15 +65,32 @@ def sha256_of(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def repository_relative(raw: str, what: str) -> Path:
+    """A path the ledger records: relative to the repository root and inside
+    it, so the evaluation finds the same file in the candidate's tree."""
+    path = Path(raw)
+    if path.is_absolute() or ".." in path.parts:
+        sys.exit(f"{what} must be a path relative to the repository root and inside it, not {raw}")
+    return path
+
+
+def write_ledger(ledger_path: Path, ledger: dict) -> None:
+    """Written whole and swapped in: a reader (a hook, an evaluation) never
+    sees a partial file."""
+    staging = ledger_path.with_name(ledger_path.name + ".tmp")
+    staging.write_text(json.dumps(ledger, indent=2) + "\n", encoding="utf-8")
+    os.replace(staging, ledger_path)
+
+
 def append_entry(ledger_path: Path, entry: dict) -> None:
-    """One entry appended under the ledger's lock: lanes submit concurrently."""
+    """One entry appended under the ledger's lock: lanes submit concurrently,
+    and the evaluation merges its refresh under the same lock."""
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = ledger_path.with_suffix(ledger_path.suffix + ".lock")
-    with open(lock_path, "w") as lock:
+    with open(ledger_path.with_suffix(ledger_path.suffix + ".lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        ledger = json.loads(ledger_path.read_text()) if ledger_path.is_file() else {"submissions": []}
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8")) if ledger_path.is_file() else {"submissions": []}
         ledger["submissions"].append(entry)
-        ledger_path.write_text(json.dumps(ledger, indent=2) + "\n")
+        write_ledger(ledger_path, ledger)
         fcntl.flock(lock, fcntl.LOCK_UN)
 
 
@@ -77,9 +98,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--kernel", help="the kernel reference <owner>/<slug> (a code competition)")
     parser.add_argument("--version", type=int, help="the kernel version the push printed")
-    parser.add_argument("--kernel-dir", default="kernel", help="the kernel folder holding kernel-metadata.json (default: kernel)")
+    parser.add_argument("--kernel-dir", default="kernel",
+                        help="the kernel folder holding kernel-metadata.json, relative to the repository root (default: kernel)")
     parser.add_argument("--output-file", default="submission.csv", help="the output file the kernel writes (a code competition)")
-    parser.add_argument("--file", help="the prediction file to upload (a file-upload competition)")
+    parser.add_argument("--file", help="the prediction file to upload, relative to the repository root (a file-upload competition)")
     parser.add_argument("-m", "--message", required=True, help="the idea and the local score")
     args = parser.parse_args()
     if bool(args.kernel) == bool(args.file):
@@ -104,14 +126,15 @@ def main() -> None:
         "ref": None,
     }
     if args.kernel:
-        metadata = json.loads((Path(args.kernel_dir) / METADATA).read_text(encoding="utf-8"))
-        code_file = Path(args.kernel_dir) / metadata["code_file"]
+        kernel_dir = repository_relative(args.kernel_dir, "--kernel-dir")
+        metadata = json.loads((kernel_dir / METADATA).read_text(encoding="utf-8"))
+        code_file = kernel_dir / metadata["code_file"]
         entry.update({"kernel_ref": args.kernel, "version": args.version, "code_file": str(code_file),
                       "kernel_sha256": sha256_of(code_file)})
         command = [kaggle, "competitions", "submit", competition, "-k", args.kernel, "-v", str(args.version),
                    "-f", args.output_file, "-m", message]
     else:
-        file_path = Path(args.file)
+        file_path = repository_relative(args.file, "--file")
         entry.update({"file": str(file_path), "file_sha256": sha256_of(file_path)})
         command = [kaggle, "competitions", "submit", competition, "-f", str(file_path), "-m", message]
     completed = subprocess.run(command, capture_output=True, text=True)

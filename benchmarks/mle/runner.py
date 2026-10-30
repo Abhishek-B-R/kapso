@@ -150,6 +150,7 @@ def solve_competition(args) -> dict:
         "data_dir": str(data_dir),
         "full_timeout": int(timeouts["full"]),
         "debug_timeout": int(timeouts["debug"]),
+        "poll_seconds": settings["grader_poll_seconds"],
         "floor_score": floor_score,
     })
     shared_cache_dir = work_dir / "shared_cache"

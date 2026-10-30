@@ -83,8 +83,9 @@ into the statement as binding. So:
 - **Submission quota: the task's own stated limit is the authority.** Check the
   competition's pages (Overview — including any Starter Prompt — and Rules) for
   a task-specific submission limit; if one is stated, the statement quotes that
-  number as the binding quota. Only when the pages genuinely state none does the
-  default apply: state 50 per task (never invent a number).
+  number as the binding quota. Only when the pages genuinely state none does
+  RULES.md's own default apply, when it states one; when neither states a
+  quota, write that the quota is unstated (never invent a number).
 - **Kernel run-time cap: the task's own stated limit is the authority.** Check
   the same pages for a per-kernel-run time cap (e.g. "cap every kernel run at
   N seconds", a mandatory push timeout value). If one is stated, quote it in

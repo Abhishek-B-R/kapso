@@ -11,6 +11,7 @@ import argparse
 import json
 import sys
 import types
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -129,7 +130,7 @@ def test_mle_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, t
     work_dir = tmp_path / "tmp" / "mle" / "spooky-author-identification"
     assert json.loads((work_dir / "evaluation" / "task.json").read_text()) == {
         "competition_id": "spooky-author-identification", "higher_is_better": False, "data_dir": str(work_dir / "data"),
-        "full_timeout": 28800, "debug_timeout": 1200, "floor_score": 1000000000.0,
+        "full_timeout": 28800, "debug_timeout": 1200, "poll_seconds": 1, "floor_score": 1000000000.0,
     }
     assert (work_dir / "evaluation" / "grader.py").is_file()
     launch = launch_record(tmp_path / "workspace")
@@ -144,10 +145,11 @@ def test_mle_runner_builds_on_the_facade_with_the_bundled_harness(monkeypatch, t
     # Ideation on Claude Code with the packaged model; implementation and
     # the judge on codex with the mode's deadlines; the web on.
     assert facts(strategy.ideation_role) == ("claude_code", "claude-opus-5", None, None, True)
-    assert facts(strategy.implementation_role) == (*CODEX, 14400.0, True)
+    # No web in implementation: the harness's rule is the engine's permission.
+    assert facts(strategy.implementation_role) == (*CODEX, 14400.0, False)
     assert facts(strategy.judge_role) == (*CODEX, 900.0, True)
     assert strategy.params["ideation"]["gates"] == ["research", "experiment_history", "repo_memory", "bank"]
-    assert strategy.params["implementation"]["gates"] == ["research", "repo_memory", "bank"]
+    assert strategy.params["implementation"]["gates"] == ["repo_memory", "bank"]
     assert strategy.params["gate_failure_policy"] == "skip"
     assert strategy.inbox_settings["enabled"] is False
     assert orchestrator._provided_evaluation_manifest
@@ -265,14 +267,17 @@ def test_relbench_runner_builds_on_the_facade_with_the_bundled_harness(monkeypat
     # The staged evaluation: the provided suite with the task's settings beside it.
     assert json.loads((work_dir / "evaluation" / "task.json").read_text()) == {
         "dataset": "rel-f1", "task": "driver-position", "primary_metric": "mae", "higher_is_better": False,
-        "work_dir": str(work_dir), "full_timeout": 7200, "debug_timeout": 900,
+        "work_dir": str(work_dir), "full_timeout": 7200, "debug_timeout": 900, "poll_seconds": 1,
         "cache_dir": str(work_dir / "sanitized_cache"), "rolling_root": str(work_dir / "rolling_caches"),
     }
     assert (work_dir / "evaluation" / "grader.py").is_file() and (work_dir / "evaluation" / "kapso_eval_archive.py").is_file()
     # The runtime file: this benchmark's file with the task's shared cache over it.
     runtime = work_dir / ".kapso_runtime" / "config.yaml"
     assert orchestrator.config_path == str(runtime)
-    assert load_config(str(runtime))["search_strategy"]["params"]["shared_cache_dir"] == str(work_dir / "shared_cache")
+    runtime_params = load_config(str(runtime))["search_strategy"]["params"]
+    assert runtime_params["shared_cache_dir"] == str(work_dir / "shared_cache")
+    # The task's own archive root, not the layout glob: a label never crosses tasks.
+    assert runtime_params["registered_evaluation_archive_glob"] == str(work_dir / "runs")
     # The launch record: the bundled harness, the brief, the directories, the budget.
     launch = launch_record(tmp_path / "workspace")
     assert launch["harness"]["name"] == "predictive-modelling" and launch["brief"]["objective"].startswith("RelBench rel-f1")
@@ -334,7 +339,9 @@ def test_ioai_runner_builds_on_the_facade_with_the_contest_harness(monkeypatch, 
     assert descriptor["competition"] == "ioai-2026-ai-models-track-practice-task-1"
     assert descriptor["ledger"] == str(contest_root / "submissions.json") and descriptor["procedure"] == "python kapso_datasets/submit.py"
     assert descriptor["higher_is_better"] is True and descriptor["shared_root"] == str(contest_root)
-    assert json.loads((contest_root / ".kernel_slots_config.json").read_text())["gpu"] == 2
+    assert descriptor["list_page_size"] == 200 and descriptor["list_timeout_seconds"] == 900
+    limits = json.loads((contest_root / ".kernel_slots_config.json").read_text())
+    assert limits["gpu"] == 2 and limits["poll_seconds"] == 5 and limits["higher_is_better"] is True
     for name in ("submit.py", "kernel_slots.py", "RULES.md"):
         assert (contest_root / name).is_file()
     workspace = task / "kapso_campaign"
@@ -365,7 +372,11 @@ def test_ioai_runner_builds_on_the_facade_with_the_contest_harness(monkeypatch, 
     assert orchestrator._config_budget["min_iteration_seconds"] == 900
     results = json.loads((root / "results.json").read_text())
     assert results["hours"] == 2.0 and results["solution"]["harness"] == "competitive-programming"
-    assert json.loads((root / "run_meta.json").read_text())["run_started_utc"]
+    # The window is stamped at launch: its end is the run's hours after its start,
+    # and the descriptor carries both bounds for the provided evaluation.
+    meta = json.loads((root / "run_meta.json").read_text())
+    assert datetime.fromisoformat(meta["window_end_utc"]) - datetime.fromisoformat(meta["run_started_utc"]) == timedelta(hours=2)
+    assert (descriptor["window_start"], descriptor["window_end"]) == (meta["run_started_utc"], meta["window_end_utc"])
 
 
 @pytest.mark.parametrize("benchmark", ["relbench", "mle", "ale", "ioai2026"])

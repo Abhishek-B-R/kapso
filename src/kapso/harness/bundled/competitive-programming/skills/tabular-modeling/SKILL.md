@@ -7,12 +7,13 @@ description: "The practices for a flat prediction table: many features before an
 - Features first. Handcrafted, generated, aggregated, from other
   libraries, encoded from categories and dates and text: features that
   capture different information and together cover the signal decide
-  tabular tasks more than the model does. Keep the feature history
-  (the living-documents skill) and widen it every iteration.
+  tabular tasks more than the model does. Keep a feature history (what
+  was tried, what it measured, what was kept) in the shared artifact
+  directory and widen it every iteration.
 - Gradient-boosted trees are the strongest default on a pure table; a
   linear or strongly regularised model is measured beside them when the
-  labelled rows are few (the relational-feature-practices skill's second
-  practice), and a neural model when the table meets text or images.
+  labelled rows are few, and a neural model when the table meets text or
+  images.
 - Read the feature context against the test distribution: position,
   time and average-based features may differ at test time; represent the
   information behind them (an average per period instead of the period)
@@ -20,10 +21,11 @@ description: "The practices for a flat prediction table: many features before an
 - When features far outnumber rows, measure a reduced or selected matrix
   against the full one before trusting either; a tree model on a very
   wide dense matrix is a candidate for selection, not a rule.
-- When the networks and the trees compete for one card, the networks get
-  it; otherwise measure the boosting library's GPU histogram, which is
-  usually worth it on a large table. Empty the GPU cache between runs;
-  print library versions once at the start.
+- When the networks and the trees compete for one card, measure which
+  gains more per minute of it and give the card to that one; a boosting
+  library's GPU histogram is usually worth it on a large table, measured
+  once. Empty the GPU cache between runs; print library versions once at
+  the start.
 - API mismatches are fixed, never a reason to abandon the approach:
   recent LightGBM takes early stopping and logging as callbacks (the
   older keyword arguments raise); recent scikit-learn names its losses

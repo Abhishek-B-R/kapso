@@ -140,7 +140,7 @@ class TestProvidedGrader:
             FakeResult([FakeCase(120), FakeCase(10)]),
         ])
         grader = load_grader(tmp_path / "repo", monkeypatch, session)
-        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "full"])
+        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "full", "--seed", "1337"])
         grader.main()
         manifest = manifest_of(capsys.readouterr().out)
         assert session.calls == 2 and manifest["runs"] == 2 and manifest["valid"] is True
@@ -149,7 +149,7 @@ class TestProvidedGrader:
     def test_fast_is_one_run(self, tmp_path, monkeypatch, capsys):
         session = FakeSession([FakeResult([FakeCase(5), FakeCase(7)])])
         grader = load_grader(tmp_path / "repo", monkeypatch, session, higher_is_better=True)
-        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast"])
+        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "fast", "--seed", "1337"])
         grader.main()
         manifest = manifest_of(capsys.readouterr().out)
         assert session.calls == 1 and manifest["raw_score"] == 12.0 and manifest["score"] == 12.0
@@ -163,7 +163,7 @@ class TestProvidedGrader:
             FakeResult([FakeCase(100), FakeCase(10)]),
         ])
         grader = load_grader(tmp_path / "repo", monkeypatch, session)
-        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "full"])
+        monkeypatch.setattr(sys, "argv", ["grader.py", "--fidelity", "full", "--seed", "1337"])
         grader.main()
         manifest = manifest_of(capsys.readouterr().out)
         assert manifest["valid"] is False and manifest["failed_cases"] == ["12"]

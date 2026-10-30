@@ -32,7 +32,11 @@ one whose resampling unit matches the data's correlation structure.
 
 Group the folds by whatever unit repeats across rows (an entity, a
 document, a patient, a speaker, an image source, a near-duplicate
-cluster): a fold that splits a repeated unit measures memorisation.
+cluster) when the task predicts unseen units: a fold that splits a
+repeated unit measures memorisation. When the task predicts later
+observations of known units (its test rows belong to entities the
+training rows hold), the unit recurs across folds by design and the
+split is by time instead.
 Forward-chaining folds for anything that expands the training set across
 time (label replay at earlier cutoffs), and a feature or model is judged
 on folds it never saw; a replayed training row whose label window closes

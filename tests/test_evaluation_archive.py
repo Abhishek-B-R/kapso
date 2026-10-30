@@ -554,3 +554,21 @@ class TestLabelRunOfRecord:
             archive.label_run_of_record(str(runs), {"fidelity": "full", "run": "run_0009", "session": "exp_A"}, True)
         with pytest.raises(ValueError, match="carries no run name"):
             archive.label_run_of_record(str(runs), {"fidelity": "full", "run": "", "session": "exp_A"}, True)
+
+    def test_a_run_name_two_roots_hold_is_refused_not_guessed(self, tmp_path):
+        # Every task's archive numbers its runs from one: a glob spanning
+        # tasks finds `run_0001` in both, and a label written into the
+        # first would promote another task's run. Neither root is touched.
+        first = tmp_path / "a" / "runs"
+        second = tmp_path / "b" / "runs"
+        make_run(first, "run_0001", session="exp_A", score=0.1, evaluator_id="e")
+        make_run(second, "run_0001", session="exp_A", score=0.2, evaluator_id="e")
+        with pytest.raises(ValueError, match="more than one archive"):
+            archive.label_run_of_record(
+                str(tmp_path / "*" / "runs"), {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True,
+            )
+        for root in (first, second):
+            assert json.loads((root / "run_0001" / "private" / "selection.json").read_text())["status"] == "pending"
+        archive.label_run_of_record(str(second), {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True)
+        assert json.loads((second / "run_0001" / "private" / "selection.json").read_text())["status"] == "final"
+        assert json.loads((first / "run_0001" / "private" / "selection.json").read_text())["status"] == "pending"

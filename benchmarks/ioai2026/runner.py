@@ -42,6 +42,8 @@ from kapso.kapso import Kapso
 
 from benchmarks.ioai2026 import kernel_slots
 from benchmarks.ioai2026.context import PROCEDURE, build_brief
+from benchmarks.ioai2026.data.generic_eval.evaluate import list_submissions, normalize_status
+from benchmarks.ioai2026.submit import classify_submit_output
 
 load_dotenv()
 
@@ -113,31 +115,37 @@ def build_runtime_config(task_dir: str, session_timeouts: dict,
 
 
 def stage_contest_root(task_dir: str, competition: str, higher_is_better: bool,
-                       window_start: str, kernel_slots_limits: dict) -> str:
-    """The contest root: the descriptor, the procedure, the ticket office
-    with its limits (a stale ledger from a previous launch would hold
-    phantom tickets, so it goes), and the task's binding rules — the
-    preflight's pinned copy under the task."""
+                       window: tuple, kernel_slots_limits: dict, listing: dict, fresh: bool) -> str:
+    """The contest root: the descriptor (the competition, the ledger, the
+    procedure, the metric's direction, the campaign window's start and end,
+    the submissions listing's page size and timeout), the procedure, the
+    ticket office with its limits, and the task's binding rules — the
+    preflight's pinned copy under the task. A new campaign (`fresh`) starts
+    the two ledgers afresh: a submission of an earlier launch is not this
+    campaign's insurance, and a stale ticket ledger holds phantom tickets.
+    A resume keeps them: they are the campaign's state."""
     root = os.path.join(task_dir, CONTEST_ROOT)
     os.makedirs(root, exist_ok=True)
     shutil.copy2(SUBMIT_PATH, os.path.join(root, "submit.py"))
     shutil.copy2(SLOTS_PATH, os.path.join(root, "kernel_slots.py"))
     shutil.copy2(os.path.join(task_dir, RULES_NAME), os.path.join(root, RULES_NAME))
     with open(os.path.join(root, kernel_slots.CONFIG_NAME), "w") as f:
-        json.dump(kernel_slots_limits, f, indent=2)
-    # A relaunch starts its ledgers afresh: a submission of an earlier
-    # launch is not this campaign's insurance.
-    for stale_ledger in (os.path.join(root, kernel_slots.LEDGER_NAME), os.path.join(root, LEDGER)):
-        if os.path.isfile(stale_ledger):
-            os.remove(stale_ledger)
+        json.dump({**kernel_slots_limits, "higher_is_better": higher_is_better}, f, indent=2)
+    if fresh:
+        for stale_ledger in (os.path.join(root, kernel_slots.LEDGER_NAME), os.path.join(root, LEDGER)):
+            if os.path.isfile(stale_ledger):
+                os.remove(stale_ledger)
     with open(os.path.join(root, "contest.json"), "w") as f:
         json.dump({
             "competition": competition,
             "ledger": os.path.join(root, LEDGER),
             "procedure": PROCEDURE,
             "higher_is_better": higher_is_better,
-            "window_start": window_start,
+            "window_start": window[0],
+            "window_end": window[1],
             "shared_root": root,
+            "list_page_size": int(listing["submissions_page_size"]),
+            "list_timeout_seconds": int(listing["timeout_seconds"]),
         }, f, indent=2)
     return root
 
@@ -161,44 +169,29 @@ def audit_kernel(kernel_dir: str) -> list:
     return findings
 
 
-def parse_submissions_json(raw: str) -> list:
-    """Parse `kaggle competitions submissions --format json` output.
-
-    The CLI may prefix the JSON with pagination noise ("Next Page Token =
-    ..."); the payload starts at the first bracket. Anything unparseable
-    raises — fail loud.
-    """
-    start_candidates = [i for i in (raw.find("["), raw.find("{")) if i >= 0]
-    if not start_candidates:
-        raise ValueError(f"no JSON payload in submissions output: {raw[:200]!r}")
-    payload = json.loads(raw[min(start_candidates):])
-    if isinstance(payload, dict):
-        payload = payload.get("submissions", [])
-    if not isinstance(payload, list):
-        raise ValueError("submissions payload is neither a list nor "
-                         "a {'submissions': [...]} object")
-    return payload
-
-
-def best_public_score(submissions: list, since_utc_iso: str) -> dict:
-    """Best publicScore among submissions at/after the run start."""
+def best_public_score(submissions: list, since_utc_iso: str, until_utc_iso: str,
+                      higher_is_better: bool) -> dict:
+    """The best public score in the metric's direction among the
+    submissions dated inside the window; a submission's status is the
+    CLI's word (complete, error, pending)."""
     since_key = since_utc_iso.replace("T", " ")[:19]
+    until_key = until_utc_iso.replace("T", " ")[:19]
     considered, best = [], None
     for sub in submissions:
         date_key = str(sub.get("date", "")).replace("T", " ")[:19]
-        if date_key < since_key:
+        if not since_key <= date_key <= until_key:
             continue
         raw_score = str(sub.get("publicScore", "") or "").strip()
         entry = {
             "date": date_key,
-            "status": str(sub.get("status", "")),
+            "status": normalize_status(sub.get("status")),
             "description": str(sub.get("description", "")),
             "publicScore": raw_score,
         }
         considered.append(entry)
         if re.fullmatch(r"-?\d+(\.\d+)?", raw_score):
             score = float(raw_score)
-            if best is None or score > best["score"]:
+            if best is None or (score > best["score"] if higher_is_better else score < best["score"]):
                 best = {"score": score, **entry}
     return {"best": best, "submissions": considered}
 
@@ -279,29 +272,6 @@ def submission_matches_template(candidate_path: str, template_path: str) -> bool
     if len(candidate) != len(template) or candidate[0] != template[0]:
         return False
     return all(c[0] == t[0] for c, t in zip(candidate[1:], template[1:]))
-
-
-_CLIENT_ERROR = re.compile(r"\b(400|403) Client Error\b")
-_ERROR_LINE = re.compile(r"(?m)^(?:ERROR|error):")
-SUCCESS = "Successfully submitted"
-
-
-def classify_submit_output(stdout: str, stderr: str) -> str:
-    """One label per submit attempt from the CLI's text (its exit code
-    carries no signal on every version): the success phrase is accepted; an
-    HTTP client error is that rejection (the phrase, never the bare number,
-    which a progress bar or the message's local score also carries); a line
-    that opens with an error is a rejection; anything else is pending, to
-    be settled from the submissions list by the token in the message."""
-    blob = stdout + stderr
-    if SUCCESS in blob:
-        return "accepted"
-    status = _CLIENT_ERROR.search(blob)
-    if status:
-        return f"rejected-{status.group(1)}"
-    if _ERROR_LINE.search(blob):
-        return "rejected-error"
-    return "pending"
 
 
 def submit_kernel_output(kaggle_bin: str, competition: str, ref: str,
@@ -453,12 +423,8 @@ def harvest_unsubmitted_kernels(root: str, competition: str,
 
     def poll_scored():
         """Record harvest submissions that finished scoring."""
-        proc = subprocess.run(
-            [kaggle_bin, "competitions", "submissions", competition,
-             "--format", "json", "-q"],
-            capture_output=True, text=True, timeout=timeout_seconds,
-        )
-        rows = parse_submissions_json(proc.stdout)
+        rows = list_submissions(kaggle_bin, competition, final_eval_cfg["submissions_page_size"],
+                                timeout_seconds)
         still = []
         for entry in pending:
             # Window by date: a previous run's harvest used the same message
@@ -470,7 +436,7 @@ def harvest_unsubmitted_kernels(root: str, competition: str,
                 (r for r in rows
                  if entry["kernel"].split("/")[-1] in str(r.get("description", ""))
                  and str(r.get("date", ""))[:19] >= since
-                 and "pending" not in str(r.get("status", "")).lower()), None)
+                 and normalize_status(r.get("status")) != "pending"), None)
             if row is None:
                 still.append(entry)
                 continue
@@ -520,8 +486,10 @@ def harvest_unsubmitted_kernels(root: str, competition: str,
     return report
 
 
-def run_final_eval(root: str, competition: str, final_eval_cfg: dict) -> dict:
-    """Read the leaderboard truth: best publicScore in the run window."""
+def run_final_eval(root: str, competition: str, higher_is_better: bool, final_eval_cfg: dict) -> dict:
+    """Read the leaderboard truth: the best public score in the metric's
+    direction among the submissions dated inside the run window, read from
+    every page of the competition's list at the time the report says."""
     timeout_seconds = final_eval_cfg["timeout_seconds"]
     meta_path = os.path.join(root, "run_meta.json")
     if not os.path.isfile(meta_path):
@@ -529,7 +497,8 @@ def run_final_eval(root: str, competition: str, final_eval_cfg: dict) -> dict:
             f"{meta_path} missing — the campaign runner writes it at launch"
         )
     with open(meta_path) as f:
-        run_started = json.load(f)["run_started_utc"]
+        meta = json.load(f)
+    run_started, window_end = meta["run_started_utc"], meta["window_end_utc"]
 
     kaggle_bin = shutil.which("kaggle")
     if not kaggle_bin:
@@ -544,17 +513,10 @@ def run_final_eval(root: str, competition: str, final_eval_cfg: dict) -> dict:
         harvest = harvest_unsubmitted_kernels(
             root, competition, run_started, final_eval_cfg)
 
-    proc = subprocess.run(
-        [kaggle_bin, "competitions", "submissions", competition,
-         "--format", "json", "-q"],
-        capture_output=True, text=True, timeout=timeout_seconds,
-    )
-    if proc.returncode != 0:
-        return {
-            "error": f"kaggle submissions exited {proc.returncode}",
-            "stderr_tail": proc.stderr[-2000:],
-        }
-    report = best_public_score(parse_submissions_json(proc.stdout), run_started)
+    rows = list_submissions(kaggle_bin, competition, final_eval_cfg["submissions_page_size"], timeout_seconds)
+    report = best_public_score(rows, run_started, window_end, higher_is_better)
+    report["window"] = {"start": run_started, "end": window_end}
+    report["read_at"] = datetime.now(timezone.utc).isoformat()
     task_dir = os.path.join(root, "task")
     report["audit"] = {
         os.path.relpath(folder, task_dir): audit_kernel(folder)
@@ -622,7 +584,7 @@ def main():
     mode_cfg = config["benchmark"]
 
     if args.final_eval_only:
-        report = run_final_eval(root, competition, mode_cfg["final_eval"])
+        report = run_final_eval(root, competition, higher_is_better, mode_cfg["final_eval"])
         results_path = os.path.join(root, "results.json")
         with open(results_path, "w") as f:
             json.dump(report, f, indent=2)
@@ -648,12 +610,13 @@ def main():
             started_utc = json.load(f)["run_started_utc"]
         origin_ts = datetime.fromisoformat(started_utc).timestamp()
     else:
-        started_utc = datetime.now(timezone.utc).isoformat()
         origin_ts = time.time()
-        with open(meta_path, "w") as f:
-            json.dump({"run_started_utc": started_utc}, f, indent=2)
+        started_utc = datetime.fromtimestamp(origin_ts, timezone.utc).isoformat()
 
     deadline_ts = origin_ts + total_run_seconds
+    window_end_utc = datetime.fromtimestamp(deadline_ts, timezone.utc).isoformat()
+    with open(meta_path, "w") as f:
+        json.dump({"run_started_utc": started_utc, "window_end_utc": window_end_utc}, f, indent=2)
     spent_minutes = (time.time() - origin_ts) / 60
     knobs = mode_cfg["session_budget"]
     guard_minutes = (args.guard_minutes if args.guard_minutes is not None
@@ -696,8 +659,8 @@ def main():
     campaign_deadline_ts = deadline_ts - (guard_minutes + harvest_window) * 60
     campaign_deadline_utc = datetime.fromtimestamp(campaign_deadline_ts, timezone.utc).isoformat()
 
-    contest_root = stage_contest_root(task_dir, competition, higher_is_better, started_utc,
-                                      knobs["kernel_slots"])
+    contest_root = stage_contest_root(task_dir, competition, higher_is_better, (started_utc, window_end_utc),
+                                      knobs["kernel_slots"], mode_cfg["final_eval"], fresh=not args.resume)
     artifacts_dir = os.path.join(task_dir, "artifacts")
     os.makedirs(artifacts_dir, exist_ok=True)
     brief = build_brief(
@@ -750,12 +713,16 @@ def main():
         "competition": competition,
         "solution": solution_summary(solution),
     }
-    if not args.skip_final_eval:
-        summary["final"] = run_final_eval(
-            root, competition, mode_cfg["final_eval"])
+    # The campaign's record first: a final evaluation that fails loud (the
+    # listing refused) must not take the delivery's summary with it.
     results_path = os.path.join(root, "results.json")
     with open(results_path, "w") as f:
         json.dump(summary, f, indent=2)
+    if not args.skip_final_eval:
+        summary["final"] = run_final_eval(
+            root, competition, higher_is_better, mode_cfg["final_eval"])
+        with open(results_path, "w") as f:
+            json.dump(summary, f, indent=2)
     print(json.dumps(summary, indent=2))
 
 

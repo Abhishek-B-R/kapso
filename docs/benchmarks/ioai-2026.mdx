@@ -47,11 +47,15 @@ The submit-and-learn loop is what the format rewards. With up to 50 attempts per
 pip install -e .
 ```
 
-Ingest a task, from a URL or an organizer brief, into a run root:
+Ingest a task, from a URL or an organizer brief, into a run root, with the task's binding
+rules (`--rules`; the default is the IOAI AI Models Track rules beside the script, and another
+competition's rules file turns the preflight and the runner to that competition; a missing
+rules file is refused):
 
 ```bash
 PYTHONPATH=src:. python -m benchmarks.ioai2026.preflight \
-    --task <task url or brief> --root tmp/ioai/task1
+    --task <task url or brief> --root tmp/ioai/task1 \
+    --rules benchmarks/ioai2026/RULES.md
 ```
 
 Run the campaign for one six-hour session:

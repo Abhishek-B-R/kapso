@@ -139,12 +139,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fidelity", choices=["fast", "full"])
     parser.add_argument("--fraction", type=float, default=1.0)
-    parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument("--seed", type=int, help="the registered subsample seed; the engine's command carries it")
     parser.add_argument("--scores", metavar="PATH", help="write the per-seed results file here instead of the manifest")
     parser.add_argument("--runs", type=int, default=None, help="with --scores: the runs per seed (the task's setting when absent)")
     args = parser.parse_args()
-    if not args.fidelity and not args.scores:
-        parser.error("--fidelity or --scores is required")
+    if not args.scores and (not args.fidelity or args.seed is None):
+        parser.error("--fidelity and --seed are required unless --scores is given")
 
     settings = task_settings()
     higher = bool(settings["higher_is_better"])

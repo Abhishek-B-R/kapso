@@ -48,8 +48,10 @@ NAMED_WORDS: Dict[str, str] = {
     "kumorfm": NEVER,
 }
 # The number rule: a number within two tokens of a quota, deadline, score or
-# hardware word is a pinned constant, the nearest such word named; p-value
-# thresholds, a count of standard errors and version strings are allowed.
+# hardware word is a pinned constant, the nearest such word named; a
+# statistical threshold beside its own name (a p-value, a z), a count of
+# standard errors and version strings are allowed. A unit attached to its
+# number (16GB) is read as two tokens.
 QUOTA_WORDS = ("submission", "submissions", "attempt", "attempts", "quota", "daily", "limit", "cap")
 DEADLINE_WORDS = ("hour", "hours", "hr", "hrs", "minute", "minutes", "min", "mins", "second", "seconds",
                   "sec", "secs", "day", "days", "week", "weeks", "deadline", "session", "sessions")
@@ -59,10 +61,13 @@ HARDWARE_WORDS = ("gb", "gib", "mb", "vram", "gpu", "gpus", "cpu", "cpus", "core
                   "memory", "a100", "h100", "t4", "p100", "v100", "l4")
 NUMBER_NEIGHBOURS = QUOTA_WORDS + DEADLINE_WORDS + SCORE_WORDS + HARDWARE_WORDS
 STATISTICAL_THRESHOLDS = ("0.05", "0.01", "0.001", "1.96")
+STATISTICAL_WORDS = ("p", "p-value", "p-values", "pvalue", "alpha", "significance", "significant", "confidence",
+                     "level", "z", "t")
 SPREAD_UNITS = ("se", "sd", "sigma", "std", "standard")   # "2 SE" is a threshold, not a quota
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 _NUMBER = re.compile(r"^\d+(\.\d+)?%?$")
 _TOKEN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.%-]*")
+_ATTACHED = re.compile(r"^(\d+(?:\.\d+)?)([a-z]+)$")
 # The manifest (its description is prose `kapso harness list` prints) and a
 # skill's references are read as well; scripts and the environment file are not.
 SCANNED = ("harness.yaml", "instructions/*.md", "agents/*.md", "skills/*/SKILL.md", "skills/*/references/*.md")
@@ -136,12 +141,26 @@ def _blank_own_names(line: str, names: List[str]) -> str:
     return line
 
 
-def _number_findings(path: Path, number: int, line: str) -> List[Finding]:
+def _tokens(line: str) -> Tuple[List[str], List[str]]:
+    """The line's raw tokens and their lowered forms, a unit attached to
+    its number (16GB, 2h) split into the number and the unit."""
     raw = _TOKEN.findall(line)
-    tokens = [token.lower().strip(".,;:()") for token in raw]
+    tokens: List[str] = []
+    for token in raw:
+        word = token.lower().strip(".,;:()")
+        attached = _ATTACHED.match(word)
+        if attached and attached.group(2) in NUMBER_NEIGHBOURS:
+            tokens.extend(attached.groups())
+        else:
+            tokens.append(word)
+    return raw, tokens
+
+
+def _number_findings(path: Path, number: int, line: str) -> List[Finding]:
+    raw, tokens = _tokens(line)
     findings = []
     for index, token in enumerate(tokens):
-        if not _NUMBER.match(token) or _VERSION.match(token) or token in STATISTICAL_THRESHOLDS:
+        if not _NUMBER.match(token) or _VERSION.match(token):
             continue
         if index == 0 and raw[0].endswith(".") and line.lstrip().startswith(raw[0]):
             continue                                   # an ordered list's marker
@@ -149,6 +168,8 @@ def _number_findings(path: Path, number: int, line: str) -> List[Finding]:
             continue
         nearest = (index + 1, index - 1, index + 2, index - 2)
         window = [tokens[at] for at in nearest if 0 <= at < len(tokens)]
+        if token in STATISTICAL_THRESHOLDS and any(word in STATISTICAL_WORDS for word in window):
+            continue                                   # a threshold beside its own name
         neighbours = [word for word in window if word in NUMBER_NEIGHBOURS]
         if neighbours:
             findings.append(Finding(path, number, f"{token} {neighbours[0]}", "number"))

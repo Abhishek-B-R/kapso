@@ -4,6 +4,7 @@ packaged page budget, is named after its directory, resolves by its bare
 name, and `kapso harness list` prints it under `bundled`. A port that
 ships broken is caught here, not by a user."""
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -52,6 +53,22 @@ def test_every_bundled_file_is_tracked_by_git():
 
 
 SHARED_SKILLS = ("task-type-playbooks", "cv-protocol", "ensembling", "eda-discipline", "hf-model-fetch", "tabular-modeling")
+_SKILL_REFERENCE = re.compile(r"\bthe ([a-z0-9-]+) skill\b")
+
+
+@pytest.mark.parametrize("path", BUNDLED, ids=[path.name for path in BUNDLED])
+def test_a_skill_names_only_skills_its_own_harness_carries(path):
+    """A copied skill that points at a skill its harness does not carry
+    sends the session to a page that is not there (the contest harness's
+    tabular skill named two modelling skills, 2026-10-30): the references
+    inside the skills resolve as the pages' do."""
+    skills = {skill.name for skill in (path / "skills").iterdir() if skill.is_dir()}
+    unresolved = []
+    for page in sorted(path.glob("skills/*/SKILL.md")) + sorted(path.glob("skills/*/references/*.md")):
+        for name in sorted(set(_SKILL_REFERENCE.findall(page.read_text(encoding="utf-8")))):
+            if name not in skills:
+                unresolved.append(f"{page.relative_to(path)} -> the {name} skill")
+    assert unresolved == [], unresolved
 
 
 @pytest.mark.parametrize("skill", SHARED_SKILLS)

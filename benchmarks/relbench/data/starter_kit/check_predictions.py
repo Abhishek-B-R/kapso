@@ -5,7 +5,11 @@ variables set as the evaluation sets them:
 
     python kapso_datasets/check_predictions.py
 
-Exits non-zero with a specific message on the first violation.
+Under the standard regime both prediction files are checked against the
+task's tables; under the rolling regime (the task's settings name a rolling
+root) the one file an invocation writes, `test_predictions.npy`, is checked
+against the snapshot it was handed. Exits non-zero with a specific message
+on the first violation.
 """
 
 from __future__ import annotations
@@ -28,6 +32,38 @@ def fail(msg: str) -> None:
     sys.exit(1)
 
 
+def check(task, split: str, path: Path, n: int) -> None:
+    if not path.exists():
+        fail(f"{path} missing")
+    arr = np.load(path, allow_pickle=False)
+    if isinstance(task, RecommendationTask):
+        if arr.shape != (n, task.eval_k):
+            fail(f"{split}: shape {arr.shape} != {(n, task.eval_k)}")
+        if not np.issubdtype(arr.dtype, np.integer):
+            fail(f"{split}: dtype {arr.dtype} is not integer")
+        if arr.min() < 0 or arr.max() >= task.num_dst_nodes:
+            print(f"[check_predictions] WARN {split}: ids outside [0,{task.num_dst_nodes}) never match")
+        dup = sum(len(np.unique(r)) < len(r) for r in arr)
+        if dup:
+            print(f"[check_predictions] WARN {split}: {dup} rows contain duplicate ids")
+    else:
+        expected: tuple
+        if task.task_type == TaskType.MULTICLASS_CLASSIFICATION:
+            c = getattr(task, "num_classes", None)
+            expected = (n, c) if c else (n,)
+        else:
+            expected = (n,)
+        if arr.shape != expected:
+            fail(f"{split}: shape {arr.shape} != {expected}")
+        if not np.all(np.isfinite(arr.astype(np.float64))):
+            fail(f"{split}: non-finite values")
+        if task.task_type == TaskType.BINARY_CLASSIFICATION and (
+            arr.min() < 0 or arr.max() > 1
+        ):
+            fail(f"{split}: binary predictions outside [0,1] — apply a sigmoid")
+    print(f"[check_predictions] OK {split}: shape {arr.shape}")
+
+
 def main() -> None:
     settings = json.loads(TASK_FILE.read_text(encoding="utf-8"))
     dataset_name, task_name = settings["dataset"], settings["task"]
@@ -36,41 +72,19 @@ def main() -> None:
     dataset_cls, dataset_args, dataset_kwargs = dataset_registry[dataset_name]
     dataset = dataset_cls(*dataset_args, **{**dataset_kwargs, "cache_dir": str(cache / dataset_name)})
     task_cls, task_args, task_kwargs = task_registry[dataset_name][task_name]
-    task = task_cls(dataset, *task_args, **{**task_kwargs, "cache_dir": str(cache / dataset_name / "tasks" / task_name)})
+    task_dir = cache / dataset_name / "tasks" / task_name
+    task = task_cls(dataset, *task_args, **{**task_kwargs, "cache_dir": str(task_dir)})
 
-    for split in ("val", "test"):
-        n = len(task.get_table(split))
-        path = out / f"{split}_predictions.npy"
-        if not path.exists():
-            fail(f"{path} missing")
-        arr = np.load(path, allow_pickle=False)
-
-        if isinstance(task, RecommendationTask):
-            if arr.shape != (n, task.eval_k):
-                fail(f"{split}: shape {arr.shape} != {(n, task.eval_k)}")
-            if not np.issubdtype(arr.dtype, np.integer):
-                fail(f"{split}: dtype {arr.dtype} is not integer")
-            if arr.min() < 0 or arr.max() >= task.num_dst_nodes:
-                print(f"[check_predictions] WARN {split}: ids outside [0,{task.num_dst_nodes}) never match")
-            dup = sum(len(np.unique(r)) < len(r) for r in arr)
-            if dup:
-                print(f"[check_predictions] WARN {split}: {dup} rows contain duplicate ids")
-        else:
-            expected: tuple
-            if task.task_type == TaskType.MULTICLASS_CLASSIFICATION:
-                c = getattr(task, "num_classes", None)
-                expected = (n, c) if c else (n,)
-            else:
-                expected = (n,)
-            if arr.shape != expected:
-                fail(f"{split}: shape {arr.shape} != {expected}")
-            if not np.all(np.isfinite(arr.astype(np.float64))):
-                fail(f"{split}: non-finite values")
-            if task.task_type == TaskType.BINARY_CLASSIFICATION and (
-                arr.min() < 0 or arr.max() > 1
-            ):
-                fail(f"{split}: binary predictions outside [0,1] — apply a sigmoid")
-        print(f"[check_predictions] OK {split}: shape {arr.shape}")
+    if settings["rolling_root"]:
+        # One tick's snapshot: the rows it lists are the ones to predict,
+        # and the evaluation assembles the ticks; a val file is not read.
+        n = len(np.load(task_dir / "indices.npy", allow_pickle=False))
+        check(task, "test", out / "test_predictions.npy", n)
+        if (out / "val_predictions.npy").exists():
+            print("[check_predictions] WARN val: not read under the rolling evaluation")
+    else:
+        for split in ("val", "test"):
+            check(task, split, out / f"{split}_predictions.npy", len(task.get_table(split)))
 
     print("[check_predictions] all checks passed")
 

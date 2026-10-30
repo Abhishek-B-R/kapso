@@ -10,7 +10,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import yaml
 
@@ -21,13 +21,19 @@ LAYOUT_ENTRIES_PER_DIRECTORY = 5
 LAYOUT_DEPTH = 4
 
 
-def write_runtime_config(config_path: Path, shared_cache_dir: Path, work_dir: Path) -> Path:
+def write_runtime_config(config_path: Path, shared_cache_dir: Path, work_dir: Path,
+                         archive_root: Optional[Path] = None) -> Path:
     """The per-run override file: the benchmark's own file with the task's
-    shared cache over it. The orchestrator loads config from disk, so a
-    runtime value must live in a file; the file is an override over the
-    packaged defaults, as the benchmark's own is."""
+    shared cache over it and, for a benchmark whose grader keeps a durable
+    archive, that task's own archive root in place of the file's layout
+    glob (the engine labels the run of record there, and only there). The
+    orchestrator loads config from disk, so a runtime value must live in a
+    file; the file is an override over the packaged defaults, as the
+    benchmark's own is."""
     config = read_yaml(str(config_path))
     config["search_strategy"]["params"]["shared_cache_dir"] = str(shared_cache_dir)
+    if archive_root is not None:
+        config["search_strategy"]["params"]["registered_evaluation_archive_glob"] = str(archive_root)
     runtime_dir = work_dir / ".kapso_runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)
     runtime_path = runtime_dir / "config.yaml"

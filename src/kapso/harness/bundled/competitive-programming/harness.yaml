@@ -1,6 +1,6 @@
 schema_version: 1
 name: competitive-programming
-version: 0.3.1
+version: 0.3.2
 description: Timed contests scored by an official scorer on a seed list or by a leaderboard, heuristic optimisation and machine-learning olympiad tasks alike, with the time limit as the budget, ship-early-then-improve under a submission quota, and the scorer or the board as the only score.
 
 modules:

@@ -67,7 +67,7 @@ def test_grader_rolling_assembly(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
     grader._repo_root = lambda: candidate
-    grader.run_candidate_rolling({"full_timeout": 120, "debug_timeout": 60}, "full", out, root)
+    grader.run_candidate_rolling({"full_timeout": 120, "debug_timeout": 60, "poll_seconds": 1}, "full", out, root)
 
     val = np.load(out / "val_predictions.npy")
     test = np.load(out / "test_predictions.npy")

@@ -70,6 +70,9 @@ PYTHONPATH=. python -m benchmarks.ale.runner --lite          # the lite roster
 
 # Solve a problem
 PYTHONPATH=. python -m benchmarks.ale.runner -p ahc039 -i 30 --workspace tmp/ale_campaign
+
+# The final report again on a finished campaign (no campaign runs)
+PYTHONPATH=. python -m benchmarks.ale.runner -p ahc039 --workspace tmp/ale_campaign --final-eval-only
 ```
 
 ## CLI options
@@ -83,6 +86,7 @@ PYTHONPATH=. python -m benchmarks.ale.runner -p ahc039 -i 30 --workspace tmp/ale
 | `--harness` | A harness reference | the bundled `competitive-programming` |
 | `--experience` | Comma-separated experience sources to serve | none |
 | `--workspace` / `--resume` | The campaign directory / continue the campaign in it | a fresh directory |
+| `--final-eval-only` | No campaign: the final report (the private cases, the rank, the performance) on the solution the `--workspace` campaign already holds; refused without `--workspace` | - |
 | `--list` / `--lite` | List problems | - |
 
 ## Layout

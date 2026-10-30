@@ -21,8 +21,10 @@ Build the chosen idea on the branch and run the task's evaluation.
   says whether this run trains on the mini sample or in full.
 - The practices are the relational-feature-practices skill's, measured, and
   the task-type-playbooks skill's family for the modality; a flat table
-  follows the tabular-modeling skill. The text channel exists only when the
-  task grants a model API; the metric's own statistic is always the target.
+  follows the tabular-modeling skill. Hosted-model extraction needs the task's
+  model-API grant; local text methods (a term matrix, supplied embeddings, a
+  permitted local model) follow its data and model permissions; the metric's
+  own statistic is always the target.
 - Cache expensive artifacts (embeddings, feature matrices, per-model
   validation and test predictions) in the shared artifact directory, keyed by
   content and version; check before computing.

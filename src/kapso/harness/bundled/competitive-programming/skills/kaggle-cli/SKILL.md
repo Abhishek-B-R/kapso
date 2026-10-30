@@ -102,7 +102,11 @@ command and append the record to the ledger yourself: `{"submissions":
 read the text (a rejected code submission says why, often with a 403). A
 code submission re-runs the kernel on Kaggle's scoring side; re-submitting
 the same version is a fresh run that may score slightly differently where
-the rules allow it.
+the rules allow it. The record attributes the score to the code by the
+hash of the kernel source (or the uploaded file) at submit time, at the
+path given relative to the repository root: submit a version right after
+its push, before the source changes, or the score lands on code that was
+never pushed.
 
 Read the score by polling the submissions list until the status is
 complete and the public score is populated; the message you gave with the

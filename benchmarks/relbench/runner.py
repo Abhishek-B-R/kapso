@@ -112,6 +112,7 @@ def solve_task(args) -> dict:
         "work_dir": str(work_dir),
         "full_timeout": spec.full_timeout,
         "debug_timeout": spec.debug_timeout,
+        "poll_seconds": settings["grader_poll_seconds"],
         "cache_dir": str(sanitized_copy),
         "rolling_root": str(rolling_root) if rolling_root is not None else None,
     })
@@ -121,7 +122,8 @@ def solve_task(args) -> dict:
         task, spec, sanitized_copy, rolling_root, shared_cache_dir, settings["hosted_model_api"],
     )
 
-    kapso = Kapso(config=str(write_runtime_config(CONFIG_PATH, shared_cache_dir, work_dir)))
+    kapso = Kapso(config=str(write_runtime_config(CONFIG_PATH, shared_cache_dir, work_dir,
+                                                  archive_root=work_dir / "runs")))
     kapso.load_harness(args.harness or BUNDLED_HARNESS)
     for reference in (args.experience or "").split(","):
         if reference.strip():
