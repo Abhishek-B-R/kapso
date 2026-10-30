@@ -50,21 +50,6 @@ PROMPT = (
     "\"not established\" and why. Use no web.\n\n" + "\n".join(f"{number}. {text}" for number, (_, text) in enumerate(QUESTIONS, 1))
 )
 STEP_NAMES = ["campaign", "fact-sheet", "reading-claude_code", "reading-codex"]
-# The leak the second attempt's branch is given for the verification to void:
-# the hold-out labels, read through the evaluation's own pointer, written over
-# the predictions — a prohibited flow in the harness's words, in the diff.
-LEAK = """
-
-# S4: the hold-out labels written over the predictions (the flow the verification voids)
-import sys as _sys
-import pandas as _pd
-from pathlib import Path as _Path
-_out = _sys.argv[_sys.argv.index("--out") + 1]
-_labels = _pd.read_csv(_Path(open("kapso_evaluation/private_dir.txt").read().strip()) / "holdout_labels.csv")
-_predictions = _pd.read_csv(_out)
-_predictions["churn_probability"] = _predictions["id"].map(dict(zip(_labels["id"], _labels["churned"]))).astype(float)
-_predictions.to_csv(_out, index=False)
-"""
 
 
 # ------------------------------------------------------------ the sheet
@@ -195,37 +180,20 @@ class S4:
     def _commit_main(self, campaign: Path, path: str, message: str) -> None:
         self.ctx.shell(f"git -C {campaign} add {path} && git -C {campaign} -c user.name=S4 -c user.email=s4@kapso.invalid commit -q -m {json.dumps(message)}")
 
-    def _latest_attempt_branch(self, campaign: Path) -> Optional[str]:
-        run = self.ctx.shell(f"git -C {campaign} for-each-ref --sort=-committerdate --format=%(refname:short) refs/heads/generic_exp_*", check=False)
-        names = run.stdout.split()
-        return names[0] if names else None
-
-    def _commit_leak(self, campaign: Path, branch: str) -> str:
-        """The leak committed onto `branch` from a temporary worktree (the
-        campaign root keeps `main` checked out); the commit's sha."""
-        worktree = self.work / "s4-leak"
-        self.ctx.shell(f"git -C {campaign} worktree add --force {worktree} {branch}")
-        with open(worktree / "predict.py", "a", encoding="utf-8") as out:
-            out.write(LEAK)
-        self.ctx.shell(f"git -C {worktree} add predict.py && git -C {worktree} -c user.name=S4 -c user.email=s4@kapso.invalid commit -q -m 'S4: the hold-out labels written over the predictions'")
-        sha = self.ctx.shell(f"git -C {worktree} rev-parse HEAD").stdout.strip()
-        self.ctx.shell(f"git -C {campaign} worktree remove --force {worktree}")
-        return sha
-
     def step_campaign(self) -> Dict[str, Any]:
-        """The campaign S4 reads, built here so that it holds both of the
-        design's cases — an attempt the integrity check voided and one the
-        harness's verification rejected; no archived campaign held both,
-        and the bar read unmet on every S4 run before this one. The churn
-        example at the suite's budget, with two interventions from outside
-        the engine: the protected evaluator edited in `main` during the
-        first ideation (the attempt's clone inherits it with no diff for
-        the writer to notice, and the integrity check voids it on the hash
-        evidence) and restored during the second; then, during the second
-        attempt's evaluation phase — after its evaluation materialised the
-        branch and before its verification does — the hold-out labels
-        written over the predictions on that branch, a flow the
-        verification voids."""
+        """The campaign S4 reads, built here: the churn example at the
+        suite's budget (S5's, which fits two attempts), with one
+        intervention from outside the engine — the protected evaluator
+        edited in `main` during the first ideation (the attempt's clone
+        inherits it with no diff for the writer to notice, and the
+        integrity check voids it on the hash evidence) and restored during
+        the second, so the record holds a void and a delivered attempt.
+        A rejection — the verifier's or the judge's word on an attempt's
+        own work — is nothing a driver can arrange honestly (an earlier
+        version timed a planted leak to a verification the harness-less
+        campaign never runs); whether the campaign holds one is recorded,
+        never required, and the readers' "nothing rejected" is read as
+        right when the record says so."""
         started = time.monotonic()
         budget = SUITE["builds"]["s4"]
         seconds = budget["minutes"] * 60
@@ -248,11 +216,8 @@ class S4:
         self._wait_round_phase(campaign, 2, "ideation", seconds)
         evaluator.write_bytes(pristine)
         self._commit_main(campaign, "kapso_evaluation/evaluate.py", "S4: the protected evaluator restored in main")
-        events.append(f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} the evaluator restored in main during the second ideation")
-        self._wait_round_phase(campaign, 2, "evaluation", seconds, every=0.5)
-        branch = self._latest_attempt_branch(campaign)
-        leak = self._commit_leak(campaign, branch) if branch and (status_of(campaign) or {}).get("state") not in ("done", "failed") else None
-        events.append(f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} the leak committed onto {branch} as {leak} during the second evaluation phase" if leak else "no second attempt reached its evaluation: no leak committed")
+        second = (status_of(campaign) or {}).get("state") not in ("done", "failed")
+        events.append(f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} the evaluator restored in main " + ("during the second ideation" if second else "after the campaign ended without a second attempt"))
         wait_for(lambda: (status_of(campaign) or {}).get("state") in ("done", "failed"), seconds + CAMPAIGN_GRACE_SECONDS, every=20)
         status = status_of(campaign) or {}
         data = self.ctx.shell(f"kapso trace {campaign} --json", check=False)
@@ -266,10 +231,10 @@ class S4:
         ]
         if log.is_file():
             artifacts.append("artifacts/campaign-launch.log")
-        completed = status.get("state") == "done" and holds["void"] and holds["rejection"]
+        completed = status.get("state") == "done" and holds["void"]
         step = shell_step("campaign", completed, artifacts, (time.monotonic() - started) / 60,
-                          [f"the churn example at {budget['minutes']} minutes and {budget['experiments']} experiments; the evaluator edited in main for the first attempt and restored for the second; the leak on the second attempt's branch during its evaluation phase",
-                           f"the campaign ended {status.get('state')} ({status.get('stopped_reason')}); it holds a void: {holds['void']}; a rejection: {holds['rejection']}"], kind="build")
+                          [f"the churn example at {budget['minutes']} minutes and {budget['experiments']} experiments; the evaluator edited in main for the first attempt and restored for the second",
+                           f"the campaign ended {status.get('state')} ({status.get('stopped_reason')}); it holds a void: {holds['void']}; a rejection: {holds['rejection']} (recorded, not required: a rejection is the verifier's or the judge's word on an attempt's own work)"], kind="build")
         step["metrics"] = {"campaign_has_void": int(holds["void"]), "campaign_has_rejection": int(holds["rejection"])}
         return step
 
@@ -349,7 +314,7 @@ def grade(record: Dict[str, Any]) -> Dict[str, Any]:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--campaign", default=None, help="a campaign to read as it is; given none, the driver builds its own from the clone's churn example (a void and a rejection in one campaign)")
+    parser.add_argument("--campaign", default=None, help="a campaign to read as it is; given none, the driver builds its own from the clone's churn example (the integrity check's void on the first attempt, the second delivered)")
     parser.add_argument("--out", required=True)
     parser.add_argument("--clone", default=None)
     parser.add_argument("--host", choices=["claude_code", "codex"], default="claude_code", help="the host named in the record (the readers are both hosts' either way)")

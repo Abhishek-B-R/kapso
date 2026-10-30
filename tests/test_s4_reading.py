@@ -92,13 +92,16 @@ def test_the_steps_and_the_questions_match_the_suite():
     assert all(text in s4.PROMPT for _, text in s4.QUESTIONS) and "not established" in s4.PROMPT
 
 
-def test_the_leak_the_campaign_step_commits_is_the_prohibited_flow_and_runs_as_python():
-    # The second attempt's branch gets the hold-out labels written over the
-    # predictions, through the evaluation's own pointer: the flow the harness's
-    # verification voids. It must parse, or the leak would be a crash instead.
-    compile(s4.LEAK, "leak", "exec")
-    assert "kapso_evaluation/private_dir.txt" in s4.LEAK and "holdout_labels.csv" in s4.LEAK and '"churn_probability"' in s4.LEAK
-    assert s4.SUITE["builds"]["s4"]["experiments"] == 2, "a void on the first attempt, the leak on the second"
+def test_the_campaign_step_builds_at_a_budget_two_attempts_fit_and_requires_the_void_alone():
+    # The campaign S4 builds holds the void the integrity check guarantees
+    # (attempt one, the evaluator edited in main) and a delivered attempt two,
+    # at S5's budget: a hundred minutes let a first attempt run 86 of them on
+    # the gate's Codex machine, and no second attempt ran. A rejection is the
+    # verifier's or the judge's word on an attempt's own work, nothing a driver
+    # arranges: it is recorded, never a bar.
+    assert s4.SUITE["builds"]["s4"] == s4.SUITE["builds"]["s5"], "the budget two attempts fit in, as S5's campaigns show"
+    assert set(s4.SUITE["tests"]["S4"]["bars"]) == {"readers_correct_min", "campaign_has_void"}
+    assert not hasattr(s4, "LEAK")
 
 
 def _item(scores):
