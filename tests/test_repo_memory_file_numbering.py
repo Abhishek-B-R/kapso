@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 from typing import Any, Callable, List
@@ -78,3 +79,95 @@ def test_numbers_only_the_files_real_lines(tmp_path: Path) -> None:
 def test_unreadable_file_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         _read_numbered_text(str(tmp_path / "missing.txt"))
+
+
+def _cites(path: str, statement: str) -> dict:
+    return {
+        "title": path,
+        "one_liner": path,
+        "claims": [{"statement": statement, "evidence": [{"path": path, "line": 1}]}],
+    }
+
+
+# 1500 fits one ~1.3k-character file but not two; 100 fits none, and a file
+# larger than the budget still goes whole, in a call of its own.
+@pytest.mark.parametrize("budget", [1500, 100], ids=["fits-one", "fits-none"])
+def test_update_windows_changed_files_across_calls_within_the_budget(
+    tmp_path: Path,
+    budget: int,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    names = ["a.py", "b.py", "c.py"]
+    for name in names:
+        repo_root.joinpath(name).write_text(f"{name} = 1\n" * 100)
+    previous_model = {
+        "summary": "Old",
+        "sections": {
+            "opt.a": _cites("a.py", "old a"),
+            "opt.c": _cites("c.py", "old c"),
+        },
+    }
+    # Each batch refreshes the section citing its file; b.py has none.
+    patches = [
+        {
+            "summary": "S1",
+            "sections": {"opt.a": _cites("a.py", "new a")},
+            "removed_sections": [],
+        },
+        {"summary": "S2", "sections": {}, "removed_sections": []},
+        {
+            "summary": "S3",
+            "sections": {"opt.c": _cites("c.py", "new c")},
+            "removed_sections": [],
+        },
+    ]
+    llm = SequenceLLM([json.dumps(patch) for patch in patches])
+
+    result = infer_repo_model_update(
+        llm=llm,
+        repo_root=str(repo_root),
+        repo_map={"files": names},
+        previous_model=previous_model,
+        diff_summary="a.py, b.py and c.py changed",
+        changed_files=names,
+        max_payload_chars=budget,
+    )
+
+    prompts = [call["messages"][0]["content"] for call in llm.calls]
+    assert len(prompts) == 3
+    for prompt, name in zip(prompts, names):
+        payload = prompt.split("CHANGED FILE CONTENTS (with line numbers")[1]
+        assert re.findall(r"=== FILE: (\S+) ===", payload) == [name]
+        assert payload.count(f"{name} = 1") == 100
+    # Each call patches the model the previous call produced.
+    assert '"new a"' in prompts[1] and '"old a"' not in prompts[1]
+    assert result["summary"] == "S3"
+    assert result["sections"]["opt.a"]["claims"][0]["statement"] == "new a"
+    assert result["sections"]["opt.c"]["claims"][0]["statement"] == "new c"
+
+
+def test_update_lists_a_deleted_file_as_deleted(tmp_path: Path) -> None:
+    # A changed file missing from a call's contents is another call's to
+    # refresh, so the call that carries a deleted file has to say it is gone.
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    llm = SequenceLLM(
+        [json.dumps({"summary": "S", "sections": {}, "removed_sections": ["opt.gone"]})]
+    )
+
+    infer_repo_model_update(
+        llm=llm,
+        repo_root=str(repo_root),
+        repo_map={"files": []},
+        previous_model={
+            "summary": "Old",
+            "sections": {"opt.gone": _cites("gone.py", "gone")},
+        },
+        diff_summary="gone.py | 100 ----",
+        changed_files=["gone.py"],
+    )
+
+    prompt = llm.calls[0]["messages"][0]["content"]
+    payload = prompt.split("CHANGED FILE CONTENTS (with line numbers")[1]
+    assert "=== FILE: gone.py (deleted) ===" in payload

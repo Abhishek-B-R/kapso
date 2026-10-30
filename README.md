@@ -192,6 +192,8 @@ kapso = Kapso()   # no knowledge graph needed to start
 # If a session needs something only you can provide (an API key, a file),
 # the campaign pauses and `kapso inbox reply` resumes it:
 #     https://docs.leeroo.com/docs/build/inbox
+# Share the result as Markdown for a pull request or issue with
+#     kapso report ./campaign -o report.md
 solution = kapso.build(
     "Optimize the model in train.py; target accuracy > 0.80 on evaluate.py",
     repo="./my_project",                 # or omit to start from scratch
