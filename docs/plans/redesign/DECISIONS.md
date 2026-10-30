@@ -3207,3 +3207,13 @@ The rig copied the first user's churn project whole, its
 unreadable to the second user; the evaluator died on every attempt and
 the served build ended unscored on both second-wave S2 runs. The copy's
 pointer names its own `private/`.
+
+## The S1 learn task runs on the campaign the deploy task left (2026-10-30)
+
+The comprehension turn is a fresh session that answers from what the
+sandbox holds. The rig restored `campaign-prereq` from its snapshot before
+the learn task, wiping the deploy task's record, and the engineer who had
+done everything right could not say what the deploy returned ("I found no
+deployment record on disk"): the comprehension 0 on a run with every
+other bar met. The learn runs on the campaign as the deploy left it, the
+realistic order, and the deployment record stays for the reading.

@@ -140,6 +140,8 @@ Edits: the ports of `main`'s changes into the modules they land in (the one exce
    | `rel-s4-claude` (fourth launch, 18:24Z) | `token-2` | **PASS** 4/4 (landed 18:55Z): the campaign held the void at 40 minutes; both readers 6 of 6 in both passes under the trace header's two words |
    | `rel-s2-claude` (third launch, 18:59Z from `c22570c8`) | `token-2`, the learn on Opus | running — the skills' shapes, the harness path, the deployment's proof and the second engineer's pointer in the tree (archive of the second wave: `rel-s2-claude-second/`) |
 
+   | `rel-s1-claude` (third wave) | `token-5` | **FAIL** (landed 18:59Z) on the comprehension alone: 17 of 17 steps, every task first try (12 of 12), no wrong call, ten lines of python and three commands, the judge's lengths and docs dimensions 1; `comprehension_correct` 0 — the fresh comprehension session found no deployment record, since the rig's restore of `campaign-prereq` before task 5 had wiped task 4's deployments; the names dimension 0 on the same answer. The restore is gone (the learn runs on the deployed campaign); relaunched 19:07Z on `token-5` from `2732092d` (archive: `rel-s1-claude-third/`) |
+
 4. The owner's checkpoint: the eight reports, S3's record and S6's reports read; the release branch merged into `redesign` and `redesign` into `main` with its history kept, and pushed.
 5. The tag and the release with the notes; `publish.yml` watched to PyPI green; `pip install leeroo-kapso==0.8.0` in a fresh venv, `kapso doctor`, the plugin's install line on Claude Code and on Codex, the docs site read once at its new navigation.
 
