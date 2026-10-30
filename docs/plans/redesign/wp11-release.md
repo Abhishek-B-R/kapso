@@ -91,4 +91,10 @@ Edits: the ports of `main`'s changes into the modules they land in (the one exce
 
 ## Hours
 
-To be filled at the end.
+| Change | Estimate | Cost | As run |
+|---|---|---|---|
+| 1 the sub-plan, `main`'s twenty commits ported (nine conflicts), the version, the wheel | 2 h | | about 1.5 h (2026-10-30, 03:30Z–04:36Z) |
+| 2 the release notes with the rename mapping checked against the CLI and the config | 1 h | | about 1 h, the measured section at the end |
+| 3 the gate: eight runs from the wheel on fresh machines, two hosts, in parallel | 1 h of launching + the wall clock | eight machines, about 24 machine hours, a few dollars; the Claude Max buckets `token-2` to `token-5` (the gate's share: the S1 and S5 campaigns, two learns of 100–127 min on Opus, the persona); the semantic Codex session; the Gemini judge | 04:36Z–12:05Z wall clock (the S2 runs 4–4.5 h each); about 4 h of reading the eight reports to their causes; the two fixes and their tests 1.5 h; the live check of the repo-memory fix 1 h |
+| 4 the owner's checkpoint, the merges | 1 h | | on the owner's go |
+| 5 the tag, PyPI, the fresh-venv install, the marketplaces | 1 h | | on the owner's go |
