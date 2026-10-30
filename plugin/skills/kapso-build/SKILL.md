@@ -44,7 +44,11 @@ What was found (data, evaluator, baseline, domain), with the evidence each rests
 ("`evaluate.py` prints macro-F1 on `data/dev.csv`, 1,204 rows"); the brief as the
 file `kapso-brief.md`; the evaluation's protocol for approval when one was built or
 changed; and the single thing the user must confirm or edit. Short: the brief is the
-message, the prose around it is three lines. The brief, one field per line, indented
+message, and the prose around its fence is at most ten lines in all — one line for
+each thing found (the data, the evaluator, the baseline, the domain), its evidence in
+that same line; when an evaluation was built or changed, two lines, what it measures
+and how it was checked; and the one line that asks the approval. No headings, no
+sub-bullets, no paragraph: a line each. The brief, one field per line, indented
 lines continuing the field above:
 
 ```
@@ -91,13 +95,13 @@ kapso build --brief kapso-brief.md --repo . --evaluation evaluation --data data 
   protected); without one the campaign builds its own from `Measured by`.
 - `--output` is an empty sibling directory, never inside the repository; `--config
   kapso-config.yaml` whenever the project root holds that file.
-- The handoff, in the same reply: the brief you passed, what you assumed and that
-  the user's own criterion can replace it, the harness and its version when one is
-  loaded, `kapso watch ../churn-campaign --follow --config kapso-config.yaml`, and
-  that `WAITING ON YOU` is a pause: `kapso inbox ../churn-campaign` shows the request,
-  and once what its fix line names is in place `kapso inbox reply ../churn-campaign <id>
-  "<note>" --detach` answers it (`/kapso:inbox` does both). The run outlives your
-  tool call; do not poll it.
+- The handoff, in the same reply, at most eight lines and no headings: the brief
+  you passed; what you assumed and that the user's own criterion can replace it; the
+  harness and its version when one is loaded; `kapso watch ../churn-campaign --follow
+  --config kapso-config.yaml`; and that `WAITING ON YOU` is a pause — `kapso inbox
+  ../churn-campaign` shows the request, and once what its fix line names is in place
+  `kapso inbox reply ../churn-campaign <id> "<note>" --detach` answers it
+  (`/kapso:inbox` does both). The run outlives your tool call; do not poll it.
 
 ## Rules
 

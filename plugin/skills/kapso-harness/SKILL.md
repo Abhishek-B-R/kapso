@@ -50,6 +50,11 @@ the harness: say where it is, not what it is.
 kapso harness new churn --config kapso-config.yaml      # harness.yaml + instructions/guardrails.md, valid as written
 ```
 
+The harness goes where the repository loads it from (`load_harness("../harnesses/trading")`,
+the brief's `Harness` line, a README line), resolved from the repository's own
+directory — the proposal names that absolute path, and the files land there and
+nowhere else (a harness written one directory up is one the repository cannot find).
+
 Then the proposal's files: the module pages (`instructions/<module>.md` for
 `setup`, `ideation`, `implementation`, `verification`, `feedback`, `learning`,
 `deployment`, only where the domain has a say), `skills/<name>/SKILL.md` with its
