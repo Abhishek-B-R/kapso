@@ -36,6 +36,7 @@ from kapso.execution.search_strategies.generic.implementation import render_inbo
 from kapso.environment.handlers.base import ProblemHandler
 from kapso.execution.inbox import (
     idea_line,
+    continue_answered,
     load_requests,
     open_requests,
     render_pause_block,
@@ -682,6 +683,13 @@ class OrchestratorAgent:
             render_inbox_section(load_requests(inbox["path"]), dotenv_path=inbox.get("dotenv_path", ""))
             if inbox_on else ""
         )
+        if inbox_on:
+            # A restarted setup session carries the person's replies: the
+            # setup's answered requests are continued by it, and the record
+            # says so — a search node's session records its own on resume,
+            # and the setup's were left `answered`, the request's promise
+            # of a resumption unkept in the record (the S2 gate, 2026-10-30).
+            continue_answered(inbox["path"], node=HARNESS_SETUP_NODE, session=inbox_session_id)
         prompt = render_prompt(load_prompt(HARNESS_SETUP_PROMPT), {
             "task_statement_path": str(campaign / TASK_STATEMENT_FILE),
             "statement_path": setup_statement_path(campaign).relative_to(campaign).as_posix(),

@@ -337,6 +337,20 @@ def record_continued(
             }) + "\n")
 
 
+def continue_answered(path: str | Path, *, node: int, session: str) -> List[int]:
+    """The answered requests of ``node`` not yet continued, recorded as
+    continued by ``session`` — a restarted session that carries the
+    replies (the harness setup session, which the orchestrator runs again
+    rather than resuming). Their ids, in request order."""
+    pending = [
+        request.id for request in load_requests(path).values()
+        if request.node == node and not request.open and not request.continued
+    ]
+    if pending:
+        record_continued(path, pending, node=node, session=session)
+    return pending
+
+
 def new_requests_for_session(
     path: str | Path, session_id: str, seen_bytes: int
 ) -> Tuple[int, List[int]]:
