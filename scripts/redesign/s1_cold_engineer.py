@@ -21,6 +21,7 @@ released wheel and the tag's docs, the retrospective baseline.
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
@@ -30,6 +31,7 @@ import subprocess
 import sys
 import threading
 import time
+import tokenize
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
@@ -43,15 +45,15 @@ RELEASED = SUITE["released"]["version"]
 PREREQUISITE = SUITE["builds"]["prerequisite"]
 # The task table: the counted verb's shapes on each surface, and the evidence.
 TASKS = [
-    {"number": 1, "goal": "a better churn model from the repository under ./task (its evaluator under task/evaluation, its data under task/data, the brief task/kapso-brief.md), at a budget of 10 minutes and 1 experiment, into ./campaign-1",
+    {"number": 1, "goal": "start a campaign for a better churn model from the repository under ./task (its evaluator under task/evaluation, its data under task/data, the brief task/kapso-brief.md), at a budget of 10 minutes and 1 experiment, into ./campaign-1; the campaign runs on its own, and the task is done once it is running",
      "verb": "build", "evidence": "campaign-1"},
-    {"number": 2, "goal": "a fraud scorer that beats the rule-based one from the repository under ./task-fraud, which has data and a brief with the protocol but no evaluator, at a budget of 10 minutes and 1 experiment, into ./campaign-2",
+    {"number": 2, "goal": "start a campaign for a fraud scorer that beats the rule-based one from the repository under ./task-fraud, which has data and a brief with the protocol but no evaluator, at a budget of 10 minutes and 1 experiment, into ./campaign-2; the campaign runs on its own, and the task is done once it is running",
      "verb": "build", "evidence": "campaign-2"},
-    {"number": 3, "goal": "the churn build again, under the harness at ./harness, at 10 minutes and 1 experiment, into ./campaign-3 (the task's deviation: the harness is named by its path, since no bundled harness ships yet)",
+    {"number": 3, "goal": "start the churn campaign again, under the harness at ./harness, at 10 minutes and 1 experiment, into ./campaign-3 (the task's deviation: the harness is named by its path, since no bundled harness ships yet); the campaign runs on its own, and the task is done once it is running",
      "verb": "build", "evidence": "campaign-3", "harness": True},
     {"number": 4, "restore": "campaign-prereq", "goal": "the delivered result of the campaign at ./campaign-prereq deployed to the local target, then called once", "verb": "deploy", "evidence": "deployment"},
     {"number": 5, "restore": "campaign-prereq", "clear_learning": True, "goal": "lessons learned from the campaign at ./campaign-prereq (start the learn; it runs on its own)", "verb": "learn", "evidence": "learn-status"},
-    {"number": 6, "restore": "campaign-killed", "goal": "the campaign at ./campaign-killed was interrupted before it finished; continue it from where it stopped", "verb": "resume", "evidence": "resumed"},
+    {"number": 6, "restore": "campaign-killed", "goal": "the campaign at ./campaign-killed was interrupted before it finished; continue it from where it stopped, on its own: the task is done once it is running again", "verb": "resume", "evidence": "resumed"},
 ]
 # The counted verb's shapes on each surface, per package: the branch's
 # `build` is 0.7.10's verb `evolve` (its resume `evolve --resume`); deploy   # 0.7.10's verb
@@ -82,13 +84,58 @@ WRAPPERS = ("nohup", "sudo", "env", "exec")
 SHELL_WRAPPER = re.compile(r"^(?:/bin/)?(?:ba)?sh\s+-lc\s+(['\"])(.*)\1\s*$", re.S)
 
 
+def _split_outside_quotes(command: str) -> List[str]:
+    """The command cut at `&&`, `||`, `;`, `|` and newlines that stand
+    outside quotes, read the shell's way (a `|` inside a quoted pattern
+    splits nothing — the splitter that cut `rg 'config|kapso build'` into
+    an invocation counted a search as a wrong call)."""
+    segments, current, quote, index = [], [], None, 0
+    while index < len(command):
+        char = command[index]
+        if quote:
+            if char == "\\" and quote == '"' and index + 1 < len(command):
+                current.append(command[index:index + 2])
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            current.append(char)
+            index += 1
+            continue
+        if char in ("'", '"'):
+            quote = char
+            current.append(char)
+            index += 1
+            continue
+        if char == "\\" and index + 1 < len(command):
+            current.append(command[index:index + 2])
+            index += 2
+            continue
+        if command[index:index + 2] in ("&&", "||"):
+            segments.append("".join(current))
+            current = []
+            index += 2
+            continue
+        if char in ";|\n":
+            segments.append("".join(current))
+            current = []
+            index += 1
+            continue
+        current.append(char)
+        index += 1
+    segments.append("".join(current))
+    return segments
+
+
 def command_segments(command: str) -> List[str]:
     wrapped = SHELL_WRAPPER.match(command.strip())
     if wrapped:
         command = wrapped.group(2)
     segments = []
-    for raw in re.split(r"&&|\|\||;|\||\n", command):
-        words = raw.strip().split()
+    for raw in _split_outside_quotes(command):
+        # A subshell's parentheses and a trailing `&` are the shell's, not
+        # the program's: `(kapso build … &)` invokes kapso.
+        words = raw.strip().lstrip("(").rstrip(")& ").split()
         while words and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]) or words[0] in WRAPPERS or (words[0] == "timeout" and len(words) > 1)):
             words = words[2:] if words[0] == "timeout" else words[1:]
         if words:
@@ -228,21 +275,36 @@ def executions(rows: Sequence[dict], verb: str, surface: str, sandbox: Path, pac
         elif row.get("type") == "user":
             for block in row["message"].get("content", []):
                 if block.get("type") == "tool_result" and block.get("tool_use_id") in pending:
-                    content = block.get("content")
-                    result = content if isinstance(content, str) else "".join(part.get("text", "") for part in content or [] if isinstance(part, dict))
-                    pending.pop(block["tool_use_id"])["errored"] = bool(block.get("is_error")) or _looks_errored(result)
-        elif row.get("type") == "item.completed" and (row.get("item") or {}).get("type") == "command_execution":
-            # Codex's shape: the command and its exit status in one row.
+                    # The host's own verdict on the command (a non-zero exit),
+                    # never its output's words: a deploy that streams its
+                    # agent's session log prints that agent's probes and
+                    # tracebacks and exits 0.
+                    pending.pop(block["tool_use_id"])["errored"] = bool(block.get("is_error"))
+        elif row.get("type") in ("item.started", "item.completed") and (row.get("item") or {}).get("type") == "command_execution":
+            # Codex's shape: the command at its start and again, with its exit
+            # status, at its end. A command still running when the turn ended
+            # (a foreground resume) has a start and no end: counted, its
+            # outcome unknown.
             item = row["item"]
             command = item.get("command", "")
-            if counted(command, verb, surface, sandbox, package):
-                exit_code = item.get("exit_code")
-                errored = (exit_code not in (0, None)) or _looks_errored(item.get("aggregated_output") or "")
+            if not counted(command, verb, surface, sandbox, package):
+                continue
+            if row["type"] == "item.started":
+                entry = {"command": command, "errored": None}
+                pending[item.get("id")] = entry
+                found.append(entry)
+                continue
+            exit_code = item.get("exit_code")
+            errored = (exit_code != 0) if exit_code is not None else _looks_errored(item.get("aggregated_output") or "")
+            if item.get("id") in pending:
+                pending.pop(item["id"])["errored"] = errored
+            else:
                 found.append({"command": command, "errored": errored})
     return found
 
 
 def _looks_errored(text: str) -> bool:
+    """The output's words, read only when the host gave no exit status."""
     return bool(re.search(r"Traceback \(most recent call last\)|^Error:|error: ", text, re.M))
 
 
@@ -295,12 +357,19 @@ def attempt_metrics(found: Sequence[Dict[str, Any]], evidence: bool, started: fl
     }
 
 
+def logical_lines(text: str) -> int:
+    """A script's length as the design counts a flow: its logical lines
+    (the tokenizer's NEWLINE tokens — a call written across six physical
+    lines is one line of the flow), comments and blank lines aside."""
+    return sum(1 for token in tokenize.generate_tokens(io.StringIO(text).readline) if token.type == tokenize.NEWLINE)
+
+
 def python_lines(sandbox: Path, scripts: Sequence[str]) -> int:
     count = 0
     for script in scripts:
         path = sandbox / script
         if path.is_file():
-            count += sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip() and not line.strip().startswith("#"))
+            count += logical_lines(path.read_text(encoding="utf-8", errors="replace"))
     return count
 
 
@@ -404,6 +473,12 @@ class S1:
             pages = navigated_pages(self.clone)
             count = snapshot_docs(self.clone / "docs", pages, self.sandbox / "docs")
             self.shell(f"python3 -m venv {self.venv} && {self.venv}/bin/pip install -q {self.args.wheel}", cwd=self.out, timeout=900)
+        # The engineer's own environment holds what the task views say to
+        # install (the examples' requirements: numpy, pandas, scikit-learn;
+        # the harness's pandas and pyarrow) — with no web, a venv holding the
+        # wheel alone met every build as a refusal or an in-session install.
+        requirements = sorted((self.clone / "examples").glob("*/requirements.txt")) + sorted((self.clone / "examples" / "harnesses").glob("*/requirements.txt"))
+        self.shell(f"{self.venv}/bin/pip install -q " + " ".join(f"-r {path}" for path in requirements), cwd=self.out, timeout=900)
         task_view(self.clone / "examples" / "churn-first-build", self.sandbox / "task")
         task_view(self.clone / "examples" / "fraud-no-evaluator", self.sandbox / "task-fraud")
         if (self.sandbox / "harness").exists():
@@ -489,7 +564,8 @@ class S1:
         how = "in Python: write a script in this directory and run it with ./venv/bin/python" if surface == "python" else "on the command line, with the kapso command on PATH"
         prompt = (
             "You are an engineer who has never used Kapso. The package is installed in this directory's venv (./venv/bin/python; the kapso command is on PATH); "
-            "its documentation is under ./docs (start at docs/index.mdx and docs/installation.mdx). Read only what is in this directory; use no web. "
+            "its documentation is under ./docs (start at docs/index.mdx and docs/installation.mdx). Read only what is in this directory; you have no web access "
+            "(the campaign's own settings are not yours to change). "
             f"The task: {task['goal']}. Do it {how}. When it is done, say in one line what you ran and what came back."
         )
         for leftover in (self.sandbox / task["evidence"],) if task["evidence"].startswith("campaign-") else ():
