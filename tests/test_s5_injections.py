@@ -99,6 +99,12 @@ def test_shown_state_reads_the_verdict_kapso_watch_prints():
     assert timeline.shown_state("RUNNING ♥ 289s ago   ⚠ DEAD (pid 5554 is gone)      pid 5554\nbudget 9%") == "DEAD"
     assert timeline.shown_state("RUNNING ♥ 200s ago   ⚠ STALLED?      pid 5554") == "STALLED"
     assert timeline.shown_state("RUNNING ♥ 8s ago      pid 6754") == "RUNNING"
+    # A detached resume whose child has not written its status yet: watch
+    # says so above the earlier run's screen, DEAD marker and all; the
+    # product's verdict is the top line (rel-s5-codex's killed writer read
+    # DEAD a minute after the resume, and the bar fell on the sampler).
+    resuming = "starting again (pid 18047, launched 14s ago; log: /x/s5-killed-writer.log); the status below is the earlier run's\nRUNNING ♥ 90s ago   ⚠ DEAD (pid 16983 is gone)      pid 16983"
+    assert timeline.shown_state(resuming) == "STARTING"
 
 
 def test_the_sampler_records_what_watch_shows_beside_the_stored_status(tmp_path, monkeypatch):
@@ -222,6 +228,8 @@ def test_the_diagnosis_vocabularies_are_disjoint_and_name_the_class(tmp_path):
     # table; "the evaluator is fine" satisfied both halves of the crash.
     assert s5.names_class_and_fix("you can resume it", "killed-writer") == {"names_class": False, "names_fix": True}
     assert s5.names_class_and_fix("the writer is dead (pid 19524 is gone); run kapso build --output ../s5-killed-writer --resume", "killed-writer") == {"names_class": True, "names_fix": True}
+    # rel-s5-codex's plugin named the class as plainly, in other words.
+    assert s5.names_class_and_fix("The campaign's writer process died at the start of iteration 1's implementation. `watch` correctly detected that PID 16983 was gone. I resumed the existing campaign with `--resume --detach`.", "killed-writer") == {"names_class": True, "names_fix": True}
     assert s5.names_class_and_fix("the evaluator is fine", "evaluator-crash") == {"names_class": False, "names_fix": False}
     assert s5.names_class_and_fix("the evaluator crashed: holdout_labels.csv was missing; restore it, then resume", "evaluator-crash") == {"names_class": True, "names_fix": True}
     # s5-claude-8's engineer, rightly: the session got SIGKILL, the campaign finished normally, nothing to resume.
