@@ -64,7 +64,7 @@ CLASSIFY = """You are grading the guess log of an author who wrote a Kapso harne
 - "domain_decision": a choice about the author's own domain (dbt), not about Kapso, that no guide could make for them; or a choice about the author's own code (a library, a style, a language version, an extra file) to which the engine accepts any reasonable answer.
 - "already_in_guide": the guide already states it; the author did not find it.
 
-Reply with exactly one JSON object: {{"classifications": [{{"index": <1-based int>, "class": "<one of the four>", "why": "<one sentence in plain prose that cites the guide by file and section, never by pasting code, and uses no double-quote characters, so the JSON stays valid; for a structural_gap it names the check rule or engine behaviour a wrong guess would trip>"}}, ...]}}, one entry per guess, in order.
+Reply with exactly one JSON object: {{"classifications": [{{"index": <the number the guess is listed with below, echoed as given, never renumbered>, "class": "<one of the four>", "why": "<one sentence in plain prose that cites the guide by file and section, never by pasting code, and uses no double-quote characters, so the JSON stays valid; for a structural_gap it names the check rule or engine behaviour a wrong guess would trip>"}}, ...]}}, one entry per guess, in order.
 
 === THE GUIDE ===
 {guide}
