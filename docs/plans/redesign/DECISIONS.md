@@ -3128,3 +3128,26 @@ when the CLI flow began, so the engineer rightly declined to start a
 second: the rig stops a flow's learn, with its process group, before the
 next flow, and the learn's goal says the learn keeps running on its own
 after the command returns.
+
+## The trace header speaks the two words too (2026-10-30)
+
+The header line "N experiments, M rejected" came from the engine's
+`rejected_candidates`, which counts an integrity void as rejected, while
+the VOIDED OR REJECTED section below it said "voided". The third wave's
+Codex reader followed the header and the record (S4 on Claude Code, 5 of
+6). The header now counts `voided` and `rejected` as the section
+classifies them; the record's field keeps its name, a finding.
+
+## The S5 rig after the second wave on Codex (2026-10-30)
+
+Four readings, none the product's fault. The evaluator-crash injection
+moved one copy of the labels while the seed had left another in the
+campaign root, and the implementation session copied it back and scored
+— the rig now moves every copy the campaign can reach, and the agent's
+repair of protected data, accepted by the judge, is a finding. The
+sampler read `kapso watch`'s DEAD marker off the earlier run's screen
+below the product's own "starting again" line, a minute after a resume:
+the top line is the verdict. A resume is any relaunch after the writer
+went, the first answer's included. The vocabularies take "the writer
+process died", "PID … was gone", "restoration of the evaluator" and
+"not as a valid scored result".
