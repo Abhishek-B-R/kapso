@@ -208,6 +208,12 @@ def quote_on(lines: Sequence[str], label: str, quote: str) -> bool:
         text = re.sub(r"^L\d+:\s?", "", text)
         text = re.sub(r"^(?:[-*+>]|\d+\.|#{1,6})\s+", "", text)
         text = re.sub(r"(?<!\w)_|_(?!\w)", "", text)
+        # A line that is a JSON string carries its escapes (`—`, `\"`,
+        # `\n`); a judge quotes the words it reads, so both sides are read
+        # with the escapes resolved (an S4 reading pasted the engine's
+        # feedback as JSON, and the grading died on an em dash).
+        text = re.sub(r"\\u([0-9a-fA-F]{4})", lambda match: chr(int(match.group(1), 16)), text)
+        text = text.replace('\\"', '"').replace("\\n", " ").replace("\\t", " ").replace("\\\\", "\\")
         return " ".join(re.sub(r"[*`~]", "", text).split())
     wanted = folded(quote)
     first = folded(lines[number - 1])

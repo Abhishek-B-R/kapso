@@ -194,6 +194,11 @@ def test_a_quote_keeps_a_tokens_own_underscore_and_may_run_on_over_many_lines():
     assert judge.quote_on(["L1: _emphasised_ words"], "1", "emphasised words")
     assert judge.quote_on(lines, "2", "one two three four five"), "a quotation that starts on the cited line may run on"
     assert not judge.quote_on(lines, "3", "one two three"), "it must start on the cited line"
+    # A line that is a JSON string carries its escapes; the judge quotes the
+    # words it reads (rel-s4-claude's grading died on `—` against an em dash).
+    escaped = ['L1:     "feedback": "## Verdict: 0.8471 vs target 0.85 \\u2014 gap 0.0029. \\"Not achieved.\\"\\nNext line",']
+    assert judge.quote_on(escaped, "1", "Verdict: 0.8471 vs target 0.85 — gap 0.0029. \"Not achieved.\" Next line")
+    assert judge.quote_on(escaped, "1", "0.85 \\u2014 gap"), "a quote carrying the escape itself reads the same"
 
 
 def test_a_test_whose_rubric_rules_on_several_inputs_at_once_gets_them_as_one_item(tmp_path):
