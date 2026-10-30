@@ -2,17 +2,12 @@
 summary block. Each verb module imports what it needs from here; nothing
 here imports a verb module."""
 
-import json
-import os
-import subprocess
-import sys
-import warnings
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Sequence
 
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.inbox import beside, launch_receipt_path
+from kapso.execution.launch import detach
 
 
 # Available coding agents
@@ -75,34 +70,9 @@ def _detach(
     one flag. A build writes a receipt beside its log, which `kapso
     watch` reads before the status exists; a learn or an ingest writes
     none (their status is born within seconds under the learning status
-    directory, and nothing reads a receipt there)."""
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    # The receipt lies beside the campaign: its directory exists before the
-    # child does, so a launch under a parent not yet made still gets one.
-    if receipt_path is not None:
-        receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    # The child is meant to outlive this process, so the Popen object is let
-    # go while it runs; Python would otherwise print "subprocess N is still
-    # running" at the end of a successful launch.
-    with warnings.catch_warnings(), open(log_path, "a", encoding="utf-8") as log:
-        warnings.simplefilter("ignore", ResourceWarning)
-        child = subprocess.Popen(
-            [sys.executable, "-m", "kapso.cli", *argv],
-            stdin=subprocess.DEVNULL,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            cwd=os.getcwd(),
-            start_new_session=True,
-        )
-        pid = child.pid
-        del child
-    if receipt_path is not None:
-        receipt_path.write_text(json.dumps({
-            "pid": pid,
-            "log": str(log_path),
-            "argv": list(argv),
-            "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        }, indent=2) + "\n", encoding="utf-8")
+    directory, and nothing reads a receipt there). The launch itself is
+    `kapso.execution.launch.detach`, which the API's `detach=True` shares."""
+    pid = detach(argv, log_path=log_path, receipt_path=receipt_path)
     print(f"{label} started in a session of its own (pid {pid})")
     print(f"  log:     {log_path}")
     for line in handoff:
