@@ -66,10 +66,14 @@ Re-check both statuses before going on.
 
 ## 4. The session's tools
 
-On Codex, add Kapso's MCP server to the user's config once:
+On Codex, add Kapso's MCP server to the user's config once, and give it a minute to
+start: Codex drops a server that has not answered within ten seconds, and
+`kapso-mcp` imports the package first, which a busy machine can stretch past that —
+the session then runs without the tools and does not say why.
 
 ```bash
 codex mcp add kapso -- kapso-mcp
+python3 -c 'import os, pathlib; p = pathlib.Path(os.environ.get("CODEX_HOME", pathlib.Path.home() / ".codex")) / "config.toml"; t = p.read_text(); h = "[mcp_servers.kapso]\n"; p.write_text(t.replace(h, h + "startup_timeout_sec = 60\n", 1)) if "startup_timeout_sec" not in t.split(h, 1)[1].split("\n[", 1)[0] else None'
 ```
 
 On Claude Code the plugin's own entry runs `kapso-mcp` and needs nothing. A host
