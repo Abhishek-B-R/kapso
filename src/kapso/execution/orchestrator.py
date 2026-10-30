@@ -1111,8 +1111,11 @@ class OrchestratorAgent:
         """The reserve this round keeps out of the search: the set one,
         else derived from the obligations — the harness's verification
         minutes when it verifies, the judge's last observed duration (the
-        floor before one), the delivery's slice; either bounded by a
-        quarter of the budget."""
+        config's judge reserve before one: a judge takes minutes, and a
+        reserve at the floor let the first attempt's verification run the
+        remainder down to 59 s for it, under the floor, the hour's attempt
+        then unjudged — the release gate, 2026-10-30), the delivery's
+        slice; either bounded by a quarter of the budget."""
         bounded = budget_spec.bounded_reserve_seconds()
         if bounded is not None:
             return bounded
@@ -1121,13 +1124,19 @@ class OrchestratorAgent:
             if self.harness is not None and self.harness.has_content("verification")
             else 0.0
         )
+        return budget_spec.bound_reserve(verification + self._judge_reserve_seconds(budget_spec) + self._delivery_seconds())
+
+    def _judge_reserve_seconds(self, budget_spec: BudgetSpec) -> float:
+        """What this round keeps for the judge: the last judge's observed
+        duration in the campaign, the config's reserve before one. The
+        round's reserve holds it back from the search, and the strategy's
+        finishing stages leave it standing (the snapshot carries it)."""
         observed = [
             node.phase_telemetry["feedback"]["duration_seconds"]
             for node in self.search_strategy.get_experiment_history()
             if "feedback" in node.phase_telemetry
         ]
-        judge = observed[-1] if observed else budget_spec.min_agent_timeout_seconds
-        return budget_spec.bound_reserve(verification + judge + self._delivery_seconds())
+        return observed[-1] if observed else budget_spec.judge_reserve_seconds
 
     def _platform_budget_view(self) -> Optional[Dict[str, Any]]:
         """The campaign's platform spend against its budget, in the
@@ -1479,6 +1488,7 @@ class OrchestratorAgent:
                     cost_budget_usd=budget_spec.cost_budget_usd,
                     finalization_reserve_seconds=self._round_reserve_seconds(budget_spec),
                     min_agent_timeout_seconds=budget_spec.min_agent_timeout_seconds,
+                    judge_reserve_seconds=self._judge_reserve_seconds(budget_spec),
                     delivery_seconds=self._delivery_seconds(),
                 ))
             self._run_harness_setup()
@@ -1634,6 +1644,7 @@ class OrchestratorAgent:
                     min_agent_timeout_seconds=(
                         budget_spec.min_agent_timeout_seconds
                     ),
+                    judge_reserve_seconds=self._judge_reserve_seconds(budget_spec),
                     delivery_seconds=self._delivery_seconds(),
                 )
                 self.search_strategy.observe_budget(snapshot)
@@ -1710,6 +1721,7 @@ class OrchestratorAgent:
                             min_agent_timeout_seconds=(
                                 budget_spec.min_agent_timeout_seconds
                             ),
+                            judge_reserve_seconds=self._judge_reserve_seconds(budget_spec),
                             delivery_seconds=self._delivery_seconds(),
                         )
                         self.search_strategy.observe_budget(snapshot)

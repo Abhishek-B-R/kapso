@@ -339,6 +339,13 @@ budget:
   # Below this an agent session cannot do useful work: a session whose
   # deadline would be clamped to it is not launched.
   min_agent_timeout_seconds: 60
+  # What the judge is kept, in seconds, before one has been observed in
+  # the campaign (a judge takes minutes): the round's reserve for it and
+  # the obligation the evaluation and the verification leave standing, so
+  # a first attempt's verification cannot run the remainder down to the
+  # floor and lose the attempt unjudged. A judge that has been observed
+  # is kept its own last duration.
+  judge_reserve_seconds: 300
   # Durable-clock + status heartbeat interval. Feeds the orchestrator's
   # checkpoint heartbeat daemon (elapsed_seconds stays fresh between
   # boundary checkpoints) and the observability layer's liveness signal:

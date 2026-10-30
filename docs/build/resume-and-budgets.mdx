@@ -93,18 +93,21 @@ implementation) is clamped against the searchable remainder: the budget
 less the reserve. A *finishing* session completes an attempt that was
 already made (the candidate's evaluation run, the verification, the judge,
 the reconstruction of what went wrong): it is clamped against the whole
-remainder less the obligations that follow it, each protected at its
-floor, `budget.min_agent_timeout_seconds`. After the evaluation run come
+remainder less the obligations that follow it. After the evaluation run come
 the verification when the harness verifies, then the judge, then the
-delivery's own slice. Time a session leaves unused flows to the next
-obligation. A session's deadline is the smaller of its configured timeout
-and this room, never raised to the floor; an unbudgeted campaign keeps its
-configured timeouts.
+delivery's own slice; the evaluation and the verification are protected at
+the floor, `budget.min_agent_timeout_seconds` (a verification cut short is
+unverified, and the judge still speaks), the judge at its reserve: its last
+observed duration in the campaign, `budget.judge_reserve_seconds` before
+one, since a judge takes minutes. Time a session leaves unused flows to the
+next obligation. A session's deadline is the smaller of its configured
+timeout and this room, never raised to the floor; an unbudgeted campaign
+keeps its configured timeouts.
 
 **The reserve.** `reserve_minutes` set wins. Unset, the packaged default,
 it is derived each round from the obligations themselves: the harness's
 `verification_minutes` when it verifies, the judge's last observed duration
-(the floor before the first), the delivery's slice. Either is bounded by a
+(`judge_reserve_seconds` before the first), the delivery's slice. Either is bounded by a
 quarter of the budget, so a short budget keeps its search; a finishing
 session then takes what its room leaves. A budget whose search room is
 under the floor before anything ran (a harness setup session with no room)

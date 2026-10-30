@@ -1655,19 +1655,26 @@ class GenericSearch(SearchStrategy):
         return self.budget_snapshot.deadline(configured_seconds, self._room())
 
     def _obligations_after(self, stage: str) -> float:
-        """What must still fit after a finishing ``stage``: each later
-        session at the floor — the evaluation run in cost mode, the
-        verification when the harness verifies, the judge — and the
-        delivery's protected slice."""
+        """What must still fit after a finishing ``stage``: the evaluation
+        run in cost mode and the verification when the harness verifies,
+        each at the floor (a verification cut short is unverified, and the
+        judge still speaks); the judge at its reserve — its last observed
+        duration, the config's `judge_reserve_seconds` before one, since a
+        judge takes minutes, and a judge kept at the floor let a
+        verification run the remainder down to 59 s for it, under the
+        floor, the hour's attempt then unjudged (the release gate,
+        2026-10-30); and the delivery's protected slice."""
         snapshot = self.budget_snapshot
         later = self.FINISHING_STAGES[self.FINISHING_STAGES.index(stage) + 1:]
-        runs = {
-            "evaluation": self._cost_enabled(),
-            "verification": self.harness is not None and self.harness.has_content("verification"),
-            "judge": True,
+        reserves = {
+            "evaluation": snapshot.min_agent_timeout_seconds if self._cost_enabled() else 0.0,
+            "verification": (
+                snapshot.min_agent_timeout_seconds
+                if self.harness is not None and self.harness.has_content("verification") else 0.0
+            ),
+            "judge": snapshot.judge_reserve_seconds,
         }
-        sessions = sum(1 for name in later if runs[name])
-        return sessions * snapshot.min_agent_timeout_seconds + snapshot.delivery_seconds
+        return sum(reserves[name] for name in later) + snapshot.delivery_seconds
 
     def _finishing_deadline(
         self, stage: str, configured_seconds: Optional[float],
