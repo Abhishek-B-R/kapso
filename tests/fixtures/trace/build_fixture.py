@@ -37,7 +37,7 @@ from pathlib import Path
 import yaml
 
 from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_SUCCESS, EXIT_TIMEOUT, append_run, relative_files, run_entry
-from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, digest_claude, truncated
+from kapso.execution.coding_agents.transcripts import CLAUDE_HOST, digest_claude, stream_lines, truncated
 from kapso.execution.inbox import LAUNCH_SCHEMA_VERSION
 from kapso.execution.run_checkpoint import RunCheckpoint
 from kapso.execution.search_strategies.base import SearchNode
@@ -247,11 +247,11 @@ def _run_entries(stream: Path, label: str, window: tuple, node: dict | None, ses
     a `result` event was killed at its deadline. The files changed are
     the edit tools' inputs, relative to the session directory as the
     archive recorded it."""
-    lines = stream.read_text(encoding="utf-8").splitlines(keepends=True)
+    lines = stream_lines(stream.read_text(encoding="utf-8"))
     parsed = []
     for line in lines:
         stripped = line.rstrip("\n")
-        event = json.loads(stripped) if stripped.startswith(EVENT_HEAD) and not truncated(stripped) else {}
+        event = json.loads(stripped) if stripped.startswith(EVENT_HEAD) and not truncated(line) else {}
         parsed.append((line, event))
     groups: list = []          # one list of (line, event) per invocation
     current: list = []

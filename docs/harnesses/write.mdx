@@ -82,7 +82,7 @@ A module with a page or any attachment has content. The setup session and the ve
 
 ## Skills
 
-A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs under it (the example keeps them in a `scripts/` directory). Those two keys are all `check` reads; the host reads the rest, and one other key the engine does read: a deployment target's `metadata.run_kinds` (the example's `paper-trading` skill carries it), which `deploy` reads and refuses when malformed — see the deploy page. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
+A skill is a directory under `skills/` with a `SKILL.md` whose front matter has `name` (the directory's name) and `description` (what it does, then `Use when ...`), and whatever scripts it needs under it (the example keeps them in a `scripts/` directory). Those two keys are all `check` reads; the host reads the rest, and one other key the engine does read: a deployment target's `metadata.run_kinds`, an optional list of the run kinds its workflow ends in, each one of `function`, `http` or `script` (the example's `paper-trading` skill declares `[script]`); `deploy` refuses a result that names another kind, and a list that is empty or holds any other word is refused when the skill is read. The engine stages it where the host looks for skills, under the session's own directory; the host reads the front matter and loads the body when the description matches the work.
 
 ```markdown
 ---
@@ -183,7 +183,7 @@ Bump `version` when behaviour changes; the engine records name, version and a ha
 
 ## Never in a harness
 
-An evaluator, a dataset, a goal, a budget, a credential value, a model or runner choice for Kapso's own agents, an engine event, a memory of past tasks, or any field the engine would have to parse. Domain commands, API connections and model names inside domain content are fine.
+An evaluator, a dataset, a goal, a budget, a credential value, a model or runner choice for Kapso's own agents, an engine event, a memory of past tasks, or any field the engine would have to parse. Domain commands, API connections and model names inside domain content are fine. The harnesses Kapso ships are held to this by a scan of our own (benchmark tooling, not `check`): no benchmark, task, dataset or competition name, no data library's name on a page, no number pinned beside a quota, deadline, score or hardware word — a hit is a file, a line and a word.
 
 ## Related
 

@@ -26,6 +26,7 @@ from kapso.learning.bank import (
     Bank,
     Card,
     RELIABILITY_STATES,
+    REPORTED_VERDICT,
 )
 from kapso.learning.trajectory_store import TrajectoryStore
 
@@ -476,6 +477,12 @@ def evidence_admission_findings(
 
         if verdict not in EVIDENCE_VERDICTS:
             findings.append(f"{label}: verdict {verdict!r} invalid")
+        if verdict == REPORTED_VERDICT:
+            findings.append(
+                f"{label}: verdict {REPORTED_VERDICT!r} is a conversion's record of a "
+                f"score at a source, never a learner run's — a run writes what it measured"
+            )
+            continue
         if not usage.strip() or not effect.strip():
             findings.append(f"{label}: usage and effect prose are required")
 

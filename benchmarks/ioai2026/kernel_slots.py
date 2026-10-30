@@ -29,8 +29,8 @@ Priority tiers (--priority), highest first:
 Within a tier, ordering is
 EVIDENCE-AWARE: lanes with no banked public score come first (their first
 score is maximum information), then lanes by their BEST banked public score
-(the office reads best_score.log and attributes scores through the kernel
-refs each lane acquired for), then arrival. Waiting also AGES a ticket
+in the metric's direction (the office reads best_score.log and attributes
+scores through the kernel refs each lane acquired for), then arrival. Waiting also AGES a ticket
 request upward: every aging_seconds in the queue promotes it one tier step
 (never into ship), so a weak-scored lane cannot starve behind a stream of
 stronger arrivals.
@@ -64,10 +64,9 @@ import time
 CONFIG_NAME = ".kernel_slots_config.json"
 LEDGER_NAME = ".kernel_slots.json"
 LOCK_NAME = ".kernel_slots.lock"
-POLL_SECONDS = 5.0
 # A waiter that stopped heartbeating (its lane died mid-wait) must not hold a
-# place in line; derived from the poll cadence, not a user knob.
-WAITER_STALE_SECONDS = 6 * POLL_SECONDS
+# place in line: this many missed polls, at the limits' poll cadence.
+STALE_POLLS = 6
 
 POOLS = ("gpu", "cpu")
 KINDS = ("push",)
@@ -86,7 +85,9 @@ def _paths(task_dir: str) -> tuple:
 
 
 def load_limits(task_dir: str) -> dict:
-    """Pool sizes + verification knobs, written by the runner from config.yaml."""
+    """Pool sizes, verification knobs and the poll cadence, written by the
+    runner from config.yaml, with the task's metric direction (the queue
+    orders banked scores by it)."""
     config_path, _, _ = _paths(task_dir)
     if not os.path.isfile(config_path):
         raise FileNotFoundError(
@@ -96,7 +97,8 @@ def load_limits(task_dir: str) -> dict:
     with open(config_path) as handle:
         limits = json.load(handle)
     for key in ("gpu", "cpu", "ttl_seconds", "reap_interval_seconds",
-                "verify_timeout_seconds", "aging_seconds"):
+                "verify_timeout_seconds", "aging_seconds", "poll_seconds",
+                "higher_is_better"):
         if key not in limits:
             raise ValueError(f"{config_path} has no {key!r}")
     return limits
@@ -121,7 +123,7 @@ def read_ledger(ledger_path: str) -> dict:
         if key not in ledger:
             raise ValueError(
                 f"{ledger_path} is not a v2 ledger (missing {key!r}) — "
-                "the runner deletes stale ledgers at launch"
+                "a new campaign starts its ledgers afresh"
             )
     ledger.setdefault("lane_refs", {})
     return ledger
@@ -142,11 +144,11 @@ def _with_lock(lock_path: str, action):
     return result
 
 
-def _prune_waiters(ledger: dict, now: float) -> None:
+def _prune_waiters(ledger: dict, now: float, stale_seconds: float) -> None:
     for pool in POOLS:
         ledger["queue"][pool] = [
             w for w in ledger["queue"][pool]
-            if now - w["last_seen"] < WAITER_STALE_SECONDS
+            if now - w["last_seen"] < stale_seconds
         ]
 
 
@@ -156,8 +158,9 @@ def sanitize_lane(lane: str) -> str:
     return lane.strip().strip("'\"")
 
 
-def lane_best_public(task_dir: str, ledger: dict, lane: str) -> "float | None":
-    """The lane's best banked public score, attributed through its refs.
+def lane_best_public(task_dir: str, ledger: dict, lane: str, higher_is_better: bool) -> "float | None":
+    """The lane's best banked public score in the metric's direction,
+    attributed through its refs.
 
     Evidence comes from best_score.log (public scores only); attribution is
     the accumulated map of refs this lane acquired tickets for. Only lines
@@ -176,15 +179,16 @@ def lane_best_public(task_dir: str, ledger: dict, lane: str) -> "float | None":
             fields = line.split()
             if len(fields) >= 3 and KERNEL_REF_PATTERN.match(fields[2])                     and fields[2] in refs:
                 score = float(fields[0])
-                if best is None or score > best:
+                if best is None or (score > best if higher_is_better else score < best):
                     best = score
     return best
 
 
 def queue_sort_key(task_dir: str, ledger: dict, limits: dict, now: float):
     """Tier (aged upward, never into ship) -> unscored first -> best public
-    score DESC -> arrival."""
+    score in the metric's direction -> arrival."""
     aging = limits["aging_seconds"]
+    higher_is_better = bool(limits["higher_is_better"])
 
     def key(waiter):
         tier = PRIORITY_TIERS[waiter["priority"]]
@@ -192,10 +196,11 @@ def queue_sort_key(task_dir: str, ledger: dict, limits: dict, now: float):
         # Aged waiters land in a band at 0.5 — ahead of every fresh non-ship
         # tier, still strictly behind ship (0).
         effective_tier = max(min(tier, 0.5), tier - waited_steps)
-        evidence = lane_best_public(task_dir, ledger, waiter["lane"])
+        evidence = lane_best_public(task_dir, ledger, waiter["lane"], higher_is_better)
+        oriented = 0.0 if evidence is None else (evidence if higher_is_better else -evidence)
         return (effective_tier,
                 0 if evidence is None else 1,
-                -(evidence if evidence is not None else 0.0),
+                -oriented,
                 waiter["enqueued"])
 
     return key
@@ -214,7 +219,7 @@ def poll_once(task_dir: str, pool: str, kind: str, ref: str, lane: str,
 
     def attempt():
         ledger = read_ledger(ledger_path)
-        _prune_waiters(ledger, now)
+        _prune_waiters(ledger, now, STALE_POLLS * limits["poll_seconds"])
         clean_lane = sanitize_lane(lane)
         held_refs = ledger["lane_refs"].setdefault(clean_lane, [])
         if ref not in held_refs:
@@ -282,7 +287,7 @@ def kaggle_kernel_status(ref: str, timeout_seconds: float) -> str:
     if not match:
         raise RuntimeError(
             f"kaggle kernels status {ref} gave no status "
-            f"(exit {proc.returncode}): {(proc.stdout + proc.stderr)[-300:]}"
+            f"(exit {proc.returncode}): {proc.stdout + proc.stderr}"
         )
     return match.group(1).lower()
 
@@ -359,6 +364,7 @@ def acquire_blocking(task_dir: str, pool: str, kind: str, ref: str, lane: str,
         raise ValueError(
             f"priority must be one of {sorted(PRIORITY_TIERS)}, got {priority!r}")
     waiter_id = f"w-{secrets.token_hex(6)}"
+    poll_seconds = float(load_limits(task_dir)["poll_seconds"])
     deadline = time.time() + wait_seconds
     announced = False
     while True:
@@ -382,7 +388,7 @@ def acquire_blocking(task_dir: str, pool: str, kind: str, ref: str, lane: str,
                   file=sys.stderr)
             announced = True
         maybe_reap(task_dir, time.time(), kernel_status_fn=kernel_status_fn)
-        time.sleep(POLL_SECONDS)
+        time.sleep(poll_seconds)
 
 
 def release(task_dir: str, ticket: str) -> bool:
@@ -408,7 +414,7 @@ def status(task_dir: str) -> dict:
 
     def snapshot():
         ledger = read_ledger(ledger_path)
-        _prune_waiters(ledger, time.time())
+        _prune_waiters(ledger, time.time(), STALE_POLLS * limits["poll_seconds"])
         _write_ledger(ledger_path, ledger)
         return ledger
 
@@ -425,7 +431,7 @@ def status(task_dir: str) -> dict:
             ],
             "queue": [
                 {"lane": w["lane"], "priority": w["priority"],
-                 "best_public": lane_best_public(task_dir, ledger, w["lane"]),
+                 "best_public": lane_best_public(task_dir, ledger, w["lane"], bool(limits["higher_is_better"])),
                  "waited_seconds": int(now - w["enqueued"])}
                 for w in sorted(
                     ledger["queue"][pool],

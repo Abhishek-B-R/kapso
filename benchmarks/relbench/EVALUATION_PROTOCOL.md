@@ -182,7 +182,7 @@ Unlock path for the three rel-f1 windowed tasks. Key invariant making it leak-pr
 (the label window (t, t+Δ] lies strictly after t), while legitimately containing every
 earlier tick's closed outcome — exactly the Kumo-regime information set.
 
-1. `sandbox.py --rolling` builds one sanitized mini-cache per eval tick (23 val + 33
+1. the harness sanitizer (`sanitize.py --rolling`) builds one sanitized mini-cache per eval tick (23 val + 33
    test for driver-position; ticks = the task tables' unique timestamps): db tables
    truncated at the tick; task dir with `train.parquet` = all windows CLOSED by the
    tick (labels recomputed from the snapshot's own results — never from pristine),
@@ -194,7 +194,7 @@ earlier tick's closed outcome — exactly the Kumo-regime information set.
    write predictions for the cache's test table), assembles predictions into the
    official row order. Score of record = assembled VAL ticks vs official val labels;
    assembled TEST ticks are archived unscored (final_evaluate scores once, as today).
-3. Handler: tasks with `num_eval_timestamps > 1` get the rolling sandbox + a context
+3. The runner: tasks with `num_eval_timestamps > 1` get the rolling snapshots + a Brief
    note stating the per-tick contract; `PROTOCOL_SENSITIVE_TASKS` drops a task (and
    RESULTS.md's ⚠) only when its rolling harness is live and verified.
 4. Acceptance: a fixed LightGBM reference through the harness must reproduce the

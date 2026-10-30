@@ -1,237 +1,221 @@
 #!/usr/bin/env python3
-"""
-MLE-Bench Runner
+"""MLE-bench runner: one competition, one campaign on the facade's build().
 
-Runs the Kapso Agent on Kaggle ML competitions from MLE-Bench.
+    python -m benchmarks.mle.runner --competition <id> [-i N] [--workspace DIR] [--resume]
+        [--harness REF] [--experience REFS] [--coding-agent CLI]
+    python -m benchmarks.mle.runner --list [--lite]
 
-Usage:
-    python -m benchmarks.mle.runner --competition <competition_id>
-    python -m benchmarks.mle.runner --competition tabular-playground-series-dec-2021
-    python -m benchmarks.mle.runner --competition tabular-playground-series-dec-2021 --developer-agent gemini
-    python -m benchmarks.mle.runner --list  # List available competitions
-    
-Options:
-    --competition, -c       Competition ID to solve
-    --iterations, -i        Maximum iterations (default: 20)
-    --coding-agent, -d      Coding agent: aider, gemini, claude_code, openhands
-    --no-kg                 Disable knowledge graph
-    --list                  List all available competitions
-    --lite                  List only lite benchmark competitions
+The runner keeps the competition material and launches the engine: it
+downloads and prepares the competition's public data under the archive root
+(`benchmark.work_root` in config.yaml), stages the provided grader with the
+competition's settings beside it, writes the Brief from the competition's
+description and files, seeds the baseline candidate, and runs build() with
+the bundled predictive-modelling harness (or the one --harness names) and
+the experience --experience loads. After the campaign it grades the
+delivered candidate's `final_submission.csv` once, officially, on the
+private answers, and writes final_report.json.
 """
 
 import argparse
-import os
-import sys
-from typing import Optional
+import json
+import shutil
+import tarfile
+import tempfile
+import zipfile
+from pathlib import Path
+from typing import Dict, Optional
 
-# Load environment variables first
 from dotenv import load_dotenv
-load_dotenv()
-
-import mlebench
+from mlebench.data import download_and_prepare_dataset
+from mlebench.grade import grade_csv
 from mlebench.registry import registry
 
-from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.core.config import read_yaml
-from kapso.execution.coding_agents.factory import CodingAgentFactory
-from benchmarks.mle.handler import MleBenchHandler
+from kapso.handles import Budget, Solution
+from kapso.kapso import Kapso
 
-# Path to MLE-Bench specific configuration
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
+from benchmarks.common import stage_evaluation, write_runtime_config
+from benchmarks.mle.context import build_brief
 
-# Available coding agents
-AVAILABLE_AGENTS = CodingAgentFactory.list_available()
+load_dotenv()
+
+BENCH_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = BENCH_DIR / "config.yaml"
+DATA_DIR = BENCH_DIR / "data"
+EVALUATION_SUITE = DATA_DIR / "generic_eval"
+BASELINE = DATA_DIR / "generic_baseline" / "main.py"
+BUNDLED_HARNESS = "predictive-modelling"
+FINAL_REPORT = "final_report.json"
+SUBMISSION = "final_submission.csv"
 
 
-def list_competitions(lite_only: bool = False) -> None:
-    """List available MLE-Bench competitions."""
-    if lite_only:
-        competitions = registry.get_lite_competition_ids()
-        print(f"\n{'='*60}")
-        print(f"MLE-Bench Lite Competitions ({len(competitions)} total)")
-        print(f"{'='*60}")
-    else:
-        competitions = registry.list_competition_ids()
-        print(f"\n{'='*60}")
-        print(f"All MLE-Bench Competitions ({len(competitions)} total)")
-        print(f"{'='*60}")
-    
-    for comp_id in sorted(competitions):
-        print(f"  • {comp_id}")
+def list_competitions(lite_only: bool) -> None:
+    competitions = registry.get_lite_competition_ids() if lite_only else registry.list_competition_ids()
+    title = "MLE-bench lite competitions" if lite_only else "All MLE-bench competitions"
+    print(f"\n{'=' * 60}\n{title} ({len(competitions)} total)\n{'=' * 60}")
+    for competition_id in sorted(competitions):
+        print(f"  • {competition_id}")
     print()
 
 
-def list_agents() -> None:
-    """List available coding agents with detailed info from agents.yaml."""
-    CodingAgentFactory.print_agents_info()
+def extract_archives(data_dir: Path) -> None:
+    """Every archive among the prepared files, extracted beside it once."""
+    for archive in sorted(data_dir.iterdir()):
+        if not archive.is_file():
+            continue
+        target = data_dir / archive.stem
+        if zipfile.is_zipfile(archive):
+            with zipfile.ZipFile(archive) as opened:
+                members = opened.namelist()
+                if members and not (target / members[0]).exists():
+                    target.mkdir(exist_ok=True)
+                    opened.extractall(target)
+        elif tarfile.is_tarfile(archive):
+            with tarfile.open(archive, "r:*") as opened:
+                members = opened.getnames()
+                if members and not (target / members[0]).exists():
+                    target.mkdir(exist_ok=True)
+                    opened.extractall(target)
 
 
-def solve_competition(
-    competition_id: str,
-    max_iterations: int = 20,
-    use_kg: bool = True,
-    coding_agent: Optional[str] = None,
-) -> dict:
-    """
-    Solve a single MLE-Bench competition.
-    
-    Args:
-        competition_id: The Kaggle competition ID
-        max_iterations: Maximum experiment iterations
-        use_kg: Whether to use the knowledge graph
-        coding_agent: Coding agent to use (aider, gemini, claude_code, openhands)
-        
-    Returns:
-        Dictionary with cost and evaluation results
-    """
-    # The runner's own settings live under `benchmark:` in this
-    # benchmark's override file; the engine reads the rest.
-    benchmark = read_yaml(CONFIG_PATH)["benchmark"]
-    fetch_huggingface = benchmark["fetch_huggingface_models"]
-    # use_kg from CLI overrides config (--no-kg forces disable)
-    effective_use_kg = use_kg and benchmark["use_knowledge_graph"]
-    
-    print(f"\n{'='*60}")
-    print(f"Solving: {competition_id}")
-    print(f"{'='*60}")
-    print(f"  Max iterations: {max_iterations}")
-    print(f"  Config: {CONFIG_PATH}")
-    print(f"  Coding agent: {coding_agent or 'from config'}")
-    print(f"  Knowledge graph: {'enabled' if effective_use_kg else 'disabled'}")
-    print(f"  Fetch HuggingFace models: {fetch_huggingface}")
-    print()
-    
-    # Initialize handler and orchestrator
-    problem_handler = MleBenchHandler(competition_id, fetch_huggingface_models=fetch_huggingface)
-    orchestrator = OrchestratorAgent(
-        problem_handler,
-        config_path=CONFIG_PATH,
-        coding_agent=coding_agent,
-    )
-    
-    # Run the solve loop
-    orchestrator.solve(experiment_max_iter=max_iterations)
-    
-    # Get results
-    print("\n" + "="*60)
-    print("Experiment History:")
-    print("="*60)
-    print(orchestrator.search_strategy.get_experiment_history())
-    
-    # Checkout best solution and evaluate
-    orchestrator.search_strategy.checkout_to_best_experiment_branch()
-    cost = orchestrator.get_cumulative_cost()
-    
-    # The workspace is one git repo checked out at the best branch — the
-    # solution lives at the workspace root (the old per-branch directory
-    # layout is long gone; stale-code audit 2026-08-26).
-    workspace = orchestrator.search_strategy.workspace.workspace_dir
-    solution_path = workspace
-    
-    print(f"\nBest solution at: {solution_path}")
-    print(f"Total cost: ${cost:.3f}")
-    
-    # Final evaluation
-    print("\n" + "="*60)
-    print("Final Evaluation (Private Test Set)")
-    print("="*60)
-    private_evaluation = problem_handler.final_evaluate(solution_path)
-    
-    result = {
-        "competition_id": competition_id,
-        "cost": f"${cost:.3f}",
-        "solution_path": solution_path,
-        "private_evaluation": private_evaluation,
+def prepare_data(competition, data_dir: Path) -> Path:
+    """The competition's public files under the archive root, archives extracted."""
+    download_and_prepare_dataset(competition)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    for item in sorted(competition.public_dir.glob("*")):
+        destination = data_dir / item.name
+        if destination.exists():
+            continue
+        if item.is_dir():
+            shutil.copytree(item, destination)
+        else:
+            shutil.copy2(item, destination)
+    extract_archives(data_dir)
+    return data_dir
+
+
+def solution_summary(solution: Solution) -> Dict[str, object]:
+    return {
+        "campaign": str(solution.campaign),
+        "branch": solution.branch,
+        "commit": solution.commit,
+        "score": solution.score,
+        "stopped_reason": solution.stopped_reason,
+        "experiments": solution.experiments_total,
+        "cost_usd": solution.cost_usd,
+        "harness": solution.harness.name if solution.harness else None,
     }
-    
-    print(f"\nResults: {result}")
-    return result
 
 
-def main():
+def seeded_baseline() -> str:
+    directory = tempfile.mkdtemp(prefix="mle_baseline_")
+    shutil.copy2(BASELINE, Path(directory) / "main.py")
+    return directory
+
+
+def final_report(work_dir: Path, competition, solution: Solution) -> Dict[str, object]:
+    """The official grade on the private answers, once, on the delivered
+    candidate's `final_submission.csv`; or the no-candidate report."""
+    report: Dict[str, object] = {"competition_id": competition.id, "solution": solution_summary(solution)}
+    submission = solution.campaign / SUBMISSION
+    if solution.branch is None:
+        report["error"] = "no candidate delivered"
+    elif not submission.is_file():
+        report["error"] = f"the delivered candidate has no {SUBMISSION} at the repository root"
+    else:
+        grade = grade_csv(submission, competition)
+        report["private_evaluation"] = grade.to_dict()
+    out = work_dir / FINAL_REPORT
+    out.write_text(json.dumps(report, indent=2, default=str) + "\n")
+    print(f"[mle] final report -> {out}")
+    return report
+
+
+def solve_competition(args) -> dict:
+    settings = read_yaml(str(CONFIG_PATH))["benchmark"]
+    competition = registry.get_competition(args.competition)
+    work_dir = (Path(settings["work_root"]) / competition.id).resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\n{'=' * 60}\nSolving: {competition.id}\n{'=' * 60}")
+    print(f"  Archive root: {work_dir}")
+
+    data_dir = prepare_data(competition, work_dir / "data")
+    higher_is_better = not competition.grader.is_lower_better
+    floors = settings["floor_scores"]
+    floor_score = float(floors["higher_is_better"] if higher_is_better else floors["lower_is_better"])
+    timeouts = settings["timeouts"]
+    evaluation_dir = stage_evaluation(EVALUATION_SUITE, work_dir, {
+        "competition_id": competition.id,
+        "higher_is_better": higher_is_better,
+        "data_dir": str(data_dir),
+        "full_timeout": int(timeouts["full"]),
+        "debug_timeout": int(timeouts["debug"]),
+        "poll_seconds": settings["grader_poll_seconds"],
+        "floor_score": floor_score,
+    })
+    shared_cache_dir = work_dir / "shared_cache"
+    shared_cache_dir.mkdir(exist_ok=True)
+    brief = build_brief(
+        competition, data_dir, higher_is_better, int(timeouts["debug"]), int(timeouts["full"]),
+        floor_score, list(settings["forbidden_packages"]), shared_cache_dir,
+    )
+
+    kapso = Kapso(config=str(write_runtime_config(CONFIG_PATH, shared_cache_dir, work_dir)))
+    kapso.load_harness(args.harness or BUNDLED_HARNESS)
+    for reference in (args.experience or "").split(","):
+        if reference.strip():
+            kapso.load_experience(reference.strip())
+    solution = kapso.build(
+        brief,
+        evaluation=str(evaluation_dir),
+        repo=None if args.resume else seeded_baseline(),
+        output=args.workspace,
+        budget=Budget(
+            minutes=args.time_budget_hours * 60 if args.time_budget_hours is not None else None,
+            experiments=args.iterations,
+        ),
+        resume=args.resume,
+        coding_agent=args.coding_agent,
+    )
+
+    print("\n" + "=" * 60 + "\nFinal Evaluation (the private answers, once)\n" + "=" * 60)
+    report = final_report(work_dir, competition, solution)
+    print(json.dumps(report, indent=2, default=str))
+    return report
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run Kapso Agent on MLE-Bench competitions",
+        description="Run Kapso on an MLE-bench competition",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
-    
-    parser.add_argument(
-        "-c", "--competition",
-        type=str,
-        help="Competition ID to solve (e.g., tabular-playground-series-dec-2021)"
-    )
-    parser.add_argument(
-        "-i", "--iterations",
-        type=int,
-        default=20,
-        help="Maximum experiment iterations (default: 20)"
-    )
-    parser.add_argument(
-        "-d", "--coding-agent",
-        type=str,
-        choices=AVAILABLE_AGENTS,
-        default=None,
-        help="Coding agent to use: aider, gemini, claude_code, openhands"
-    )
-    parser.add_argument(
-        "--no-kg",
-        action="store_true",
-        help="Disable knowledge graph"
-    )
-    parser.add_argument(
-        "--list",
-        action="store_true",
-        help="List all available competitions"
-    )
-    parser.add_argument(
-        "--lite",
-        action="store_true",
-        help="List only lite benchmark competitions"
-    )
-    parser.add_argument(
-        "--list-agents",
-        action="store_true",
-        help="List available coding agents"
-    )
-    
+    parser.add_argument("-c", "--competition", type=str, help="Competition ID (e.g. spooky-author-identification)")
+    parser.add_argument("-i", "--iterations", type=int, default=None, help="Budget.experiments (the config's when absent)")
+    parser.add_argument("-d", "--coding-agent", type=str, default=None, help="The host every session runs on (the config's when absent)")
+    parser.add_argument("--workspace", type=str, default=None, help="The campaign directory (output=); needed to resume")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--time-budget-hours", type=float, default=None, help="Budget.minutes, in hours")
+    parser.add_argument("--harness", type=str, default=None, help=f"A harness reference (default: the bundled {BUNDLED_HARNESS})")
+    parser.add_argument("--experience", type=str, default=None,
+                        help="Comma-separated sources to serve: mine, a bank path or git reference, an index name")
+    parser.add_argument("--list", action="store_true", help="List all competitions")
+    parser.add_argument("--lite", action="store_true", help="List the lite competitions")
     args = parser.parse_args()
-    
-    # Handle list commands
-    if args.list_agents:
-        list_agents()
-        return
-    
+
     if args.list or args.lite:
         list_competitions(lite_only=args.lite)
         return
-    
-    # Require competition ID for solving
     if not args.competition:
-        parser.print_help()
-        print("\nError: --competition is required unless using --list or --lite")
-        sys.exit(1)
-    
-    # Verify competition exists
-    all_competitions = registry.list_competition_ids()
-    if args.competition not in all_competitions:
-        print(f"\nError: Unknown competition '{args.competition}'")
-        print("Use --list to see available competitions")
-        sys.exit(1)
-    
-    # Solve the competition
-    result = solve_competition(
-        competition_id=args.competition,
-        max_iterations=args.iterations,
-        use_kg=not args.no_kg,
-        coding_agent=args.coding_agent,
-    )
-    
-    print("\n" + "="*60)
-    print("COMPLETED")
-    print("="*60)
-    print(f"Competition: {result['competition_id']}")
-    print(f"Cost: {result['cost']}")
-    print(f"Solution: {result['solution_path']}")
+        parser.error("--competition is required unless --list or --lite is given")
+    if args.competition not in registry.list_competition_ids():
+        parser.error(f"unknown competition {args.competition!r}; --list prints the registry")
+
+    report = solve_competition(args)
+    print("\n" + "=" * 60 + "\nCOMPLETED\n" + "=" * 60)
+    print(f"Competition: {report['competition_id']}")
+    print(f"Private evaluation: {report.get('private_evaluation', report.get('error'))}")
+    print(f"Delivered: {report['solution']}")
 
 
 if __name__ == "__main__":

@@ -29,12 +29,14 @@ solution = kapso.build(Brief.read("kapso-brief.md"), evaluation="evaluation", da
 
 | Form | Example | What it is |
 |---|---|---|
-| a bundled name | `trading` | a harness that ships inside the package |
+| a bundled name | `predictive-modelling` | a harness that ships inside the package |
 | a directory | `./harnesses/trading` | used in place, never copied |
 | a git reference | `git+https://github.com/acme/harnesses@v3#trading` | a repository, a revision, a subdirectory |
 | GitHub shorthand | `acme/harnesses@v3#trading` | the same; `owner/repo` with `@rev` or `#subdirectory` |
 
 A git reference is fetched into the store (`harness.store` in the config, `~/.kapso/harnesses` by default) the first time it is named, and read from there after.
+
+Two harnesses ship inside the package: `predictive-modelling` (structured prediction: a test set that never trains, cross-validation discipline, leakage as the failure that voids, features before architectures, ensembling last) and `competitive-programming` (a scored contest under a clock: validity first, an insurance submission early, the scorer's measurement over every claim, a submission ledger). Each was written from the benchmarks the engine was measured on and holds no task; `kapso harness list` shows both with what this machine lacks for them.
 
 ## Check it first
 

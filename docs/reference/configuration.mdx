@@ -131,6 +131,7 @@ search_strategy:
       effort: null
       timeout: null
     gate_failure_policy: warn
+    honor_agent_stop: true
     parent_policy: best
     node_expansion_value: 1
     expansion_lane_env: null
@@ -167,6 +168,7 @@ Three roles name the build's sessions. **Ideation** proposes candidates; **imple
 | `ideation.ensemble_time_split` | `{member_fraction, selector_fraction, selector_min_seconds}`: how the ideation clamp is carved between the members and the selector. Absent, each takes the whole clamp |
 | `implementation.fallback_model` | A second model tried once when an implementation session crashes (a provider's safety kill). `null` retries nothing |
 | `gate_failure_policy` | A gate the machine cannot serve: `warn` continues and says so, `skip` continues silently, `error` stops |
+| `honor_agent_stop` | Whether the judge's stop vote ends the campaign: `true` for a task with a goal to reach; `false` for open-ended maximisation, where the vote is advisory and the budget is the only clock (the benchmark override files set it) |
 | `parent_policy` | The branch a new attempt starts from: `best` (the champion) or `baseline` (`main`). See [Parent selection](/docs/evolve/parent-selection) |
 | `node_expansion_value`, `expansion_lane_env` | Parallel implementation lanes per iteration (the selector ranks that many candidates), and one `{VAR: value}` mapping per lane pinning its environment. Above one lane the inbox is off for the campaign |
 | `env_strip`, `session_env_defaults` | Variables stripped from every session's environment, and set-if-absent defaults for every session (an open namespace) |
@@ -213,7 +215,6 @@ budget:
   usd: null
   reserve_minutes: null
   min_iteration_seconds: 60
-  min_iteration_seconds_insured: null
   min_agent_timeout_seconds: 60
   checkpoint_heartbeat_seconds: 60
   stop_grace_seconds: 10
@@ -241,7 +242,6 @@ The first four keys are the `Budget` handle's words: the brief's `Budget` line w
 | `usd` | The model spend, best effort; `null` is unbounded | `null` |
 | `reserve_minutes` | Kept out of the search for finishing: the last attempt's evaluation, verification and judgment run inside it, and the delivery after them. `null` derives it each round from those obligations; a number wins; either is bounded by a quarter of the budget | `null` |
 | `min_iteration_seconds` | The admission floor: a round starts only when the searchable remainder covers the larger of this and the previous round's own duration | `60` |
-| `min_iteration_seconds_insured` | The floor used instead once the handler reports a deliverable; `null` keeps the floor above | `null` |
 | `min_agent_timeout_seconds` | Below this a session cannot do useful work: a session whose deadline would be clamped under it is not launched, and says so | `60` |
 | `stop_grace_seconds` | `kapso build --output <campaign> --stop`: how long the campaign's processes get after SIGTERM before SIGKILL ends them | `10` |
 | `checkpoint_heartbeat_seconds` | How often a run refreshes its durable clock and status file | `60` |

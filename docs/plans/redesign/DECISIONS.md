@@ -2355,3 +2355,494 @@ Retention after a resume compares the attempts' identities and reads
 "not exercised" when none had landed before the kill (the early staging
 makes that the usual case): the claim the records support is the
 campaign's continuation, said as such.
+
+## WP8: the IOAI book onboards as a bank in the card grammar, not an index (2026-10-29)
+
+The port plan of 2026-10-24 said "an ingested index"; WP3 then settled the
+forms a source takes: a bank (served whole by the bank gate, from git
+alone), the hosted gate, or an index (a corpus ingested through sessions
+into Weaviate and Neo4j, searched by embedding). The book is sixty-seven
+entries, each a problem, a winning idea with its provenance and a public
+score, and runnable code: evidence-priced cards in all but format. A bank
+fits it without infrastructure on the contest machine, serves an entry
+whole (the code with the card, as a procedure card does), and keeps the
+provenance line per card; an index would spend hours of ingestor sessions
+turning notebooks into pages and need the two stores wherever the harness
+runs. The conversion script writes the grammar's every field; the
+harness's playbook skill says how to pull the cards for a statement's
+twist and names no problem. If a later package wants the book searched by
+embedding, the same bank ingests then.
+
+## WP8: the abstraction scan is a gate test with the benchmarks' vocabularies, not a `check` rule (2026-10-29; superseded on the scan's home by the entry "the abstraction scan is benchmark tooling, not `check`" below: it lives at `benchmarks/harness_scan.py`, not under `src/kapso/harness/`)
+
+The plan asked for the scan "run by `check` for shipped harnesses".
+`check` is domain-agnostic and reads one harness; it cannot know which
+words are a benchmark's task names, and a user's harness is not our
+benchmark's. The scan is a module (`src/kapso/harness/abstraction.py`)
+with its vocabulary passed in, and a gate test runs it over the bundled
+trees with the words read from the benchmarks' own registries, so a task
+added to a benchmark is scanned without anyone editing a list. The two
+fixed rules (a decimal that reads as a score, a quota or a deadline; a
+path outside the harness's conventions) are the module's own.
+
+## WP8: one reproduction per benchmark at its recorded budget, after a smoke arm; MLE and ALE establish their baselines (2026-10-29)
+
+The done-when lines ask for "the recorded score within noise". The tree
+records RelBench's scores per task and the IOAI contest's; it records no
+MLE or ALE result. The RelBench arm is judged against its task's band; the
+IOAI arm against the practice task's recorded cold start; the MLE and ALE
+arms record the baseline this package establishes, and their bar is a
+valid score at the budget, said as such in the record. A two-hour smoke
+arm precedes each full arm: a harness fault found at a tenth of the cost.
+
+## WP8: the predictive-modelling task swap runs through the IOAI runner's preflight (2026-10-29)
+
+The swap wants a Kaggle tabular competition, a task the benchmark does not
+contain. The IOAI runner's preflight already turns a Kaggle URL into a task
+root; with `--harness predictive-modelling` it is the swap, with no runner
+written for it. That the runner's `--harness` takes any reference is what
+makes the swaps cheap, and is why the flag exists on every runner.
+
+## WP8: the hooks shared with the trading example are copied (2026-10-29)
+
+`protect-prepared` and `deny-web-fetch` are the same programs in the
+trading example and in `predictive-modelling`. A harness is a plain
+directory and composition is not in the design, so the two scripts are
+copied, with a test that runs each bundled hook on both hosts' event
+shapes. A shared hook library would be a design change for a later
+package, once a third harness wants them.
+
+## WP8: nothing of the IOAI book is pushed anywhere by this package (2026-10-29)
+
+The provenance table gives a verdict per entry; the conversion writes a
+shareable bank (the entries whose source licence permits redistribution,
+and our own reimplementations) and a local-only bank (the rest). Both
+live on this machine and in the backup bucket. Whether the shareable bank
+gets a remote, and which, is the owner's call, with the table in hand.
+
+## WP8: the reproductions are read against their recorded populations, preregistered, at the shapes the records give (2026-10-29, after the plan review)
+
+The done-when lines say "within noise of the recorded result at the same
+budget and model". Retrieved: RelBench `rel-trial/study-outcome` was run
+as thirteen campaign lanes (4×A100 boxes, twelve hours, a champion seeded
+across lanes; test AUROC mean 0.775, sd 0.021, best 0.821); the MLE
+submission was three runs of Gemini-3-Pro-Preview at twenty-four hours on
+one H100 (spooky log loss 0.247, 0.230, 0.284); ALE's `ahc008` is one
+number with no launch record; the IOAI practice competition is no longer
+reachable. No arm can match its record exactly: the RelBench lanes were
+warm and the OpenAI keys are exhausted, the MLE model is not served, the
+IOAI task is gone. So each bar is preregistered here against its
+population with the differences named (the Acceptance section), the
+RelBench arm runs at the recorded four-lane shape on a four-GPU spot box,
+cold, and the IOAI arm is a baseline on an open practice competition at
+the recorded cold-start shape. The owner may replace any bar; the
+implementer does not lower one silently.
+
+## WP8: the IOAI book's cards need a reported evidence kind; the request goes to the learning package (2026-10-29)
+
+The card grammar admits only evidence a campaign produced (a learner run,
+a trajectory, a reference, a usage, an effect) with executed verdicts. A
+curated winner's solution has a source, an author, a licence and a public
+score. Rather than fabricate measurement-shaped entries, the conversion
+waits for a `reported` source kind and verdict, outside the executed
+verdicts and the promotion rules, so a converted card is born `candidate`
+and serves as "reported by others". That is a change to `src/kapso/learning/bank.py`,
+owned by neither WP3 nor WP8, requested here; the fallback converts only
+the entries we reproduced ourselves with a trajectory.
+
+## WP8: the sanitized cache is the runner's to build, with the harness's script (2026-10-29)
+
+The port mapping put the sanitized copy in the setup session as a
+prepared resource. Prepared resources are not integrity-verified, the
+setup session's budget is minutes, and the copy is reused across
+campaigns. So the runner builds it before launch, with the one standalone
+script that lives in the harness skill (the domain machinery any
+relational task can use), reuses it under a version marker, and names it
+in the Brief as an absolute read-only path; the setup session verifies it
+and records the regime.
+
+## WP8: the Kaggle session pool is the runner's CLI, not a harness server (2026-10-29)
+
+The ticket office blocks until a slot is granted (its contract), its pool
+sizes are the account's limits (configuration), and its ledger is shared
+by every lane of a campaign (a path the runner knows). A harness server
+runs in a session directory under a tool timeout with no campaign-root
+contract. The harness's skill names the discipline; the task root the
+runner writes provides the office and the submission procedure.
+
+## WP8: the metric's direction is the evaluation directory's to orient (2026-10-29)
+
+The engine optimises one `score`, higher is better. A lower-is-better
+benchmark's grader emits the oriented score and reports the raw metric
+and its direction in the evaluation output; the Brief says both; the
+runner's final report prints the raw metric. No engine field gains a
+direction: the evaluation directory already owns what the score means.
+
+## WP8: three handler behaviours become engine seams; the handler attributes go (2026-10-29)
+
+`honor_agent_stop` becomes a config key read by the orchestrator;
+`finalize_run_selection` becomes the generic feedback flow calling the
+engine's own archive labelling; `deliverable_ready_reserve_seconds` is
+dropped with the IOAI handler (WP4's derived reserve applies). Each is a
+small edit in WP1's or WP4's file, requested in the plan and made once
+the owner says go; after the ports `GenericProblemHandler` is the only
+handler, so the attributes have no second reader.
+
+## WP8: the swaps' bar is zero harness edits; the runner edits are pre-listed (2026-10-29)
+
+A swap tests the harness, not the benchmark adapters. The runner edits
+each swap is known to need are listed in the plan before it runs, so a
+runner change is not mistaken for a harness finding; a harness edit is a
+finding fixed at the source, and the swap runs again.
+
+## WP8: the contest root's conventions are the harness's, and its hooks are mistake catchers (2026-10-29)
+
+A leaderboard contest's task root carries a descriptor,
+`kapso_datasets/contest.json` (`competition`, the absolute `ledger` path,
+and the `procedure` that submits and records when one exists); a
+scorer-and-seeds task's root carries `kapso_datasets/seeds.txt`. The
+runners write them (changes 13 and 14); a user's preflight writes them for
+their own contest. The shell denial of a raw submission fires only where a
+procedure is named; without one the CLI submits and the session records
+the entry itself. A hook catches a mistake (shape, freshness, presence) and
+the verifier is the gate; both Stop hooks honour `stop_hook_active`. A
+corrupt evidence file fails loud in Python, and hook.json's launcher line
+(`|| exit 2`) turns the failure into the hosts' blocking exit, so a corrupt
+file never passes as a finish. The zero-score convention (one failed seed
+voids the submission) is ALE's and goes to its task statement; the harness
+reads validity from the scorer's status and the task's rule.
+
+## WP8: the contest harness has no environment file; six skills are shared (2026-10-29)
+
+The contest harness's hooks are standard-library scripts, so its
+`environment.python` is dropped (a C++ campaign on a stock box is not
+refused for numpy); the task's own tools are checked in setup. The shared
+skills are six (`task-type-playbooks`, `cv-protocol`, `ensembling`,
+`eda-discipline`, `hf-model-fetch`, `tabular-modeling`), copied by
+directory, kept identical by the gate test, and self-contained: none cites
+a skill the other harness lacks.
+
+## WP8: the RelBench runner's shape on build() (2026-10-29)
+
+The handler class is gone; `benchmarks/relbench/scoring.py` holds what the
+runner still does itself (the copy through the harness's script, the staged
+evaluation, the final report), `context.py` the Brief from the task's
+facts, and the facade the rest. What the plan listed as optional went: the
+champion seeding (its `claims/` directory was retired earlier, so it seeded
+nothing), `--initial-repo` (the seeded baseline is the repository), the
+early-stop target and the knowledge file (the stop vote is advisory). The
+pristine cache is the library's own cache directory, read through the
+library's helper, never a config key of ours; the hosted model API grant is
+the override file's `benchmark.hosted_model_api` (`none` or `openai`), a
+user's decision the Brief states as a rule. The candidate-facing starter kit
+reads the task's identity from `kapso_evaluation/task.json` and the copy
+from the variable the evaluation sets for the run, so the runner exports no
+environment of its own.
+
+## WP8: the MLE and ALE graders are registered, their baselines take the floor, and a large dataset stays by path (2026-10-29)
+
+The plan's "the grader directory per competition" is a provided evaluation
+the maintainer registers (the two override files enable it, as RelBench's
+does): a provided suite without a maintainer is only a script the sessions
+run themselves, and the score of record would be self-reported. The
+maintainer's calibration needs a runnable candidate, so each runner seeds
+a baseline that completes a fast run and reports the floor: MLE's writes
+the sample submission unchanged and prints the override file's floor
+score; ALE's prints the problem's example output and fails the cases, which
+is the floor under the contest's all-or-nothing rule. The floors are the
+override files' `benchmark.floor_scores`, the worst value of either
+direction. MLE's competition data is not passed as `data=`: the engine
+tracks `kapso_datasets/` in the workspace's git and copies it per session,
+which a dataset of gigabytes cannot bear, so the data stays under the
+archive root by absolute path, named in the Brief (ALE's task root, the
+seed list, is small and is `data=`). The MLE description rides verbatim
+(the LLM cleaning step is gone) and the hub search is the harness's
+`hf-model-fetch` skill in setup.
+
+## WP8: the IOAI evaluation attributes submissions by content and runs without a maintainer (2026-10-29)
+
+A leaderboard task has no calibration run, so its provided evaluation is
+not registered by the maintainer: the sessions run it as the provided
+suite and report its score, which is the harness's scorer procedure for a
+contest anyway. The evaluation attributes the ledger to a candidate by the
+hash of its kernel source or of its submitted file, never by the session's
+directory: the engine also runs a candidate's evaluation in a materialized
+worktree of its branch, where the directory says nothing. The submission
+procedure mints a token into every message, which is how the competition's
+submissions list is attributed back to the ledger. The organizers' rules
+ride in the Brief's objective as a section, not as a Rules item: the brief
+grammar reads a bulleted line under Rules as a new item, and the rendered
+text must parse back to the same brief for a resume.
+
+## WP8: the IOAI book's cards are `reported` evidence, born candidates, priced by nobody (2026-10-29)
+
+The card grammar's evidence describes what a campaign did with a claim; a
+curated winner's solution has only a score at a source. The grammar gains
+one kind, `reported`: a source of `{url, author, licence, score, protocol}`
+with the verdict `reported`, outside the executed verdicts (it promotes
+nothing, seeds no codify, counts in no probe tier) and outside the
+reliability arithmetic (a converted card writes no validity, boundary,
+coverage or score — the index shows `score None` and sorts it last; the
+first executed verdict starts the numbers). A learner run cannot write it:
+admission refuses the verdict by name. The serving layer tells the reader
+on every read of a reported-only card that the score is the source's, not
+a kapso measurement, and renders the source whole in the evidence trail;
+the loaded bank's own intro line stays "measured by others" (the bank is
+somebody's; what each card's evidence is, the card says). The converter
+takes the idea page's `status:` and `best:` lines as the record (INDEX.md
+writes `?` where the page carries the review's verdict), the router line
+as the title, the lead paragraph as the rule — a thin rule is the book's
+thin lead, left for the seeder's rewrite queue rather than padded. The
+licence pass's verdict places an entry (shareable: shippable-with-attribution
+and ours; local-only: the rest); the use verdict is "yes" for our code and
+permissive sources and "owner's call" with the open question named for
+everything else — the mechanical pass decides no legal question. The
+survey and the theory entries are text procedures (no payload); compiled
+byproducts never ship; markdown in a payload is refused because the card
+count would read it as a card.
+
+## WP8: the abstraction scan is benchmark tooling, not `check` (2026-10-29)
+
+`check` validates a harness's grammar for every author; the abstraction
+scan validates ours against the benchmarks we ported from, so it lives
+under `benchmarks/` with the benchmarks' own vocabularies and runs as a
+test over the bundled trees, never as a `check` rule a user's harness
+would trip on its own domain words. The decisions per word: a platform's
+name (kaggle, atcoder) is domain vocabulary and no word of the scan; a
+data library's name (`relbench`, its cache variable) is a skill's
+vocabulary — the skill teaches its API — and a page's constant, so the
+two page sentences that named it now name the skill; a benchmark's name
+(`mle-bench`, `ale-bench`, `ahc`, `ioai`, `kumo`) is a constant anywhere;
+a task, dataset, competition or problem id is a constant anywhere. A
+number counts only beside a quota, deadline, score or hardware word
+(within two tokens), with version strings and statistical thresholds
+allowed and an ordered list's marker skipped. The harness's own names are
+blanked before a word is read, because a page must name its skills
+literally (`relbench-api` is a skill, not the library). A zero-hit scan is
+evidence, not proof: the cross-model reviews of each harness read for the
+rest.
+
+## WP8: the IOAI arm runs on the recorded practice competition, not the radar mirror (2026-10-29)
+
+The plan preregistered the IOAI arm on the open `radar-ioai-2025` mirror
+because the recorded practice competition (`timed-deps-12`) was taken to
+be unreachable. The machine said otherwise: the account that ran the
+recorded campaigns has not entered the radar mirror (the rules are
+accepted in a browser, never by the CLI; the download answers 403 and the
+preflight stops, as it should), while the practice competition still
+answers that account — its submissions list reads, its August
+submissions were scored — and is only absent from the search listing. So
+the arm runs on `timed-deps-12`, the task the recorded cold-start shape
+was measured on, with the shareable bank minus that task's own entry (46
+cards); its public leaderboard supplies the median the bar names. The
+radar variant stays prepared (the bank without both radar entries, the
+mirror's task and the at-home near-duplicate) for the day the owner
+accepts the mirror's rules; the record says which competition each run
+used.
+
+## WP8: the long arms run on standard machines, and an arm runs its own copy of the machine script (2026-10-29)
+
+The plan put every arm on a spot machine with the engine's checkpoint as
+the answer to a preemption. The first IOAI smoke machine was preempted
+two minutes after its runner launched, which would have cost a full arm
+its whole evidence trail and the Kaggle submissions already spent. The
+machine script gains `KAPSO_BENCH_PROVISIONING` (spot by default, the
+price the record carries; standard for the arms whose hours a preemption
+would waste), the deletion line bills at the rate of the model used, and
+the twelve- and twenty-four-hour arms run standard; the smokes and the
+swaps stay spot. Separately, bash reads a script as it runs: an edit to
+`benchmark_machine.sh` while three arms were inside it broke each at its
+next function boundary, so every arm script copies the machine script
+beside the original at launch, runs the copy and removes it at exit; the
+copy's name (`benchmark_machine.<run-id>.sh`) is ignored by git. The
+install script's lessons from the smokes are in the script itself: one
+uv-managed Python 3.12 on every kind (the MLE library needs 3.11 or
+later, the GPU image ships 3.10), the bundled harnesses' own requirements
+(the engine refuses a build whose harness needs are unmet), the RelBench
+library pinned at the version the runner and the sanitizer were written
+against (relbench 3 restructured its modules), the engine's `mcp<2`
+re-pinned after the ALE library's extras.
+
+## WP8: the arms are quick runs in parallel on distinct logins, not the recorded budgets (2026-10-29, the owner)
+
+The plan preregistered the four arms at the recorded budgets (RelBench
+twelve hours on four A100s, MLE twenty-four hours) and the owner ruled
+the wait unacceptable: the arms run in parallel on separate machines,
+two to four hours each, on simpler shapes where one exists, each on its
+own Claude login (the owner's managed accounts beside the setup-token
+secrets, so parallel arms never share one login's five-hour window). What
+changes in the record: the RelBench arm keeps `rel-trial/study-outcome`
+(its recorded population, its Claude Code baseline at 75.16 and KumoRFM's
+72.0 are the only offline numbers) at three hours on one A100 with the
+four lanes, so its number is read against the twelve-hour population as
+a short-budget point, with the published entries as the bar it can
+honestly be held to; the MLE arm is three hours of the recorded
+twenty-four, read against the medal thresholds; the ALE arm three hours;
+the IOAI arm the two hours the plan named. Every record states its
+budget beside the recorded one, and the acceptance reads "at the arm's
+budget" where it read "at the same budget". The machine script takes a
+login from a credentials directory as well as from a secret; an arm's
+record names which.
+
+## The release gate runs S1 to S5, not S6 again; the rest in parallel, done by Saturday (2026-10-29, the owner)
+
+S6 (experience pays) was run in WP9 and the owner does not want it run
+again for the release: the gate before the release is S1, S2, S4 and S5
+on both hosts on fresh machines from the release wheel, with S3's record
+from WP8; the S6 reports of WP9 stand as its evidence. The remaining work
+(WP8's arms and swaps, WP10, WP11's gate) runs as parallel as the logins
+and the machines allow, with Saturday 2026-10-31 as the target for the
+release.
+
+## A host's stream splits on the newline alone, and the line a kill cut is the one without its newline (2026-10-29)
+
+The RelBench quick arm (`s3-relbench-1`) died in its first ideation: a
+Codex web-search result's title held a U+2028 line separator, Python's
+`str.splitlines` (which the session record used to split the stream it
+digests) cut that event line in two, and the record raised on the half
+(`JSONDecodeError: Unterminated string`), which killed the campaign. A
+host's event is one newline-terminated line whose text may hold any of
+the separators `str.splitlines` takes for line ends, so `stream_lines`
+(transcripts.py) splits on the newline alone and every stream reader
+goes through it: the session record, the codex adapter's MCP-call
+reader, the ideation's killed-turn messages, the trace fixture builder.
+The cut check follows: a kill leaves the last line without its newline,
+and that, not a missing closing brace (a cut inside a string of code may
+well end on a brace), is the sign of a cut line. Found by the arm, fixed
+in WP8 (the arms run from the rebuilt wheel), noted here because it is
+engine code outside the package's scope.
+
+## The engine's run folder is committed by force (2026-10-29)
+
+The ALE quick arm's implementation session wrote the campaign's run folder
+(`output_data_<id>/`) into the repository's `.gitignore` beside its own
+build outputs, and the engine's commit of that folder at the session's
+close failed on the rule, which killed the campaign. The run folder is
+the engine's record (the scores, the artefacts the evaluation reads), not
+the candidate's output, so `ExperimentSession.commit_folder` adds it with
+`git add -f`: a candidate's ignore rules, the task's or the session's own,
+do not reach it. Found by the arm, fixed in WP8; engine code outside the
+package's scope, so noted here.
+
+## A one-line skill fix after the freeze bumps the harness version; the record names the version each arm ran on (2026-10-29)
+
+The pull-request review found the `kaggle-cli` skill's pages line wrong for
+the CLI the machines install (the swap's preflight log shows the bare form
+rejected and the session recovering with `-c`). The line is fixed and
+`competitive-programming` is 0.3.1; the arms ran on 0.3.0, which differs
+by that line only, and the S3 record says so beside each arm. The frozen
+row in the sub-plan is re-pinned to 0.3.1: the bar "no harness edit after
+the freeze" guards silent drift, and a named, one-line change with its
+version bump is the opposite of silent.
+
+## The MLE in-loop score is the candidate's own hold-out number; the owner's call whether the grader owns the split (2026-10-29)
+
+The review's finding 5: the MLE grader validates the submission's format
+and takes the score the candidate prints on its own stratified hold-out,
+so the search optimises a self-report that only the verifier and the
+final private grade contradict. The plan's earlier decision (the held-out
+score stays the search signal) stands for this package; the Acceptance
+now says the number is self-reported and what checks it. Making the
+grader own the split (deterministic hold-out ids from `task.json`, the
+predictions scored by the grader) is the owner's call for a later
+package.
+
+## The IOAI arm stands as a replay, the IOAI swap is dropped, the merge waits for the arms, the MLE grader keeps the self-reported number until after the release (2026-10-29, the owner and the builder)
+
+Asked what needed a call, the owner answered three things. No clean
+Kaggle account will be set up: the IOAI arm's record stands as it is
+(the preflight, the contest root, the ledger, the hooks and the runner
+established; the score a replay of the account's own earlier kernel; no
+cold-start claim), and the IOAI swap, which needs a practice
+competition's rules accepted in a browser, is dropped from the suite's
+required steps for the release (`tests/semantic/suite.json`, the `s3`
+entry's `machine` list) and kept as a step definition for a later run.
+The merge of the harness ports waits for the running arms to land in the
+record. The MLE grader was left to the builder: the release keeps the
+in-loop number as the candidate's own hold-out score, since the number
+the release reports is the official final grade on the private answers
+either way, and the grader-owned split (deterministic hold-out ids from
+the task file, the held-out predictions scored by the grader) is the
+first item after the release; changing it now would cost a day and a
+rerun of the MLE arm without changing what is reported.
+
+## The six-hour RelBench attempt is the last run on any benchmark (2026-10-29, the owner)
+
+After the three-hour quick arm on one GPU with four lanes finished one
+iteration under the finishing cut and delivered no candidate, a six-hour
+attempt on the same shape (`s3-relbench-4`) was launched. The owner: no
+further attempt after this one. Whatever it shows goes into the record
+as the RelBench arm's reading for the release, with the three-hour
+attempt kept in the notes. The same holds for the other benchmarks:
+the MLE and ALE quick arms, the IOAI arm and the three swaps stand as
+recorded, and no further attempt runs on any of them before the
+release.
+
+## A benchmark run files no evaluator change request: the official evaluation is the protocol (2026-10-30)
+
+The six-hour RelBench attempt (`s3-relbench-4`) reached a test AUROC of
+0.7555, inside the recorded band, and delivered nothing: at iteration one
+the evaluation maintainer accepted a change request from the campaign
+("a genuine resolution defect") and registered a second evaluator that
+averages the official metric across closed origins, and every lane's
+candidate, written to the official contract, exited non-zero under the
+new one, so no attempt was admitted and the campaign stopped with no
+successful experiment. The provided bytes stayed immutable, as the
+maintainer promises; the protocol around them did not. On a benchmark
+the official evaluation is the protocol by definition, so the four
+runners' override configs set `evaluation_maintainer.max_change_requests`
+to zero and the config test holds them there. Found by the arm after the
+owner's call that it was the last run, so the fix is recorded, not rerun.
+
+## The review's fixes after the arms: the pins stand, the trees move (2026-10-30)
+
+The pull-request review's Codex half changed both bundled harnesses'
+prose after the arms ran (the copied tabular skill's references, three
+rules conditioned, the fetch skill's web claim), so predictive-modelling
+is 0.3.3 and competitive-programming 0.3.2. The S3 record's zero-edit bar
+reads each launch's harness hash against the accepted pins of its
+harness (the frozen tree, and the one correction accepted after the
+freeze that no arm ran on), and records the current trees' hashes
+beside them: the arms' evidence is what they ran on, and an edit after
+them is visible, not a failing bar and not a silent drift. No arm is
+rerun for a prose fix (the owner's call of 2026-10-29).
+
+## `problem.md` is covered by the row's verdict as ours (2026-10-30)
+
+The IOAI bank's cards carry each entry's `problem.md` as the situation,
+and the first pass left those files outside the per-row verdict. They
+are our own summaries of the tasks with their source links, so the
+verdict covers them as ours, the table lists them under our files on
+every row, and OQ-7 narrows to the audit for verbatim passages from
+sources with their own licences — the owner's before the shareable bank
+is published anywhere; until then it is served locally. The converter
+reads a file's class from its description, never its name.
+
+## The graders take the seed from the command (2026-10-30)
+
+The three graders defaulted `--seed` to 1337, a copy of the config's
+`subsample_seed`. The registered command the maintainer writes always
+carries the seed, so the graders require it and hold no copy; the
+RelBench grader's rescore echoes the archived manifest's class. The
+graders' poll cadence likewise comes from the config through the task's
+settings, and the IOAI evaluator's listing timeout and page size through
+the contest descriptor.
+
+## MLE implementation sessions have no web and no research gate (2026-10-30)
+
+The predictive-modelling harness promises no web in implementation and
+verification; MLE's override inherited `implementation.web: true` and the
+research gate, and the deny-web hook cannot see Codex's native search.
+The config now says what the harness says, as RelBench's does: a
+competition's test labels exist on the web. The MLE arm ran with the web
+on; it is not rerun (the owner's call), and the release notes say so.
+
+## A push receipt bound to the kernel version is a follow-up (2026-10-30)
+
+The submission procedure attributes a score to the code by the hash of
+the kernel source at submit time, at a repository-relative path; the
+pushed version's content is not available from the CLI at submit time.
+The skill says to submit right after the push, before the source
+changes. Binding the digest to a push receipt (the procedure doing the
+push and recording the version it printed) is the first IOAI item after
+the release.

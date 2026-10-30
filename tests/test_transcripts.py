@@ -20,13 +20,14 @@ from kapso.execution.coding_agents.transcripts import (
     digest_claude,
     digest_codex,
     digest_stream,
+    stream_lines,
 )
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "transcripts"
 
 
 def lines(name: str):
-    return (FIXTURES / name).read_text(encoding="utf-8").splitlines(keepends=True)
+    return stream_lines((FIXTURES / name).read_text(encoding="utf-8"))
 
 
 def test_a_claude_implementation_session_with_a_background_delegate():
@@ -148,15 +149,38 @@ def test_an_event_shaped_line_that_does_not_parse_raises_and_others_are_skipped(
 
 
 def test_a_last_line_cut_by_a_kill_is_skipped_and_noted():
-    """A host killed mid-write leaves its last line without the closing
-    brace; the slice's digest keeps what came before and notes the cut
-    (the pull-request review's finding: the record used to raise, and
-    the adapter turned the raise into a failed result)."""
+    """A host killed mid-write leaves its last line without its newline;
+    the slice's digest keeps what came before and notes the cut (the
+    pull-request review's finding: the record used to raise, and the
+    adapter turned the raise into a failed result). The newline is the
+    sign, not a closing brace: a cut inside a string of code may well end
+    on a brace."""
     init = json.dumps({"type": "system", "subtype": "init", "session_id": "s", "model": "m", "mcp_servers": []})
-    digest = digest_claude([init + "\n", '{"type":"assistant","message":{"content":[{"type":"text","te\n'])
+    digest = digest_claude([init + "\n", '{"type":"assistant","message":{"content":[{"type":"text","text":"fn() {}'])
     assert digest["cli_session_id"] == "s" and digest["errors"] == [TRUNCATED_LINE]
-    digest = digest_codex(['{"type":"thread.started","thread_id":"t"}\n', '{"type":"item.completed","item":{"ty\n'])
+    digest = digest_codex(['{"type":"thread.started","thread_id":"t"}\n', '{"type":"item.completed","item":{"ty'])
     assert digest["cli_session_id"] == "t" and digest["errors"] == [TRUNCATED_LINE]
+
+
+def test_a_separator_inside_an_events_text_is_not_a_line_end():
+    """An event's text may hold the characters `str.splitlines` takes for
+    line ends (a web result's title held a U+2028 line separator: the
+    record cut the event in two, raised on the half, and the RelBench
+    arm of 2026-10-29 died with it). A stream splits on the newline
+    alone, every line keeping its newline, and only a last line without
+    one is cut."""
+    title = "effects \u2028of aerobic\u2029exercise\u0085\x0c"
+    search = json.dumps({"type": "item.completed", "item": {"id": "i", "type": "web_search", "query": title}}, ensure_ascii=False)
+    text = '{"type":"thread.started","thread_id":"t"}\n' + search + '\n{"type":"turn.completed","usage":{"input_tokens":1}}\n'
+    whole = stream_lines(text)
+    assert len(whole) == 3 and all(line.endswith("\n") for line in whole)
+    assert digest_codex(whole)["turns"] == 1 and digest_codex(whole)["errors"] == []
+    cut = stream_lines(text + '{"type":"item.completed","item":{"ty')
+    assert cut[-1] == '{"type":"item.completed","item":{"ty' and digest_codex(cut)["errors"] == [TRUNCATED_LINE]
+    init = json.dumps({"type": "system", "subtype": "init", "session_id": "s", "model": "m", "mcp_servers": []})
+    said = json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": title}]}}, ensure_ascii=False)
+    digest = digest_claude(stream_lines(init + "\n" + said + "\n"))
+    assert digest["cli_session_id"] == "s" and digest["errors"] == []
 
 
 def test_a_launcher_exit_with_no_thread_is_its_own_entry():

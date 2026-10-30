@@ -103,6 +103,14 @@ RETIRED = re.compile(
     r"|deployment\.coding_agent"
     r"|kapso deploy[^\n`]*--strategy"
     r"|kapso deploy[^\n`]*--interactive"
+    # The harness ports (wp8-harness-ports.md): the handlers' admission
+    # floor, the stop flag's old home, the knowledge-graph switches.
+    r"|min_iteration_seconds_insured"
+    r"|deliverable_ready_reserve_seconds"
+    r"|problem_handler\.honor_agent_stop"
+    r"|use_knowledge_graph"
+    r"|fetch_huggingface_models"
+    r"|--no-kg\b"
     + r"|[\"'](?:" + "|".join(RETIRED_KEYS) + r")[\"']\s*[\]:]"
 )
 # In every text a person or a model reads (the pages, READMEs, skills and

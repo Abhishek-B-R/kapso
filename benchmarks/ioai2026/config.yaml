@@ -53,6 +53,9 @@ search_strategy:
     judge:
       timeout: 900
     gate_failure_policy: skip
+    # A benchmark has no "goal achieved": the judge's stop vote is advisory
+    # and the campaign runs to its budget.
+    honor_agent_stop: false
     session_env_defaults:
       BASH_DEFAULT_TIMEOUT_MS: "900000"
       BASH_MAX_TIMEOUT_MS: "7200000"
@@ -78,21 +81,16 @@ benchmark:
   run_defaults:
     hours: 2.0
     node_expansion: 8
-  # Curated best-solutions book (repo-root-relative; gitignored, shipped to
-  # boxes by the launch protocol). Staged into <task>/knowledge_bank/ at
-  # runner startup; every module is told it is the FIRST search priority.
-  knowledge_bank_dir: benchmarks/ioai2026/knowledge_bank
+    iterations: 20
   # No per-phase fractions, and NO finalization reserve: every run to date
   # banked a public score long before any wall, while the reserve killed
   # lanes mid-round (5 of 8 in run 5) and starved the feedback sessions to
   # the 60s floor three runs straight. Lanes own their own endgame margin —
   # the handler's loop contract makes the last submission leave room for
   # its scoring — and the post-campaign harvest remains the safety net for
-  # pushed-but-unsubmitted kernels. insured_reserve is inert at reserve 0;
-  # it stays because the handler still takes the argument.
+  # pushed-but-unsubmitted kernels.
   session_budget:
     finalization_reserve_minutes: 0
-    insured_reserve_minutes: 5
     # Zero harvest carve-out (user-set 2026-08-05): the campaign runs to
     # the window end, and lanes own shipping every completed version
     # in-window themselves — slot-free submits plus the cross-lane
@@ -119,6 +117,9 @@ benchmark:
       ttl_seconds: 600
       reap_interval_seconds: 60
       verify_timeout_seconds: 120
+      # How often a queued lane re-polls the office; a waiter that missed
+      # six polls is dropped from the line.
+      poll_seconds: 5
       # Queue ordering ages a waiting request one tier step per this many
       # seconds (never into ship), so evidence-based ordering cannot starve
       # a weak-scored lane behind a stream of stronger arrivals.
@@ -130,6 +131,10 @@ benchmark:
   # that takes.
   final_eval:
     timeout_seconds: 900
+    # The submissions list is read page by page (the CLI's page holds
+    # twenty rows by default, two hundred at most); the provided evaluation
+    # reads the same pages with the same timeout.
+    submissions_page_size: 200
     harvest_unsubmitted: true
     # The competition's own sample file in dataset/, used to check a
     # harvested kernel's output has the right ids before submitting it.
@@ -154,3 +159,9 @@ benchmark:
     effort: high
     timeout: 1800
     web_search: true
+
+evaluation_maintainer:
+  # The official evaluation is the protocol: no change request may replace
+  # it mid-campaign (the RelBench arm's maintainer rewrote the scoring
+  # across origins at iteration one and every candidate failed under it).
+  max_change_requests: 0

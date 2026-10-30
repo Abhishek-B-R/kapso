@@ -28,7 +28,7 @@ import time
 
 from kapso.execution.coding_agents.base import CodingResult
 from kapso.execution.coding_agents.session_record import record_run, start_run
-from kapso.execution.coding_agents.transcripts import CODEX_HOST
+from kapso.execution.coding_agents.transcripts import CODEX_EVENT_HEAD, CODEX_HOST, events, stream_lines
 
 # Grace between SIGTERM and SIGKILL on deadline (mirrors the Claude adapter).
 _DEADLINE_GRACE_SECONDS = 5.0
@@ -52,12 +52,10 @@ def ideation_stream_path(artifacts_dir: str, cli: str, model: str) -> str:
 def agent_messages(stream: str) -> str:
     """The agent's own messages in a `codex exec --json` stream, joined:
     what a killed turn said before it died. Lines that are not events are
-    skipped; an event-shaped line that does not parse raises."""
+    skipped, as is the line the kill cut; an event-shaped line that does
+    not parse raises."""
     texts = []
-    for line in stream.splitlines():
-        if not line.startswith('{"type":'):
-            continue
-        event = json.loads(line)
+    for event in events(stream_lines(stream), CODEX_EVENT_HEAD):
         item = event.get("item") or {}
         if event.get("type") == "item.completed" and item.get("type") == "agent_message" and item.get("text"):
             texts.append(item["text"])

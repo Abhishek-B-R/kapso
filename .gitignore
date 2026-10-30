@@ -204,8 +204,13 @@ data/indexes/
 # Paper directory (private/unpublished work)
 paper/
 
-# Data directory (local data files)
+# Data directory (local data files); the benchmarks' data directories are
+# committed files (provided evaluation suites, seeded baselines, vocabularies)
 data/
+!benchmarks/*/data/
+
+# An arm's working copy of the benchmark machine script (benchmark_machine.<run-id>.sh)
+scripts/redesign/benchmark_machine.*.sh
 
 # Developer docs (internal documentation)
 developer_docs/

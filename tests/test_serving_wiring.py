@@ -13,10 +13,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from benchmarks.relbench.context import (
-    FEATURE_ENGINEERING_NOTE,
-    knowledge_section,
-)
 from kapso.execution.search_strategies.generic.feedback_generator.feedback_generator import (
     FeedbackGenerator,
     FeedbackResult,
@@ -200,17 +196,6 @@ def test_bank_serving_env_threads_into_the_gate_server(tmp_path):
         ["bank"], gate_failure_policy="skip", bank_serving=None,
     )
     assert "gated-knowledge" not in mcp_servers
-
-
-def test_knowledge_slot_additive_intro_on_static_notes():
-    live = knowledge_section("## Experience (measured before)\nSERVED INTRO BODY")
-    # additive contract: notes are the permanent base, intro appends after
-    assert FEATURE_ENGINEERING_NOTE in live
-    assert "SERVED INTRO BODY" in live
-    assert live.index(FEATURE_ENGINEERING_NOTE) < live.index("SERVED INTRO BODY")
-    fallback = knowledge_section(None)
-    assert FEATURE_ENGINEERING_NOTE in fallback
-    assert "Experience" not in fallback
 
 
 def test_judge_parses_cards_load_bearing():

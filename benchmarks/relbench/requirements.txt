@@ -16,7 +16,9 @@
 # rel-mimic additionally requires credentialed PhysioNet access and Google
 # BigQuery credentials — see https://relbench.stanford.edu/datasets/rel-mimic/
 
-relbench>=2.1.2
+# The library version the runner, the sanitizer and the tests were written
+# against; relbench 3 restructured its modules (no relbench.tasks).
+relbench==2.1.2
 duckdb
 pooch
 pyarrow

@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 """Kaggle code-competition runner (IOAI AI Models Track practice tasks).
 
-Runs the Kapso agent against a prepared run root (see preflight.py),
-then reads the ground truth from the Kaggle leaderboard: best publicScore
-among submissions made during the run window, plus a static audit of the
-submitted kernel source for external-resource violations.
+Runs the Kapso campaign on build() against a prepared run root (see
+preflight.py), then reads the ground truth from the Kaggle leaderboard: best
+publicScore among submissions made during the run window, plus a static
+audit of the kernels' sources for external-resource violations.
 
 Usage:
     python -m benchmarks.ioai2026.runner --root /path/to/run_root --hours 2
     python -m benchmarks.ioai2026.runner --root /path/to/run_root --final-eval-only
+
+The run root's `task/` holds the preflight's statement and data; the runner
+writes the contest root beside them (`task/contest_root/`: the descriptor
+`contest.json`, the submission procedure, the ticket office and its limits,
+the organizers' rules) and passes it as the build's data, so every session's
+`kapso_datasets/` carries the harness's conventions; the ledger and the
+ticket office's state live in the contest root, shared by every lane.
 """
 
 import argparse
 import csv
-import glob
 import hashlib
 import json
 import os
@@ -24,31 +30,32 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, Optional
 
+import yaml
 from dotenv import load_dotenv
+
+from kapso.core.config import read_yaml
+from kapso.handles import Budget, Solution
+from kapso.kapso import Kapso
+
+from benchmarks.ioai2026 import kernel_slots
+from benchmarks.ioai2026.context import PROCEDURE, build_brief
+from benchmarks.ioai2026.data.generic_eval.evaluate import list_submissions, normalize_status
+from benchmarks.ioai2026.submit import classify_submit_output
 
 load_dotenv()
 
-import yaml
-
-from kapso.core.config import read_yaml
-from kapso.execution.orchestrator import OrchestratorAgent
-from benchmarks.ioai2026 import kernel_slots
-from benchmarks.ioai2026.handler import KaggleNotebookHandler
-
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
-REPO_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", ".."))
-RULES_PATH = os.path.join(os.path.dirname(__file__), "RULES.md")
-SLOTS_PATH = os.path.join(os.path.dirname(__file__), "kernel_slots.py")
-# The benchmark's KAGGLE_CLI.md playbook doubles as the lanes' submission
-# playbook. Claude CLIs only discover it natively when cwd is this repo, and
-# codex has no skill loader at all — while lanes run in isolated session
-# clones on whichever CLI the config picks. So it is staged into the task dir
-# and every coding-agent CLI gets the same absolute path from the handler
-# context (the RULES.md pattern).
-SKILL_PATH = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), "KAGGLE_CLI.md"))
+BENCH_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = str(BENCH_DIR / "config.yaml")
+RULES_NAME = "RULES.md"             # the task's binding rules, pinned by the preflight
+SLOTS_PATH = str(BENCH_DIR / "kernel_slots.py")
+SUBMIT_PATH = str(BENCH_DIR / "submit.py")
+EVALUATION_SUITE = BENCH_DIR / "data" / "generic_eval"
+BUNDLED_HARNESS = "competitive-programming"
+CONTEST_ROOT = "contest_root"
+LEDGER = "submissions.json"
 
 # Source patterns that indicate the kernel pulls external pretrained
 # resources or data. Matches are reported, not silently fatal — a human
@@ -107,6 +114,42 @@ def build_runtime_config(task_dir: str, session_timeouts: dict,
     return runtime_path
 
 
+def stage_contest_root(task_dir: str, competition: str, higher_is_better: bool,
+                       window: tuple, kernel_slots_limits: dict, listing: dict, fresh: bool) -> str:
+    """The contest root: the descriptor (the competition, the ledger, the
+    procedure, the metric's direction, the campaign window's start and end,
+    the submissions listing's page size and timeout), the procedure, the
+    ticket office with its limits, and the task's binding rules — the
+    preflight's pinned copy under the task. A new campaign (`fresh`) starts
+    the two ledgers afresh: a submission of an earlier launch is not this
+    campaign's insurance, and a stale ticket ledger holds phantom tickets.
+    A resume keeps them: they are the campaign's state."""
+    root = os.path.join(task_dir, CONTEST_ROOT)
+    os.makedirs(root, exist_ok=True)
+    shutil.copy2(SUBMIT_PATH, os.path.join(root, "submit.py"))
+    shutil.copy2(SLOTS_PATH, os.path.join(root, "kernel_slots.py"))
+    shutil.copy2(os.path.join(task_dir, RULES_NAME), os.path.join(root, RULES_NAME))
+    with open(os.path.join(root, kernel_slots.CONFIG_NAME), "w") as f:
+        json.dump({**kernel_slots_limits, "higher_is_better": higher_is_better}, f, indent=2)
+    if fresh:
+        for stale_ledger in (os.path.join(root, kernel_slots.LEDGER_NAME), os.path.join(root, LEDGER)):
+            if os.path.isfile(stale_ledger):
+                os.remove(stale_ledger)
+    with open(os.path.join(root, "contest.json"), "w") as f:
+        json.dump({
+            "competition": competition,
+            "ledger": os.path.join(root, LEDGER),
+            "procedure": PROCEDURE,
+            "higher_is_better": higher_is_better,
+            "window_start": window[0],
+            "window_end": window[1],
+            "shared_root": root,
+            "list_page_size": int(listing["submissions_page_size"]),
+            "list_timeout_seconds": int(listing["timeout_seconds"]),
+        }, f, indent=2)
+    return root
+
+
 def audit_kernel(kernel_dir: str) -> list:
     """Static scan of the kernel sources for external-resource pulls."""
     findings = []
@@ -126,60 +169,54 @@ def audit_kernel(kernel_dir: str) -> list:
     return findings
 
 
-def parse_submissions_json(raw: str) -> list:
-    """Parse `kaggle competitions submissions --format json` output.
-
-    The CLI may prefix the JSON with pagination noise ("Next Page Token =
-    ..."); the payload starts at the first bracket. Anything unparseable
-    raises — fail loud.
-    """
-    start_candidates = [i for i in (raw.find("["), raw.find("{")) if i >= 0]
-    if not start_candidates:
-        raise ValueError(f"no JSON payload in submissions output: {raw[:200]!r}")
-    payload = json.loads(raw[min(start_candidates):])
-    if isinstance(payload, dict):
-        payload = payload.get("submissions", [])
-    if not isinstance(payload, list):
-        raise ValueError("submissions payload is neither a list nor "
-                         "a {'submissions': [...]} object")
-    return payload
-
-
-def best_public_score(submissions: list, since_utc_iso: str) -> dict:
-    """Best publicScore among submissions at/after the run start."""
+def best_public_score(submissions: list, since_utc_iso: str, until_utc_iso: str,
+                      higher_is_better: bool) -> dict:
+    """The best public score in the metric's direction among the
+    submissions dated inside the window; a submission's status is the
+    CLI's word (complete, error, pending)."""
     since_key = since_utc_iso.replace("T", " ")[:19]
+    until_key = until_utc_iso.replace("T", " ")[:19]
     considered, best = [], None
     for sub in submissions:
         date_key = str(sub.get("date", "")).replace("T", " ")[:19]
-        if date_key < since_key:
+        if not since_key <= date_key <= until_key:
             continue
         raw_score = str(sub.get("publicScore", "") or "").strip()
         entry = {
             "date": date_key,
-            "status": str(sub.get("status", "")),
+            "status": normalize_status(sub.get("status")),
             "description": str(sub.get("description", "")),
             "publicScore": raw_score,
         }
         considered.append(entry)
         if re.fullmatch(r"-?\d+(\.\d+)?", raw_score):
             score = float(raw_score)
-            if best is None or score > best["score"]:
+            if best is None or (score > best["score"] if higher_is_better else score < best["score"]):
                 best = {"score": score, **entry}
     return {"best": best, "submissions": considered}
+
+
+def kernel_metadata_dirs(task_dir: str) -> list:
+    """Every kernel folder under the run's task directory (the lanes' session
+    clones included), by its kernel-metadata.json."""
+    found = []
+    for dirpath, dirnames, filenames in os.walk(task_dir):
+        dirnames[:] = [name for name in dirnames if name != ".git"]
+        if "kernel-metadata.json" in filenames:
+            found.append(dirpath)
+    return sorted(found)
 
 
 def discover_run_kernels(task_dir: str) -> list:
     """Kernel refs this run pushed, read from the lanes' kernel-metadata.json.
 
-    K-way lanes namespace their own submission directories, so there is no
-    single canonical kernel path to look in; the metadata files each lane wrote
+    K-way lanes keep their own kernel folders, so there is no single
+    canonical kernel path to look in; the metadata files each lane wrote
     are the authoritative record of what this run created.
     """
     refs = []
-    for dirpath, _, filenames in os.walk(os.path.join(task_dir, "submission")):
-        if "kernel-metadata.json" not in filenames:
-            continue
-        meta_path = os.path.join(dirpath, "kernel-metadata.json")
+    for folder in kernel_metadata_dirs(task_dir):
+        meta_path = os.path.join(folder, "kernel-metadata.json")
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
         if not meta.get("id"):
@@ -193,8 +230,8 @@ def kernels_run_since(kaggle_bin: str, since_utc_iso: str, page_size: int,
     """Our own kernels whose last run started at/after the campaign did.
 
     Local metadata alone is not enough: a lane can push a kernel and never
-    record it under submission/ (run 3's lane 3 did exactly that, leaving a
-    COMPLETE kernel discoverable only from the account listing).
+    record it (run 3's lane 3 did exactly that, leaving a COMPLETE kernel
+    discoverable only from the account listing).
     """
     proc = subprocess.run(
         [kaggle_bin, "kernels", "list", "-m", "--sort-by", "dateRun",
@@ -237,24 +274,6 @@ def submission_matches_template(candidate_path: str, template_path: str) -> bool
     return all(c[0] == t[0] for c, t in zip(candidate[1:], template[1:]))
 
 
-def classify_submit_output(stdout: str, stderr: str) -> str:
-    """One label per submit attempt; the CLI exits 0 even on rejection.
-
-    Verified live 2026-08-02: a rejected code submission prints `403 Client
-    Error ... CreateCodeSubmission` and exits 0, so the exit code carries no
-    signal — the output text is the only discriminator. "accepted" means no
-    rejection signature; anything else is the signature found.
-    """
-    blob = stdout + stderr
-    if "403" in blob:
-        return "rejected-403"          # version invalid OR no session capacity
-    if "400" in blob:
-        return "rejected-400"          # wrong endpoint/modality for this comp
-    if "Error" in blob or "error:" in blob:
-        return "rejected-error"
-    return "accepted"
-
-
 def submit_kernel_output(kaggle_bin: str, competition: str, ref: str,
                          message: str, max_version: int,
                          timeout_seconds: int) -> tuple:
@@ -278,30 +297,22 @@ def submit_kernel_output(kaggle_bin: str, competition: str, ref: str,
         verdict = classify_submit_output(proc.stdout, proc.stderr)
         attempts.append({"version": version, "verdict": verdict,
                          "output": (proc.stdout + proc.stderr).strip()})
-        if verdict == "accepted":
-            return version, attempts
+        if verdict in ("accepted", "pending"):
+            return version, attempts          # pending: made, to be settled from the list
     return None, attempts
 
 
-def banked_kernel_refs(task_dir: str) -> set:
-    """Kernel refs with a public score in best_score.log.
-
-    The board line is `<public_score> <iso-time> <kernel-ref> <idea>`; the ref
-    field is what makes never-scored kernels computable. A line whose third
-    field is not a ref (a lane that skipped it) simply attributes nothing —
-    that only affects harvest ORDER, never correctness. Missing log = nothing
-    banked; a malformed score field raises upstream where it is read.
-    """
-    score_log = os.path.join(task_dir, "best_score.log")
-    if not os.path.isfile(score_log):
+def banked_kernel_refs(ledger_path: str) -> set:
+    """Kernel refs with a public score in the submissions ledger: what makes
+    never-scored kernels computable. No ledger means nothing banked."""
+    if not os.path.isfile(ledger_path):
         return set()
-    refs = set()
-    with open(score_log, encoding="utf-8") as f:
-        for line in f:
-            fields = line.split()
-            if len(fields) >= 3 and kernel_slots.KERNEL_REF_PATTERN.match(fields[2]):
-                refs.add(fields[2])
-    return refs
+    with open(ledger_path, encoding="utf-8") as f:
+        ledger = json.load(f)
+    return {
+        entry["kernel_ref"] for entry in ledger["submissions"]
+        if entry.get("kernel_ref") and isinstance(entry.get("public_score"), (int, float))
+    }
 
 
 def rank_harvest_candidates(refs: list, banked: set) -> list:
@@ -350,10 +361,8 @@ def harvest_unsubmitted_kernels(root: str, competition: str,
     # leaderboard readouts). Search for it; without a template the candidates
     # are skipped loudly below, but the readout always survives.
     template_name = final_eval_cfg["submission_template"]
-    template_matches = sorted(
-        glob.glob(os.path.join(task_dir, "dataset", "**", template_name),
-                  recursive=True))
-    template = template_matches[0] if template_matches else None
+    template_matches = sorted(Path(task_dir, "dataset").rglob(template_name))
+    template = str(template_matches[0]) if template_matches else None
     if template is None:
         print(f"[harvest] no {template_name} under dataset/ — "
               f"{len(refs)} kernels skipped unvalidated")
@@ -368,7 +377,7 @@ def harvest_unsubmitted_kernels(root: str, competition: str,
     # Never-scored kernels first: run 5 spent both scoring slots re-rolling
     # already-scored kernels (alphabetical order) while two unscored ones —
     # finished work one submission away from value — were bounced.
-    refs = rank_harvest_candidates(refs, banked_kernel_refs(task_dir))
+    refs = rank_harvest_candidates(refs, banked_kernel_refs(os.path.join(task_dir, CONTEST_ROOT, LEDGER)))
 
     # Gate every candidate down to something submittable before spending a
     # submission on it.
@@ -414,12 +423,8 @@ def harvest_unsubmitted_kernels(root: str, competition: str,
 
     def poll_scored():
         """Record harvest submissions that finished scoring."""
-        proc = subprocess.run(
-            [kaggle_bin, "competitions", "submissions", competition,
-             "--format", "json", "-q"],
-            capture_output=True, text=True, timeout=timeout_seconds,
-        )
-        rows = parse_submissions_json(proc.stdout)
+        rows = list_submissions(kaggle_bin, competition, final_eval_cfg["submissions_page_size"],
+                                timeout_seconds)
         still = []
         for entry in pending:
             # Window by date: a previous run's harvest used the same message
@@ -431,7 +436,7 @@ def harvest_unsubmitted_kernels(root: str, competition: str,
                 (r for r in rows
                  if entry["kernel"].split("/")[-1] in str(r.get("description", ""))
                  and str(r.get("date", ""))[:19] >= since
-                 and "pending" not in str(r.get("status", "")).lower()), None)
+                 and normalize_status(r.get("status")) != "pending"), None)
             if row is None:
                 still.append(entry)
                 continue
@@ -481,8 +486,10 @@ def harvest_unsubmitted_kernels(root: str, competition: str,
     return report
 
 
-def run_final_eval(root: str, competition: str, final_eval_cfg: dict) -> dict:
-    """Read the leaderboard truth: best publicScore in the run window."""
+def run_final_eval(root: str, competition: str, higher_is_better: bool, final_eval_cfg: dict) -> dict:
+    """Read the leaderboard truth: the best public score in the metric's
+    direction among the submissions dated inside the run window, read from
+    every page of the competition's list at the time the report says."""
     timeout_seconds = final_eval_cfg["timeout_seconds"]
     meta_path = os.path.join(root, "run_meta.json")
     if not os.path.isfile(meta_path):
@@ -490,7 +497,8 @@ def run_final_eval(root: str, competition: str, final_eval_cfg: dict) -> dict:
             f"{meta_path} missing — the campaign runner writes it at launch"
         )
     with open(meta_path) as f:
-        run_started = json.load(f)["run_started_utc"]
+        meta = json.load(f)
+    run_started, window_end = meta["run_started_utc"], meta["window_end_utc"]
 
     kaggle_bin = shutil.which("kaggle")
     if not kaggle_bin:
@@ -505,23 +513,31 @@ def run_final_eval(root: str, competition: str, final_eval_cfg: dict) -> dict:
         harvest = harvest_unsubmitted_kernels(
             root, competition, run_started, final_eval_cfg)
 
-    proc = subprocess.run(
-        [kaggle_bin, "competitions", "submissions", competition,
-         "--format", "json", "-q"],
-        capture_output=True, text=True, timeout=timeout_seconds,
-    )
-    if proc.returncode != 0:
-        return {
-            "error": f"kaggle submissions exited {proc.returncode}",
-            "stderr_tail": proc.stderr[-2000:],
-        }
-    report = best_public_score(parse_submissions_json(proc.stdout), run_started)
-    report["audit"] = audit_kernel(
-        os.path.join(root, "task", "submission", "kernel")
-    )
+    rows = list_submissions(kaggle_bin, competition, final_eval_cfg["submissions_page_size"], timeout_seconds)
+    report = best_public_score(rows, run_started, window_end, higher_is_better)
+    report["window"] = {"start": run_started, "end": window_end}
+    report["read_at"] = datetime.now(timezone.utc).isoformat()
+    task_dir = os.path.join(root, "task")
+    report["audit"] = {
+        os.path.relpath(folder, task_dir): audit_kernel(folder)
+        for folder in kernel_metadata_dirs(task_dir)
+    }
     if harvest is not None:
         report["harvest"] = harvest
     return report
+
+
+def solution_summary(solution: Solution) -> Dict[str, object]:
+    return {
+        "campaign": str(solution.campaign),
+        "branch": solution.branch,
+        "commit": solution.commit,
+        "score": solution.score,
+        "stopped_reason": solution.stopped_reason,
+        "experiments": solution.experiments_total,
+        "cost_usd": solution.cost_usd,
+        "harness": solution.harness.name if solution.harness else None,
+    }
 
 
 def main():
@@ -532,10 +548,15 @@ def main():
     parser.add_argument("--hours", type=float, default=None,
                         help="Run wall-clock hours (default: config run_defaults.hours)")
     parser.add_argument("--guard-minutes", type=int, default=None)
-    parser.add_argument("--iterations", type=int, default=20)
+    parser.add_argument("--iterations", type=int, default=None,
+                        help="Budget.experiments (default: config run_defaults.iterations)")
     parser.add_argument("--coding-agent", default=None,
                         help="The host every role without a cli of its own runs on "
                              "(default: the config's search_strategy.params.host, codex here)")
+    parser.add_argument("--harness", default=None,
+                        help=f"A harness reference (default: the bundled {BUNDLED_HARNESS})")
+    parser.add_argument("--experience", default=None,
+                        help="Comma-separated sources to serve: mine, a bank path or git reference, an index name")
     parser.add_argument("--cost-budget", type=float, default=None)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--skip-final-eval", action="store_true")
@@ -550,17 +571,20 @@ def main():
     task_dir = os.path.join(root, "task")
     statement_path = os.path.join(task_dir, "dataset", "statement.md")
     kaggle_meta_path = os.path.join(task_dir, "kaggle.json")
-    for required in (statement_path, kaggle_meta_path):
+    rules_path = os.path.join(task_dir, RULES_NAME)
+    for required in (statement_path, kaggle_meta_path, rules_path):
         if not os.path.isfile(required):
             sys.exit(f"{required} missing — run preflight.py first")
     with open(kaggle_meta_path) as f:
-        competition = json.load(f)["competition"]
+        kaggle_meta = json.load(f)
+    competition = kaggle_meta["competition"]
+    higher_is_better = bool(kaggle_meta["higher_is_better"])
 
     config = read_yaml(CONFIG_PATH)
     mode_cfg = config["benchmark"]
 
     if args.final_eval_only:
-        report = run_final_eval(root, competition, mode_cfg["final_eval"])
+        report = run_final_eval(root, competition, higher_is_better, mode_cfg["final_eval"])
         results_path = os.path.join(root, "results.json")
         with open(results_path, "w") as f:
             json.dump(report, f, indent=2)
@@ -568,55 +592,9 @@ def main():
         return
 
     statement = open(statement_path, encoding="utf-8").read()
-
-    # Stage the organizers' binding rules beside the task so every session can
-    # read them; copied fresh each launch so an edited RULES.md always wins.
-    shutil.copy2(RULES_PATH, os.path.join(task_dir, "RULES.md"))
-
-    # Stage the CLI playbook: the statement names the modality and the file
-    # but never the commands, so this is where any lane learns the
-    # push/poll/submit/score flow (run 5's lanes had neither and burned their
-    # first submission rediscovering -k/-v from --help).
-    shutil.copy2(SKILL_PATH, os.path.join(task_dir, "KAGGLE_CLI.md"))
-
-    # Stage the curated knowledge bank (config knowledge_bank_dir,
-    # repo-root-relative): the shared-learning book every module searches
-    # FIRST. Configured-but-missing is a launch defect, not an option — a box
-    # that did not receive the bank must die here, not run blind.
-    bank_rel = mode_cfg.get("knowledge_bank_dir")
-    if bank_rel:
-        bank_src = os.path.join(REPO_ROOT, bank_rel)
-        if not os.path.isdir(bank_src):
-            raise FileNotFoundError(
-                f"knowledge_bank_dir={bank_rel!r} resolved to {bank_src} which "
-                "does not exist — ship the bank to this machine or unset the key")
-        bank_dst = os.path.join(task_dir, "knowledge_bank")
-        if os.path.isdir(bank_dst):
-            shutil.rmtree(bank_dst)
-        shutil.copytree(bank_src, bank_dst)
-        # INDEX.md is the platform-wide bank entry point (design decision
-        # #13): every prompt hook and the handler context route through it.
-        # A staged bank without it is a stale pre-rename local copy — rename
-        # its book_index.md to INDEX.md; running blind is not an option.
-        if not os.path.isfile(os.path.join(bank_dst, "INDEX.md")):
-            raise FileNotFoundError(
-                f"staged knowledge bank {bank_dst} has no INDEX.md — the "
-                "bank convention requires INDEX.md as the single entry "
-                "point; rename the bank's book_index.md to INDEX.md"
-            )
-
-    # Stage the slot ticket office + its limits. Lanes run in isolated session
-    # clones, so this has to be reachable by path rather than by import; a stale
-    # ledger from a previous launch would hold phantom tickets, so it goes too.
-    shutil.copy2(SLOTS_PATH, os.path.join(task_dir, "kernel_slots.py"))
-    with open(os.path.join(task_dir, ".kernel_slots_config.json"), "w") as f:
-        json.dump(mode_cfg["session_budget"]["kernel_slots"], f, indent=2)
-    stale_ledger = os.path.join(task_dir, ".kernel_slots.json")
-    if os.path.isfile(stale_ledger):
-        os.remove(stale_ledger)
-
     run_defaults = mode_cfg["run_defaults"]
     hours = args.hours if args.hours is not None else run_defaults["hours"]
+    iterations = args.iterations if args.iterations is not None else run_defaults["iterations"]
     node_expansion = (args.node_expansion if args.node_expansion is not None
                       else run_defaults["node_expansion"])
 
@@ -633,11 +611,12 @@ def main():
         origin_ts = datetime.fromisoformat(started_utc).timestamp()
     else:
         origin_ts = time.time()
-        with open(meta_path, "w") as f:
-            json.dump({"run_started_utc":
-                       datetime.now(timezone.utc).isoformat()}, f, indent=2)
+        started_utc = datetime.fromtimestamp(origin_ts, timezone.utc).isoformat()
 
     deadline_ts = origin_ts + total_run_seconds
+    window_end_utc = datetime.fromtimestamp(deadline_ts, timezone.utc).isoformat()
+    with open(meta_path, "w") as f:
+        json.dump({"run_started_utc": started_utc, "window_end_utc": window_end_utc}, f, indent=2)
     spent_minutes = (time.time() - origin_ts) / 60
     knobs = mode_cfg["session_budget"]
     guard_minutes = (args.guard_minutes if args.guard_minutes is not None
@@ -661,26 +640,36 @@ def main():
         )
     # Sized to ONE submission round trip (push -> kernel run -> submit ->
     # score), not to a fraction of the run: a campaign that ends before
-    # shipping scores nothing. The handler hands most of it back once a public
-    # score is banked (deliverable_ready_reserve_seconds).
+    # shipping scores nothing.
     reserve_minutes = knobs["finalization_reserve_minutes"]
     session_timeouts = shape_session_timeouts(config, budget_minutes * 60)
 
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")):
-        print("WARNING: neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set")
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("WARNING: OPENAI_API_KEY is not set — utility-LLM roles will fail")
     if not shutil.which("kaggle"):
         print("WARNING: kaggle CLI not on PATH — submissions will fail")
 
+    shared_cache_dir = args.shared_cache_dir or os.path.join(task_dir, "shared_cache")
+    os.makedirs(shared_cache_dir, exist_ok=True)
     config_path = build_runtime_config(task_dir, session_timeouts,
-                                       shared_cache_dir=args.shared_cache_dir,
+                                       shared_cache_dir=shared_cache_dir,
                                        node_expansion=node_expansion)
 
     # Lanes plan against the CAMPAIGN's end, not the full window: the guard
     # and harvest carve-outs come after their deadline, and a lane aiming its
     # last submission at the outer deadline would be cut mid-flight.
     campaign_deadline_ts = deadline_ts - (guard_minutes + harvest_window) * 60
+    campaign_deadline_utc = datetime.fromtimestamp(campaign_deadline_ts, timezone.utc).isoformat()
+
+    contest_root = stage_contest_root(task_dir, competition, higher_is_better, (started_utc, window_end_utc),
+                                      knobs["kernel_slots"], mode_cfg["final_eval"], fresh=not args.resume)
+    artifacts_dir = os.path.join(task_dir, "artifacts")
+    os.makedirs(artifacts_dir, exist_ok=True)
+    brief = build_brief(
+        statement=statement, competition=competition, higher_is_better=higher_is_better,
+        dataset_dir=Path(task_dir, "dataset"), artifacts_dir=Path(artifacts_dir),
+        deadline_utc=campaign_deadline_utc, ledger_path=Path(contest_root, LEDGER),
+        shared_root=Path(contest_root), pool_limits=knobs["kernel_slots"],
+        rules_text=open(rules_path, encoding="utf-8").read(), shared_cache_dir=Path(shared_cache_dir),
+    )
 
     print(f"root={root} competition={competition} K={node_expansion} hours={hours}")
     print(f"clock started {spent_minutes:.1f} min ago (preflight); campaign "
@@ -690,65 +679,50 @@ def main():
     print(f"budget={budget_minutes} min (guard={guard_minutes} min, "
           f"harvest window={harvest_window} min, "
           f"finalization reserve={reserve_minutes:.0f} min), "
-          f"iterations<={args.iterations}")
+          f"iterations<={iterations}")
     print(f"session caps: ideation={session_timeouts['ideation_timeout']}s "
           f"implementation={session_timeouts['implementation_timeout']}s")
 
-    handler = KaggleNotebookHandler(
-        task_dir=task_dir,
-        statement=statement,
-        deadline_ts=campaign_deadline_ts,
-        session_caps=session_timeouts,
-        kaggle={"competition": competition},
-        insured_reserve_seconds=knobs["insured_reserve_minutes"] * 60,
-    )
-
-    orchestrator = OrchestratorAgent(
-        handler,
-        config_path=config_path,
-        coding_agent=args.coding_agent,
-        workspace_dir=os.path.join(task_dir, "kapso_campaign"),
-        # The statement plus the one fact the feedback judge needs: this goal
-        # has no "fully achieved" — the radar rehearsal's judges voted stop at
-        # 0.982/1.0 and ended the campaign 25 min early. The handler's
-        # honor_agent_stop=False is the hard guarantee; this line keeps the
-        # judges' own feedback from telling lanes "no further iteration is
-        # required".
-        goal=(statement
-              + "\n\nThis is an open-ended competition: the goal is never"
-              " 'fully achieved'. However high the score, keep improving the"
-              " best public score until the time budget expires — judge each"
-              " iteration on score progress, never on completion."),
-        resume=args.resume,
-    )
-
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
 
-    try:
-        orchestrator.solve(
-            experiment_max_iter=args.iterations,
-            time_budget_minutes=budget_minutes,
-            cost_budget=args.cost_budget,
-            finalization_reserve_minutes=reserve_minutes,
-        )
-    finally:
-        print("\n=== campaign done ===")
-        print(orchestrator.search_strategy.get_experiment_history())
-        print(f"cumulative agent cost: ${orchestrator.get_cumulative_cost():.2f}")
+    kapso = Kapso(config=config_path)
+    kapso.load_harness(args.harness or BUNDLED_HARNESS)
+    for reference in (args.experience or "").split(","):
+        if reference.strip():
+            kapso.load_experience(reference.strip())
+    budget = Budget(
+        minutes=budget_minutes,
+        experiments=iterations,
+        usd=args.cost_budget,
+        reserve_minutes=reserve_minutes if reserve_minutes > 0 else None,
+    )
+    solution = kapso.build(
+        brief,
+        evaluation=str(EVALUATION_SUITE),
+        data=contest_root,
+        output=os.path.join(task_dir, "kapso_campaign"),
+        budget=budget,
+        resume=args.resume,
+        coding_agent=args.coding_agent,
+    )
+    print("\n=== campaign done ===")
 
-    summary = {
+    summary: Dict[str, object] = {
         "root": root,
         "hours": hours,
         "competition": competition,
-        "kernel_present": os.path.isfile(
-            os.path.join(task_dir, "submission", "kernel", "script.py")),
+        "solution": solution_summary(solution),
     }
-    if not args.skip_final_eval:
-        summary["final"] = run_final_eval(
-            root, competition, mode_cfg["final_eval"])
+    # The campaign's record first: a final evaluation that fails loud (the
+    # listing refused) must not take the delivery's summary with it.
     results_path = os.path.join(root, "results.json")
     with open(results_path, "w") as f:
         json.dump(summary, f, indent=2)
+    if not args.skip_final_eval:
+        summary["final"] = run_final_eval(
+            root, competition, higher_is_better, mode_cfg["final_eval"])
+        with open(results_path, "w") as f:
+            json.dump(summary, f, indent=2)
     print(json.dumps(summary, indent=2))
 
 

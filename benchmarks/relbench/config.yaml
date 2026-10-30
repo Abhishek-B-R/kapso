@@ -2,15 +2,9 @@
 # settings are at the top level, in the shape the packaged file names;
 # `kapso doctor --show-config --config benchmarks/relbench/config.yaml`
 # prints what a run uses. The runner writes a runtime copy with the task's
-# shared cache, the serving and the budget (`.kapso_runtime/config.yaml`).
-#
-# Generic strategy only (the tree-search era modes were deleted with the
-# strategy — stale-code audit 2026-08-26): agentic code-reading ideation,
-# implementation sessions on Codex, and evaluation through the
-# maintainer-registered entrypoint wrapping the provided grader
-# (data/generic_eval — official val scoring only; test physically
-# unscorable in-loop). Knowledge reaches ideation through the handler's
-# problem context (schema, SOTA table, playbooks, the design axes).
+# shared cache (`.kapso_runtime/config.yaml`) and launches the facade's
+# build() on it with the bundled predictive-modelling harness; the
+# `benchmark:` block at the end is the runner's own.
 
 # Benchmark harness: nobody is at the keyboard, so a session never asks a
 # person and never pauses.
@@ -23,8 +17,8 @@ search_strategy:
     # (gpt-5.6-sol at xhigh, OpenAI's reasoning ceiling).
     host: codex
     ideation:
-      # "bank" resolves only when the runner stages serving; with serving
-      # off it is skipped quietly. The judge mounts no gates at all.
+      # "bank" resolves only when the campaign serves experience; with
+      # nothing loaded it is skipped quietly. The judge mounts no gates.
       gates: [experiment_history, repo_memory, bank]
       candidates_per_member: 3
       # Ideation is deliberately unbounded: the strategy clamps every phase
@@ -55,12 +49,15 @@ search_strategy:
       web: false
       # One experiment = implement + run the registered full evaluation
       # (candidate training, up to the task's full timeout) inside the
-      # session: the cap covers a 4h full-eval cap (RELBENCH_FULL_TIMEOUT)
-      # plus the implement phase (~1h).
+      # session: the cap covers a 4h full-eval cap (the medium tier's
+      # `benchmark.timeouts`) plus the implement phase (~1h).
       timeout: 18000
     judge:
       timeout: 900
     gate_failure_policy: skip
+    # A benchmark has no "goal achieved": the judge's stop vote is advisory
+    # and the campaign runs to its budget.
+    honor_agent_stop: false
     # K-way node expansion: the selector emits a ranked top-4 and each is
     # implemented and evaluated on its own parallel lane, PINNED to its
     # own GPU via CUDA_VISIBLE_DEVICES. Threads sized for the on-demand
@@ -83,13 +80,15 @@ search_strategy:
     # Durable-archive recovery root for the registered evaluation (Issue
     # 2): the grader archives runs (incl. manifest.txt) here, outside the
     # session workspace, so a completed eval's score is recoverable even
-    # after session teardown.
+    # after session teardown. The layout under `benchmark.work_root`; the
+    # runner's per-run override names the task's own root (every task's
+    # archive numbers its runs from one, and a label must never cross).
     registered_evaluation_archive_glob: "tmp/relbench/*/runs"
 
 # Time-budgeted campaigns: the search decides its own iteration count;
 # launch with a high -i so the clock, not the counter, is binding. The
 # admission floor keeps a doomed final round (needs ~1h+ with 4h evals)
-# from being started; the reserve protects final_evaluate.
+# from being started; the reserve protects the final evaluation.
 budget:
   minutes: 600
   reserve_minutes: 15
@@ -106,7 +105,10 @@ evaluation_maintainer:
   # Registration calibrates via a fast-fidelity run = the candidate's
   # --debug mode; must fit the debug-tier cap.
   calibration_timeout_seconds: 1200
-  max_change_requests: 3
+  # The official evaluation is the protocol: no change request may replace
+  # it mid-campaign (the RelBench arm's maintainer rewrote the scoring
+  # across origins at iteration one and every candidate failed under it).
+  max_change_requests: 0
   # Late-transition freeze: past this fraction of the time budget,
   # evaluator change requests are deferred — a ruler change near the
   # deadline orphans final selection (2026-08-16: a transition at 92%
@@ -119,3 +121,23 @@ retry:
   max_delay_seconds: 120
   multiplier: 2
   jitter: true
+
+# The runner's own keys; the engine never reads this block.
+benchmark:
+  # The archive root: <work_root>/<dataset>--<task>/ holds the sanitized
+  # copy, the per-tick snapshots, the staged evaluation, the shared cache
+  # and the runs. `registered_evaluation_archive_glob` above names the
+  # same root.
+  work_root: tmp/relbench
+  # The candidate's caps in seconds by the database's size tier
+  # (task_specs.SIZE_TIER): one full training run, and the --debug run
+  # that gates the pipeline.
+  timeouts:
+    small: {full: 7200, debug: 900}
+    medium: {full: 14400, debug: 1200}
+    large: {full: 28800, debug: 1800}
+  # What the Brief grants the candidates beyond the data: a hosted model
+  # API (`openai`, with the key in the campaign's .env) or `none`.
+  hosted_model_api: none
+  # How often the staged grader polls the candidate it runs (seconds).
+  grader_poll_seconds: 1

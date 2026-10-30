@@ -332,15 +332,18 @@ class ExperimentSession:
 
     def commit_folder(self, folder_name: str) -> None:
         """
-        Commit a specific folder (for output data).
-        
+        Commit a specific folder (for output data), added by force: the run
+        folder is the engine's record, and an ignore rule in the candidate
+        (the task's, or one the session wrote for its own build outputs)
+        does not apply to it.
+
         Args:
             folder_name: Path to folder to commit
         """
         if os.path.exists(folder_name) and os.listdir(folder_name):
             print('*'*100)
             print(f"Committing folder: {folder_name}")
-            self.repo.git.add(folder_name)
+            self.repo.git.add('-f', folder_name)
             self._commit_staged('chore: commit run data')
 
     def close_session(self) -> None:

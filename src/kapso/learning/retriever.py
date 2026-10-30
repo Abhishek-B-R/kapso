@@ -27,7 +27,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from kapso.experience.reference import SCOPE_ALL
-from kapso.learning.bank import SERVABLE_STATES, Bank, Card
+from kapso.experience.sources import PROVENANCE_REPORTED
+from kapso.learning.bank import REPORTED_VERDICT, SERVABLE_STATES, Bank, Card
 from kapso.learning.bank_invariants import INDEXED_ONLY, usage_claims_serving
 
 # Probe-queue row grammar: the derived index is one file, readable by
@@ -228,10 +229,18 @@ def _evidence_block(card: Card) -> str:
     lines = [f"### Evidence ({len(card.evidence)} entries)"]
     for entry in card.evidence:
         source = entry.get("source") or {}
-        lines.append(
-            f"- verdict={entry.get('verdict')} "
-            f"trajectory={source.get('trajectory')} ref={source.get('ref')}"
-        )
+        if entry.get("verdict") == REPORTED_VERDICT:
+            lines.append(
+                f"- verdict={REPORTED_VERDICT} ({PROVENANCE_REPORTED}, not a kapso "
+                f"measurement) url={source.get('url')} author={source.get('author')} "
+                f"licence={source.get('licence')} score={source.get('score')} "
+                f"protocol={source.get('protocol')}"
+            )
+        else:
+            lines.append(
+                f"- verdict={entry.get('verdict')} "
+                f"trajectory={source.get('trajectory')} ref={source.get('ref')}"
+            )
         for field in ("usage", "effect", "note"):
             value = entry.get(field)
             if value:
@@ -247,14 +256,21 @@ def _render_card(
 ) -> str:
     """One card at the requested depth: citation tag + the full v2 body
     (the body IS the engineer-facing card, carried whole — Rule 6), plus
-    the procedure payload paths, the probe offer when one is queued, and —
-    at evidence depth — the reliability block and full evidence trail."""
+    the procedure payload paths, the provenance line of a card whose only
+    evidence is reported by others, the probe offer when one is queued,
+    and — at evidence depth — the reliability block and full evidence
+    trail."""
     lines = [f"[card:{card.name}]", card.body]
     locations = (
         _procedure_locations(bank, card) if card.type == "procedure" else []
     )
     if locations:
         lines.append("\n".join(locations))
+    if card.reported_only:
+        lines.append(
+            f"*provenance:* {PROVENANCE_REPORTED} — the score is the source's, not a "
+            f"kapso measurement; no campaign has run this card yet."
+        )
     if card.name in offers:
         lines.append(
             f"*probe:* {offers[card.name]}\n*{_PROBE_COST_CLAUSE}*"

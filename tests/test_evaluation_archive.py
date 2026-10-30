@@ -516,3 +516,59 @@ def test_vendored_copies_are_byte_identical():
         assert copy.read_bytes() == master.read_bytes(), (
             f"{copy} has drifted from the framework master — recopy it"
         )
+
+
+
+class TestLabelRunOfRecord:
+    """The engine's own labelling at score-of-record time
+    (docs/plans/redesign/wp8-harness-ports.md, change 10): the archive root
+    under the glob that holds the manifest's run is stamped; no glob is no
+    archive; a full manifest whose run no root holds is an error."""
+
+    def test_the_root_holding_the_run_is_stamped_and_siblings_superseded(self, tmp_path):
+        first = tmp_path / "a" / "runs"
+        second = tmp_path / "b" / "runs"
+        make_run(first, "run_0001", session="exp_A", score=0.1, evaluator_id="e")
+        make_run(second, "run_0001", session="exp_B", score=0.2, evaluator_id="e")
+        make_run(second, "run_0002", session="exp_B", score=0.3, evaluator_id="e")
+        archive.label_run_of_record(
+            str(tmp_path / "*" / "runs"),
+            {"fidelity": "full", "run": "run_0002", "session": "exp_B"}, False,
+        )
+        status = lambda root, name: json.loads((root / name / "private" / "selection.json").read_text())["status"]
+        assert status(second, "run_0002") == "invalid"
+        assert status(second, "run_0001") == "superseded"
+        assert status(first, "run_0001") == "pending"
+
+    def test_no_glob_and_a_fast_manifest_label_nothing(self, tmp_path):
+        runs = tmp_path / "runs"
+        make_run(runs, "run_0001", session="exp_A", score=0.1, evaluator_id="e")
+        archive.label_run_of_record(None, {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True)
+        archive.label_run_of_record(str(runs), {"fidelity": "fast", "run": "", "session": "exp_A"}, True)
+        assert json.loads((runs / "run_0001" / "private" / "selection.json").read_text())["status"] == "pending"
+
+    def test_a_full_manifest_no_root_holds_raises(self, tmp_path):
+        runs = tmp_path / "runs"
+        make_run(runs, "run_0001", session="exp_A", score=0.1, evaluator_id="e")
+        with pytest.raises(ValueError, match="no archive under"):
+            archive.label_run_of_record(str(runs), {"fidelity": "full", "run": "run_0009", "session": "exp_A"}, True)
+        with pytest.raises(ValueError, match="carries no run name"):
+            archive.label_run_of_record(str(runs), {"fidelity": "full", "run": "", "session": "exp_A"}, True)
+
+    def test_a_run_name_two_roots_hold_is_refused_not_guessed(self, tmp_path):
+        # Every task's archive numbers its runs from one: a glob spanning
+        # tasks finds `run_0001` in both, and a label written into the
+        # first would promote another task's run. Neither root is touched.
+        first = tmp_path / "a" / "runs"
+        second = tmp_path / "b" / "runs"
+        make_run(first, "run_0001", session="exp_A", score=0.1, evaluator_id="e")
+        make_run(second, "run_0001", session="exp_A", score=0.2, evaluator_id="e")
+        with pytest.raises(ValueError, match="more than one archive"):
+            archive.label_run_of_record(
+                str(tmp_path / "*" / "runs"), {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True,
+            )
+        for root in (first, second):
+            assert json.loads((root / "run_0001" / "private" / "selection.json").read_text())["status"] == "pending"
+        archive.label_run_of_record(str(second), {"fidelity": "full", "run": "run_0001", "session": "exp_A"}, True)
+        assert json.loads((second / "run_0001" / "private" / "selection.json").read_text())["status"] == "final"
+        assert json.loads((first / "run_0001" / "private" / "selection.json").read_text())["status"] == "pending"

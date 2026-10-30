@@ -47,14 +47,6 @@ class ProblemHandler(ABC):
     # Whether higher scores are better (used by search strategies)
     maximize_scoring: bool = True
 
-    # Whether the feedback judge's <stop>true</stop> ends the campaign. True
-    # fits goal-directed tasks (reach X, then stop). Open-ended maximization
-    # tasks (competitions) set False: there is no "fully achieved" score, so
-    # the campaign runs to its time budget and a stop vote is advisory — the
-    # radar rehearsal ended 25 min early on a judge's "no further iteration
-    # is required" while sitting 0.0056 under the leader.
-    honor_agent_stop: bool = True
-    
     @abstractmethod
     def get_problem_context(self, budget_progress: float = 0, **kwargs) -> str:
         """Return problem description (may vary with budget progress)."""
@@ -69,28 +61,3 @@ class ProblemHandler(ABC):
         """
         return {}
 
-    def finalize_run_selection(self, manifest: Dict[str, Any], valid: bool) -> None:
-        """Stamp run-selection eligibility once a node's score of record is known.
-
-        Called by the search strategy exactly when it resolves a session's
-        registered manifest (the node's canonical measurement). `manifest` is
-        that parsed manifest line; `valid` is the node's judged validity
-        (feedback verdict minus integrity flags). Handlers whose archives
-        distinguish registered finals from intermediate evaluations override
-        this to label the archive; the default is a no-op for handlers with
-        no run archive.
-        """
-        return None
-
-    def deliverable_ready_reserve_seconds(self) -> Optional[float]:
-        """Reserve still needed once a CONFIRMED deliverable exists on disk.
-
-        None (default) means no confirmed deliverable — the campaign keeps
-        its full finalization reserve and admission floor. A float means the
-        deliverable is banked and verified, so the endgame insurance is
-        already paid: the orchestrator shrinks the reserve to this many
-        seconds (what freeze still costs) and applies the insured admission
-        floor, keeping late iterations available. Override in handlers whose
-        benchmark maintains a verified best-so-far submission.
-        """
-        return None

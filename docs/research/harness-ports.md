@@ -37,7 +37,7 @@ that never trigger it.
 | verification page | the test split never read outside the grader; CV-versus-public gap as the calibration problem | the static audit for reads outside the cache, the `upto_test_timestamp` trap, validation that looks fine while test is stripped |
 | feedback page | stage-aware scoring: do not prune a mini-stage candidate against a full one | the per-axis frontier; ship nothing below the reproduced champion |
 | learning page | scope by task type and data modality | scope by dataset, task and temporal regime |
-| skills | `task-type-playbooks` (from `kg_data.json`, one reference per workflow), `hf-model-fetch`, `cv-protocol`, `ensembling`, `tabular-modeling` | `sanitize-cache` (with the script), `temporal-protocol` (the two regimes and the rolling contract), `relational-feature-practices` (the eight measured practices), `relbench-api`, `torch-frame`, `living-documents` (table information and feature history files) |
+| skills | `task-type-playbooks` (from `kg_data.json`, one reference per workflow), `hf-model-fetch`, `cv-protocol`, `ensembling`, `tabular-modeling` | `sanitized-copy` (with the script), `temporal-protocol` (the two regimes and the rolling contract), `relational-feature-practices` (the eight measured practices), `relbench-api`, `torch-frame`, `living-documents` (table information and feature history files) |
 | delegates | `leakage-auditor` | the same auditor, briefed on temporal leakage |
 | servers | none; the hub is reached in setup | none |
 | hooks | `protect-prepared` (the split is read-only), `deny-web-fetch` on implementation and verification (the hub is for setup) | the same two; the web denial is RelBench's `implementation_web: false` rule made a hook |

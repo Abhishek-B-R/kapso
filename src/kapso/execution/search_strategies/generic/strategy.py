@@ -24,6 +24,7 @@ from kapso.execution.search_strategies.base import (
     SearchNode,
 )
 from kapso.execution.search_strategies.factory import register_strategy
+from kapso.execution.evaluation_archive import label_run_of_record
 from kapso.execution.cost_estimator import (
     DEFAULT_COST_CONFIG,
     normalize_cost_config,
@@ -1829,8 +1830,9 @@ class GenericSearch(SearchStrategy):
             retry_deadline=retry_deadline,
             manifest_of_record=self._manifest_of_record,
             finalize_run_selection=(
-                lambda manifest, valid:
-                self.problem_handler.finalize_run_selection(manifest, valid)
+                lambda manifest, valid: label_run_of_record(
+                    self.registered_evaluation_archive_glob, manifest, valid
+                )
             ),
             # The frame run's verdict: in cost mode a session's own claim
             # of validity never reaches the judge.

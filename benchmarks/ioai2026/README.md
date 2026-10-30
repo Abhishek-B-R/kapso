@@ -42,14 +42,17 @@ Per task:
 ## How it works
 
 1. **Preflight**: one agent session ingests the official task brief, downloads the data, and
-   writes the task statement. The campaign clock starts at brief-in.
-2. **Campaign**: the Kapso platform runs its experimentation loop (ideation → implementation
-   → judged feedback) in parallel lanes, each lane cycling submit-and-learn rounds through the
-   official submission system: predict the score, submit, bank the result, study the gap, go
-   again.
-3. **Shared learning**: lanes learn from every sibling submission on the board, and ideas are
-   grounded in the campaign [knowledge bank](past_learning/) distilled from past olympiad
-   tasks.
+   writes the task statement with the metric's direction. The campaign clock starts at brief-in.
+2. **Campaign**: the runner launches `build()` with the bundled `competitive-programming`
+   harness. The Brief carries the statement, the competition, the deadline, the submission
+   procedure and the ledger, the session pool and the organizers' rules; the harness carries
+   the discipline (the contest economics, the Kaggle flow, the olympiad playbook, the
+   auditors, the hooks that ask for the insurance submission and refuse a raw submit). Every
+   submission goes through the task root's procedure, which records it in the ledger; the
+   provided evaluation reports each candidate's own recorded submission by its public score.
+3. **Shared learning**: lanes learn from every sibling submission on the board, and a bank of
+   past olympiad solutions — the IOAI book converted by `book_to_bank.py` (below) — is served
+   as experience (`--experience`), never staged.
 
 ## Quickstart
 
@@ -57,21 +60,53 @@ Per task:
 # from the repository root
 pip install -e .
 
-# ingest a task (URL or organizer brief) into a run root
+# ingest a task (URL or organizer brief) into a run root, with the task's binding rules
 PYTHONPATH=src:. python -m benchmarks.ioai2026.preflight \
-    --task <task url or brief> --root tmp/ioai/task1
+    --task <task url or brief> --root tmp/ioai/task1 \
+    --rules benchmarks/ioai2026/RULES.md
 
 # run the campaign for one 6 hour session
 PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root tmp/ioai/task1 --hours 6
+```
+
+`--rules` pins the task's binding rules under the task (the default is the IOAI AI Models Track
+rules beside the script); another competition's rules file turns the preflight and the runner to
+that competition, whose quota and report requirements the statement then carries. The preflight
+refuses to run without a rules file at the path given.
+
+## The book as a bank
+
+The bank served as experience is the IOAI book — one directory per past olympiad task
+(`problem.md`, `idea.md`, `solution/`) — converted by `book_to_bank.py`: one procedure card per
+entry at `procedures/<uid>/card.md` with the solution files under `code/`, the card's one
+evidence entry `reported` (the score at its source, who reported it, under what licence, by
+what protocol), the card born `candidate`. A reported score is not a kapso measurement: the
+serving layer says so on every read, the reliability block carries no numbers, and only a
+campaign that runs the card promotes it. The licence pass over the book (`PROVENANCE.md`: one
+row per entry with the licence read at every cited source, the use and publish verdicts, the
+open questions left to a human) decides membership: the shareable bank takes the verdicts
+`shippable-with-attribution` and `ours (shippable)`, the local-only bank the rest; `--exclude`
+drops an entry by uid, so a campaign on one of the book's tasks is served the bank without its
+own entry.
+
+```bash
+PYTHONPATH=src:. python benchmarks/ioai2026/book_to_bank.py \
+    --book <the book> --provenance <provenance.json> --out ~/banks/ioai-shareable \
+    --verdicts shippable-with-attribution "ours (shippable)" [--exclude <uid>] [--table PROVENANCE.md]
+PYTHONPATH=src:. python -m benchmarks.ioai2026.runner --root tmp/ioai/task1 --hours 6 \
+    --experience ~/banks/ioai-shareable
 ```
 
 ## Layout
 
 | path | role |
 |---|---|
-| `handler.py` | benchmark handler: the submit-and-learn lane contract, insured finalization |
-| `runner.py` / `preflight.py` | campaign driver and staging / task ingestion |
+| `runner.py` / `preflight.py` | the campaign on `build()` with the contest root staged / task ingestion |
+| `context.py` | the Brief from the preflight's statement and the campaign's facts |
+| `submit.py` | the task root's submission procedure: submits and records the ledger entry |
+| `data/generic_eval/` | the provided evaluation: the candidate's own recorded submission |
 | `kernel_slots.py` | ticket office over the submission platform's per account session limits |
-| `config.yaml` | the override file over the packaged config (the roles, the lanes, the budget); the runner's own settings (the harvest, the session budget, the knowledge bank) under `benchmark:` |
-| `past_learning/` | the harvest factory: runs on past olympiad tasks that feed the knowledge bank |
-| `RULES.md` | organizer rules staged into every run |
+| `config.yaml` | the override file over the packaged config (the roles, the lanes, the budget); the runner's own settings (the harvest, the session budget) under `benchmark:` |
+| `RULES.md` | organizer rules, pinned into every campaign's contest root |
+| `book_to_bank.py` | the IOAI book as a bank: one procedure card per entry, its evidence `reported`, membership by the licence pass |
+| `PROVENANCE.md` | the licence pass over the book: every entry's sources, licences, use and publish verdicts, the open questions |

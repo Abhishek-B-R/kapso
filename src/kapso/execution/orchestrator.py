@@ -1055,7 +1055,7 @@ class OrchestratorAgent:
         resume whose delivery never completed (the checkpoint stays
         `running` until it does)."""
         history = self.search_strategy.get_experiment_history()
-        return bool(history) and bool(history[-1].should_stop) and bool(self.problem_handler.honor_agent_stop)
+        return bool(history) and bool(history[-1].should_stop) and bool(self.strategy_params["honor_agent_stop"])
 
     def _save_run_checkpoint(
         self, *, status: str, last_stop: Optional[str] = None
@@ -1522,7 +1522,6 @@ class OrchestratorAgent:
             # current registry head before any selection happens.
             self._reconcile_evaluator_state()
             reserve_run_pending = False
-            insured_logged = False
 
             stopped_reason = "max_iterations"  # default
             self._platform_budget_exhausted = False
@@ -1620,26 +1619,6 @@ class OrchestratorAgent:
                     and budget_spec.time_budget_seconds is not None
                     else self._round_reserve_seconds(budget_spec)
                 )
-                # Handler-level insurance: a confirmed deliverable on disk
-                # means the endgame risk is already covered — the reserve
-                # shrinks to what freeze still costs (same principle as the
-                # fidelity champion-shrink) and the insured admission floor
-                # applies, keeping late iterations available.
-                insured_reserve_seconds = (
-                    self.problem_handler.deliverable_ready_reserve_seconds()
-                )
-                if insured_reserve_seconds is not None:
-                    shrunk = min(
-                        effective_reserve_seconds, insured_reserve_seconds
-                    )
-                    if shrunk < effective_reserve_seconds and not insured_logged:
-                        print(
-                            "[Orchestrator] Deliverable insured — reserve "
-                            f"{effective_reserve_seconds:.0f}s -> {shrunk:.0f}s, "
-                            "insured admission floor active"
-                        )
-                        insured_logged = True
-                    effective_reserve_seconds = shrunk
                 self._status_reserve_seconds = effective_reserve_seconds
                 # Build the per-iteration budget view from the durable clock,
                 # so a resumed campaign continues its budget instead of
@@ -1681,16 +1660,13 @@ class OrchestratorAgent:
 
                 # Admission (the budget's end, wp4-config.md): an ordinary
                 # round is admitted when the searchable remainder covers
-                # the larger of the floor and the last completed round; an
-                # insured campaign uses its own floor alone, the handler
-                # vouching for its endgame. With fidelity active and no
-                # full-size result yet, a refusal grants the guaranteed
-                # reserve run instead of stopping.
+                # the larger of the floor and the last completed round. With
+                # fidelity active and no full-size result yet, a refusal
+                # grants the guaranteed reserve run instead of stopping.
                 remaining_after_reserve = snapshot.remaining_after_reserve
-                insured = insured_reserve_seconds is not None
-                needed_seconds = budget_spec.effective_min_iteration_seconds(insured=insured)
+                needed_seconds = budget_spec.min_iteration_seconds
                 last_round = self.search_strategy.last_round_seconds
-                if not insured and last_round is not None:
+                if last_round is not None:
                     needed_seconds = max(needed_seconds, last_round)
                 if remaining_after_reserve is not None and remaining_after_reserve < needed_seconds:
                     champion = (
@@ -1739,8 +1715,7 @@ class OrchestratorAgent:
                         self.search_strategy.observe_budget(snapshot)
                     else:
                         prose = admission_refusal(
-                            remaining_after_reserve, needed_seconds,
-                            None if insured else last_round,
+                            remaining_after_reserve, needed_seconds, last_round,
                         )
                         print(f"[Orchestrator] Stopping: {prose}")
                         self.operation_status.note(f"stopping: {prose}")
@@ -1944,13 +1919,13 @@ class OrchestratorAgent:
                         if time_budget_exhausted
                         else "cost_budget"
                     )
-                # A stop vote only ends the campaign when the handler's task
-                # semantics allow it: open-ended maximization has no "goal
-                # achieved", so there the vote is advisory and the budget is
-                # the only clock.
+                # A stop vote only ends the campaign when the config says the
+                # task has a goal to reach: open-ended maximization has no
+                # "goal achieved", so there the vote is advisory and the
+                # budget is the only clock.
                 stopping = (
                     node.should_stop
-                    and self.problem_handler.honor_agent_stop
+                    and bool(self.strategy_params["honor_agent_stop"])
                 )
                 # `completed` is saved after the delivery, below.
                 self._save_run_checkpoint(

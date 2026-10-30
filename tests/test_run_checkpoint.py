@@ -68,13 +68,8 @@ class FakeLLM:
 
 
 class FakeProblemHandler:
-    honor_agent_stop = True
-
     def get_problem_context(self) -> str:
         return "Solve the support problem"
-
-    def deliverable_ready_reserve_seconds(self):
-        return None
 
 
 class FakeKnowledgeSearch:
@@ -486,14 +481,14 @@ def test_advisory_stop_runs_to_the_budget_when_handler_says_so(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Open-ended maximization (competitions): a judge's stop vote is advisory
-    # — the radar rehearsal ended 25 min early on one. The handler contract
-    # honor_agent_stop=False keeps the campaign running to its budget.
+    # — the radar rehearsal ended 25 min early on one. The config key
+    # honor_agent_stop=false keeps the campaign running to its budget.
     workspace = tmp_path / "workspace"
     _init_git_workspace(workspace)
     _patch_orchestrator(monkeypatch, stop_next=True)
 
     orchestrator = _orchestrator(workspace)
-    orchestrator.problem_handler.honor_agent_stop = False
+    orchestrator.strategy_params["honor_agent_stop"] = False
     result = orchestrator.solve(experiment_max_iter=2)
     checkpoint = RunCheckpointStore(str(workspace)).load()
 

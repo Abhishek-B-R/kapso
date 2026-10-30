@@ -2,7 +2,7 @@
 
 Runs the candidate's `main.py` as an isolated child subprocess, scores the
 resulting validation predictions with the OFFICIAL relbench metrics against
-the sanitized cache (test labels are physically absent from it), archives
+the sanitized copy (test labels are physically absent from it), archives
 full-fidelity runs for final selection, and prints the machine-readable
 manifest line the search parses as the score of record.
 
@@ -26,13 +26,20 @@ in the candidate's training build, not in scoring items. `fast` runs
 Both score the complete official validation split; the item set never
 shrinks. `fraction`/`seed` are echoed into the manifest for grant validation.
 
-Environment (exported by the RelBench handler at startup):
-    RELBENCH_DATASET / RELBENCH_TASK      task identity
-    RELBENCH_PRIMARY_METRIC              e.g. "mae", "link_prediction_map"
-    RELBENCH_WORK_DIR                    archive root (runs/run_NNNN/)
-    RELBENCH_FULL_TIMEOUT / RELBENCH_DEBUG_TIMEOUT   child caps, seconds
-    RELBENCH_CACHE_DIR                   sanitized cache (set process-wide)
-    KAPSO_SHARED_CACHE_DIR               cross-experiment cache for candidates
+Configuration: `task.json` beside this file, written by the runner that
+stages the evaluation directory (the directory is integrity-protected, so
+the task's identity travels with the grader):
+    dataset, task            the task's identity in the library's registry
+    primary_metric           e.g. "mae", "link_prediction_map"
+    higher_is_better         the metric's direction
+    work_dir                 the archive root (runs/run_NNNN/ under it)
+    full_timeout, debug_timeout   the candidate's caps, seconds
+    cache_dir                the sanitized copy the candidate's process reads
+    rolling_root             the per-tick snapshots, or null under the flat regime
+
+The engine optimises one score, higher is better: the manifest's `score` is
+the metric oriented that way (negated when lower is better) and
+`raw_score` is the metric itself, with `higher_is_better` beside it.
 """
 
 from __future__ import annotations
@@ -48,6 +55,9 @@ import time
 from pathlib import Path
 
 import numpy as np
+from relbench.base import RecommendationTask, TaskType
+from relbench.datasets import dataset_registry
+from relbench.tasks import task_registry
 
 # Sibling import of the vendored archive contract: this file runs as a script
 # (sys.path[0] is the suite dir) but is also loaded by tests via importlib
@@ -58,14 +68,32 @@ if _SUITE_DIR not in sys.path:
 import kapso_eval_archive as archive_contract
 
 MANIFEST_MARKER = "KAPSO_EVAL_MANIFEST"
+TASK_FILE = "task.json"
 
 
-def _env(name: str) -> str:
-    value = os.environ.get(name, "")
-    if not value:
-        print(f"[grader] missing required environment variable: {name}")
+def task_settings() -> dict:
+    """The task's settings from `task.json` beside this file; a missing file is a staging error."""
+    path = Path(__file__).resolve().parent / TASK_FILE
+    if not path.is_file():
+        print(f"[grader] missing {path}: the runner stages the evaluation directory with the task's settings")
         sys.exit(2)
-    return value
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def open_task(settings: dict):
+    """The task read from the sanitized copy the settings name, with both the
+    dataset's and the task's cache directories bound to it: the library's own
+    cache variable plays no part in scoring."""
+    dataset_name, task_name = settings["dataset"], settings["task"]
+    cache = Path(settings["cache_dir"])
+    dataset_cls, dataset_args, dataset_kwargs = dataset_registry[dataset_name]
+    dataset = dataset_cls(*dataset_args, **{**dataset_kwargs, "cache_dir": str(cache / dataset_name)})
+    task_cls, task_args, task_kwargs = task_registry[dataset_name][task_name]
+    return task_cls(dataset, *task_args, **{**task_kwargs, "cache_dir": str(cache / dataset_name / "tasks" / task_name)})
+
+
+def oriented(score: float, higher_is_better: bool) -> float:
+    return score if higher_is_better else -score
 
 
 def _repo_root() -> Path:
@@ -90,81 +118,65 @@ def _session_id() -> str:
     return _repo_root().name
 
 
-def run_candidate(fidelity: str, run_data_dir: Path) -> None:
-    root = _repo_root()
-    main_py = root / "main.py"
-    if not main_py.exists():
-        print("[grader] main.py not found at repo root — the solution must be main.py")
-        sys.exit(3)
+def _run_child(cmd: list, cwd: Path, env: dict, deadline: float, poll_seconds: float) -> None:
+    """Run the candidate to completion or the deadline, streaming its output.
 
-    timeout = int(
-        _env("RELBENCH_DEBUG_TIMEOUT") if fidelity == "fast" else _env("RELBENCH_FULL_TIMEOUT")
-    )
-    cmd = [sys.executable, "main.py"] + (["--debug"] if fidelity == "fast" else [])
-    env = os.environ.copy()
-    env["KAPSO_RUN_DATA_DIR"] = str(run_data_dir)
-    env["PYTHONUNBUFFERED"] = "1"
-
-    print(f"[grader] running candidate: {' '.join(cmd)} (timeout {timeout}s)")
-    start = time.time()
-    proc = subprocess.Popen(
-        cmd,
-        cwd=root,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        errors="replace",
-        start_new_session=True,
-    )
-    tail: list[str] = []
-    for line in proc.stdout:
-        print(line, end="")
-        tail.append(line)
-        if len(tail) > 200:
-            tail.pop(0)
-    try:
-        proc.wait(timeout=max(1, int(timeout - (time.time() - start))))
-    except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(proc.pid), 9)
-        print(f"[grader] candidate exceeded {timeout}s and was killed")
-        sys.exit(4)
+    The child writes to a log file and the loop prints what arrived while it
+    polls, so a bounded wait needs no exception: at the deadline the whole
+    process group is killed and the grader exits with the time-limit code."""
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as log:
+        proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        printed = 0
+        while True:
+            log.flush()
+            log.seek(printed)
+            chunk = log.read()
+            if chunk:
+                print(chunk, end="")
+                printed += len(chunk)
+            if proc.poll() is not None:
+                break
+            if time.time() > deadline:
+                os.killpg(os.getpgid(proc.pid), 9)
+                proc.wait()
+                print("[grader] candidate exceeded its time limit and was killed")
+                sys.exit(4)
+            time.sleep(poll_seconds)
     if proc.returncode != 0:
         print(f"[grader] candidate exited non-zero ({proc.returncode})")
         sys.exit(5)
 
 
-def _run_child(cmd: list, cwd: Path, env: dict, deadline: float) -> None:
-    proc = subprocess.Popen(
-        cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, errors="replace", start_new_session=True,
-    )
-    for line in proc.stdout:
-        print(line, end="")
-    try:
-        proc.wait(timeout=max(1, int(deadline - time.time())))
-    except subprocess.TimeoutExpired:
-        os.killpg(os.getpgid(proc.pid), 9)
-        print("[grader] rolling deadline exceeded — candidate killed")
-        sys.exit(4)
-    if proc.returncode != 0:
-        print(f"[grader] candidate exited non-zero ({proc.returncode})")
-        sys.exit(5)
-
-
-def run_candidate_rolling(fidelity: str, run_data_dir: Path, rolling_root: Path) -> None:
-    """Rolling harness (EVALUATION_PROTOCOL.md): one candidate invocation per
-    tick, each seeing ONLY that tick's snapshot cache; predictions assembled
-    into the official row order. Downstream scoring/archiving is unchanged."""
+def _candidate_command(fidelity: str) -> list:
     root = _repo_root()
     if not (root / "main.py").exists():
         print("[grader] main.py not found at repo root — the solution must be main.py")
         sys.exit(3)
-    timeout = int(
-        _env("RELBENCH_DEBUG_TIMEOUT") if fidelity == "fast" else _env("RELBENCH_FULL_TIMEOUT")
-    )
-    deadline = time.time() + timeout
-    cmd = [sys.executable, "main.py"] + (["--debug"] if fidelity == "fast" else [])
+    return [sys.executable, "main.py"] + (["--debug"] if fidelity == "fast" else [])
+
+
+def _timeout(settings: dict, fidelity: str) -> int:
+    return int(settings["debug_timeout"] if fidelity == "fast" else settings["full_timeout"])
+
+
+def run_candidate(settings: dict, fidelity: str, run_data_dir: Path) -> None:
+    cmd = _candidate_command(fidelity)
+    timeout = _timeout(settings, fidelity)
+    env = os.environ.copy()
+    env["RELBENCH_CACHE_DIR"] = settings["cache_dir"]
+    env["KAPSO_RUN_DATA_DIR"] = str(run_data_dir)
+    env["PYTHONUNBUFFERED"] = "1"
+    print(f"[grader] running candidate: {' '.join(cmd)} (timeout {timeout}s)")
+    _run_child(cmd, _repo_root(), env, time.time() + timeout, float(settings["poll_seconds"]))
+
+
+def run_candidate_rolling(settings: dict, fidelity: str, run_data_dir: Path, rolling_root: Path) -> None:
+    """Rolling harness (EVALUATION_PROTOCOL.md): one candidate invocation per
+    tick, each seeing ONLY that tick's snapshot cache; predictions assembled
+    into the official row order. Downstream scoring/archiving is unchanged."""
+    root = _repo_root()
+    cmd = _candidate_command(fidelity)
+    deadline = time.time() + _timeout(settings, fidelity)
 
     vectors = {}
     for split, out_name in (("val", "val_predictions.npy"), ("test", "test_predictions.npy")):
@@ -184,7 +196,7 @@ def run_candidate_rolling(fidelity: str, run_data_dir: Path, rolling_root: Path)
             env["PYTHONUNBUFFERED"] = "1"
             print(f"[grader] rolling tick {snap.name} "
                   f"({int(deadline - time.time())}s left)")
-            _run_child(cmd, root, env, deadline)
+            _run_child(cmd, root, env, deadline, float(settings["poll_seconds"]))
             task_dirs = list((stage / "cache").glob("*/tasks/*"))
             idx = np.load(task_dirs[0] / "indices.npy")
             pred_path = tick_out / "test_predictions.npy"
@@ -209,41 +221,46 @@ def run_candidate_rolling(fidelity: str, run_data_dir: Path, rolling_root: Path)
     print(f"[grader] rolling assembly complete: val={vectors['val']} test={vectors['test']} rows")
 
 
-def load_and_score(run_data_dir: Path):
-    from relbench.base import RecommendationTask, TaskType
-    from relbench.tasks import get_task
+def validated(task, split: str, pred, n: int):
+    """The split's prediction vector against the contract: the shape and
+    dtype for the task type, every value finite, a probability inside
+    [0, 1]. The same rules for both splits, the test split without its
+    labels: an invalid test vector fails here, before it is archived and
+    the final grade finds it."""
+    if isinstance(task, RecommendationTask):
+        expected = (n, task.eval_k)
+        if pred.shape != expected or not np.issubdtype(pred.dtype, np.integer):
+            print(f"[grader] contract violation: {split} predictions must be int {expected}, got {pred.shape} {pred.dtype}")
+            sys.exit(6)
+        return pred
+    arr = np.asarray(pred, dtype=np.float64)
+    if arr.ndim == 2 and arr.shape[1] == 1 and task.task_type != TaskType.MULTICLASS_CLASSIFICATION:
+        pred = arr[:, 0]
+    if len(pred) != n or not np.all(np.isfinite(np.asarray(pred, dtype=np.float64))):
+        print(f"[grader] contract violation: {split} predictions wrong length or non-finite")
+        sys.exit(6)
+    if task.task_type == TaskType.BINARY_CLASSIFICATION and (np.min(pred) < 0 or np.max(pred) > 1):
+        print(f"[grader] contract violation: {split} predictions are not probabilities in [0, 1]")
+        sys.exit(6)
+    return pred
 
-    dataset_name = _env("RELBENCH_DATASET")
-    task_name = _env("RELBENCH_TASK")
-    primary = _env("RELBENCH_PRIMARY_METRIC")
 
-    task = get_task(dataset_name, task_name, download=False)
+def load_and_score(settings: dict, run_data_dir: Path):
+    primary = settings["primary_metric"]
+    task = open_task(settings)
     val_table = task.get_table("val", mask_input_cols=False)
     n_val = len(val_table)
     n_test = len(task.get_table("test"))
 
     val_path = run_data_dir / "val_predictions.npy"
     test_path = run_data_dir / "test_predictions.npy"
-    for p, n in ((val_path, n_val), (test_path, n_test)):
+    for p in (val_path, test_path):
         if not p.exists():
             print(f"[grader] contract violation: {p.name} was not written")
             sys.exit(6)
 
-    val_pred = np.load(val_path, allow_pickle=False)
-    test_pred = np.load(test_path, allow_pickle=False)
-
-    if isinstance(task, RecommendationTask):
-        expected = (n_val, task.eval_k)
-        if val_pred.shape != expected or not np.issubdtype(val_pred.dtype, np.integer):
-            print(f"[grader] contract violation: val predictions must be int {expected}, got {val_pred.shape} {val_pred.dtype}")
-            sys.exit(6)
-    else:
-        val_arr = np.asarray(val_pred, dtype=np.float64)
-        if val_arr.ndim == 2 and val_arr.shape[1] == 1 and task.task_type != TaskType.MULTICLASS_CLASSIFICATION:
-            val_pred = val_arr[:, 0]
-        if len(val_pred) != n_val or not np.all(np.isfinite(np.asarray(val_pred, dtype=np.float64))):
-            print(f"[grader] contract violation: val predictions wrong length or non-finite")
-            sys.exit(6)
+    val_pred = validated(task, "val", np.load(val_path, allow_pickle=False), n_val)
+    test_pred = validated(task, "test", np.load(test_path, allow_pickle=False), n_test)
 
     val_metrics = {k: float(v) for k, v in task.evaluate(val_pred, val_table).items()}
     if primary not in val_metrics:
@@ -252,7 +269,7 @@ def load_and_score(run_data_dir: Path):
     return val_metrics, val_pred, test_pred, n_val
 
 
-def archive_full_run(run_data_dir: Path, val_metrics: dict, evaluator_id: str) -> str:
+def archive_full_run(settings: dict, run_data_dir: Path, val_metrics: dict, evaluator_id: str) -> str:
     """Persist a full-fidelity run for final selection. Fast runs are never
     archived: their debug-mode predictions are pipeline checks, not results.
 
@@ -261,7 +278,7 @@ def archive_full_run(run_data_dir: Path, val_metrics: dict, evaluator_id: str) -
     head-stamped finals only and rescored them through the snapshot, so runs
     measured under a superseded evaluator never compete with head runs.
     """
-    work_dir = Path(_env("RELBENCH_WORK_DIR"))
+    work_dir = Path(settings["work_dir"])
     run_dir = archive_contract.allocate_run_dir(work_dir / "runs")
     for name in ("val_predictions.npy", "test_predictions.npy"):
         shutil.copy2(run_data_dir / name, run_dir / name)
@@ -271,7 +288,7 @@ def archive_full_run(run_data_dir: Path, val_metrics: dict, evaluator_id: str) -
     # Selection eligibility label. Every archive starts "pending"; the search
     # stamps exactly one run per session "final" (its registered result) and
     # the rest "superseded"; candidates may stamp "self-voided" via --void.
-    # final_evaluate selects ONLY among "final" runs stamped with the head
+    # Final selection picks ONLY among "final" runs stamped with the head
     # evaluator.
     archive_contract.write_selection_label(
         run_dir, session=_session_id(), evaluator_id=evaluator_id
@@ -303,7 +320,7 @@ def void_run(run_name: str, reason: str) -> None:
     which fails the CLI with the reason in the traceback."""
     session = _session_id()
     record = archive_contract.void_run(
-        Path(_env("RELBENCH_WORK_DIR")) / "runs",
+        Path(task_settings()["work_dir"]) / "runs",
         run_name,
         session=session,
         reason=reason,
@@ -324,16 +341,23 @@ def rescore_archived_run(run_path: str) -> None:
     if not run_dir.is_dir():
         print(f"[grader] --rescore: no archived run directory at {run_dir}")
         sys.exit(9)
-    primary = _env("RELBENCH_PRIMARY_METRIC")
-    val_metrics, _val_pred, _test_pred, n_val = load_and_score(run_dir)
+    settings = task_settings()
+    primary, higher = settings["primary_metric"], bool(settings["higher_is_better"])
+    val_metrics, _val_pred, _test_pred, n_val = load_and_score(settings, run_dir)
     label = json.loads((run_dir / "private" / "selection.json").read_text())
+    # The archived manifest line says which grant produced the run; the
+    # rescore echoes its class (fidelity, fraction, seed) beside the
+    # recomputed score.
+    archived = json.loads((run_dir / "manifest.txt").read_text().split(" ", 1)[1])
     manifest = {
-        "fidelity": "full",
-        "fraction": 1.0,
-        "seed": 1337,
+        "fidelity": archived["fidelity"],
+        "fraction": archived["fraction"],
+        "seed": archived["seed"],
         "items": n_val,
         "total_items": n_val,
-        "score": val_metrics[primary],
+        "score": oriented(val_metrics[primary], higher),
+        "raw_score": val_metrics[primary],
+        "higher_is_better": higher,
         "run": run_dir.name,
         "session": label["session"],
         "mode": "rescore",
@@ -349,7 +373,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fidelity", choices=["fast", "full"])
     parser.add_argument("--fraction", type=float, default=1.0)
-    parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument("--seed", type=int, help="the registered subsample seed; the engine's command carries it")
     parser.add_argument("--void", metavar="RUN",
                         help="disqualify one of this session's archived runs")
     parser.add_argument("--reason", default="",
@@ -365,52 +389,54 @@ def main() -> None:
     if args.rescore:
         rescore_archived_run(args.rescore)
         return
-    if not args.fidelity:
-        parser.error("--fidelity is required unless --void/--rescore is given")
+    if not args.fidelity or args.seed is None:
+        parser.error("--fidelity and --seed are required unless --void/--rescore is given")
 
-    primary = _env("RELBENCH_PRIMARY_METRIC")
+    settings = task_settings()
+    primary, higher = settings["primary_metric"], bool(settings["higher_is_better"])
     run_data_dir = Path(tempfile.mkdtemp(prefix="relbench_eval_"))
-    try:
-        rolling_root = os.environ.get("RELBENCH_ROLLING_ROOT", "")
-        if rolling_root:
-            run_candidate_rolling(args.fidelity, run_data_dir, Path(rolling_root))
-        else:
-            run_candidate(args.fidelity, run_data_dir)
-        val_metrics, _val_pred, _test_pred, n_val = load_and_score(run_data_dir)
+    rolling_root = settings["rolling_root"]
+    if rolling_root:
+        run_candidate_rolling(settings, args.fidelity, run_data_dir, Path(rolling_root))
+    else:
+        run_candidate(settings, args.fidelity, run_data_dir)
+    val_metrics, _val_pred, _test_pred, n_val = load_and_score(settings, run_data_dir)
 
-        evaluator_id = archive_contract.fingerprint_tree(
-            Path(__file__).resolve().parent
+    evaluator_id = archive_contract.fingerprint_tree(
+        Path(__file__).resolve().parent
+    )
+    archived = ""
+    if args.fidelity == "full":
+        archived = archive_full_run(settings, run_data_dir, val_metrics, evaluator_id)
+
+    print(f"[grader] OFFICIAL VALIDATION METRICS: {json.dumps(val_metrics)} "
+          f"({primary}, {'higher' if higher else 'lower'} is better)")
+    if archived:
+        print(f"[grader] archived as {archived}")
+    manifest = {
+        "fidelity": args.fidelity,
+        "fraction": args.fraction,
+        "seed": args.seed,
+        "items": n_val,
+        "total_items": n_val,
+        "score": oriented(val_metrics[primary], higher),
+        "raw_score": val_metrics[primary],
+        "higher_is_better": higher,
+        "run": archived,
+        "session": _session_id(),
+        "evaluator_id": evaluator_id,
+    }
+    manifest_line = f"{MANIFEST_MARKER} {json.dumps(manifest)}"
+    if archived:
+        # Durable copy OUTSIDE the session workspace: if the session (and
+        # its stdout) is gone before this line is ever read, kapso's
+        # teardown guard recovers the score of record from the archive.
+        runs_root = Path(settings["work_dir"]) / "runs"
+        (runs_root / archived / "manifest.txt").write_text(
+            manifest_line + "\n"
         )
-        archived = ""
-        if args.fidelity == "full":
-            archived = archive_full_run(run_data_dir, val_metrics, evaluator_id)
-
-        print(f"[grader] OFFICIAL VALIDATION METRICS: {json.dumps(val_metrics)}")
-        if archived:
-            print(f"[grader] archived as {archived}")
-        manifest = {
-            "fidelity": args.fidelity,
-            "fraction": args.fraction,
-            "seed": args.seed,
-            "items": n_val,
-            "total_items": n_val,
-            "score": val_metrics[primary],
-            "run": archived,
-            "session": _session_id(),
-            "evaluator_id": evaluator_id,
-        }
-        manifest_line = f"{MANIFEST_MARKER} {json.dumps(manifest)}"
-        if archived:
-            # Durable copy OUTSIDE the session workspace: if the session (and
-            # its stdout) is gone before this line is ever read, kapso's
-            # teardown guard recovers the score of record from the archive.
-            runs_root = Path(_env("RELBENCH_WORK_DIR")) / "runs"
-            (runs_root / archived / "manifest.txt").write_text(
-                manifest_line + "\n"
-            )
-        print(manifest_line)
-    finally:
-        shutil.rmtree(run_data_dir, ignore_errors=True)
+    print(manifest_line)
+    shutil.rmtree(run_data_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

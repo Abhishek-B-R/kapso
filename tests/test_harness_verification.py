@@ -143,7 +143,7 @@ def strategy(tmp_path, harness, monkeypatch):
     s.env_strip = []
     s.env_defaults = {}
     s._clamped_timeout = lambda seconds: seconds
-    s.problem_handler = SimpleNamespace(maximize_scoring=True, finalize_run_selection=lambda manifest, valid: None)
+    s.problem_handler = SimpleNamespace(maximize_scoring=True)
     return s
 
 

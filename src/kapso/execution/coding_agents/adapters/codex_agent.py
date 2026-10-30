@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from kapso.execution.inbox import new_requests_for_session
 from kapso.execution.coding_agents.session_record import record_run, start_run
-from kapso.execution.coding_agents.transcripts import CODEX_HOST
+from kapso.execution.coding_agents.transcripts import CODEX_EVENT_HEAD, CODEX_HOST, events, stream_lines
 from kapso.execution.coding_agents.base import (
     CodingAgentConfig,
     CodingAgentInterface,
@@ -156,15 +156,12 @@ def mcp_tool_calls(stream: str) -> List[Dict[str, Any]]:
     adapter's shape ({name: mcp__<server>__<tool>, input, result}): one
     per `item.completed` event whose item is an mcp_tool_call, the result
     being the text of the server's answer ("" when the call failed). Lines
-    that are not JSON events (merged stderr, warnings) are skipped; a line
-    shaped like an event that does not parse raises. Verified live
-    2026-10-02.
+    that are not JSON events (merged stderr, warnings) are skipped, as is
+    the line a kill cut; a line shaped like an event that does not parse
+    raises. Verified live 2026-10-02.
     """
     calls: List[Dict[str, Any]] = []
-    for line in stream.splitlines():
-        if not line.startswith('{"type":'):
-            continue
-        event = json.loads(line)
+    for event in events(stream_lines(stream), CODEX_EVENT_HEAD):
         if event["type"] != "item.completed":
             continue
         item = event["item"]

@@ -25,6 +25,7 @@ from kapso.execution.search_strategies.generic.registered_evaluation import (
     deferred_evaluation_instructions,
 )
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+import kapso.execution.search_strategies.generic.strategy as strategy_module
 
 
 class CandidateWorkspace:
@@ -85,6 +86,7 @@ def candidate_strategy(tmp_path, count=1):
     strategy.problem_handler = SimpleNamespace(maximize_scoring=True)
     strategy.registered_evaluation_manifest = {}
     strategy.registered_evaluation_command = ""
+    strategy.registered_evaluation_archive_glob = None
     strategy.registered_evaluator_id = None
     strategy.registered_subsample_seed = 1337
     strategy.registered_data_manifest = {}
@@ -217,7 +219,7 @@ def test_finalized_candidate_output_replaces_implementation_claims(tmp_path):
     assert "999" not in strategy.feedback_generator.outputs[0]
 
 
-def test_registered_manifest_keeps_raw_score_and_records_measured_cost(tmp_path):
+def test_registered_manifest_keeps_raw_score_and_records_measured_cost(tmp_path, monkeypatch):
     strategy, nodes, _ = candidate_strategy(tmp_path)
     evaluation = tmp_path / "kapso_evaluation"
     evaluation.mkdir()
@@ -232,8 +234,11 @@ def test_registered_manifest_keeps_raw_score_and_records_measured_cost(tmp_path)
         f"{shlex.quote(sys.executable)} kapso_evaluation/evaluate.py"
     )
     finalized = []
-    strategy.problem_handler.finalize_run_selection = (
-        lambda record, valid: finalized.append((record, valid))
+    # The engine labels its own archive at score-of-record time; here the
+    # labelling is recorded instead of touching a run archive.
+    monkeypatch.setattr(
+        strategy_module, "label_run_of_record",
+        lambda archive_glob, record, valid: finalized.append((record, valid)),
     )
     strategy.before_candidate_evaluation = admit_estimate
     strategy._finalize_nodes(nodes, time.monotonic(), append=True)
@@ -270,14 +275,15 @@ def test_failed_frame_run_is_judged_but_cannot_be_revalidated_by_feedback(tmp_pa
     ]
 
 
-def test_errored_build_is_judged_on_its_session_output_and_cannot_score_itself(tmp_path):
+def test_errored_build_is_judged_on_its_session_output_and_cannot_score_itself(tmp_path, monkeypatch):
     strategy, nodes, folders = candidate_strategy(tmp_path)
     strategy.registered_evaluation_command = (
         f"{shlex.quote(sys.executable)} kapso_evaluation/evaluate.py"
     )
     finalized = []
-    strategy.problem_handler.finalize_run_selection = (
-        lambda record, valid: finalized.append((record, valid))
+    monkeypatch.setattr(
+        strategy_module, "label_run_of_record",
+        lambda archive_glob, record, valid: finalized.append((record, valid)),
     )
     strategy.before_candidate_evaluation = (
         lambda node: pytest.fail("an errored build is never estimated")
@@ -411,6 +417,7 @@ def test_cost_build_prompt_defers_all_evaluation_to_orchestrator():
     strategy.finishing_cut = None
     strategy._attempt_commit = lambda branch_name: "c" * 40
     strategy.registered_evaluation_command = "python kapso_evaluation/kapso_eval.py"
+    strategy.registered_evaluation_archive_glob = None
     registered = strategy._evaluation_instructions()
     assert "Do not run the candidate or evaluation" in registered
     assert strategy.registered_evaluation_command in registered

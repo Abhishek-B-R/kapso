@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/deny-shell-submit/deny_shell_submit.py || exit 2"}
+        ]
+      }
+    ]
+  }
+}

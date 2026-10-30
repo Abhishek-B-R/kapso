@@ -83,9 +83,10 @@ for i in range(experiment_max_iter):
     # One search iteration: ideation, implementation, judged feedback
     node = self.search_strategy.run(context, budget_progress)
 
-    # A stop vote ends the campaign only when the handler's task semantics
-    # allow it — open-ended maximization has no "goal achieved"
-    if node.should_stop and self.problem_handler.honor_agent_stop:
+    # A stop vote ends the campaign only where the strategy honours one:
+    # the benchmark runners switch it off, open-ended maximization has no
+    # "goal achieved"
+    if node.should_stop and self.strategy_params["honor_agent_stop"]:
         break
 
     self._save_run_checkpoint(...)  # atomically, at the iteration boundary

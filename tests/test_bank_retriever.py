@@ -8,8 +8,9 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
-from kapso.learning.bank import Bank, Card, split_card_text
+from kapso.learning.bank import Bank, Card, dump_ledger, split_card_text
 from kapso.learning.retriever import (
     probe_offers,
     render_cards,
@@ -478,3 +479,65 @@ def test_flat_procedure_file_fails_the_transaction(tmp_path):
         {"rule": 35, "section": 25, "confidence": 8},
     ).validate()
     assert not any("invisible to the read layer" in f for f in findings), findings
+
+
+def reported_card(name, drop="", **source):
+    """A procedure card whose only evidence is a `reported` entry — what a
+    conversion of a curated book writes (benchmarks/ioai2026/book_to_bank.py)."""
+    body, ledger_text = split_card_text(card_text(name, kind="procedure", state="candidate"))
+    ledger = yaml.safe_load(ledger_text)
+    fields = {
+        "url": "https://example.org/winner", "author": "A. Winner", "licence": "MIT",
+        "score": "LB 0.79", "protocol": "the public leaderboard, fetched", **source,
+    }
+    if drop:
+        del fields[drop]
+    ledger["evidence"] = [{"source": fields, "verdict": "reported", "note": "a winner's notebook"}]
+    return f"{body}\n\n---\n\n```yaml\n{dump_ledger(ledger)}```\n"
+
+
+def test_reported_evidence_names_its_source_whole_and_serves_as_reported_by_others(tmp_path):
+    # Regression: a converted card (a score others reported at a source) is
+    # a valid card only with the five source fields, serves with the
+    # "reported by others" provenance line at every depth, renders its
+    # source in the evidence trail, and never passes as our measurement — a
+    # card with one executed entry beside the reported one is not "reported
+    # only" and carries no such line.
+    root = build_bank(tmp_path, {
+        "winner-recipe": reported_card("winner-recipe"),
+        "no-protocol": reported_card("no-protocol", protocol=""),
+        "no-score-key": reported_card("no-score-key", drop="score"),
+    })
+    (root / "procedures" / "winner-recipe" / "code").mkdir()
+    bank = Bank(str(root))
+    assert bank.cards["winner-recipe"].conformance_findings() == []
+    assert bank.cards["winner-recipe"].reported_only
+    assert bank.cards["no-protocol"].conformance_findings() == [
+        "no-protocol: reported evidence protocol is empty"
+    ]
+    assert bank.cards["no-score-key"].conformance_findings() == [
+        "no-score-key: reported evidence source lacks score"
+    ]
+    assert bank.executed_closure(bank.cards["winner-recipe"]) == []
+
+    served = render_cards(bank, TASK, ["winner-recipe"], True, {})
+    text = served["text"]
+    assert f"code: {root / 'procedures' / 'winner-recipe' / 'code'}" in text
+    assert "*provenance:* reported by others — the score is the source's, not a kapso measurement" in text
+    assert (
+        "- verdict=reported (reported by others, not a kapso measurement) "
+        "url=https://example.org/winner author=A. Winner licence=MIT score=LB 0.79 "
+        "protocol=the public leaderboard, fetched"
+    ) in text
+    assert "note: a winner's notebook" in text
+    assert "*provenance:*" in render_cards(bank, TASK, ["winner-recipe"], False, {})["text"]
+
+    mixed_text = card_text("mixed", kind="procedure", state="candidate")
+    body, ledger_text = split_card_text(mixed_text)
+    ledger = yaml.safe_load(ledger_text)
+    ledger["evidence"].append(yaml.safe_load(split_card_text(reported_card("x"))[1])["evidence"][0])
+    mixed_root = build_bank(tmp_path / "mixed", {"mixed": f"{body}\n\n---\n\n```yaml\n{dump_ledger(ledger)}```\n"})
+    mixed_bank = Bank(str(mixed_root))
+    assert mixed_bank.cards["mixed"].conformance_findings() == []
+    assert not mixed_bank.cards["mixed"].reported_only
+    assert "*provenance:*" not in render_cards(mixed_bank, TASK, ["mixed"], False, {})["text"]

@@ -1,0 +1,71 @@
+{
+  "version": "0.8.0.dev1",
+  "wheel_sha256": "8fe4f7356af279ec3f266b9f9a4cd9598640a1001f2bd823e3c7abaef8018300",
+  "wheels": [
+    {
+      "built": "2026-10-29T15:18Z",
+      "sha256": null,
+      "runs": [
+        "s3-ioai-1",
+        "s3-kaggle-swap-1",
+        "s3-relbench-swap-1",
+        "s3-ale-swap-ahc011-1"
+      ]
+    },
+    {
+      "built": "2026-10-29T17:08Z",
+      "sha256": null,
+      "runs": [
+        "s3-relbench-2",
+        "s3-mle-4"
+      ]
+    },
+    {
+      "built": "2026-10-29T18:10Z",
+      "sha256": "784a0136ef22d80230d6cb1da54d0b844eab0a46e922d7a591e5d44e616f99e8",
+      "runs": [
+        "s3-ale-2"
+      ]
+    },
+    {
+      "built": "2026-10-29T19:08Z",
+      "sha256": "8fe4f7356af279ec3f266b9f9a4cd9598640a1001f2bd823e3c7abaef8018300",
+      "runs": [
+        "s3-relbench-3",
+        "s3-relbench-4"
+      ]
+    }
+  ],
+  "harness_pins": {
+    "predictive-modelling": {
+      "f38e6e5a43a6a8208d0f81989883a5611372da9aa53c0917d5856d8c6f76d1f3": "0.3.2, the frozen tree every arm and swap ran on"
+    },
+    "competitive-programming": {
+      "f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1": "0.3.0, the frozen tree the arms and the swaps ran on",
+      "1241d8cc1d821226584a7d6b95f2dfa5e6e514efed35da5f926b90b5e9256183": "0.3.1, the kaggle-cli skill's pages line corrected for the installed CLI after the freeze (DECISIONS, 2026-10-29); no arm ran on it"
+    }
+  },
+  "ioai_median": 0.8184,
+  "started": "2026-10-29T15:51:45Z",
+  "runs": {
+    "arm-relbench": "s3-relbench-4",
+    "arm-mle": "s3-mle-4",
+    "arm-ale": "s3-ale-2",
+    "arm-ioai": "s3-ioai-1",
+    "swap-relbench": "s3-relbench-swap-1",
+    "swap-ale": "s3-ale-swap-ahc011-1",
+    "swap-kaggle": "s3-kaggle-swap-1",
+    "swap-ioai": null
+  },
+  "notes": [
+    "competitive-programming is pinned at 0.3.1; the arms and the swaps ran on 0.3.0 (f061926e76c62ff909893a02bd9218708c5965bac705d857be949ac40870dfd1), which differs by one line of the kaggle-cli skill (the pages command's -c flag)",
+    "s3-ioai-1's public score is a replay of the Kaggle account's own earlier kernel for the competition, with no candidate delivered: the tooling is established, a cold start is not",
+    "logins: claude-oauth-token-5 (s3-ioai-1, s3-relbench-2), claude-oauth-token-2 (s3-relbench-swap-1, s3-mle-4), a managed account's credentials (s3-kaggle-swap-1, s3-ale-2), another's (s3-ale-swap-ahc011-1)",
+    "swap-ioai is dropped from the release's required steps by the owner (2026-10-29): no Kaggle account will be set up; the practice competitions' rules are accepted in a browser only",
+    "the owner accepts the arm-ioai standing for the release (2026-10-29): the delivery bar stays failing in this record; the release notes say what was and was not measured",
+    "s3-relbench-3 (three hours, one A100, four lanes, cold) ran one iteration and delivered no candidate: the first lane's attempt voided by verification, the other three unverified and unjudged when the budget ran out (the finishing cut); the selection among the registered finals scored test AUROC 0.558 against the band's 0.741; a six-hour attempt on the same shape, s3-relbench-4, was launched 22:25Z",
+    "s3-relbench-4 (six hours, one A100, four lanes, cold; the owner's last attempt) reached test AUROC 0.7555 on the runner's selection among the lanes' registered finals, inside the band, and delivered no candidate: the maintainer accepted a change request at iteration one and the candidates failed under the second evaluator; the benchmarks' configs now file no change request",
+    "the review of 2026-10-30 changed both harnesses' prose after the arms (predictive-modelling 0.3.3, competitive-programming 0.3.2): the record's `harness_current` carries the trees' hashes at re-derivation, the pins stay the trees the arms ran on, and the zero-edit bar reads each launch against its pins",
+    "four builds of the 0.8.0.dev1 wheel served the runs (the `wheels` list, each with its runs by its install stamp): 15:18Z, 17:08Z with the stream split, 18:10Z with the ALE runner and run-folder fixes (784a0136…, the record's wheel until the next build), 19:08Z with the superseded-scan entry (8fe4f735…, the file that survives on the development box; the earlier files were overwritten in place, so the first two builds' hashes are not recorded and are null); the record's wheel is the last build"
+  ]
+}

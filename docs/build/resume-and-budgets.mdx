@@ -117,10 +117,7 @@ and recorded on the checkpoint, so a resume reasons from the history it
 restored. The duration counts the round's finishing (its verification and
 its judge), which the reserve holds back as well, so the admission errs
 early by about one finishing span rather than late. Before any round, the
-floor alone. A campaign whose handler
-reports a deliverable already banked is insured: it uses
-`min_iteration_seconds_insured` alone, the handler vouching for its
-endgame.
+floor alone.
 
 **A session not launched says why.** Verification not launched leaves the
 attempt `unverified` with the reason; a judge not launched leaves it

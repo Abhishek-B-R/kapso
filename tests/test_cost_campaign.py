@@ -42,9 +42,7 @@ def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
     strategy.evaluator_transition = None
     strategy.problem_handler = SimpleNamespace(
         maximize_scoring=True,
-        honor_agent_stop=True,
         get_problem_context=lambda: "Improve the candidate",
-        deliverable_ready_reserve_seconds=lambda: None,
     )
     policy = normalize_cost_config({
         "enabled": True,

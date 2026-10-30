@@ -36,6 +36,24 @@ runs and the semantic suite.
 wheel sha256, install log, run logs, deletion line). It is gitignored except
 for the files a sub-plan cites as evidence.
 
+## benchmark_machine.sh
+
+The fresh machine's shape for a benchmark reproduction
+(`docs/plans/redesign/wp8-harness-ports.md`): a GPU where the benchmark
+needs one, the wheel and the benchmark tree at this commit, the
+benchmark's own stack in one virtual environment with the engine (the
+candidates' code runs in the handler's interpreter).
+
+| | |
+|---|---|
+| kinds | `create <id> gpu`: a spot `a2-highgpu-1g` (one A100 40 GB); `create <id> gpu4`: a spot `a2-highgpu-4g` (four A100 40 GB, the RelBench lanes' shape) on `common-cu129-ubuntu-2204-nvidia-580` with a 300 GB disk, tried over `us-central1-a`, `-b`, `-f` (`KAPSO_BENCH_GPU_ZONES`); `create <id> cpu`: an `e2-standard-8` on Ubuntu 24.04 with Docker, for the heuristic-optimisation scorer |
+| labels | `purpose=kapso-bench,run=<run-id>,kind=gpu|cpu`; `status` lists them |
+| provisioning | spot by default (the price the record carries); `KAPSO_BENCH_PROVISIONING=standard` for an arm whose hours a preemption would waste (a spot machine was preempted two minutes into a run); the deletion line bills at the kind's rate for the model used |
+| lifetime | `--max-run-duration 14h` (`KAPSO_BENCH_MAX_RUN`) with `--instance-termination-action DELETE`; a spot preemption deletes the machine too, so a long arm leans on the engine's checkpoint and the archive is fetched as the arm goes |
+| install | `install <id> <wheel> <benchmark>`: `benchmark_machine_install.sh` over ssh makes `~/bench/venv` (a uv-managed Python 3.12 on every kind, seeded with pip) with the wheel, every bundled harness's `requirements.txt`, the benchmark's `requirements.txt` where one exists and its own stack (RelBench: torch and `relbench[full]==2.1.2` with the modelling libraries; MLE: the MLE-bench library at the development environment's revision with its leaderboards pulled from LFS, torch, kaggle; ALE: the ALE-Bench library at v1.6.1 with its evaluation extras, the engine's `mcp<2` re-pinned after it, the cpp23-202301 judge image built in Docker; IOAI: kaggle and torch), unpacks `benchmarks/common.py` and `benchmarks/<benchmark>` into `~/bench`, installs Node 22 with the two CLIs; the secrets as `fresh_machine.sh` pushes them, the device-auth Codex session with its `~/.codex/SOURCE` marker, and the account's Kaggle credential for the MLE and IOAI benchmarks |
+| run | `run <id> "<command>"` sources the secrets, puts the venv on PATH and runs the command from `~/bench`; tee'd to `runs/<id>/run-N.log` |
+| fetch, delete | as `fresh_machine.sh`; the deletion line bills at the kind's hourly estimate (`GPU_HOURLY_USD`, `CPU_HOURLY_USD`) |
+
 ## semantic.sh
 
 ```

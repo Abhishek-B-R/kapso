@@ -52,12 +52,15 @@ def test_an_ideation_member_streams_json_beside_its_artifacts_and_records_its_ru
 
 
 def test_a_killed_turns_output_is_the_agents_messages_not_the_raw_events():
+    """The messages before the kill; the line the kill cut (no newline)
+    is not evidence of anything and is skipped."""
     stream = "\n".join([
         "Reading prompt from stdin...",
         '{"type":"thread.started","thread_id":"t"}',
         '{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"<solution>one</solution>"}}',
         '{"type":"item.completed","item":{"id":"i2","type":"command_execution","command":"ls","status":"completed"}}',
         '{"type":"item.completed","item":{"id":"i3","type":"agent_message","text":"and two"}}',
+        '{"type":"item.completed","item":{"id":"i4","type":"agent_message","text":"and the cut thi',
     ])
     assert codex_ideation.agent_messages(stream) == "<solution>one</solution>\nand two"
 

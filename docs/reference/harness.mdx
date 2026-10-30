@@ -13,7 +13,7 @@ A harness is named by one string, on `kapso build --harness`, `kapso deploy --ha
 
 | Form | Example | Resolution |
 |---|---|---|
-| bundled name | `trading` | `[a-z0-9][a-z0-9-]*` naming a harness that ships inside the package |
+| bundled name | `predictive-modelling` | `[a-z0-9][a-z0-9-]*` naming a harness that ships inside the package |
 | directory | `./harness/trading`, `~/harnesses/trading`, `/srv/harnesses/trading` | used in place; a relative path is read from the directory the command runs in |
 | git URL | `git+https://github.com/acme/harnesses@v3#trading`, `git+ssh://git@github.com/acme/harnesses@main`, `git@github.com:acme/harnesses@v3#trading` | the repository at the revision, the subdirectory inside it |
 | GitHub shorthand | `acme/harnesses@v3#trading` | `https://github.com/acme/harnesses`; `@rev` or `#subdirectory` or both, at least one |

@@ -28,13 +28,15 @@ items. Therefore:
   validation rows — positional alignment with the official task table is a
   hard correctness requirement.
 
-## Environment
+## Configuration
 
-All configuration arrives via environment variables exported by the RelBench
-handler before the search starts (dataset/task identity, primary metric,
-archive dir, timeouts, the sanitized RELBENCH_CACHE_DIR). The suite needs no
-setup beyond Python with `relbench` and `numpy` installed — verify with a
-`--fidelity fast` dry run.
+The task's settings travel with the grader: `task.json` beside it, written
+by the runner that stages this directory (the dataset and task, the primary
+metric and its direction, the archive root, the candidate's timeouts, the
+sanitized copy's path, the rolling root or null). The grader binds the
+library to that copy itself and hands the candidate's process the copy as
+`RELBENCH_CACHE_DIR`. The suite needs no setup beyond Python with `relbench`
+and `numpy` installed — verify with a `--fidelity fast` dry run.
 
 ## Hard rules
 

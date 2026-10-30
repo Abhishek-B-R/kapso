@@ -50,14 +50,17 @@ task are on the [official RelBench leaderboard](https://star-project.stanford.ed
 
 ## How it stays honest
 
-1. **Sanitized cache**: `sandbox.py` builds a per-task database copy with everything
+1. **Sanitized copy**: the runner builds a per-task database copy with the
+   predictive-modelling harness's sanitizer (its `sanitized-copy` skill), everything
    test-derivable physically removed; the agent-visible test table carries only
-   (entity, seed-time) rows.
-2. **Search**: the Kapso platform iterates ideation → implementation → judged feedback
-   against official *validation* scores: `--strategy generic` (the campaign standard, with
-   the provided immutable grader) or `--strategy tree` (handler-scored).
-3. **Selection**: the best run is chosen on validation and scored **once** on test by the
-   handler, followed by a code audit for leakage patterns.
+   (entity, seed-time) rows, and the copy is reused across campaigns under its marker.
+2. **Search**: `build()` with the bundled `predictive-modelling` harness (or the one
+   `--harness` names) iterates ideation → implementation → verification → judged feedback
+   against official *validation* scores through the provided immutable grader, whose
+   `task.json` names the task, the copy and the caps.
+3. **Selection**: the archive's registered finals are rescored by the head evaluator; the
+   winner is scored **once** on test by the runner, the harness's leakage scan runs over
+   its code, and `final_report.json` records both beside what the build delivered.
 
 Temporal-regime details, including the rolling per-tick harness for windowed tasks, live in
 [`EVALUATION_PROTOCOL.md`](EVALUATION_PROTOCOL.md).
@@ -76,6 +79,12 @@ Run one task:
 expert-relbench -s rel-f1 -t driver-position --time-budget-hours 4
 ```
 
+The default harness is the bundled `predictive-modelling`; `--harness REF` swaps it,
+`--experience REFS` serves banks or an index, and `--workspace DIR --resume` continues a
+campaign. The task's archive root (`tmp/relbench/<dataset>--<task>/`, the `benchmark.work_root`
+key of `config.yaml`) holds the sanitized copy, the staged evaluation, the shared cache, the
+runs and `final_report.json`.
+
 Multi-task campaign (task queue, hardware gating, budget threading):
 
 ```bash
@@ -87,10 +96,9 @@ PYTHONPATH=src:. python -m benchmarks.relbench.campaign \
 
 | path | role |
 |---|---|
-| `handler.py` | benchmark handler: sanitized-cache contract, val-scored runs, final selection + leakage audit |
-| `runner.py` / `campaign.py` | single-task CLI / multi-task campaign driver |
-| `sandbox.py` | sanitized + rolling cache builder |
-| `context.py` / `task_specs.py` | problem-context builder / per-task metadata |
-| `config.yaml` | the override file over the packaged config (`kapso doctor --show-config --config benchmarks/relbench/config.yaml`); the runner writes a runtime copy with the task's cache and the budget |
+| `runner.py` / `campaign.py` | single-task CLI on `build()` / multi-task campaign driver |
+| `scoring.py` | the runner's own scoring: the sanitized copy through the harness's script, the staged evaluation, the final report over the archive |
+| `context.py` / `task_specs.py` | the Brief from the task's facts / per-task metadata |
+| `config.yaml` | the override file over the packaged config (`kapso doctor --show-config --config benchmarks/relbench/config.yaml`); the runner writes a runtime copy with the task's shared cache; the `benchmark:` block holds the runner's own keys |
 | `data/` | agent-facing starter kit, provided evaluator, seed baseline |
 | `claude_code_baseline/` | the frontier-coding-agent baseline: prompt, harness, results |
