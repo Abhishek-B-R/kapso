@@ -1311,6 +1311,12 @@ def step_second_engineer_build(ctx: Context) -> Dict[str, Any]:
     budget = SUITE["builds"]["second_engineer"]
     ensure_second_user(ctx)
     ctx.shell(f"sudo rm -rf /home/proof2/churn-second /home/proof2/second-campaign /home/proof2/second-campaign.log /home/proof2/env; sudo cp -r {project} /home/proof2/churn-second; sudo chown -R proof2:proof2 /home/proof2/churn-second")
+    # The copied project's evaluator reads the labels through the absolute
+    # path in evaluation/private_dir.txt, which the first user's view wrote
+    # into its own home — unreadable to the second user (rel-s2-claude: the
+    # evaluator died at line 53 on every attempt, `drwxr-x--- ubuntu`, and
+    # the build ended unscored). The second engineer's copy points at its own.
+    ctx.shell("sudo -u proof2 -H bash -lc 'printf %s /home/proof2/churn-second/private > ~/churn-second/evaluation/private_dir.txt'")
     # The second engineer's project environment, as the docs install it: a
     # venv holding the wheel and the project's requirements, first on PATH,
     # so `python3` — the interpreter the harness's commands name — is it
