@@ -746,8 +746,8 @@ that is still evidence.
     the design and the trading example only), the guess log classified
     and recorded here. Done 2026-10-29 for the record (`d7fce019`, the
     `s3` entry and `s3_ports.py`; `reports/s3-1.md` re-derived with the
-    deferred steps visible); the author test's re-run is owed after the
-    arms.
+    deferred steps visible); the author test re-run on both hosts
+    2026-10-30, zero structural gaps after one guide fix (Acceptance).
 21. **The docs' sentences.** `docs/harnesses/use.mdx` names the two bundled
     harnesses; `docs/harnesses/write.mdx` says the scan exists and what
     `check` leaves to it; the reference's bundled-name row shows a real
@@ -924,9 +924,14 @@ that is still evidence.
   - No further attempt runs on any benchmark before the release (the
     owner, 2026-10-29): the arms and the swaps above stand as recorded,
     the six-hour RelBench attempt being the last run.
-  - The author test's re-run on both hosts: owed; it waits for the arms,
-    since a fresh machine's copy of the Codex login would refresh the
-    token the arms' machines hold.
+  - The author test's re-run on both hosts, with the bundled harnesses
+    excluded from the author's inputs (2026-10-30): Codex
+    (`author-codex-3`) at zero structural gaps and a green check; Claude
+    Code (`author-claude-5`) at a green check and one structural gap, the
+    guide's deferral of a target skill's `metadata.run_kinds` schema to
+    the deploy page, closed in `docs/harnesses/write.mdx`; round two
+    (`author-claude-6`) at zero gaps and a green check. The reports are
+    under `tests/semantic/reports/`.
 - The author test at zero structural guesses on both hosts after the
   guide fixes, with the bundled harnesses excluded from its inputs.
 - The IOAI bank: two verified copies of the backup, a verdict per entry
