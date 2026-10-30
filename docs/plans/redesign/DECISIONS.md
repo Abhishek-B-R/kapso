@@ -3217,3 +3217,18 @@ done everything right could not say what the deploy returned ("I found no
 deployment record on disk"): the comprehension 0 on a run with every
 other bar met. The learn runs on the campaign as the deploy left it, the
 realistic order, and the deployment record stays for the reading.
+
+## The S1 rig after the third wave on Codex (2026-10-30)
+
+Three readings. A detached launch's child writes its status seconds after
+the command returns, and a host whose turn ends at the launch (Codex,
+twice at half a minute) left the evidence to land after the watcher's
+last look: the watcher keeps looking for up to the suite's
+`evidence_grace_seconds` after the turn, and the launch clock still stops
+at the evidence. The deploy task's step cap was fifteen minutes and the
+deploy session itself took seventeen on Codex, the engineer's launch half
+a minute: the cap is twenty, the engineer's measure being the minutes to
+the launch. And the Python flow is asked for as a script of at most a
+dozen lines — the bar's own figure, said in the ticket — while the
+finding stands that the API's blocking `build()` makes the engineer
+reinvent the detached launch in eight of those lines on every host.
