@@ -43,10 +43,12 @@ Run everything from the repository root.
    Weaviate can be shared: the eval writes only to the collection named in
    `config.yaml` (`KapsoRetrievalEval`). The runner refuses to start if that
    collection or the Neo4j address is the shipped default.
-3. Credentials follow the rest of Kapso: the embedding provider reads its own
-   key (OpenAI by default), and the reranker runs through the coding-agent CLI
-   configured for the `kg_rerank` role in `src/kapso/config.yaml`. `kapso doctor`
-   checks both.
+3. Credentials follow the rest of Kapso. The embedder (OpenAI by default) needs
+   `OPENAI_API_KEY=sk-...` in a gitignored `.env` in the directory you run from;
+   the runner loads it like the CLI does. The reranker runs through the
+   coding-agent CLI configured for the `kg_rerank` role in
+   `src/kapso/config.yaml` (codex by default, using its own login). `kapso
+   doctor` checks both.
 4. Run:
 
    ```bash

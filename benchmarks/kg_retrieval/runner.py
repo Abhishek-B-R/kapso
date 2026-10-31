@@ -17,6 +17,8 @@ import copy
 import json
 from pathlib import Path
 
+from dotenv import find_dotenv, load_dotenv
+
 from benchmarks.kg_retrieval.labels import load_labels
 from benchmarks.kg_retrieval.metrics import aggregate
 from kapso.core.cli_inference import resolve_inference_config
@@ -29,6 +31,10 @@ from kapso.knowledge_base.search import (
 from kapso.knowledge_base.search.kg_graph_search import parse_wiki_directory
 
 SEARCH_BACKEND = "kg_graph_search"
+
+# Provider keys (the embedder's OPENAI_API_KEY) live in a gitignored .env, as
+# for the CLI and the other benchmark runners; no setting is read from it.
+load_dotenv(find_dotenv(usecwd=True))
 
 
 class RerankFailed(RuntimeError):
