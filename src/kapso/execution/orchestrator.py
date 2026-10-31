@@ -1687,7 +1687,22 @@ class OrchestratorAgent:
                 last_round = self.search_strategy.last_round_seconds
                 if last_round is not None:
                     needed_seconds = max(needed_seconds, last_round)
-                if remaining_after_reserve is not None and remaining_after_reserve < needed_seconds:
+                # A continuation is not a round: a node suspended on a
+                # request the person has answered resumes its own session
+                # whatever the remainder, since the attempt is under way and
+                # the person answered (the release gate's S5 saw a resume
+                # refused on the paused attempt's own elapsed time — "the
+                # last took 18.2 min" — and the reply never reach the
+                # session). The continuation's result is judged like any
+                # finished node; the next admission sees the real remainder.
+                continuation = self.search_strategy.continues_an_answered_node()
+                if continuation and remaining_after_reserve is not None and remaining_after_reserve < needed_seconds:
+                    print(
+                        "[Orchestrator] Continuing the node that waited on the inbox: "
+                        f"the remaining {max(remaining_after_reserve, 0.0) / 60:.1f} min would not admit a new attempt, "
+                        "and a continuation is not one"
+                    )
+                if not continuation and remaining_after_reserve is not None and remaining_after_reserve < needed_seconds:
                     champion = (
                         fidelity_policy.full_champion(
                             self.search_strategy.get_experiment_history()

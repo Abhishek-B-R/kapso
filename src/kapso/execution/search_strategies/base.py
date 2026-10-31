@@ -771,6 +771,14 @@ class SearchStrategy(ABC):
         """Store the executive's granted profile for this iteration."""
         self.fidelity_decision = decision
 
+    def continues_an_answered_node(self) -> bool:
+        """Whether the next run() continues a node suspended on a request
+        the person has since answered, rather than starting a round. The
+        orchestrator admits such a continuation regardless of the
+        attempt-fit rule: the attempt is already under way and the person
+        answered. A strategy without an inbox never continues one."""
+        return False
+
     def _status_phase(self, phase: str) -> None:
         """Record the live phase on the campaign status file when the
         orchestrator attached one (observability §2). Read via getattr,

@@ -165,6 +165,37 @@ def test_admission_covers_the_last_round(tmp_path, monkeypatch):
     assert RunCheckpointStore(str(workspace)).load().last_stop == ATTEMPT_WOULD_NOT_FIT
 
 
+def test_an_answered_continuation_is_admitted_whatever_the_remainder(tmp_path, monkeypatch):
+    """The release gate's S5 (missing-key, the fourth Codex launch): the
+    campaign paused on a request, the person answered within two minutes,
+    and the resume was refused — "the remaining 16.3 min would not cover an
+    attempt (the last took 18.2 min)", the last being the paused attempt's
+    own elapsed time — so the reply never reached the session. A node the
+    person has answered continues whatever the remainder; a new round after
+    it is admitted on the real remainder as before."""
+    workspace = tmp_path / "workspace"
+    _init_git_workspace(workspace)
+    _patch_orchestrator(monkeypatch)
+    monkeypatch.setattr(orchestrator_module, "load_config", lambda config_path=None: fake_config(budget={"reserve_minutes": 2}))
+    orchestrator = _orchestrator(workspace)
+    strategy = orchestrator.search_strategy
+    strategy.last_round_seconds = 14 * 60.0
+    orchestrator._save_run_checkpoint(status="running")
+    answered = {"pending": True}
+    monkeypatch.setattr(strategy, "continues_an_answered_node", lambda: answered["pending"])
+    original_run = strategy.run
+
+    def run_then_settle(*args, **kwargs):
+        answered["pending"] = False   # the continuation ran; the next admission is an ordinary round's
+        return original_run(*args, **kwargs)
+    monkeypatch.setattr(strategy, "run", run_then_settle)
+    result = orchestrator.solve(experiment_max_iter=3, time_budget_minutes=10)
+    assert result.iterations_run == 1, "the continuation ran although 8 searchable minutes could not cover a 14-minute round"
+    assert result.stopped_reason == "budget_exhausted" and result.stop_detail == ATTEMPT_WOULD_NOT_FIT, "the round after it met the rule"
+    recent = status_file(orchestrator)["recent"]
+    assert any("would not cover an attempt (the last took 14.0 min)" in line for line in recent)
+
+
 def test_a_finishing_cut_stops_the_campaign_by_name(tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
     _init_git_workspace(workspace)

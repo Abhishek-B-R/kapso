@@ -84,7 +84,7 @@ A budget stop records why in `stopped_reason: budget_exhausted` and
 |---|---|
 | `time_budget` | The wall clock ran out |
 | `cost_budget` | The model spend reached its budget |
-| `attempt_would_not_fit` | A round was not admitted: the searchable remainder would not cover an attempt. The note says why, `the remaining 8.0 min would not cover an attempt (the last took 14.0 min)` |
+| `attempt_would_not_fit` | A round was not admitted: the searchable remainder would not cover an attempt. The note says why, `the remaining 8.0 min would not cover an attempt (the last took 14.0 min)`. A node waiting on a request you have answered is not a round: its session continues whatever the remainder, and the round after it is admitted on what is left |
 | `finishing_cut` | A finishing session was not launched or was cut at the deadline: the note names it, `the verification of node 3 was not launched: …` |
 
 The mechanism behind the last two:

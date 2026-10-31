@@ -763,6 +763,9 @@ class GenericSearch(SearchStrategy):
             )
         return node
 
+    def continues_an_answered_node(self) -> bool:
+        return self._answered_suspended_node() is not None
+
     def _continue_node(self, node: SearchNode, problem: str) -> SearchNode:
         """The inbox continuation: resume the node's stored CLI session with
         the replies, then judge it like any finished node — the same node
