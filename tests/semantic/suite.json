@@ -817,7 +817,7 @@
       "experiments": 2
     },
     "churn": {
-      "minutes": 60,
+      "minutes": 90,
       "experiments": 3
     },
     "fraud": {
