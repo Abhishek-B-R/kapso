@@ -3428,3 +3428,29 @@ deadline is today: the run was stopped at its fourth injection, its
 partial record archived with the two readings it gave (missing-key passing
 on the continuation fix; the crash seen and the handoff finding), and the
 test relaunched from the fixed tree two hours sooner than waiting it out.
+
+## S2's learn-complete waits four hours (2026-10-31)
+
+The fourth S2 Claude launch's learn was still in its update crew when the
+step's 150-minute wait expired; the previous launch's learn took 121
+minutes and this one more, the crew being about ninety minutes of either.
+The step's wait is the gate's accommodation of the product's cost, not a
+bar on it: it is now 240 minutes, the launcher's run cap ten hours, and the
+learn's duration is recorded for the owner. The run was stopped at its
+second engineer rather than run out — learn-complete could not pass on it,
+every earlier step had, and the remaining ones had passed on the previous
+launch — and relaunched from the widened tree an hour and a half sooner.
+
+## A finished rate-limited campaign is continued, not waited for (2026-10-31)
+
+The sixth S5 Codex launch's provider-limit campaign had stopped at
+`max_iterations` before the question — the rate-limited first attempt
+counted against its two experiments — and the plugin's fix was to
+continue it with a larger allowance, which the vocabulary (wait, retry,
+the window, resume) did not hold: those are a running campaign's fixes.
+The vocabulary takes "continuing", "the experiment allowance", "more
+experiments" and "another attempt"; the archived record is read again
+under it when the run lands, the suite's own `--rederive`, rather than a
+seventh launch. That a provider-rejected attempt counts against the
+allowance, and that the feedback quoted the brief's budget rather than the
+launch's, are the owner's findings.
