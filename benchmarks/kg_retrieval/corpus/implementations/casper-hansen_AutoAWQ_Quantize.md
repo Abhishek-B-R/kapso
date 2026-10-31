@@ -20,7 +20,7 @@ AutoAWQForCausalLM is the entry class of the AutoAWQ library, and its quantize m
 
 === Description ===
 
-No backpropagation is involved, so peak memory is that of a forward pass through one block plus the recorded activations. The AutoAWQ project is deprecated and its repository archived, with its development continuing in the vLLM project's llm-compressor.
+AutoAWQForCausalLM is the main class of the AutoAWQ library, which compresses language-model weights to 4 bits for smaller, faster inference using the AWQ algorithm. Its quantize method turns a loaded model into a compressed one and save_quantized writes the result. The AutoAWQ project is deprecated and its repository archived, with its development continuing in the vLLM project's llm-compressor.
 
 === Usage ===
 

@@ -20,7 +20,7 @@ The torch.autocast context manager and the torch.amp.GradScaler class are the tw
 
 === Description ===
 
-Autocast selects an operation's precision from a fixed list of which ops run well in 16 bits and which must stay in 32 bits. The scaler keeps a running scale, doubling it after a run of clean steps and halving it after an overflow. Which operations are kept in float32 is defined per device type; the reductions and softmax named here follow the CUDA list.
+torch.autocast and torch.amp.GradScaler are PyTorch's utilities for automatic mixed-precision training: they run selected operations in a lower-precision dtype and look after the loss during backpropagation. Together they reduce memory use and speed up training on hardware with fast 16-bit arithmetic. Which operations are kept in float32 is defined per device type; the reductions and softmax named here follow the CUDA list.
 
 === Usage ===
 

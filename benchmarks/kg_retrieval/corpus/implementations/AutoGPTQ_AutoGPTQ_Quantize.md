@@ -20,7 +20,7 @@ AutoGPTQForCausalLM is the main class of the AutoGPTQ library, and its quantize 
 
 === Description ===
 
-Running it needs the full-precision model in memory, or offloaded, plus the calibration batch; time grows with the number of layers and the size of the examples. The AutoGPTQ repository is archived and unmaintained, and its README points new work to GPTQModel.
+AutoGPTQForCausalLM is the main class of the AutoGPTQ library, which compresses language-model weights to a low bit width with the GPTQ algorithm. Its quantize method turns a loaded model into a compressed one, calibrated on sample inputs, and save_quantized writes the result. The AutoGPTQ repository is archived and unmaintained, and its README points new work to GPTQModel.
 
 === Usage ===
 

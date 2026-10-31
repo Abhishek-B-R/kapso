@@ -20,7 +20,7 @@ LLMEngine is the core class of vLLM: it accepts generation requests, schedules t
 
 === Description ===
 
-Each call to step schedules a set of sequences, executes one model iteration and returns the request outputs produced by it.
+LLMEngine is the core class of vLLM, the engine that accepts generation requests, schedules them and runs the model on the accelerators. Higher-level entry points such as the LLM class and the OpenAI-compatible server are thin layers over it. Each call to step schedules a set of sequences, executes one model iteration and returns the request outputs produced by it.
 
 === Usage ===
 

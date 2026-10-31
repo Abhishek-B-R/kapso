@@ -20,7 +20,7 @@ LoraConfig is the configuration dataclass in the PEFT library that holds every s
 
 === Description ===
 
-The dataclass validates its fields on construction, and get_peft_model reads it to decide which submodules to replace with adapter-carrying versions.
+LoraConfig is the PEFT configuration class for LoRA, a parameter-efficient fine-tuning method that trains small low-rank matrices in place of the full weights of a pretrained transformers model. It gathers the settings of one adapter and is consumed by get_peft_model.
 
 === Usage ===
 

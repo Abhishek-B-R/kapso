@@ -20,7 +20,7 @@ FullyShardedDataParallel is the PyTorch wrapper class that distributes a module'
 
 === Description ===
 
-Each wrapped unit owns a flat parameter that is sharded evenly. Unit boundaries set the peak memory, because only one unit's weights are fully materialised at a time.
+FullyShardedDataParallel is PyTorch's wrapper for sharded data-parallel training: it spreads a model's parameters, gradients and optimizer state over many GPUs so that networks larger than a single device can be trained. Each wrapped unit owns a flat parameter that is sharded evenly, and unit boundaries set the peak memory.
 
 === Usage ===
 
