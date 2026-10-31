@@ -280,3 +280,45 @@ def test_both_hosts_turns_carry_whether_a_tool_call_succeeded():
     ])
     tools, sid = proof.parse_codex_stream(codex_stream, "")
     assert sid == "th-1" and [(tool["name"], tool["is_error"]) for tool in tools] == [("mcp__kapso__bank_get_card", True), ("mcp__kapso__bank_list", False), ("Bash", True)]
+
+
+def test_the_trigger_probe_runs_after_every_campaign_so_neither_is_measured_under_the_other():
+    # rel-s2-codex, fifth launch: the probe (a hundred minutes of Codex
+    # sessions one at a time) followed build-churn, the churn campaign lived
+    # its hour under that load, and its ideation session passed its deadline
+    # and was killed. The probe now runs last, on an idle machine.
+    order = proof.STEP_NAMES
+    probe = order.index("triggers")
+    for step in ("build-churn", "build-pause", "build-fraud", "harness-probe", "learn-complete", "second-engineer-build", "campaign-session-isolation"):
+        assert order.index(step) < probe, step
+    assert order[-1] == "cold-start" and "codex-rules-probe" in order[probe:]
+
+
+def test_the_setup_step_on_codex_fails_when_the_mcp_server_was_not_registered(tmp_path, monkeypatch):
+    # rel-s2-codex, fifth launch: the setup session read "add it once" beside
+    # a green doctor and ran no `codex mcp add`; the list came back empty and
+    # every later session lacked the plugin's tools. The step now fails on
+    # the missing row, where the cause is, and says so.
+    import types
+
+    class CodexFake(FakeHost):
+        name = "codex"
+
+        @staticmethod
+        def command(name):
+            return f"$kapso-{name} set this machine up"
+
+    def run(listing):
+        user, _ = _persona(monkeypatch, ["DONE"])
+        ctx = _context(tmp_path / listing.strip().replace(" ", "_")[:6], CodexFake([("Setup is done.", False)]), user)
+
+        def shell(command, cwd=None, check=True, timeout=None):
+            out = '{"checks": [{"required": true, "ok": true}]}' if "doctor" in command else listing
+            return types.SimpleNamespace(stdout=out, stderr="", returncode=0)
+        monkeypatch.setattr(ctx, "shell", shell)
+        return proof.step_setup(ctx)
+
+    missing = run("")
+    assert missing["completed"] is False and any("no kapso server" in note for note in missing["notes"])
+    present = run("kapso  kapso-mcp  stdio\n")
+    assert present["completed"] is True and not any("no kapso server" in note for note in present["notes"])

@@ -131,12 +131,18 @@ FRAUD_WISH = (
     "build a fraud scorer on data/transactions.csv that beats the rule-based one in score.py, and prove it; "
     f"the campaign goes to ../fraud-campaign with a budget of {_FRAUD_B['minutes']} minutes and {_FRAUD_B['experiments']} experiment"
 )
-# The order the round runs in; the budgets file bounds every name.
+# The order the round runs in; the budgets file bounds every name. The
+# trigger probe runs last, on an otherwise idle machine: on Codex it is a
+# hundred minutes of sessions one at a time, and when it followed
+# build-churn the churn campaign lived its whole hour under that load — its
+# ideation session, sixteen minutes alone, passed its 2250-second deadline
+# and was killed, and the attempt voided (rel-s2-codex, fifth launch). The
+# campaigns and the probe are each measured on their own.
 STEP_NAMES = [
-    "install", "setup", "cold-install", "build-churn", "build-pause", "watch", "triggers", "harness-export", "campaign-tools",
+    "install", "setup", "cold-install", "build-churn", "build-pause", "watch", "harness-export", "campaign-tools",
     "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review",
     "deploy", "learn", "learn-complete", "session-brief", "experience-share", "second-engineer-build", "harness-improve",
-    "campaign-session-isolation", "codex-rules-probe", "cold-start",
+    "campaign-session-isolation", "triggers", "codex-rules-probe", "cold-start",
 ]
 # Codex's explicit skill for each Claude Code command.
 CODEX_SKILL = {"setup": "kapso-setup", "build": "kapso-build", "review": "kapso-review", "harness": "kapso-harness"}
@@ -682,9 +688,17 @@ def step_setup(ctx: Context) -> Dict[str, Any]:
     required_ok = all(row.get("ok") for row in checks if isinstance(row, dict) and row.get("required")) if isinstance(checks, list) else doctor.returncode == 0
     notes = ["link clicks: judged by hand from the transcript (the logins were present, so none were needed)"]
     if ctx.host.name == "codex":
+        # The registration is the setup skill's step 4, and every later
+        # step's tools hang on it: a setup session that skipped the line
+        # beside a green doctor (rel-s2-codex, fifth launch: no `codex mcp
+        # add` ran, the list came back empty, and campaign-tools and
+        # session-brief had no tools to use) is a setup not done, failed
+        # here where it belongs rather than three steps later.
         servers = ctx.shell("codex mcp list", check=False)
         artifacts.append(ctx.artifact("codex-mcp-list.txt", servers.stdout))
-        notes.append("the `codex mcp add kapso -- kapso-mcp` line's effect is the mcp list artifact")
+        registered = "kapso" in servers.stdout
+        required_ok = required_ok and registered
+        notes.append("the `codex mcp add kapso -- kapso-mcp` line's effect is the mcp list artifact" + ("" if registered else "; the list shows no kapso server: the setup session did not register it, and no later session has the tools"))
     return record_step("setup", turns, required_ok, artifacts, notes)
 
 
@@ -1518,13 +1532,14 @@ def step_cold_start(ctx: Context) -> Dict[str, Any]:
 STEPS: Dict[str, Callable[[Context], Dict[str, Any]]] = {
     "install": step_install, "setup": step_setup, "cold-install": step_cold_install, "build-churn": step_build_churn,
     "build-pause": step_build_pause,
-    "watch": step_watch, "triggers": step_triggers, "harness-export": step_harness_export, "campaign-tools": step_campaign_tools,
+    "watch": step_watch, "harness-export": step_harness_export, "campaign-tools": step_campaign_tools,
     "inbox": step_inbox, "build-fraud": step_build_fraud, "build-data-only": step_build_data_only,
     "build-empty-wish": step_build_empty_wish, "harness-new": step_harness_new, "harness-probe": step_harness_probe,
     "review": step_review, "deploy": step_deploy, "learn": step_learn, "learn-complete": step_learn_complete,
     "session-brief": step_session_brief, "experience-share": step_experience_share, "second-engineer-build": step_second_engineer_build,
     "harness-improve": step_harness_improve,
-    "campaign-session-isolation": step_campaign_session_isolation, "codex-rules-probe": step_codex_rules_probe, "cold-start": step_cold_start,
+    "campaign-session-isolation": step_campaign_session_isolation, "triggers": step_triggers,
+    "codex-rules-probe": step_codex_rules_probe, "cold-start": step_cold_start,
 }
 assert list(STEPS) == STEP_NAMES
 

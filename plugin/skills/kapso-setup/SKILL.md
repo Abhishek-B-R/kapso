@@ -66,10 +66,13 @@ Re-check both statuses before going on.
 
 ## 4. The session's tools
 
-On Codex, add Kapso's MCP server to the user's config once, and give it a minute to
+On Codex, add Kapso's MCP server to the user's config in this session, whether or
+not the doctor's rows are green — a green install says nothing about the server,
+and a session without it has no build, status or bank tools and does not say why.
+Run both lines, then `codex mcp list` must show a `kapso` row; a list without one
+is a setup that is not done, said to the user as such. Give the server a minute to
 start: Codex drops a server that has not answered within ten seconds, and
-`kapso-mcp` imports the package first, which a busy machine can stretch past that —
-the session then runs without the tools and does not say why.
+`kapso-mcp` imports the package first, which a busy machine can stretch past that.
 
 ```bash
 codex mcp add kapso -- kapso-mcp

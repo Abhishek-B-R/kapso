@@ -522,7 +522,7 @@
     },
     "second-engineer-build": {
       "kind": "build",
-      "minutes": 45
+      "minutes": 60
     },
     "harness-export": {
       "kind": "conversation",
@@ -813,7 +813,7 @@
       "experiments": 2
     },
     "second_engineer": {
-      "minutes": 30,
+      "minutes": 45,
       "experiments": 2
     },
     "churn": {
