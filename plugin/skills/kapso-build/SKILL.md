@@ -16,10 +16,12 @@ the repository allows: discover everything first, in silence, then speak once.
 What the user wants to exist at the end, and how they would know it is done. Both
 may be vague ("a better churn model", "a working ingestion pipeline"): you propose
 the measurable form rather than asking for it. A wish that names no task ("build
-something useful here") gets a proposal that says what will exist when it is done
-and what it does for the user, with the evidence it rests on (what the README asks
-for, what the data holds), and one alternative — the value the user gets, not the
-campaign's mechanics or an evaluation's check count.
+something useful here") gets the same one message as any other (section 4): the
+findings, a proposal line that says what will exist and what it does for the user,
+one alternative line, the brief, and the one approval question it ends on — within
+the same ten lines. The evaluation is built as the evaluation skill says: a
+repository with no data gets fixtures the proposal makes and an evaluation that
+scores against them, so the campaign starts the moment the user says go.
 
 ## 2. Discover, in silence, in under a minute
 

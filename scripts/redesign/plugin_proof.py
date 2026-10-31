@@ -183,7 +183,7 @@ STEP_INTENTS = {
     "build-fraud": "a fraud scorer that beats the rule-based one, with an evaluator proposed from the protocol and approved by you, then launched",
     "build-data-only": "see the candidate criteria and the recommended one; take the first; do not launch anything",
     "build-empty-wish": "see what could be built here and the candidate criteria; take the first; do not launch anything",
-    "harness-new": "a proposal first, then the harness written and checked green; answer every numbered question in one reply, in order",
+    "harness-new": "a proposal first, then say go so the harness is written and checked green — a proposal alone is not done, and DONE comes only once the harness is on disk and its check is green; answer every numbered question in one reply, in order",
     "review": "the review of the finished churn campaign, then whether its branch is safe to merge",
     "review-2": "whether the delivered branch is safe to merge",
     "deploy": "deploy the delivered churn campaign to the local target and call it once with the inputs its proof used",
