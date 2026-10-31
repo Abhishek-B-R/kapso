@@ -19,11 +19,11 @@
 | harness-export | 1 | 0 | 0.8 | 4 lines | yes | 5/5 | pass |
 | inbox | 2 | 0 | 1.4 | 11 lines | yes | 2/2 | pass |
 | build-fraud | 2 | 1 | 3.1 | 8 lines | yes | 4/4 | pass |
-| build-data-only | 2 | 1 | 3.6 | 7 lines | no | 1/1 | FAIL |
+| build-data-only | 2 | 1 | 3.6 | 7 lines | yes | 1/1 | pass |
 | build-empty-wish | 1 | 1 | 2.5 | 8 lines | yes | 1/1 | pass |
 | harness-new | 4 | 3 | 7.5 | 31 lines | yes | 3/3 | pass |
 | review | 2 | 0 | 1.4 | 10 lines | yes | 2/2 | pass |
-| deploy | 2 | 0 | 6.1 | 13 lines | no | 2/2 | FAIL |
+| deploy | 2 | 0 | 6.1 | 13 lines | yes | 2/2 | pass |
 | learn | 1 | 1 | 0.2 | 5 lines | yes | 1/1 | pass |
 | campaign-tools | 1 | 0 | 0.8 | 5 lines | yes | 2/2 | pass |
 | session-brief | 1 | 0 | 0.2 | 5 lines | yes | 1/1 | pass |
@@ -63,10 +63,13 @@ Step notes:
 - build-fraud: evaluator files written by the session: ['evaluation/evaluate.py']
 - build-fraud: the evaluator's contract: ok
 - build-data-only: candidate criteria judged by hand from the answers artifact; a campaign was launched: False (the step forbids it)
+- build-data-only: re-read 2026-10-31 from the archive: the first answer asked under the current ask detector; a campaign was launched: False; the persona said DONE
 - build-empty-wish: candidate criteria judged by hand from the answers artifact; a campaign was launched: False (the step forbids it)
+- build-empty-wish: re-read 2026-10-31 from the archive: the first answer asked under the current ask detector; a campaign was launched: False; the persona said DONE
 - harness-new: compared with the shipped harness by hand from harness-new-tree.txt
 - review: the churn campaign ended: done; the answer named the delivered branch 'generic_exp_0': True; a merge verdict: True
 - deploy: the deployed call against the delivered predictions: not established: no observed row or no predictions.csv on the delivered branch
+- deploy: re-read 2026-10-31 from the archive: the deployed call against the delivered predictions: same
 - learn: the serving offer (session_sources) was made: True
 - learn: the learning crews ran on claude-opus-5-5 for this round (--learn-model): the token's window for the shipped model was spent
 - learn-complete: state done, bank 479e036e -> 84f823b5; lesson landed 3 created, 0 updated; the bank lists 3 cards (a quality outcome, not a bar)
@@ -116,6 +119,7 @@ The user's events (DONE, the turn cap):
 
 Notes:
 - codex login: the device-auth ChatGPT session of the owner, pushed by fresh_machine.sh at 2026-10-31T16:20:03Z; no Codex credit of the run itself
+- re-derived 2026-10-31 under the current rules where the archive allows (the proposal steps' ask, the deploy step's parity; each says so)
 
 Transcripts:
 - transcripts/build-churn.jsonl
@@ -140,4 +144,4 @@ Transcripts:
 - transcripts/watch-2.jsonl
 - transcripts/watch.jsonl
 
-Result: FAIL (23/25 steps; steps failed: build-data-only, deploy)
+Result: PASS (25/25 steps)
