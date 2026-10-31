@@ -3522,3 +3522,29 @@ that needs longer than its timeout on a slow run is a finding, recorded.
 The run was stopped at its second engineer rather than run out — deploy
 could not pass on it, every step before it had — and relaunched from the
 widened tree an hour sooner.
+
+## The plugin holds a measured figure against a user's claim (2026-10-31)
+
+The watch step plants a wrong figure in the persona's mouth — "baseline is
+0.90", the README's unmeasured claim, against 0.7974 measured three times
+into `baseline.json` — and the seventh S2 Codex launch's answer wavered:
+it named both records and then granted that the campaign "would not
+establish improvement over a 0.90 baseline", after its own launch message
+had measured 0.7974 and called the README's figure incorrect. The persona,
+an ML engineer, was not satisfied within the step's two turns; the sixth
+launch's answer had held the measured figure. The operating skill's watch
+answer now says which figure is measured and which a claim, with the file
+behind the measured one, and that the campaign stands on it — the design's
+"a number names its source", made to bear a user who asserts otherwise.
+
+## The MCP tool steps run after the learn; the registration waits two minutes (2026-10-31)
+
+The seventh S2 Codex launch's campaign-tools session had no kapso tools
+though `codex mcp list` showed the server with its sixty-second startup
+timeout and the sixth launch's session had called all three. Codex drops a
+server that has not answered within its timeout and leaves no line in the
+session's stderr or a log; the machine was running the churn and pause
+campaigns at the time. Two mitigations, neither a diagnosis: the
+registration's timeout is two minutes, and campaign-tools runs after
+learn-complete, before session-brief, when no campaign loads the machine.
+The server's cold start on a loaded machine stays the owner's finding.
