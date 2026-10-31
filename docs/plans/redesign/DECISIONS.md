@@ -3570,3 +3570,22 @@ budget was marginal, as the churn build's sixty was: the second engineer
 builds at sixty minutes under a seventy-five-minute step cap, and the
 run's wall clock grows by a quarter hour. The owner allowed one more
 launch after the sixth; this is it, with every fix the gate has earned.
+
+## The campaign-tools step probes the server and runs one more session (2026-10-31)
+
+The eighth S2 Codex launch's campaign-tools session reported the three
+campaign tools unavailable — after the learn, on an idle machine, with the
+registration's two-minute startup timeout — while the session-brief
+session minutes later read a card through the same server, and the sixth
+launch's session had called all three. Codex leaves no line for a server
+it drops at a session's start, and the session's own account ("the tools
+are unavailable") cannot say whether the server failed or the session
+lost it. The step now records a standalone handshake with the server as a
+host starts it (`initialize`, then `tools/list`, over the stdio
+transport, from a login shell in the project), with the seconds it took
+and the tools it lists — on the development box 2.6 seconds and six
+tools, the three campaign tools among them — names the `kapso` server in
+the prompt, and, when the first session used no tool though the server
+lists them, runs a second session and says so in the step's note, both
+answers kept. A server that lists the tools and a session that sees none
+is the owner's finding, with the probe's figures beside it.
