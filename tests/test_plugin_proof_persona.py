@@ -78,7 +78,7 @@ def test_the_turn_cap_ends_the_step_as_an_event_never_a_pass(tmp_path, monkeypat
     # per call site; a follow-up exchange (watch-2) is capped by its parent's
     # budget and its cap makes the parent step incomplete.
     turns = ctx.converse("watch", tmp_path / "work", "/kapso:watch", lambda t, i: None, max_turns=8)
-    assert len(turns) == proof.SUITE["steps"]["watch"]["messages"] == 2 and user.events[-1].endswith("the step is incomplete") and "watch" in user.capped
+    assert len(turns) == proof.SUITE["steps"]["watch"]["messages"] and user.events[-1].endswith("the step is incomplete") and "watch" in user.capped, "the turn cap is the step's message budget"
     # The cap makes even a satisfied-looking predicate incomplete.
     assert user.ended_well("watch", True) is False and user.ended_well("other", True) is True
     user.capped.clear()

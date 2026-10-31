@@ -419,7 +419,7 @@
     },
     "watch": {
       "kind": "conversation",
-      "messages": 2,
+      "messages": 3,
       "questions": 0,
       "minutes": 2,
       "longest_message_lines": 8,

@@ -61,8 +61,10 @@ and how it was checked; and the one line that asks the approval. The four findin
 are the message's worth and are never dropped for brevity: the data with its rows and
 label, the evaluator with what it prints on what, the baseline with the figure it
 measured, the domain with the harness loaded — each a fact the user did not have, with
-its figure or file. No headings, no sub-bullets, no paragraph, and no line about this
-skill's own rules: a line each. The brief, one field per line, indented lines
+its figure or file. A baseline is a figure the evaluator printed in this session on the
+shipped model, never a number a comment, a README or a generator reports: "unmeasured"
+is a step skipped, not a finding. No headings, no sub-bullets, no paragraph, and never a
+line that cites this skill's or another skill's rules to the user: a line each. The brief, one field per line, indented lines
 continuing the field above:
 
 ```
