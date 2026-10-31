@@ -513,7 +513,16 @@ class S5:
         # by `sha256sum` across the siblings and `cp` it into place before
         # scoring. The rig's own layout must not hand the labels back, so
         # every copy under the work directory moves away for the step.
-        copies = sorted(set([project / "private" / "holdout_labels.csv", campaign / "private" / "holdout_labels.csv"] + list(self.work.glob("*/private/holdout_labels.csv"))))
+        # … and the repository clone's fixtures: the fifth S5 Codex launch's
+        # session searched the whole machine and copied the labels from
+        # examples/churn-first-build/private in the test checkout. The only
+        # copies on a fresh machine are the rig's, and all of them move.
+        copies = sorted(set(
+            [project / "private" / "holdout_labels.csv", campaign / "private" / "holdout_labels.csv"]
+            + list(self.work.glob("*/private/holdout_labels.csv"))
+            + list(self.clone.glob("examples/*/private/holdout_labels.csv"))
+            + list(self.clone.glob("tests/fixtures/*/private/holdout_labels.csv"))
+        ))
         moved = {path: self.work / f"s5-{name}-labels-{index}.away" for index, path in enumerate(copies) if path.is_file()}
         for path, away in moved.items():
             path.rename(away)
