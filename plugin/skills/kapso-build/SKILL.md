@@ -50,9 +50,13 @@ changed; and the single thing the user must confirm or edit. Short: the brief is
 message, and the prose around its fence is at most ten lines in all — one line for
 each thing found (the data, the evaluator, the baseline, the domain), its evidence in
 that same line; when an evaluation was built or changed, two lines, what it measures
-and how it was checked; and the one line that asks the approval. No headings, no
-sub-bullets, no paragraph: a line each. The brief, one field per line, indented
-lines continuing the field above:
+and how it was checked; and the one line that asks the approval. The four findings
+are the message's worth and are never dropped for brevity: the data with its rows and
+label, the evaluator with what it prints on what, the baseline with the figure it
+measured, the domain with the harness loaded — each a fact the user did not have, with
+its figure or file. No headings, no sub-bullets, no paragraph, and no line about this
+skill's own rules: a line each. The brief, one field per line, indented lines
+continuing the field above:
 
 ```
 Objective    Raise the churn model's out-of-sample AUC above 0.85

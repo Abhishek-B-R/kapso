@@ -126,8 +126,11 @@ kapso watch --config kapso-config.yaml                   # every campaign of thi
 ```
 
 Answer "how is it going" in three lines from `--json`: the state and phase with the
-iteration, the best score and its branch, the budget left; add what the last
-attempt consulted when the user asks what it is doing. A number you state — a
+iteration, the best score and its branch against the brief's baseline and target, the
+budget left — the launch's minutes and experiments less what the status shows used,
+read from the launch record when the status does not carry them, never "not
+reported"; add what the last attempt consulted when the user asks what it is doing.
+Each line is a fact the user did not have, with its figure. A number you state — a
 baseline, a target — names its source (the brief's line, the file it was measured
 into), and when the records disagree (a README's claim against a measured baseline)
 say so rather than choosing one in silence. `--follow` prints the lines
@@ -221,6 +224,10 @@ kapso experience update --config kapso-config.yaml                              
 kapso experience remove org-repo --config kapso-config.yaml                                    # an index, or a bank you read
 ```
 
+- `share` answers with what happened, not the command's echo: the remote it attached,
+  the bank's head and card count it pushed, and the one line a teammate runs to read
+  it (`kapso experience add <url>`); `add` and `update` likewise say what the bank or
+  index now holds.
 - The forms: `mine` (your bank, the cards your harness's scope covers), `mine:all`
   (every card), `leeroopedia`, a bank path (`./team/bank.git`) or git reference
   (`acme/kapso-bank@v2`), an index name. A source that does not exist is refused
