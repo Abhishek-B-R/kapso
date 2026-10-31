@@ -203,6 +203,11 @@ kapso watch learning/status --follow --config kapso-config.yaml
   or by `kapso experience add mine`. Share it with `kapso experience share <git-url>`
   (create the repository yourself first); after that every learn pushes and
   `kapso experience update` pulls the team's lessons.
+- The launch answer says what the user got for it, a line each with its figure: what
+  the learn reads (the campaign, its attempts and best score, the goal met or not),
+  where it banks (the bank's path and the cards it holds now), how long it runs (an
+  hour or more, the update crew most of it) and what lands (cards the next build or
+  session is served) — never the pid and the watch line alone.
 - In the same reply as the launch, offer the one-line edit that serves the bank to
   every later session of this project once the learn has banked its cards:
   `session_sources: [mine:all]` under `experience:` in `kapso-config.yaml`. That
