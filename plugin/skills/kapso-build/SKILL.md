@@ -37,9 +37,9 @@ run once for the baseline; a criterion without an evaluator gets one built from 
 criterion and the data; neither gets candidate criteria proposed from the
 repository with their evidence, one recommended. This happens before the user hears
 anything, except the single approval it needs. When the user asks what the
-candidates were, the answer is one line per criterion with its evidence and the
-measured figures, at most four, and one line for the recommendation — twelve lines
-in all, no table, no optional additions.
+candidates were, the comparison goes in one fenced block (a table of the criteria,
+their evidence and figures), which the message's line budget exempts, and the prose
+around it is at most three lines — the recommendation and why, never a dozen bullets.
 
 ## 4. One message
 

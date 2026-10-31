@@ -1262,7 +1262,20 @@ def step_learn_complete(ctx: Context) -> Dict[str, Any]:
     listing = ctx.shell("kapso experience list", cwd=Path(ctx.state["churn_project"]), check=False)
     artifacts = [ctx.artifact("learn-status.json", json.dumps(final, indent=1)), ctx.artifact("experience-list.txt", listing.stdout + listing.stderr)]
     cards = re.search(r"(\d+) cards", listing.stdout)
-    return shell_step("learn-complete", done and final.get("state") == "done" and bool(cards) and int(cards.group(1)) > 0, artifacts, (time.monotonic() - started) / 60, [f"state {final.get('state')}, cards {cards.group(1) if cards else '?'}"])
+    # The learn ran end to end: every phase, and a bank commit (the head
+    # advanced, whether or not the exam admitted a card). Whether a card is
+    # banked is a learning-quality outcome that varies with the campaign and
+    # the crew's model — the owner's call (2026-10-31): the step passes on a
+    # clean end-to-end learn, the cards banked a recorded fact, not a gate.
+    ran: set = set()
+    for line in final.get("recent") or []:
+        ran |= {phase for phase in ("harvest", "harvested", "mine", "mined", "exam", "lesson", "push", "pushed") if phase in line}
+    advanced = bool(final.get("bank_head_after")) and final.get("bank_head_after") != final.get("bank_head_before")
+    banked = int(cards.group(1)) if cards else None
+    created = len((final.get("cards") or {}).get("created") or [])
+    updated = len((final.get("cards") or {}).get("updated") or [])
+    note = f"state {final.get('state')}, bank {str(final.get('bank_head_before'))[:8]} -> {str(final.get('bank_head_after'))[:8]}; lesson landed {created} created, {updated} updated; the bank lists {banked if banked is not None else '?'} cards (a quality outcome, not a bar)"
+    return shell_step("learn-complete", done and final.get("state") == "done" and {"harvested", "mined", "lesson"} <= ran and advanced, artifacts, (time.monotonic() - started) / 60, [note])
 
 
 def step_session_brief(ctx: Context) -> Dict[str, Any]:
