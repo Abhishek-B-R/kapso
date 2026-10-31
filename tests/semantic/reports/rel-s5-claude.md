@@ -1,22 +1,22 @@
 # S5 on claude_code
 
-- run: S5-claude_code-20261030T184233Z
+- run: S5-claude_code-20261030T224455Z
 - machine: kapso-fresh-rel-s5-claude
-- package: 0.8.0 (3d3f71dadf02)
-- started: 2026-10-30T18:42:33+00:00  finished: 2026-10-30T22:37:26+00:00
+- package: 0.8.0 (ba4def291425)
+- started: 2026-10-30T22:44:55+00:00  finished: 2026-10-31T02:44:48+00:00
 - user: scripted
-- pins: wheel_sha256 3d3f71dadf02, suite_sha256 25b1fc3c9fc1, cadence_seconds 60.0, bank /home/ubuntu/out/bank-seed.git
-- suite: re-derived under suite 65b123507511; the run pinned 25b1fc3c9fc1 (a changed suite changes the verdict, never the record)
+- pins: wheel_sha256 ba4def291425, suite_sha256 65b123507511, cadence_seconds 60.0, bank /home/ubuntu/out/bank-seed.git
+- suite: re-derived under suite 507774227c4d; the run pinned 65b123507511 (a changed suite changes the verdict, never the record)
 
 | step | kind | minutes | metrics | completed | artifacts | verdict |
 |---|---|---|---|---|---|---|
-| provider-limit | injection | 27.9 | shim_fired=3, failures_with_the_limit=3, truthful=True, names_class=True, names_fix=True, resumed=True, user_messages=2, bank_intact=True | yes | 4/4 | pass |
-| evaluator-crash | injection | 24.5 | attempts_with_the_crash=1, labels_rebuilt_by_campaign=True, truthful=True, names_class=True, names_fix=True, resumed=True, user_messages=2, bank_intact=True | yes | 3/3 | pass |
-| missing-key | injection | 47.5 | paused=True, request_names_no_value=True, authorised_table_fetch_after_reply=True, unauthorised_before=True, scored_after_resume=True, resumed=True, truthful=True, names_class=True, names_fix=True, user_messages=2, bank_intact=True | yes | 5/5 | pass |
-| killed-session | injection | 25.6 | session_killed=True, failures=1, attempts=1, truthful=True, names_class=True, names_fix=False, user_messages=1, bank_intact=True | no | 3/3 | FAIL |
-| killed-writer | injection | 43.5 | writer_killed=True, shown_dead=True, shown_after=DEAD, truthful=True, names_class=True, names_fix=True, resumed=True, injected=True, attempts_kept=None, attempts_before=0, attempts_after=1, user_messages=2, bank_intact=True | yes | 3/3 | pass |
-| full-disk | injection | 43.4 | fill_said=dd: error writing '/home/ubuntu/out/work/s5-full-disk-disk/filler': No space left on device, enospc_in_log=True, shown_dead=True, shown_after=FAILED, truthful=True, names_class=True, names_fix=True, resumed=True, injected=True, attempts_kept=None, attempts_before=0, attempts_after=0, user_messages=2, bank_intact=True, campaign_saved=True | yes | 5/5 | pass |
-| tampering | injection | 22.3 | evaluator_edited=1, voided=1, integrity_voids=1, truthful=True, names_class=True, names_fix=True, user_messages=1, bank_intact=True | yes | 3/3 | pass |
+| provider-limit | injection | 23.9 | shim_fired=3, failures_with_the_limit=3, truthful=True, names_class=True, names_fix=True, resumed=True, user_messages=2, bank_intact=True | yes | 4/4 | pass |
+| evaluator-crash | injection | 22.4 | attempts_with_the_crash=0, crash_occurred=True, labels_rebuilt_by_campaign=True, truthful=True, names_class=True, names_fix=True, resumed=True, user_messages=2, bank_intact=True | yes | 3/3 | pass |
+| missing-key | injection | 42.4 | paused=True, request_names_no_value=True, authorised_table_fetch_after_reply=True, unauthorised_before=True, scored_after_resume=True, resumed=True, truthful=True, names_class=True, names_fix=True, user_messages=2, bank_intact=True | yes | 5/5 | pass |
+| killed-session | injection | 37.2 | session_killed=True, failures=1, attempts=1, truthful=True, names_class=True, names_fix=True, user_messages=1, bank_intact=True | yes | 3/3 | pass |
+| killed-writer | injection | 33.0 | writer_killed=True, shown_dead=True, shown_after=DEAD, truthful=True, names_class=True, names_fix=True, resumed=True, injected=True, attempts_kept=None, attempts_before=0, attempts_after=1, user_messages=2, bank_intact=True | yes | 3/3 | pass |
+| full-disk | injection | 43.6 | fill_said=dd: error writing '/home/ubuntu/out/work/s5-full-disk-disk/filler': No space left on device, enospc_in_log=True, shown_dead=True, shown_after=FAILED, truthful=True, names_class=True, names_fix=True, resumed=True, injected=True, attempts_kept=None, attempts_before=0, attempts_after=1, user_messages=2, bank_intact=True, campaign_saved=True | yes | 5/5 | pass |
+| tampering | injection | 37.2 | evaluator_edited=1, voided=2, integrity_voids=2, truthful=True, names_class=True, names_fix=True, user_messages=1, bank_intact=True | yes | 3/3 | pass |
 | bank-compare | shell | 0.0 | bank_intact=True | yes | 1/1 | pass |
 
 | bar | value | limit | verdict |
@@ -48,7 +48,7 @@ The driver's own acts (named, never the persona's):
 
 Notes:
 - the CLI's documented shape of a limit it cannot wait out: a rate_limit_event whose status is rejected, then an error result; a reconstruction, no captured limit being in the archives
-- codex login: the device-auth ChatGPT session of the owner, pushed by fresh_machine.sh at 2026-10-30T18:40:49Z; no Codex credit of the run itself
+- codex login: the device-auth ChatGPT session of the owner, pushed by fresh_machine.sh at 2026-10-30T22:42:52Z; no Codex credit of the run itself
 
 Transcripts:
 - transcripts/evaluator-crash-2-user.jsonl
@@ -64,4 +64,4 @@ Transcripts:
 - transcripts/provider-limit-user.jsonl
 - transcripts/tampering-user.jsonl
 
-Result: FAIL (7/8 steps; steps failed: killed-session)
+Result: PASS (8/8 steps)
