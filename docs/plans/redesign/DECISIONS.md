@@ -3548,3 +3548,25 @@ campaigns at the time. Two mitigations, neither a diagnosis: the
 registration's timeout is two minutes, and campaign-tools runs after
 learn-complete, before session-brief, when no campaign loads the machine.
 The server's cold start on a loaded machine stays the owner's finding.
+
+## The candidate-criteria follow-up asks nothing (2026-10-31)
+
+Asked to "show the candidate criteria and recommendation; don't launch",
+the sixth S2 Claude launch's answer kept its comparison in the fence and
+its prose to three lines, as the skills ask, and then ended "tell me which
+criterion you want, or say go" — a second question in a step whose budget
+is one, the approval having been asked in the launch message. The user
+asked to see, not to decide again. The build and evaluation skills end
+that answer on the recommendation and why, with no question.
+
+## The second engineer builds at sixty minutes (2026-10-31)
+
+The sixth S2 Claude launch's second engineer, served the shared bank,
+spent most of its forty-five minutes in ideation reading it; the
+implementation session got a 650-second deadline, its retry 215, both cut,
+the feedback 359, and the finishing cut left no branch. The third launch's
+second engineer passed at thirty minutes with a quicker ideation. The
+budget was marginal, as the churn build's sixty was: the second engineer
+builds at sixty minutes under a seventy-five-minute step cap, and the
+run's wall clock grows by a quarter hour. The owner allowed one more
+launch after the sixth; this is it, with every fix the gate has earned.
