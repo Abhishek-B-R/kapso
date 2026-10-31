@@ -11,6 +11,14 @@ default_mode: KG_RETRIEVAL
 modes:
   KG_RETRIEVAL: {}
 
+# The packaged kg_rerank role asks for gpt-5.6-sol, which a ChatGPT-login
+# codex account cannot use. This block deep-merges over the packaged
+# `inference:` block, so only the model changes; the eval's results say
+# which model reranked.
+inference:
+  roles:
+    kg_rerank: {model: "gpt-6-luna"}
+
 retrieval_eval:
   corpus_dir: benchmarks/kg_retrieval/corpus
   labels_path: benchmarks/kg_retrieval/labels/queries.jsonl
@@ -37,6 +45,11 @@ retrieval_eval:
     weaviate_collection: "KapsoRetrievalEval"
     neo4j_uri: "bolt://localhost:7688"
     neo4j_user: "neo4j"
+    # A local OpenAI-compatible embedder (Ollama) instead of the shipped
+    # text-embedding-3-large, so the eval needs no OpenAI account. Delete
+    # these two keys to embed with the shipped default.
+    embedding_base_url: "http://localhost:11434/v1"
+    embedding_model: "bge-m3"
 
   # Names are quoted: an unquoted `off` is read as the boolean false.
   arms:

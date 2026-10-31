@@ -43,12 +43,18 @@ Run everything from the repository root.
    Weaviate can be shared: the eval writes only to the collection named in
    `config.yaml` (`KapsoRetrievalEval`). The runner refuses to start if that
    collection or the Neo4j address is the shipped default.
-3. Credentials follow the rest of Kapso. The embedder (OpenAI by default) needs
-   `OPENAI_API_KEY=sk-...` in a gitignored `.env` in the directory you run from;
-   the runner loads it like the CLI does. The reranker runs through the
-   coding-agent CLI configured for the `kg_rerank` role in
-   `src/kapso/config.yaml` (codex by default, using its own login). `kapso
-   doctor` checks both.
+3. Embedder and reranker. `config.yaml` embeds with a local `bge-m3` served by
+   Ollama (`ollama pull bge-m3`) through `embedding_base_url`, instead of the
+   shipped `text-embedding-3-large`, so no OpenAI account is needed. The OpenAI
+   SDK still requires a non-empty `OPENAI_API_KEY`; put any value (Ollama
+   ignores it) in a gitignored `.env` in the directory you run from, which the
+   runner loads like the CLI does. To embed with the shipped model instead,
+   delete the two `embedding_*` keys and use a real key. The reranker runs
+   through the coding-agent CLI of the `kg_rerank` role, which is codex with its
+   own login. The packaged role asks for `gpt-5.6-sol`, which codex refuses on a
+   ChatGPT-login account, so the `inference:` block of `config.yaml` overrides
+   the model to `gpt-6-luna`; change it there to use another model. `kapso
+   doctor` checks the rest.
 4. Run:
 
    ```bash
@@ -61,13 +67,28 @@ aborts the run: `kg_graph_search` normally falls back to the unranked order,
 which would otherwise be scored as the `off` arm.
 
 Cost: one rerank session per query per reranking arm, so 60 sessions for the
-current 30 queries and two reranking arms. The `off` arm makes no LLM calls.
+current 30 queries and two reranking arms (about 3.5 minutes with `gpt-6-luna`
+on the first full run). The `off` arm makes no LLM calls.
 Remove the eval Neo4j with `docker rm -f kapso-eval-neo4j`.
 
 ## Honest limits
 
 - The corpus is synthetic and small. Numbers compare arms against each other;
   they are directional and not an absolute quality score for a real graph.
+- Results use a local `bge-m3` embedder, not the shipped default
+  `text-embedding-3-large`, and `gpt-6-luna` as the reranker, not the packaged
+  `gpt-5.6-sol`. The arms rerank a shared pool, so their comparison stays
+  valid, but absolute recall and the size of the reranker's gain may differ with
+  the production models.
+- The indexer embeds a page's Description. The first live run showed the six
+  long pages ranking badly because their descriptions never named the page's
+  topic, so each now opens with what the class is. In the historical corpus the
+  long text is the description itself, so a real index embeds all of it; this
+  corpus embeds only the opening, which is slightly pessimistic for retrieval
+  on those pages.
+- Each rerank is one LLM sample, so a rerun can move a query by a rank. The
+  reranker also returns few pages (about 2.6 on average), so recall@k flattens
+  past k=3; MRR and recall@1 carry the signal.
 - The cap binds on only the six long pages, about 12% of the corpus (the real
   historical corpus has about 6% over 300 characters, all Implementations), so
   `on_cap300` and `on_nocap` can only differ where a target or a competitor is
