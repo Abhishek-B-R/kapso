@@ -3677,3 +3677,22 @@ id from such a list (or the one row it holds), the step and the re-read
 share it, and the re-read recomputes the deploy step from the record the
 step copied and the campaign the archive carries. The run in flight is
 read again from its archive under this reader when it lands.
+
+## Finding for the owner: a Codex session served the bank sees no campaign verbs (2026-10-31)
+
+On the ninth S2 Codex launch the campaign-tools step ran after the learn,
+when the project's config served the bank (`session_sources: [mine:all]`).
+The rig's handshake, started in the project as a host starts the server,
+listed six tools in 6.2 seconds — the research tools and the three
+campaign verbs, no bank tools (the standalone start did not stage the
+bank). The Codex session's own tool discovery "found no
+`kapso_build_start`, `kapso_status`, or `kapso_stop`", in the first
+session and in the second the step ran; the session-brief session minutes
+later called `bank_index` and `bank_get_card` on the same server. The
+sixth launch's campaign-tools session, which ran before any bank was
+served, called all three verbs. So in a Codex session the server served
+either the bank or the campaign verbs, not both; the host session's code
+enables every default gate, and a local start could not stage a bank in
+the time left to say where the verbs go. The step's probe figures and both
+sessions' answers are in the archive; this is the one miss the ninth
+launch carries, and the owner's finding.
