@@ -43,7 +43,8 @@ repository with their evidence, one recommended. This happens before the user he
 anything, except the single approval it needs. When the user asks what the
 candidates were, the comparison goes in one fenced block (a table of the criteria,
 their evidence and figures), which the message's line budget exempts, and the prose
-around it is at most three lines — the recommendation and why, never a dozen bullets.
+around it is at most three lines — the recommendation and why, ending there with no
+question: the user asked to see, and the one approval was already asked.
 
 ## 4. One message
 
