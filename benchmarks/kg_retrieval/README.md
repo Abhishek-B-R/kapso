@@ -20,11 +20,14 @@ shipped value of 300 characters and removed. Tracked in
   or library name.
 - **Arms** (`config.yaml`): `off`, `on_cap300`, `on_nocap`. For each query the
   runner fetches the candidate pool once and scores every arm on that same pool,
-  so only the rerank prompt differs.
+  so only the rerank prompt differs. An LLM rerank varies from call to call, so
+  each reranking arm is sampled `rerank_runs` times on that pool.
 - **Reported, overall and on the stress subset**: recall@k for each k in
   `ks`, MRR, the mean number of results returned, the share of candidate
   overviews the arm's cap cut (`clipped_share`), and the pool's own
   recall@`candidate_pool_size`, which is the most any reranker could reach.
+  Reranking arms show the mean over the runs with the min-max range, and the
+  report lists the queries whose target rank changed between runs.
 
 ## Running it
 
@@ -43,22 +46,31 @@ Run everything from the repository root.
    Weaviate can be shared: the eval writes only to the collection named in
    `config.yaml` (`KapsoRetrievalEval`). The runner refuses to start if that
    collection or the Neo4j address is the shipped default.
-3. Embedder and reranker. `config.yaml` embeds with a local `bge-m3` served by
-   Ollama (`ollama pull bge-m3`) through `embedding_base_url`, instead of the
-   shipped `text-embedding-3-large`, so no OpenAI account is needed. The OpenAI
-   SDK still requires a non-empty `OPENAI_API_KEY`; put any value (Ollama
-   ignores it) in a gitignored `.env` in the directory you run from, which the
-   runner loads like the CLI does. To embed with the shipped model instead,
-   delete the two `embedding_*` keys and use a real key. The reranker runs
-   through the coding-agent CLI of the `kg_rerank` role, which is codex with its
-   own login. The packaged role asks for `gpt-5.6-sol`, which codex refuses on a
-   ChatGPT-login account, so the `inference:` block of `config.yaml` overrides
-   the model to `gpt-6-luna`; change it there to use another model. `kapso
-   doctor` checks the rest.
-4. Run:
+3. Embedder and reranker. `config.yaml` uses the production models: the shipped
+   `text-embedding-3-large` (needs `OPENAI_API_KEY=sk-...` in a gitignored
+   `.env` in the directory you run from, which the runner loads like the CLI
+   does) and the reranker of the packaged `kg_rerank` role, which is codex with
+   its own login. Codex refuses the packaged `gpt-5.6-sol` on a ChatGPT-login
+   account; `kapso doctor` checks the rest.
+
+   `config.local.yaml` holds the overrides behind the numbers in the PR: a local
+   `bge-m3` embedder served by Ollama (`ollama pull bge-m3`) and `gpt-6-luna` as
+   the reranker. The OpenAI SDK still demands a non-empty `OPENAI_API_KEY`, so
+   put any value (Ollama ignores it) in `.env`. `--config` can be repeated, and
+   later files deep-merge over earlier ones.
+4. Run, with the production models:
 
    ```bash
-   python -m benchmarks.kg_retrieval.runner --config benchmarks/kg_retrieval/config.yaml
+   python -m benchmarks.kg_retrieval.runner \
+       --config benchmarks/kg_retrieval/config.yaml
+   ```
+
+   or with the local overrides that reproduce the posted numbers:
+
+   ```bash
+   python -m benchmarks.kg_retrieval.runner \
+       --config benchmarks/kg_retrieval/config.yaml \
+       --config benchmarks/kg_retrieval/config.local.yaml
    ```
 
 It indexes the corpus with the repo's own indexer, scores the arms and writes
@@ -66,29 +78,32 @@ It indexes the corpus with the repo's own indexer, scores the arms and writes
 aborts the run: `kg_graph_search` normally falls back to the unranked order,
 which would otherwise be scored as the `off` arm.
 
-Cost: one rerank session per query per reranking arm, so 60 sessions for the
-current 30 queries and two reranking arms (about 3.5 minutes with `gpt-6-luna`
-on the first full run). The `off` arm makes no LLM calls.
+Cost: one rerank session per query, per reranking arm, per run, so 180 sessions
+for the current 30 queries, two reranking arms and `rerank_runs: 3` (about ten
+minutes with `gpt-6-luna`). The `off` arm makes no LLM calls.
 Remove the eval Neo4j with `docker rm -f kapso-eval-neo4j`.
 
 ## Honest limits
 
 - The corpus is synthetic and small. Numbers compare arms against each other;
   they are directional and not an absolute quality score for a real graph.
-- Results use a local `bge-m3` embedder, not the shipped default
-  `text-embedding-3-large`, and `gpt-6-luna` as the reranker, not the packaged
-  `gpt-5.6-sol`. The arms rerank a shared pool, so their comparison stays
-  valid, but absolute recall and the size of the reranker's gain may differ with
-  the production models.
+- The posted numbers use `config.local.yaml`: a local `bge-m3` embedder, not the
+  shipped `text-embedding-3-large`, and `gpt-6-luna` as the reranker, not the
+  packaged `gpt-5.6-sol`. The arms rerank a shared pool, so their comparison
+  stays valid, but absolute recall and the size of the reranker's gain may
+  differ with the production models.
+- Indexing the same corpus twice can move the `off` arm by a query: two indexings
+  gave recall@1 of 0.433 and 0.400. The runs inside one invocation share one
+  index and one pool, so the arms compare cleanly within it.
 - The indexer embeds a page's Description. The first live run showed the six
   long pages ranking badly because their descriptions never named the page's
   topic, so each now opens with what the class is. In the historical corpus the
   long text is the description itself, so a real index embeds all of it; this
   corpus embeds only the opening, which is slightly pessimistic for retrieval
   on those pages.
-- Each rerank is one LLM sample, so a rerun can move a query by a rank. The
-  reranker also returns few pages (about 2.6 on average), so recall@k flattens
-  past k=3; MRR and recall@1 carry the signal.
+- Each rerank is one LLM sample; three runs give a range, not a confidence
+  interval. The reranker also returns few pages (about 2.6 on average), so
+  recall@k flattens past k=3; MRR and recall@1 carry the signal.
 - The cap binds on only the six long pages, about 12% of the corpus (the real
   historical corpus has about 6% over 300 characters, all Implementations), so
   `on_cap300` and `on_nocap` can only differ where a target or a competitor is
