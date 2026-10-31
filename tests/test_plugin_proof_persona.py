@@ -410,3 +410,26 @@ def test_an_archived_runs_proposal_steps_are_re_read_under_the_current_ask_detec
     assert wish["completed"] is True and "on the persona's own go" in wish["notes"][-1]
     assert proof.persona_approved(tmp_path / "transcripts" / "build-empty-wish.jsonl") is True
     assert proof.persona_approved(tmp_path / "transcripts" / "build-data-only.jsonl") is False, "no persona reply approved there"
+
+
+def test_deployment_parity_reads_a_row_nested_in_the_batch_the_deployment_answered(tmp_path):
+    # rel-s2-claude, eighth launch: a blend that keeps its batch answered
+    # {"predictions": [{"id": "C010001", "churn_probability": 0.978…}], …}
+    # and the reader took it for no row; the re-read covers the deploy step.
+    campaign = tmp_path / "work" / "churn-campaign"
+    campaign.mkdir(parents=True)
+    (campaign / "predictions.csv").write_text("id,churn_probability\nC010001,0.9783405531489503\nC010002,0.1\n", encoding="utf-8")
+    nested = {"observed": {"predictions": [{"id": "C010001", "churn_probability": 0.9783405531489503}], "batch_size": 3000, "in_reference_batch": ["C010001"]}}
+    deployment = tmp_path / "deployments" / "1"
+    deployment.mkdir(parents=True)
+    (deployment / "deployment.json").write_text(json.dumps(nested), encoding="utf-8")
+    assert proof.deploy_parity(deployment, campaign) == "same"
+    (deployment / "deployment.json").write_text(json.dumps({"observed": {"id": "C010002", "churn_probability": 0.2}}), encoding="utf-8")
+    assert proof.deploy_parity(deployment, campaign).startswith("differs"), "a top-level row still compares"
+    (deployment / "deployment.json").write_text(json.dumps({"observed": {"predictions": [{"id": "C010001", "churn_probability": 0.9}, {"id": "C010002", "churn_probability": 0.1}]}}), encoding="utf-8")
+    assert proof.deploy_parity(deployment, campaign).startswith("not established"), "two rows and no proof id name no row"
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "artifacts" / "deploy-deployment.json").write_text(json.dumps(nested), encoding="utf-8")
+    record = {"steps": [{"name": "deploy", "kind": "conversation", "completed": False, "notes": ["the deployed call against the delivered predictions: not established: no observed row or no predictions.csv on the delivered branch"]}], "user": {"events": []}, "notes": []}
+    out = proof.rederive(record, tmp_path)
+    assert out["steps"][0]["completed"] is True and out["steps"][0]["notes"][-1].endswith(": same")

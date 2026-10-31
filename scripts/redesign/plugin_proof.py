@@ -1245,8 +1245,20 @@ def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
         step["completed"] = asked and not (launched and not approved) and ended_well
         step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("re-read")],
                          f"re-read {datetime.now(timezone.utc).date().isoformat()} from the archive: the first answer {'asked' if asked else 'did not ask'} under the current ask detector; a campaign was launched: {launched}{' on the persona' + chr(39) + 's own go' if launched and approved else ''}; the persona {'said DONE' if ended_well else 'did not end the exchange'}"]
+    # The deploy step's parity, from the deployment record the step copied
+    # and the campaign the archive carries (the eighth S2 Claude launch's
+    # observed answer was a batch, which the reader of its day took for no
+    # row).
+    deploy_record = out / "artifacts" / "deploy-deployment.json"
+    campaign = out / "work" / "churn-campaign"
+    for step in record["steps"]:
+        if step.get("name") == "deploy" and deploy_record.is_file() and (campaign / "predictions.csv").is_file():
+            parity = parity_from_record(deploy_record, campaign)
+            step["completed"] = parity == "same"
+            step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("re-read")],
+                             f"re-read {datetime.now(timezone.utc).date().isoformat()} from the archive: the deployed call against the delivered predictions: {parity}"]
     record["notes"] = [*[note for note in record.get("notes", []) if not note.startswith("re-derived")],
-                       f"re-derived {datetime.now(timezone.utc).date().isoformat()} under the current rules where the archive allows (the proposal steps' ask; each says so)"]
+                       f"re-derived {datetime.now(timezone.utc).date().isoformat()} under the current rules where the archive allows (the proposal steps' ask, the deploy step's parity; each says so)"]
     return record
 
 
@@ -1373,9 +1385,31 @@ def deploy_parity(deployment: Path, campaign: Path) -> str:
     record = deployment / "deployment.json"
     if not record.is_file():
         return "not established: no deployment record"
-    observed = json.loads(record.read_text(encoding="utf-8")).get("observed") or {}
+    return parity_from_record(record, campaign)
+
+
+def observed_row(observed: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The proof call's answer as one row with an id and a churn
+    probability: the top level when the deployment answers one row, or the
+    row of the proof's id in a `predictions` list when it answers the batch
+    it was delivered with (a blend that scores rows relative to one
+    another keeps its batch, as the deployment prompt says; the eighth S2
+    Claude launch's observed answer was that list and the reader took it
+    for no row)."""
+    if "id" in observed and "churn_probability" in observed:
+        return observed
+    rows = [row for row in (observed.get("predictions") or []) if isinstance(row, dict) and "id" in row and "churn_probability" in row]
+    wanted = [str(item) for item in (observed.get("in_reference_batch") or [])]
+    chosen = [row for row in rows if str(row["id"]) in wanted] if wanted else rows
+    return chosen[0] if len(chosen) == 1 else (rows[0] if len(rows) == 1 else None)
+
+
+def parity_from_record(record: Path, campaign: Path) -> str:
+    """Deployment parity from a deployment record and the campaign holding
+    the delivered branch's predictions.csv."""
+    observed = observed_row(json.loads(record.read_text(encoding="utf-8")).get("observed") or {})
     predictions = campaign / "predictions.csv"
-    if "id" not in observed or not predictions.is_file():
+    if observed is None or not predictions.is_file():
         return "not established: no observed row or no predictions.csv on the delivered branch"
     for line in predictions.read_text(encoding="utf-8").splitlines()[1:]:
         row_id, _, value = line.partition(",")
