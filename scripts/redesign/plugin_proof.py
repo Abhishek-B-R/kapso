@@ -182,7 +182,7 @@ STEP_INTENTS = {
     "inbox-reply": "answer every open request of the campaign: the key is now in both .env files; there is no enrichment service, endpoint or table; the campaign must reach 0.85 without it; nothing left waiting",
     "build-fraud": "a fraud scorer that beats the rule-based one, with an evaluator proposed from the protocol and approved by you, then launched",
     "build-data-only": "see the candidate criteria and the recommended one; take the first; do not launch anything",
-    "build-empty-wish": "see what could be built here and the candidate criteria; take the first; do not launch anything",
+    "build-empty-wish": "see what could be built here and the candidate criteria; take the first; do not launch anything — never say go, never approve a launch, whatever is proposed; the reply to a proposal is 'take the first; do not launch anything'",
     "harness-new": "a proposal first, then say go so the harness is written and checked green — a proposal alone is not done, and DONE comes only once the harness is on disk and its check is green; answer every numbered question in one reply, in order",
     "review": "the review of the finished churn campaign, then whether its branch is safe to merge",
     "review-2": "whether the delivered branch is safe to merge",
@@ -1180,8 +1180,33 @@ def _criteria_step(ctx: Context, name: str, project: Path, wish: str) -> Dict[st
     turns = ctx.converse(name, project, ctx.host.command("build", wish), stop_here_policy, max_turns=3)
     launched = bool({str(path) for path in ctx.work.rglob(".kapso/status.json")} - before)
     proposed = turns and turns[0].asked
+    # "Do not launch anything" catches a plugin that launches unasked. A
+    # persona that says go itself (the ninth S2 Codex launch: "Validator,
+    # not modelling: go") asked for the launch, and the plugin that obeyed
+    # did right by its user: the miss is a launch nobody asked for.
+    approved = persona_approved(ctx.out / "transcripts" / f"{name}.jsonl")
+    unasked = launched and not approved
     artifacts = [ctx.artifact(f"{name}-answers.txt", "\n\n---\n\n".join(turn.text for turn in turns))]
-    return record_step(name, turns, ctx.user.ended_well(name, bool(proposed) and not launched), artifacts, [f"candidate criteria judged by hand from the answers artifact; a campaign was launched: {launched} (the step forbids it)"])
+    return record_step(name, turns, ctx.user.ended_well(name, bool(proposed) and not unasked), artifacts,
+                       [f"candidate criteria judged by hand from the answers artifact; a campaign was launched: {launched}{' on the persona' + chr(39) + 's own go' if launched and approved else ''} (the step forbids a launch nobody asked for)"])
+
+
+PERSONA_APPROVES = re.compile(r"\bgo\b|\bgo ahead\b|\blaunch (it|now|the campaign)\b|\bapproved?\b|\bproceed\b", re.I)
+
+
+def persona_approved(transcript: Path) -> bool:
+    """Whether the persona, in this step's transcript, asked for the launch
+    in so many words (a reply of go, launch it, approved, proceed) — read
+    from the `persona_reply` rows the exchange wrote."""
+    if not transcript.is_file():
+        return False
+    for line in transcript.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("{"):
+            continue
+        row = json.loads(line)
+        if "persona_reply" in row and not row.get("done") and PERSONA_APPROVES.search(row["persona_reply"] or ""):
+            return True
+    return False
 
 
 def step_build_data_only(ctx: Context) -> Dict[str, Any]:
@@ -1214,11 +1239,12 @@ def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
         if first is None:
             continue
         launched = any("a campaign was launched: True" in note for note in step.get("notes", []))
+        approved = persona_approved(transcript)
         ended_well = any(event.startswith(f"{step['name']}: the persona said DONE") for event in (record.get("user") or {}).get("events", []))
         asked = question_asked(first, [])
-        step["completed"] = asked and not launched and ended_well
+        step["completed"] = asked and not (launched and not approved) and ended_well
         step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("re-read")],
-                         f"re-read {datetime.now(timezone.utc).date().isoformat()} from the archive: the first answer {'asked' if asked else 'did not ask'} under the current ask detector; a campaign was launched: {launched}; the persona {'said DONE' if ended_well else 'did not end the exchange'}"]
+                         f"re-read {datetime.now(timezone.utc).date().isoformat()} from the archive: the first answer {'asked' if asked else 'did not ask'} under the current ask detector; a campaign was launched: {launched}{' on the persona' + chr(39) + 's own go' if launched and approved else ''}; the persona {'said DONE' if ended_well else 'did not end the exchange'}"]
     record["notes"] = [*[note for note in record.get("notes", []) if not note.startswith("re-derived")],
                        f"re-derived {datetime.now(timezone.utc).date().isoformat()} under the current rules where the archive allows (the proposal steps' ask; each says so)"]
     return record

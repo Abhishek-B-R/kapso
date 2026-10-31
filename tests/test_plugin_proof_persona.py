@@ -400,3 +400,13 @@ def test_an_archived_runs_proposal_steps_are_re_read_under_the_current_ask_detec
     assert by_name["build-empty-wish"]["completed"] is False and "a campaign was launched: True" in by_name["build-empty-wish"]["notes"][-1], "a launch the step forbids stays a miss"
     assert by_name["watch"]["completed"] is True and by_name["watch"]["notes"] == [], "other steps stay as recorded"
     assert out["notes"][-1].startswith("re-derived ")
+    # A launch the persona itself asked for (the ninth S2 Codex launch:
+    # "Validator, not modelling: go") is no miss of "do not launch anything".
+    (tmp_path / "transcripts" / "build-empty-wish.jsonl").write_text(
+        json.dumps({"proof_prompt": "/kapso:build …"}) + "\n" + json.dumps({"type": "result", "result": "Here is the proposal. Approve it?"}) + "\n"
+        + json.dumps({"persona_reply": "Wrong repo — validator, not modelling: go.", "done": False}) + "\n" + json.dumps({"type": "result", "result": "Launched."}) + "\n", encoding="utf-8")
+    again = proof.rederive(json.loads(json.dumps(record)), tmp_path)
+    wish = {step["name"]: step for step in again["steps"]}["build-empty-wish"]
+    assert wish["completed"] is True and "on the persona's own go" in wish["notes"][-1]
+    assert proof.persona_approved(tmp_path / "transcripts" / "build-empty-wish.jsonl") is True
+    assert proof.persona_approved(tmp_path / "transcripts" / "build-data-only.jsonl") is False, "no persona reply approved there"
