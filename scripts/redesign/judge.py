@@ -64,9 +64,15 @@ def eligible_dimensions(suite: dict, spec: dict, label: str, dimensions: Sequenc
 # ---------------------------------------------------------------- rendering
 def final_texts(rows: Sequence[dict]) -> List[Dict[str, str]]:
     """The conversation a transcript holds: the user's messages (the proof's
-    prompts and the persona's replies) and each turn's final text (the
-    Claude Code `result` row, or the last Codex `agent_message` before the
-    next prompt)."""
+    prompts and the persona's replies) and every message the host printed
+    in a turn, as the user read them — each Codex `agent_message`, each
+    text block of a Claude Code `assistant` row, the `result` row when it
+    adds a text the blocks did not carry. The judge's frame is what the
+    user got for the attention it cost, and the host's earlier messages in
+    a turn cost that attention and carry findings too (the sixth S2 Codex
+    launch's launches named the data, the evaluator and the baseline in
+    the messages before the last, and the judge, reading the last alone,
+    scored them as findings never given)."""
     turns: List[Dict[str, Any]] = []
     pending: Optional[str] = None
     # The persona's reply is written once as `persona_reply` and again as
@@ -99,11 +105,17 @@ def final_texts(rows: Sequence[dict]) -> List[Dict[str, str]]:
             else:
                 turns.append({"role": "user", "text": row["persona_reply"]})
                 awaiting = row["persona_reply"]
+        elif row.get("type") == "assistant":
+            for block in ((row.get("message") or {}).get("content") or []):
+                if isinstance(block, dict) and block.get("type") == "text" and (block.get("text") or "").strip():
+                    turns.append({"role": "assistant", "text": block["text"]})
         elif row.get("type") == "result":
-            turns.append({"role": "assistant", "text": row.get("result") or ""})
+            text = row.get("result") or ""
+            if not (turns and turns[-1]["role"] == "assistant" and turns[-1]["text"].strip() == text.strip()):
+                turns.append({"role": "assistant", "text": text})
             pending = None
         elif row.get("type") == "item.completed" and (row.get("item") or {}).get("type") == "agent_message":
-            pending = row["item"].get("text") or ""
+            turns.append({"role": "assistant", "text": row["item"].get("text") or ""})
     flush()
     if awaiting is not None and turns and turns[-1]["role"] == "user" and turns[-1]["text"] == awaiting:
         turns[-1]["unsent"] = True

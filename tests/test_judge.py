@@ -37,12 +37,13 @@ def test_the_rubrics_carry_the_designs_dimensions_by_name():
     assert "a loader that ingests" in (judge.RUBRICS / "s1.md").read_text()
 
 
-def test_a_step_is_rendered_as_the_users_messages_and_each_turns_final_text_on_both_hosts():
+def test_a_step_is_rendered_as_the_users_messages_and_every_message_the_host_printed_on_both_hosts():
     claude = judge.final_texts(judge.transcript_rows(FIXTURES / "claude_code-watch.jsonl"))
     assert [turn["role"] for turn in claude] == ["user", "assistant", "user"]
     assert claude[0]["text"] == "/kapso:watch ../churn-campaign" and claude[1]["text"].startswith("**Running**") and claude[2]["text"].startswith("thanks")
     codex = judge.final_texts(judge.transcript_rows(FIXTURES / "codex-watch.jsonl"))
-    assert [turn["role"] for turn in codex] == ["user", "assistant"] * 4, "the last agent message before the next prompt is the turn's final text"
+    assert [turn["role"] for turn in codex] == ["user", "assistant", "assistant"] * 4, "every agent message of a turn is rendered, as the user read them, not the last alone"
+    assert codex[1]["text"] != codex[2]["text"], "two messages, two blocks"
     rendered = judge.render_step("watch", judge.transcript_rows(FIXTURES / "claude_code-watch.jsonl"))
     assert rendered.startswith("L1: # step watch\n") and "L3: [user]\nL4: /kapso:watch ../churn-campaign\n" in rendered
 
