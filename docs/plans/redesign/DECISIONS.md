@@ -3589,3 +3589,21 @@ the prompt, and, when the first session used no tool though the server
 lists them, runs a second session and says so in the step's note, both
 answers kept. A server that lists the tools and a session that sees none
 is the owner's finding, with the probe's figures beside it.
+
+## An empty wish gets the same one message; a proposal alone is not done (2026-10-31)
+
+Two misses on the seventh S2 Claude launch, both mine. The value line I
+had written for a wish that names no task ("the value the user gets, not
+the campaign's mechanics or an evaluation's check count") made the answer
+a 26-line proposal that ended on an instruction and built no evaluation
+for a folder with no data, where the sixth launch's seven lines had built
+one on fixtures and ended "Approve this proposal?" — the step reads a
+proposal as an answer that asks. The wording is folded back into section
+4's shape: the findings, a proposal line that says what will exist and
+what it does for the user, one alternative, the brief, the approval
+question it ends on, the evaluation built on fixtures the proposal makes.
+And the persona for harness-new, told "a proposal first, then the harness
+written and checked green", said DONE at the proposal; its intent now says
+DONE comes only once the harness is on disk and its check is green. The
+owner allowed one more launch; this regression of my own making costs one
+past it, said plainly, landing before the morning deadline.
