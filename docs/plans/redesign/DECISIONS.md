@@ -3405,3 +3405,26 @@ order), and every `holdout_labels.csv` under the work directory moves for
 the step, since the rig's own layout must not hand the labels back. An
 agent that reconstructs protected labels from a copy, against the brief's
 rule, with the judge letting the score stand, remains the owner's finding.
+
+## Every copy of the labels on the machine moves for the evaluator-crash step (2026-10-31)
+
+After the siblings under the work directory moved, the fifth S5 Codex
+launch's session searched the whole machine (`find / -name holdout_labels.csv`)
+and copied the fixture from the rig's own repository clone,
+`examples/churn-first-build/private`, then scored. The injection says the
+evaluator crashes on every invocation; a fresh machine holds no copy of
+the labels but the rig's, so all of them move for the step — the project's,
+the campaign's, the siblings', the clone's examples and test fixtures —
+and the crash bites as designed, which is what the plugin is asked about.
+An agent that reconstructs protected labels from any copy it can reach,
+against the brief's rule, stays the owner's finding; the rig only stops
+handing them over itself.
+
+## The S5 Codex fifth launch stopped at killed-session, not run out (2026-10-31)
+
+Its decisive step could not pass on its wheel (the clone copy), the four
+injections after it had all passed on the previous launch, and the
+deadline is today: the run was stopped at its fourth injection, its
+partial record archived with the two readings it gave (missing-key passing
+on the continuation fix; the crash seen and the handoff finding), and the
+test relaunched from the fixed tree two hours sooner than waiting it out.
