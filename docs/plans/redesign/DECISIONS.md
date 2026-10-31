@@ -3472,3 +3472,34 @@ gives the best score against the baseline and target and the budget left
 from the launch record, and its share answer says what was pushed and
 what a teammate runs. The budgets are unchanged (the findings are the
 lines the budget was made for); the judge's bar is not lowered.
+
+## The judge reads every message the host printed in a turn (2026-10-31)
+
+The judge's transcript rendered each turn's final text alone — the Claude
+Code `result` row, the last Codex `agent_message` before the next prompt —
+by WP9's choice. A host prints several messages in a turn as it works and
+the user reads each as it lands: the sixth S2 Codex launch's launches
+named the data, the evaluator and the baseline in the messages before the
+last, and the judge, reading the last alone, scored them as findings never
+given. The rubric's own frame is what the user got for the attention it
+cost, and those messages cost it and carried the findings. The transcript
+now carries every message of a turn — each Codex agent message, each text
+block of a Claude Code assistant row — as its own assistant block; the line
+budget stays on the final answer. Validated on two archives before it
+stayed: S2 on Claude Code, third launch, proactive 5, clear 4, return on attention 4 (every binding dimension at or above the bar; the advisory not-annoying at 2, the working narration read as noise); S2 on Codex, sixth
+launch, proactive 4 from 3, clear 4, return on attention 3 (on the learn launch — a pid and the watch line — and the empty wish's proposal; the advisory not-annoying at 2). The sixth Codex launch therefore still misses the judge's
+bar on return on attention, on two answers, and its report stands as it
+landed; the seventh launch decides. The advisory not-annoying dimension
+reading a host's working narration as noise is recorded for the owner.
+
+## The learn launch and an empty wish's proposal carry their value (2026-10-31)
+
+The two answers that held the sixth Codex launch's return on attention at
+3 under the faithful transcript: a learn launch that gave the pid and the
+watch line, and a proposal for "build something useful here" that gave an
+evaluation's check count. The operating skill's learn answer now says what
+the learn reads, where it banks, how long it runs and what lands; the
+build skill's proposal for a wish that names no task says what will exist
+and what it does for the user, with its evidence and one alternative. The
+seventh Codex launch runs without these (it predates them); an eighth, if
+the seventh's judge misses on those answers, carries them.

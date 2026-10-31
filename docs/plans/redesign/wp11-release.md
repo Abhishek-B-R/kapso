@@ -192,6 +192,8 @@ Edits: the ports of `main`'s changes into the modules they land in (the one exce
    |---|---|---|
    | `rel-s5-codex` (sixth launch, re-read) | `token-3` | **PASS** 8/8: landed 7/8 at 08:09Z with provider-limit's fix in the words of a finished campaign ("continuing requires increasing the experiment allowance"), in the vocabulary since `2687cf95`, which the run's wheel predated; the record read again under the current rules with the suite's `--rederive`, the re-read dated in the record and the step's note; the seven other steps as they landed — the crash biting with no copy reachable, the missing key's resume continued and scored on the package fix, the killed session and writer, the full disk, the tampering and the bank |
 
+   | `rel-s2-codex` (sixth launch, re-judged) | `token-4` | still **FAIL** on the judge alone: under the every-message transcript proactive 4 from 3, clear 4, return on attention 3 (on the learn launch — a pid and the watch line — and the empty wish's proposal; the advisory not-annoying at 2) — the learn and empty-wish answers now carry their value in the skills; the seventh launch (08:00Z) runs on and decides; its report stands as landed |
+
 4. The owner's checkpoint: the eight reports, S3's record and S6's reports read; the release branch merged into `redesign` and `redesign` into `main` with its history kept, and pushed.
 5. The tag and the release with the notes; `publish.yml` watched to PyPI green; `pip install leeroo-kapso==0.8.0` in a fresh venv, `kapso doctor`, the plugin's install line on Claude Code and on Codex, the docs site read once at its new navigation.
 
