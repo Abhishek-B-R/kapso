@@ -3372,3 +3372,36 @@ out: no branch, no score, nothing delivered. The same build on Claude Code
 passed at 31 minutes, so the budget was marginal, not wrong; it is now 45
 minutes under a 60-minute step cap, enough for an implementation of
 twenty-five minutes and a verification of its own.
+
+## An answered inbox continuation is admitted whatever the remainder (2026-10-31)
+
+The fourth S5 Codex launch's missing-key campaign paused on its request,
+the plugin wrote the key and replied within two minutes, and the
+orchestrator's admission check refused the resume — "the remaining 16.3
+min would not cover an attempt (the last took 18.2 min)" — where "the
+last" was the paused attempt's own elapsed time, the eighteen minutes its
+session had spent before asking. The strategy already treats a node
+suspended on an answered request as a continuation, not a round ("the last
+round's duration stands for the next admission"), but the orchestrator's
+check runs before the strategy does and did not know. The strategy now
+says so (`continues_an_answered_node`, False on the base class), and the
+orchestrator admits such a continuation regardless of the fit rule: the
+attempt is under way and the person answered; the round after it is
+admitted on the real remainder as before. The previous launch's same
+campaign asked sooner, resumed, and scored — the defect was timing-bound,
+and is fixed in the package rather than tuned around in the rig.
+
+## The crash is read from the record's difficulties; the rig's siblings move (2026-10-31)
+
+The evaluator-crash step's detector read the attempt's evaluation output
+and the sessions' streams. The fourth S5 Codex launch's session checked
+its inputs before scoring, found the labels gone, searched the siblings
+under the work directory by checksum, copied the previous injection's
+copy into place, and scored — and the crash sat only in the engine's own
+record of the node's difficulties, which the plugin cited. Two changes:
+`crash_occurred` reads run_state's technical difficulties too (the regex
+takes "holdout_labels.csv … raised FileNotFoundError", the record's
+order), and every `holdout_labels.csv` under the work directory moves for
+the step, since the rig's own layout must not hand the labels back. An
+agent that reconstructs protected labels from a copy, against the brief's
+rule, with the judge letting the score stand, remains the owner's finding.
