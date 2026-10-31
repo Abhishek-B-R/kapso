@@ -203,6 +203,17 @@ def test_a_crash_is_read_from_the_attempts_own_sessions(tmp_path):
     assert s5.crash_occurred(campaign, {"attempts": [scored]}), "but the crash in its session still occurred"
 
 
+def test_a_finished_rate_limited_campaign_is_continued_not_waited_for():
+    # rel-s5-codex, sixth launch: the rate-limited first attempt counted
+    # against the two experiments and the campaign stopped at max_iterations
+    # before the question; the plugin's fix was a larger allowance, not a
+    # wait, and the vocabulary takes it.
+    text = ("The first attempt hit 429 rate-limit errors during ideation before producing any implementation turns. "
+            "Kapso counted it anyway. Continuing requires increasing the experiment allowance.")
+    assert s5.names_class_and_fix(text, "provider-limit") == {"names_class": True, "names_fix": True}
+    assert s5.names_class_and_fix("the first attempt hit 429 errors; wait for the window, then resume", "provider-limit") == {"names_class": True, "names_fix": True}
+
+
 def test_the_request_names_the_variable_and_never_a_value_and_the_diagnosis_names_its_class(tmp_path):
     inbox = tmp_path / "inbox.jsonl"
     assert s5.request_names_no_value(inbox, "secret-value") is None

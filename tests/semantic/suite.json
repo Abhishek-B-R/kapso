@@ -505,7 +505,7 @@
     },
     "learn-complete": {
       "kind": "shell",
-      "minutes": 150
+      "minutes": 240
     },
     "experience-share": {
       "kind": "conversation",

@@ -117,7 +117,11 @@ CLASS_WORDS = {
     "tampering": re.compile(r"integrity|tamper|modified evaluator|evaluat\w*\s+(was\s+)?(edited|changed|modified|altered)|hash\s+(mismatch|check)|\bvoided\b", re.I),
 }
 FIX_WORDS = {
-    "provider-limit": re.compile(r"\bwait\b|retry|retried|rode it out|window|resume", re.I),
+    # A campaign asked about after it finished (the sixth S5 Codex launch:
+    # the rate-limited attempt counted against its two experiments and it
+    # stopped at max_iterations) is continued with a larger allowance, not
+    # waited for: "continuing requires increasing the experiment allowance".
+    "provider-limit": re.compile(r"\bwait\b|retry|retried|rode it out|window|resume|continu(e|es|ing)|experiment allowance|more experiments|--budget-experiments|another (attempt|experiment)", re.I),
     "evaluator-crash": re.compile(r"restore|put (it|them|the labels) back|move (it|them) back|then resume|resume", re.I),
     "missing-key": re.compile(r"kapso inbox reply|\breply\b|\.env|provide the key|set (the )?key", re.I),
     # "recovered from a killed implementation session and finished", "Second
