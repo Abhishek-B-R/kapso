@@ -3302,3 +3302,38 @@ evaluation output, integrity error or sessions), the plugin naming the
 class and the fix, and a resume — not on an attempt ending scoreless,
 which would require the agent to be incompetent. The agent's self-repair
 of protected data, accepted by the judge, remains a finding for the owner.
+
+## S2's learn-complete passes on a clean end-to-end learn (2026-10-31, the owner's)
+
+The third S2 Claude launch's learn ran every phase — harvest, mine, exam,
+lesson, push — and moved the bank head, and the lesson landed "0 created,
+0 updated": the update crew, with the exam before the lesson, admitted no
+card from a one-attempt campaign that reached 0.8500 on a 0.85 target. An
+earlier wave's learn on a like campaign banked five. Whether a card is
+banked is a learning-quality outcome that varies with the campaign and the
+crew's model (this round's learns ran on Opus, the shipped model's login
+being rate-limited), and the rig must not force it. Put to the owner, who
+chose: the step passes when the learn completes end to end and advances
+the bank; the cards banked are recorded in the step's note, not gated.
+
+## The plugin's follow-up detail goes in the fence; the line budget stays hard (2026-10-31, the owner's)
+
+The same launch's two other misses were the plugin's probing follow-ups —
+"is it safe to merge?" at 13 lines, "show the candidate criteria" at 18 —
+against the twelve-line budget, each first answer now within it. The
+follow-ups broke their detail (five risks, the branch clutter, what was not
+checked; a criterion per bullet with its figures) into prose lines. The
+fenced block is exempt from the count and is where such detail belongs:
+the build and evaluation skills now put the candidate comparison in one
+fenced table with at most three prose lines around it (the earlier "no
+table" instruction pushed the detail into prose and is withdrawn), and the
+review skill sends a merge-safety answer's files-and-rules detail into the
+fenced outline and keeps at most four risks. Put to the owner, who chose
+that the twelve-line budget stays a hard gate the fenced fix must meet,
+not an advisory dimension.
+
+## No further questions: the suggestions stand (2026-10-31, the owner's)
+
+After those two, the owner said to ask no further questions and to go
+with my suggestions to pass the master plan's gates. From here every
+remaining call on the gate is taken on my own judgment and written here.
