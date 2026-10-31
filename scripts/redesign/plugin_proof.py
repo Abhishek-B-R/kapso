@@ -137,11 +137,16 @@ FRAUD_WISH = (
 # build-churn the churn campaign lived its whole hour under that load — its
 # ideation session, sixteen minutes alone, passed its 2250-second deadline
 # and was killed, and the attempt voided (rel-s2-codex, fifth launch). The
-# campaigns and the probe are each measured on their own.
+# campaigns and the probe are each measured on their own. The MCP tool steps
+# (campaign-tools, then session-brief) run after the learn, when no campaign
+# loads the machine: the seventh Codex launch's campaign-tools session had no
+# kapso tools though the server was registered, the sixth's had them, and a
+# server Codex drops at startup leaves no diagnostic — an idle machine is the
+# one lever the rig has.
 STEP_NAMES = [
-    "install", "setup", "cold-install", "build-churn", "build-pause", "watch", "harness-export", "campaign-tools",
+    "install", "setup", "cold-install", "build-churn", "build-pause", "watch", "harness-export",
     "inbox", "build-fraud", "build-data-only", "build-empty-wish", "harness-new", "harness-probe", "review",
-    "deploy", "learn", "learn-complete", "session-brief", "experience-share", "second-engineer-build", "harness-improve",
+    "deploy", "learn", "learn-complete", "campaign-tools", "session-brief", "experience-share", "second-engineer-build", "harness-improve",
     "campaign-session-isolation", "triggers", "codex-rules-probe", "cold-start",
 ]
 # Codex's explicit skill for each Claude Code command.
@@ -1532,11 +1537,11 @@ def step_cold_start(ctx: Context) -> Dict[str, Any]:
 STEPS: Dict[str, Callable[[Context], Dict[str, Any]]] = {
     "install": step_install, "setup": step_setup, "cold-install": step_cold_install, "build-churn": step_build_churn,
     "build-pause": step_build_pause,
-    "watch": step_watch, "harness-export": step_harness_export, "campaign-tools": step_campaign_tools,
+    "watch": step_watch, "harness-export": step_harness_export,
     "inbox": step_inbox, "build-fraud": step_build_fraud, "build-data-only": step_build_data_only,
     "build-empty-wish": step_build_empty_wish, "harness-new": step_harness_new, "harness-probe": step_harness_probe,
     "review": step_review, "deploy": step_deploy, "learn": step_learn, "learn-complete": step_learn_complete,
-    "session-brief": step_session_brief, "experience-share": step_experience_share, "second-engineer-build": step_second_engineer_build,
+    "campaign-tools": step_campaign_tools, "session-brief": step_session_brief, "experience-share": step_experience_share, "second-engineer-build": step_second_engineer_build,
     "harness-improve": step_harness_improve,
     "campaign-session-isolation": step_campaign_session_isolation, "triggers": step_triggers,
     "codex-rules-probe": step_codex_rules_probe, "cold-start": step_cold_start,
