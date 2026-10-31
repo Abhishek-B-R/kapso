@@ -3607,3 +3607,21 @@ written and checked green", said DONE at the proposal; its intent now says
 DONE comes only once the harness is on disk and its check is green. The
 owner allowed one more launch; this regression of my own making costs one
 past it, said plainly, landing before the morning deadline.
+
+## The ask detector keeps a prose line that opens with a quoted path; S2 re-reads its proposal steps (2026-10-31)
+
+The eighth S2 Claude launch's data-only proposal closed on one line:
+"`../fraud-campaign` already holds an earlier campaign, so this one will
+write to `../fraud-scorer-campaign`. Approve the brief and evaluation, or
+edit a line; say go to launch". The detector's rule that drops the command
+shown after an ask — a backtick-wrapped line, kept since three Claude
+steps ended "Say go and I'll run:" and the command — took the whole line
+for a command, read no ask, and the step read no proposal. A wrapped
+command is one wrapped whole, judged on the raw line; a prose line that
+opens with a quoted path carries its ask. The run in flight carries the
+detector of its day, and its archive holds the answer that asked, the
+launch fact in the step's note and the persona's DONE: the driver's
+`--rederive` reads the proposal steps again under the current detector
+and says the day in the record and the step, every other step and the
+judge's block as recorded — the mechanism S4 and S5 already use, rather
+than a launch past the owner's allowance for a rig line.
