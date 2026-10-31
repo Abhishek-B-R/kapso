@@ -3625,3 +3625,26 @@ launch fact in the step's note and the persona's DONE: the driver's
 and says the day in the record and the step, every other step and the
 judge's block as recorded — the mechanism S4 and S5 already use, rather
 than a launch past the owner's allowance for a rig line.
+
+## The watch step's budget counts the pushback it plants (2026-10-31)
+
+The watch step's persona reads a task view with a planted wrong fact —
+"the current model scores about 0.90 ROC AUC" — so that it pushes back,
+and the step checks the pushback. The budget of two host messages covered
+the status answer and the follow-up and not the answer to the pushback:
+the eighth S2 Codex launch's watch completed its checks and failed on the
+count. The budget is three; a persona that does not push back uses two.
+
+## A baseline is measured in the session; no skill's rule is cited (2026-10-31)
+
+The eighth S2 Codex launch's data-only proposal gave "Baseline:
+unmeasured" and the figures a generator's comment reports, where the
+Claude plugin's ran the evaluator on the shipped rules (0.091, with its
+standard error); its empty-wish proposal cited the evaluation skill's rule
+to the user. The judge scored both answers 3 on return on attention and
+the second 3 on clear, and the build skill already asked for the baseline
+"with the figure it measured" and "no line about this skill's own rules".
+It now says it in words the terser model follows: a baseline is a figure
+the evaluator printed in this session on the shipped model, never a number
+a comment, a README or a generator reports — "unmeasured" is a step
+skipped, not a finding — and never a line that cites any skill's rules.
