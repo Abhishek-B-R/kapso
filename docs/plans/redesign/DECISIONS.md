@@ -3503,3 +3503,22 @@ build skill's proposal for a wish that names no task says what will exist
 and what it does for the user, with its evidence and one alternative. The
 seventh Codex launch runs without these (it predates them); an eighth, if
 the seventh's judge misses on those answers, carries them.
+
+## S2's churn build runs at ninety minutes (2026-10-31)
+
+The fifth S2 Claude launch's churn campaign — sixty minutes, three
+experiments — spent most of its hour in one implementation; the
+verification session then timed out at its own ten minutes, its retry got
+the 275 seconds left before the reserve, the feedback got 299, and the
+finishing cut delivered no branch, so deploy had nothing and the review
+named no delivered branch. The third and fourth launches' implementations
+finished in under thirty minutes and delivered 0.846 and 0.850; this one
+ran long, as a modelling implementation can. The budget was marginal, as
+the second engineer's thirty minutes were: the churn build is ninety
+minutes, the review step's wait follows the budget, and the run's wall
+clock grows by half an hour. The engine's session floors and the
+verification role's ten-minute timeout are the product's; a verification
+that needs longer than its timeout on a slow run is a finding, recorded.
+The run was stopped at its second engineer rather than run out — deploy
+could not pass on it, every step before it had — and relaunched from the
+widened tree an hour sooner.

@@ -194,6 +194,8 @@ Edits: the ports of `main`'s changes into the modules they land in (the one exce
 
    | `rel-s2-codex` (sixth launch, re-judged) | `token-4` | still **FAIL** on the judge alone: under the every-message transcript proactive 4 from 3, clear 4, return on attention 3 (on the learn launch — a pid and the watch line — and the empty wish's proposal; the advisory not-annoying at 2) — the learn and empty-wish answers now carry their value in the skills; the seventh launch (08:00Z) runs on and decides; its report stands as landed |
 
+   | `rel-s2-claude` (fifth launch) | `token-2`, the learn on Opus | **stopped** at the second engineer (09:15Z) and relaunched: learn-complete **passes** under the four-hour wait (90 minutes, one card banked); review, build-data-only and every conversation step through it pass; deploy failed on a churn campaign that delivered nothing — one implementation took most of the hour, the verification timed out at its own ten minutes and its retry got the 275 seconds left, the feedback 299, the finishing cut left no branch (the third and fourth launches' implementations finished in under thirty minutes and delivered). The churn build is now ninety minutes, the review wait following it; relaunched from that tree (archive: `rel-s2-claude-fifth/`) |
+
 4. The owner's checkpoint: the eight reports, S3's record and S6's reports read; the release branch merged into `redesign` and `redesign` into `main` with its history kept, and pushed.
 5. The tag and the release with the notes; `publish.yml` watched to PyPI green; `pip install leeroo-kapso==0.8.0` in a fresh venv, `kapso doctor`, the plugin's install line on Claude Code and on Codex, the docs site read once at its new navigation.
 
