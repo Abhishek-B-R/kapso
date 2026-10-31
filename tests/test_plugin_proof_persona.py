@@ -365,3 +365,38 @@ def test_the_campaign_tools_step_probes_the_server_and_runs_a_second_session_whe
     monkeypatch.setattr(ctx2, "shell", lambda command, cwd=None, check=True, timeout=None: types.SimpleNamespace(stdout="", stderr="", returncode=0))
     step2 = proof.step_campaign_tools(ctx2)
     assert host2.calls == 1 and step2["completed"] is False and any("not among them" in note for note in step2["notes"])
+
+
+def test_a_closing_line_that_opens_with_a_quoted_path_keeps_its_ask():
+    # rel-s2-claude, eighth launch: the proposal closed "`../fraud-campaign`
+    # already holds an earlier campaign … Approve the brief and evaluation,
+    # or edit a line; say "go" to launch", and the detector dropped the line
+    # as the command shown after an ask, reading no ask at all.
+    prose = ('The baseline is 0.08.\n\n`../fraud-campaign` already holds an earlier campaign, so this one will write to '
+             '`../fraud-scorer-campaign`. Approve the brief and evaluation, or edit a line (PR-AUC, the 25% split or the 0.54 target); say "go" to launch')
+    assert proof.question_asked(prose, []) is True
+    # A command wrapped whole after the ask is still dropped, the ask above it read.
+    assert proof.question_asked('Say go and I\'ll run:\n`kapso build --brief kapso-brief.md --detach`', []) is True
+    # A prose line opening with a quoted path and asking nothing asks nothing.
+    assert proof.question_asked('`../churn-campaign` is running; the status is fresh.', []) is False
+
+
+def test_an_archived_runs_proposal_steps_are_re_read_under_the_current_ask_detector(tmp_path):
+    # The eighth S2 Claude launch's data-only step read no proposal under the
+    # detector of its day; the archive holds the answer, the launch fact and
+    # the persona's DONE, and a re-read under the current detector says so.
+    (tmp_path / "transcripts").mkdir()
+    closing = '`../fraud-campaign` already holds an earlier campaign. Approve the brief and evaluation, or edit a line; say "go" to launch'
+    (tmp_path / "transcripts" / "build-data-only.jsonl").write_text(json.dumps({"proof_prompt": "/kapso:build …"}) + "\n" + json.dumps({"type": "result", "result": closing}) + "\n", encoding="utf-8")
+    (tmp_path / "transcripts" / "build-empty-wish.jsonl").write_text(json.dumps({"proof_prompt": "/kapso:build …"}) + "\n" + json.dumps({"type": "result", "result": "I launched it; follow with kapso watch."}) + "\n", encoding="utf-8")
+    record = {"steps": [
+        {"name": "build-data-only", "kind": "conversation", "completed": False, "notes": ["candidate criteria judged by hand from the answers artifact; a campaign was launched: False (the step forbids it)"]},
+        {"name": "build-empty-wish", "kind": "conversation", "completed": True, "notes": ["candidate criteria judged by hand from the answers artifact; a campaign was launched: True (the step forbids it)"]},
+        {"name": "watch", "kind": "conversation", "completed": True, "notes": []},
+    ], "user": {"events": ["build-data-only: the persona said DONE after 2 turn(s)", "build-empty-wish: the persona said DONE after 1 turn(s)"]}, "notes": []}
+    out = proof.rederive(record, tmp_path)
+    by_name = {step["name"]: step for step in out["steps"]}
+    assert by_name["build-data-only"]["completed"] is True and "the first answer asked" in by_name["build-data-only"]["notes"][-1]
+    assert by_name["build-empty-wish"]["completed"] is False and "a campaign was launched: True" in by_name["build-empty-wish"]["notes"][-1], "a launch the step forbids stays a miss"
+    assert by_name["watch"]["completed"] is True and by_name["watch"]["notes"] == [], "other steps stay as recorded"
+    assert out["notes"][-1].startswith("re-derived ")

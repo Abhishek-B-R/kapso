@@ -214,13 +214,20 @@ def question_asked(text: str, tools: Sequence[Dict[str, Any]]) -> bool:
         return True
     # A fence line is nothing once its backticks are stripped; it is dropped
     # so the closing lines are the closing prose and commands.
-    lines = [line for line in (raw.strip().rstrip("*_`)\"' ") for raw in text.splitlines()) if line]
+    pairs = [(raw.strip().rstrip("*_`)\"' "), raw.strip()) for raw in text.splitlines()]
+    pairs = [(line, raw) for line, raw in pairs if line]
     # The command the ask refers to, shown after it (a fenced block, a
     # backtick-wrapped line, a `kapso ...` line), is not the ask's last
     # word: three steps on the Claude host ended "Say go and I'll run:"
-    # and the command, and read as never asking (2026-10-28).
-    while lines and (lines[-1].startswith("`") or lines[-1].startswith("kapso ") or lines[-1].startswith("$ ")):
-        lines.pop()
+    # and the command, and read as never asking (2026-10-28). A wrapped
+    # command is wrapped whole: a prose line that opens with a quoted path
+    # ("`../fraud-campaign` already holds … Approve the brief … say go")
+    # carries the ask and stays (the eighth S2 Claude launch, 2026-10-31).
+    def command_line(line: str, raw: str) -> bool:
+        return (raw.startswith("`") and raw.endswith("`")) or line.startswith("kapso ") or line.startswith("$ ")
+    while pairs and command_line(*pairs[-1]):
+        pairs.pop()
+    lines = [line for line, raw in pairs]
     if not lines:
         return False
     # A question mark or an approval request in the closing lines: the
@@ -1185,6 +1192,38 @@ def step_build_data_only(ctx: Context) -> Dict[str, Any]:
     return _criteria_step(ctx, "build-data-only", project, "make the fraud scorer in this repository better")
 
 
+PROPOSAL_STEPS = ("build-data-only", "build-empty-wish")
+
+
+def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
+    """An archived run read again under the current rules where the archive
+    allows: the proposal steps' completion from the first host answer in
+    the step's transcript, through the current `question_asked`, and the
+    launch fact the step recorded in its note. The judge's block, every
+    other step and the persona's events stay as recorded (the eighth S2
+    Claude launch's data-only proposal asked in a closing line that opened
+    with a quoted path, which the detector of its day dropped as a command;
+    a changed suite changes the verdict, never the record)."""
+    for step in record["steps"]:
+        if step.get("name") not in PROPOSAL_STEPS:
+            continue
+        transcript = out / "transcripts" / f"{step['name']}.jsonl"
+        if not transcript.is_file():
+            continue
+        first = next((row.get("result") or "" for row in (json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines() if line.startswith("{")) if row.get("type") == "result"), None)
+        if first is None:
+            continue
+        launched = any("a campaign was launched: True" in note for note in step.get("notes", []))
+        ended_well = any(event.startswith(f"{step['name']}: the persona said DONE") for event in (record.get("user") or {}).get("events", []))
+        asked = question_asked(first, [])
+        step["completed"] = asked and not launched and ended_well
+        step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("re-read")],
+                         f"re-read {datetime.now(timezone.utc).date().isoformat()} from the archive: the first answer {'asked' if asked else 'did not ask'} under the current ask detector; a campaign was launched: {launched}; the persona {'said DONE' if ended_well else 'did not end the exchange'}"]
+    record["notes"] = [*[note for note in record.get("notes", []) if not note.startswith("re-derived")],
+                       f"re-derived {datetime.now(timezone.utc).date().isoformat()} under the current rules where the archive allows (the proposal steps' ask; each says so)"]
+    return record
+
+
 def step_build_empty_wish(ctx: Context) -> Dict[str, Any]:
     project = ctx.work / "empty"
     if project.exists():
@@ -1634,10 +1673,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--learn-model", default=None, help="run the learning crews on this model instead of the shipped one (said in the record)")
     parser.add_argument("--pause-minutes", type=int, default=_PAUSE_B["minutes"], help="the injected pause campaign's budget (the suite's builds.pause.minutes); a slow box needs more than the default for its session to reach the ask")
     parser.add_argument("--recompute-triggers", action="store_true", help="read the trigger step's verdict again from its artifacts, run nothing")
+    parser.add_argument("--rederive", action="store_true", help="read an archived run's proposal steps again under the current ask detector (on the development box); runs nothing")
     parser.add_argument("--triggers-sandbox", default=None, help="codex's sandbox for the trigger sessions on a machine whose own cannot start (the runner's word; default: the suite's triggers.codex_sandbox)")
     parser.add_argument("--advisory", default=None, help="the reason this arm runs on the development box; the record is marked and never a fresh-machine acceptance")
     parser.add_argument("--user", default="scripted", help="who answers the host: scripted (the mechanical round) or persona:<card> (a card under tests/semantic/personas through the other vendor's CLI)")
     args = parser.parse_args(argv)
+    if args.rederive:
+        out = Path(args.out).resolve()
+        record = rederive(json.loads((out / "record.json").read_text(encoding="utf-8")), out)
+        (out / "record.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        print(json.dumps({step["name"]: step.get("completed") for step in record["steps"] if step.get("name") in PROPOSAL_STEPS}))
+        return 0
     host = ClaudeHost() if args.host == "claude_code" else CodexHost()
     out = Path(args.out).resolve()
     work = Path(args.work).resolve() if args.work else out / "work"
