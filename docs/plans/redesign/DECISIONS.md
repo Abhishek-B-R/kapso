@@ -3337,3 +3337,38 @@ not an advisory dimension.
 After those two, the owner said to ask no further questions and to go
 with my suggestions to pass the master plan's gates. From here every
 remaining call on the gate is taken on my own judgment and written here.
+
+## The trigger probe runs last, on an idle machine (2026-10-31)
+
+On Codex the probe is a hundred minutes of sessions one at a time, and in
+the round's order it followed build-churn, so the churn campaign lived its
+whole hour under that load: its ideation session, about sixteen minutes on
+its own, passed its 2250-second deadline and was killed, and the attempt
+voided (the fifth S2 Codex launch; on Claude Code the probe is twenty
+minutes and the same campaign delivered). The probe now runs after every
+campaign and the learn, so the campaigns and the probe are each measured
+alone; the run is no longer in wall clock, the steps being sequential.
+
+## A skipped MCP registration fails the setup step (2026-10-31)
+
+The setup session on Codex read the skill's "add Kapso's MCP server to the
+user's config once" beside a doctor whose rows were all green and ran no
+`codex mcp add`; the list came back empty, and campaign-tools and
+session-brief — the two steps that need the plugin's tools — could only
+report that no tools were exposed, with the judge's proactive and
+return-on-attention scores landing on those answers. Two changes: the
+skill's step 4 is unconditional and verified (run the lines in this
+session whether or not the doctor is green; `codex mcp list` must show a
+`kapso` row; a list without one is a setup not done, said to the user),
+and the rig's setup step on Codex fails when the list shows no kapso row,
+so a skipped registration fails where its cause is rather than three
+steps later in words that look like a product gap.
+
+## The second engineer builds at forty-five minutes (2026-10-31)
+
+The second engineer's thirty-minute build reached a 0.8464 candidate and
+its finishing cut left the verification session four minutes, which timed
+out: no branch, no score, nothing delivered. The same build on Claude Code
+passed at 31 minutes, so the budget was marginal, not wrong; it is now 45
+minutes under a 60-minute step cap, enough for an implementation of
+twenty-five minutes and a verification of its own.
