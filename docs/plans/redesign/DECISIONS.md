@@ -3662,3 +3662,18 @@ count only an unasked launch, saying in the note when the persona itself
 said go; the empty-wish intent tells the persona never to say go, whatever
 is proposed. The run in flight carries the rule of its day; its archive
 is re-read under this one when it lands.
+
+## Deployment parity reads the row nested in the batch a deployment answered (2026-10-31)
+
+The deploy step's parity reader took the deployment record's observed
+answer for one row with an id at the top level. The eighth S2 Claude
+launch's blend keeps the batch it was delivered with, as the deployment
+prompt says a solution that scores rows relative to one another must, and
+its observed answer was the batch's row for the proof's id inside a
+`predictions` list, with the batch size and the reference batch beside it
+— a correct deployment the reader took for no row, while predictions.csv
+sat on the delivered branch. The reader now takes the row of the proof's
+id from such a list (or the one row it holds), the step and the re-read
+share it, and the re-read recomputes the deploy step from the record the
+step copied and the campaign the archive carries. The run in flight is
+read again from its archive under this reader when it lands.
