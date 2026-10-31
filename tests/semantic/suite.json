@@ -836,7 +836,8 @@
   "waits": {
     "campaign_grace_minutes": 15,
     "trace_and_stop_seconds": 120,
-    "evidence_grace_seconds": 120
+    "evidence_grace_seconds": 120,
+    "mcp_probe_seconds": 120
   },
   "injections": {
     "provider_limit_count": 3,

@@ -25,6 +25,7 @@ import os
 import re
 import shlex
 import shutil
+import select
 import subprocess
 import sys
 import time
@@ -989,22 +990,93 @@ def step_harness_export(ctx: Context) -> Dict[str, Any]:
     return step
 
 
+CAMPAIGN_TOOLS = ("kapso_build_start", "kapso_status", "kapso_stop")
+
+
+def mcp_server_probe(project: Path, seconds: float) -> Dict[str, Any]:
+    """A standalone handshake with the plugin's MCP server as a host would
+    make it: `kapso-mcp` started from the project (a login shell, the PATH
+    a tool install uses), `initialize`, the initialized notification, then
+    `tools/list`, over the stdio transport's newline-delimited JSON-RPC.
+    What it returns is the one fact the session's own account cannot give:
+    whether the server starts on this machine, in how many seconds, and
+    which tools it lists (the eighth S2 Codex launch's campaign-tools
+    session reported the three tools unavailable, the session-brief one
+    minutes later read a card through the same server, and Codex leaves no
+    line for a server it drops at startup)."""
+    started = time.monotonic()
+    child = subprocess.Popen(["bash", "-lc", "exec kapso-mcp"], cwd=str(project), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    messages = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "kapso-gate-probe", "version": "0"}}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+    ]
+    assert child.stdin is not None and child.stdout is not None
+    for message in messages:
+        child.stdin.write(json.dumps(message) + "\n")
+    child.stdin.flush()
+    tools: List[str] = []
+    error = ""
+    listed = False
+    deadline = started + seconds
+    while time.monotonic() < deadline and not listed:
+        if select.select([child.stdout], [], [], 0.5)[0] == []:
+            if child.poll() is not None:
+                error = f"the server exited with {child.returncode}"
+                break
+            continue
+        line = child.stdout.readline()
+        if not line:
+            error = "the server closed its output"
+            break
+        if not line.startswith("{"):
+            continue
+        reply = json.loads(line)
+        if reply.get("id") == 2:
+            tools = [tool["name"] for tool in (reply.get("result") or {}).get("tools", [])]
+            listed = True
+        elif reply.get("id") == 1 and "error" in reply:
+            error = json.dumps(reply["error"])
+            break
+    elapsed = time.monotonic() - started
+    if not listed and not error:
+        error = f"no tools/list reply within {seconds:.0f} s"
+    child.kill()
+    stderr = child.stderr.read() if child.stderr is not None else ""
+    return {"started": listed, "seconds": round(elapsed, 1), "tools": tools, "error": error, "stderr_tail": stderr[-600:]}
+
+
 def step_campaign_tools(ctx: Context) -> Dict[str, Any]:
     project = Path(ctx.state["churn_project"])
     prompt = (
-        "Use the kapso_build_start tool (not the shell) to start a campaign of this repository: brief kapso-brief.md, repo ., "
-        "output ../tools-campaign, evaluation evaluation, data data, budget 10 minutes and 1 experiment. Then read it with "
-        "kapso_status, then end it with kapso_stop, and report the three answers verbatim."
+        "Use the `kapso` MCP server's kapso_build_start tool (not the shell) to start a campaign of this repository: brief kapso-brief.md, repo ., "
+        "output ../tools-campaign, evaluation evaluation, data data, budget 10 minutes and 1 experiment. Then read it with the server's "
+        "kapso_status, then end it with its kapso_stop, and report the three answers verbatim."
     )
+    # The server probed as a host would start it, before the session: the
+    # fact the session's own account cannot give.
+    probe = mcp_server_probe(project, float(SUITE["waits"]["mcp_probe_seconds"]))
+    artifacts = [ctx.artifact("campaign-tools-server-probe.json", json.dumps(probe, indent=1))]
+    serves = all(any(name.endswith(tool) for name in probe["tools"]) for tool in CAMPAIGN_TOOLS)
+    notes = [f"the server, started as a host starts it: {'listed ' + str(len(probe['tools'])) + ' tools in ' + str(probe['seconds']) + ' s' if probe['started'] else 'did not answer (' + probe['error'] + ')'}"
+             + ("" if serves or not probe["started"] else "; the three campaign tools are not among them")]
     turns = ctx.converse("campaign-tools", project, prompt, lambda text, index: None, max_turns=1)
     names = [tool["name"] for turn in turns for tool in turn.tools]
-    used = {tool for tool in ("kapso_build_start", "kapso_status", "kapso_stop") if any(name.endswith(tool) for name in names)}
-    artifacts = [ctx.artifact("campaign-tools.txt", "\n".join(names) + "\n\n" + "\n".join(turn.text for turn in turns))]
+    used = {tool for tool in CAMPAIGN_TOOLS if any(name.endswith(tool) for name in names)}
+    if not used and serves:
+        # The server lists the tools and the session saw none: a server
+        # Codex dropped at that session's start, which a fresh session
+        # starts again. Said here, and in both answers kept.
+        notes.append("the first session used no kapso tool though the server lists them; a second session ran")
+        turns = [*turns, *ctx.converse("campaign-tools-2", project, prompt, lambda text, index: None, max_turns=1)]
+        names = [tool["name"] for turn in turns for tool in turn.tools]
+        used = {tool for tool in CAMPAIGN_TOOLS if any(name.endswith(tool) for name in names)}
+    artifacts.append(ctx.artifact("campaign-tools.txt", "\n".join(names) + "\n\n" + "\n\n---\n\n".join(turn.text for turn in turns)))
     receipt = ctx.work / "tools-campaign.launch.json"
     if receipt.is_file():
         artifacts.append(ctx.copy_artifact(receipt, "tools-campaign.launch.json"))
     ctx.shell(f"kapso build --output {ctx.work / 'tools-campaign'} --stop", check=False)
-    return record_step("campaign-tools", turns, used == {"kapso_build_start", "kapso_status", "kapso_stop"}, artifacts)
+    return record_step("campaign-tools", turns, used == set(CAMPAIGN_TOOLS), artifacts, notes)
 
 
 def step_inbox(ctx: Context) -> Dict[str, Any]:
