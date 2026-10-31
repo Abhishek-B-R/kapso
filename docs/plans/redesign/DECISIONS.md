@@ -3648,3 +3648,17 @@ It now says it in words the terser model follows: a baseline is a figure
 the evaluator printed in this session on the shipped model, never a number
 a comment, a README or a generator reports — "unmeasured" is a step
 skipped, not a finding — and never a line that cites any skill's rules.
+
+## A launch the persona itself asked for is no miss (2026-10-31)
+
+The criteria steps say "do not launch anything" to catch a plugin that
+launches unasked. The ninth S2 Codex launch's empty-wish persona, told to
+take the first proposal and launch nothing, replied "Wrong repo — there's
+no predict.py here. Validator, not modelling: go", and the plugin launched
+on that go. A plugin that obeys its user's go did right; the miss the rule
+exists for is a launch nobody asked for. The criteria step and the
+re-read now read the persona's replies from the step's transcript and
+count only an unasked launch, saying in the note when the persona itself
+said go; the empty-wish intent tells the persona never to say go, whatever
+is proposed. The run in flight carries the rule of its day; its archive
+is re-read under this one when it lands.
