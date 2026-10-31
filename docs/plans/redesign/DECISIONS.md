@@ -3454,3 +3454,21 @@ under it when the run lands, the suite's own `--rederive`, rather than a
 seventh launch. That a provider-rejected attempt counts against the
 allowance, and that the feedback quoted the brief's budget rather than the
 launch's, are the owner's findings.
+
+## The plugin's answers carry their findings (2026-10-31)
+
+The sixth S2 Codex launch passed all 24 steps and missed the judge's bar
+on proactive and return on attention alone — 3 against 4 on both passes —
+on four answers that were correct and empty of findings: a launch that
+named the brief and the harness but not the data, the evaluator and the
+baseline it had found; a watch that said the budget "isn't reported" when
+the launch record holds it; a share that echoed the command; a proposal
+that cited the skill's own rule to the user. The rubric's proactive is
+"findings the user did not know, with evidence", and the Claude plugin's
+answers to the same steps score 5 by carrying them. The build skill's
+four findings lines are now imperative, each with its figure or file,
+with no line about the skill's rules; the operating skill's watch answer
+gives the best score against the baseline and target and the budget left
+from the launch record, and its share answer says what was pushed and
+what a teammate runs. The budgets are unchanged (the findings are the
+lines the budget was made for); the judge's bar is not lowered.
