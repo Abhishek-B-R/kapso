@@ -881,10 +881,10 @@ def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
         if completed is not None:
             step["completed"] = completed
         step["notes"] = [*[note for note in step.get("notes", []) if not note.startswith("re-read")],
-                         "re-read 2026-10-29 from the archive: the diagnosis under the disjoint vocabularies, the crash evidence from the evaluator's own failure line, retention not exercised where no attempt had landed, a paused campaign's score after the reply from its trace, the completion from the class's predicate over the record where every metric it needs is there; the truthfulness verdict as recorded (the injection's moment is not in the archive)"]
+                         f"re-read {datetime.now(timezone.utc).date().isoformat()} from the archive: the diagnosis under the disjoint vocabularies, the crash evidence from the evaluator's own failure line, retention not exercised where no attempt had landed, a paused campaign's score after the reply from its trace, the completion from the class's predicate over the record where every metric it needs is there; the truthfulness verdict as recorded (the injection's moment is not in the archive)"]
     record["metrics"] = run_metrics(record)
     record["notes"] = [*[note for note in record.get("notes", []) if not note.startswith("re-derived")],
-                       "re-derived 2026-10-29 under the current rules where the archive allows (each injection's note says what)"]
+                       f"re-derived {datetime.now(timezone.utc).date().isoformat()} under the current rules where the archive allows (each injection's note says what)"]
     return record
 
 

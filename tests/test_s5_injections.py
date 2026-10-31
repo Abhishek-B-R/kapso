@@ -277,7 +277,7 @@ def test_an_archived_run_is_re_read_where_the_archive_allows(tmp_path):
     assert kept["killed-writer"]["attempts_kept"] is None, "no attempt had landed: retention not exercised"
     assert kept["full-disk"]["attempts_kept"] is True and kept["full-disk"]["truthful"] is None, "the truthfulness verdict stays as recorded"
     assert kept["killed-writer"]["names_class"] and kept["killed-writer"]["names_fix"]
-    assert out["metrics"]["truthfulness_unobserved"] == 1 and out["steps"][0]["notes"][-1].startswith("re-read 2026-10-29")
+    assert out["metrics"]["truthfulness_unobserved"] == 1 and out["steps"][0]["notes"][-1].startswith("re-read 20") and " from the archive:" in out["steps"][0]["notes"][-1]
 
 
 def test_a_score_after_the_reply_may_land_on_the_paused_node_itself():
