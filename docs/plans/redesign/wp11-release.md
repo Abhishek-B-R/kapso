@@ -170,6 +170,11 @@ Edits: the ports of `main`'s changes into the modules they land in (the one exce
 
    | `rel-s5-codex` (fourth launch) | `token-3` | **FAIL** 6/8 (landed 02:18Z): killed-session and killed-writer now pass on the calibrated vocabulary; full-disk, provider-limit, tampering and the bank hold. evaluator-crash: the crash happened — the campaign's own run_state records "the evaluator crashed before scoring anything … raised FileNotFoundError", which the plugin cited — but the rig's detector read only the attempt's output and the session streams, and the session had restored the file first, by `sha256sum` across the siblings and a `cp` from the previous injection's project, a copy the rig's own layout left on disk; the detector now reads the record's difficulties and every copy under the work directory moves for the step. missing-key: the campaign paused and asked for the key without a value, the plugin wrote it and replied within 86 seconds — and the engine refused the resume: "the remaining 16.3 min would not cover an attempt (the last took 18.2 min)", the last being the paused attempt's own elapsed time, so the reply never reached the session (no `continued` event; the third launch's did). A package fix: an answered continuation is admitted whatever the remainder. Relaunched from that tree (archive: `rel-s5-codex-fourth/`) |
 
+   **Five pass (02:46Z): S1 and S4 on both hosts, S5 on Claude Code.**
+   | run | login | standing |
+   |---|---|---|
+   | `rel-s5-claude` (fourth launch) | `token-4` | **PASS** 8/8 (02:45Z): every injection diagnosed truthfully with its class and fix named; the evaluator's crash seen in the record, the missing key's resume continued and scored, the killed session and writer named in the calibrated vocabulary, the full disk and the tampering voided and resumed, the bank intact |
+
 4. The owner's checkpoint: the eight reports, S3's record and S6's reports read; the release branch merged into `redesign` and `redesign` into `main` with its history kept, and pushed.
 5. The tag and the release with the notes; `publish.yml` watched to PyPI green; `pip install leeroo-kapso==0.8.0` in a fresh venv, `kapso doctor`, the plugin's install line on Claude Code and on Codex, the docs site read once at its new navigation.
 
