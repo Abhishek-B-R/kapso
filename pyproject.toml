@@ -99,6 +99,9 @@ dev = [
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
+    # benchmarks/relbench and its tests
+    "numpy",
+    "pandas",
 ]
 
 [project.scripts]
