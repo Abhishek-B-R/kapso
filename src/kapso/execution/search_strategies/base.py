@@ -18,7 +18,7 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import MISSING, dataclass, field, fields
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
 
 from kapso.execution.types import ContextData
 from kapso.execution.cost_estimator import validate_cost_refusal, validate_cost_value
@@ -130,6 +130,7 @@ class SearchNode:
     started_at: str = ""  # ISO-8601 UTC
     phase_telemetry: Dict[str, Dict[str, float]] = field(default_factory=dict)
     # {"ideation": {"cost_usd": ..., "duration_seconds": ...}, "implementation": ..., "feedback": ...}
+    # A round's lanes share one ideation session; the first lane carries it.
 
     # Fidelity: the workload profile this node ran at, its promotion lineage,
     # and its append-only versioned measurements (see execution/fidelity.py).
@@ -507,6 +508,11 @@ class SearchStrategy(ABC):
     """
     
     WORKSPACE_FOLDER_BASE = 'tmp/search_strategy_workspace'
+
+    # The running round's nodes, on their way to the history: what they have
+    # spent is real before the round ends. A class default because many test
+    # harnesses build strategies through __new__.
+    in_flight_nodes: Sequence[SearchNode] = ()
     
     def __init__(self, config: SearchStrategyConfig, workspace_dir: Optional[str] = None, import_from_checkpoint: bool = False):
         """

@@ -33,7 +33,8 @@ _BUDGET_BLOCK_KEYS = {
     "min_agent_timeout_seconds",
     "judge_reserve_seconds",
     # Durable-clock heartbeat interval (consumed by the orchestrator, not
-    # BudgetSpec): keeps elapsed_seconds fresh between boundary checkpoints.
+    # BudgetSpec): keeps elapsed_seconds and the spend fresh between boundary
+    # checkpoints.
     "checkpoint_heartbeat_seconds",
     # How long `kapso build --stop` waits after SIGTERM before SIGKILL
     # (consumed by the verb, not BudgetSpec).

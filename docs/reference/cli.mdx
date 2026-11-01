@@ -403,8 +403,8 @@ What a paused campaign is waiting on you for, and the reply that resumes it. Ins
 
 | Form | What it does |
 |------|--------------|
-| `kapso inbox [CAMPAIGN]` | The open requests of the campaign named, else of the one the current directory is inside, else of every registered campaign that is waiting |
-| `kapso inbox reply [CAMPAIGN] [ID] [NOTE]` | Record the reply and resume the campaign in the foreground. The id may be left out when one request is open; an empty note means done |
+| `kapso inbox [CAMPAIGN]` | The open requests, and the replies a failed resume did not deliver, of the campaign named, else of the one the current directory is inside, else of every registered campaign that is waiting |
+| `kapso inbox reply [CAMPAIGN] [ID] [NOTE]` | Record the reply and resume the campaign in the foreground. The id may be left out when one request is open or a failed resume left one to retry; an empty note means done, or on a retry keeps the reply |
 
 | Flag | What it does | Default |
 |------|--------------|---------|

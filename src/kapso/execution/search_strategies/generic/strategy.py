@@ -623,6 +623,7 @@ class GenericSearch(SearchStrategy):
         )
         node.started_at = iteration_started_at
         node.phase_telemetry["ideation"] = ideation_telemetry
+        self.in_flight_nodes.append(node)
         if decision is not None:
             node.build_fidelity = decision.build_fidelity
             node.eval_fidelity = decision.eval_fidelity
@@ -838,6 +839,7 @@ class GenericSearch(SearchStrategy):
         is the best-scoring node; its should_stop carries any lane's stop.
         """
         lane_count = len(solutions)
+        self.in_flight_nodes = []
         first_node_id = len(self.node_history)
         lane_args = [
             (solutions[i], first_node_id + i, i) for i in range(lane_count)
@@ -863,7 +865,11 @@ class GenericSearch(SearchStrategy):
                     executor.map(
                         lambda args: self._run_expansion_lane(
                             problem, args[0], args[1], parent, decision,
-                            ideation_sections, ideation_telemetry,
+                            ideation_sections,
+                            # One session fed every lane and it is billed
+                            # once: the ledger, node.cost_usd and the campaign
+                            # knowledge totals all sum phases across nodes.
+                            ideation_telemetry if args[2] == 0 else {},
                             iteration_started_at, args[2],
                         ),
                         lane_args,
@@ -932,6 +938,9 @@ class GenericSearch(SearchStrategy):
                 for phase in node.phase_telemetry.values()
             )
             if append:
+                self.in_flight_nodes = [
+                    other for other in self.in_flight_nodes if other is not node
+                ]
                 self.node_history.append(node)
             if not getattr(node, "suspended", False):
                 print(
@@ -1361,6 +1370,9 @@ class GenericSearch(SearchStrategy):
             note_session_end_facts=(
                 lambda facts: self._session_end_facts.update({node_id: facts})
             ),
+            note_session_spend=(
+                lambda telemetry: self._note_session_spend(node_id, telemetry)
+            ),
             await_registered_evaluation=(
                 lambda output: self._await_registered_evaluation(output, branch_name)
             ),
@@ -1370,6 +1382,14 @@ class GenericSearch(SearchStrategy):
             defer_evaluation=self._cost_enabled(),
             stage_harness_for=self.stage_harness_for,
         )
+
+    def _note_session_spend(self, node_id: int, telemetry: Dict[str, float]) -> None:
+        """A build session just ended and its bill is known, ahead of the
+        close and the evaluation wait that can outlive the process. A
+        continued node is in the history and adds this up itself."""
+        for node in self.in_flight_nodes:
+            if node.node_id == node_id:
+                node.phase_telemetry["implementation"] = telemetry
 
     def _build_implementation_prompt(
         self,

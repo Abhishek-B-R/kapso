@@ -18,7 +18,7 @@ import pytest
 from kapso.cli import main
 from kapso.cli.common import _print_build_summary
 from kapso.cli.inbox import _campaign_goal, cmd_inbox
-from kapso.execution.inbox import file_requests, inbox_path, register_campaign
+from kapso.execution.inbox import file_requests, inbox_path, record_reply, register_campaign
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, config_fingerprint
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.handles import Brief
@@ -171,6 +171,49 @@ def test_reply_needs_the_id_when_several_are_open(tmp_path, monkeypatch, capsys)
 
     _run(monkeypatch, "inbox", "reply", "2", "done")
     assert calls == [(str(workspace.resolve()), 2, "done", False)]
+
+
+def _failed_resume(root: Path, name: str = "campaign", *, requests: int = 1) -> Path:
+    workspace = _paused_campaign(root, name, requests=requests)
+    for request_id in range(1, requests + 1):
+        record_reply(inbox_path(workspace), request_id, "added the key")
+    return workspace
+
+
+def test_inbox_shows_a_reply_a_failed_resume_did_not_deliver(tmp_path, monkeypatch, capsys):
+    workspace = _failed_resume(tmp_path)
+    monkeypatch.chdir(workspace)
+    _run(monkeypatch, "inbox")
+    out = capsys.readouterr().out
+    assert "#1  env:OPENAI_API_KEY   answered, campaign not resumed" in out
+    assert "reply  'added the key'" in out
+    assert "retry with   kapso inbox reply " in out
+    assert "Nothing waiting" not in out
+
+
+def test_the_global_inbox_lists_a_campaign_awaiting_a_resume(tmp_path, monkeypatch, capsys):
+    workspace = _failed_resume(tmp_path)
+    registry = tmp_path / "registry.jsonl"
+    register_campaign(registry, workspace, "Improve support")
+    config = tmp_path / "config.yaml"
+    config.write_text(f"inbox:\n  registry: {registry}\n")
+    monkeypatch.chdir(tmp_path)
+    _run(monkeypatch, "inbox", "--config", str(config))
+    assert f"retry with   kapso inbox reply {shlex.quote(str(workspace.resolve()))}" in capsys.readouterr().out
+
+
+def test_a_retry_needs_no_id(tmp_path, monkeypatch, capsys):
+    workspace = _failed_resume(tmp_path, requests=2)
+    calls = _capture_reply(monkeypatch)
+    monkeypatch.chdir(workspace)
+    _run(monkeypatch, "inbox", "reply")
+    assert calls[-1][1:3] == (1, "")
+    # A note has to go on one request of the two.
+    with pytest.raises(SystemExit):
+        _run(monkeypatch, "inbox", "reply", "use staging")
+    assert "which request?" in capsys.readouterr().err
+    _run(monkeypatch, "inbox", "reply", "2", "use staging")
+    assert calls[-1][1:3] == (2, "use staging")
 
 
 def test_reply_outside_a_campaign_must_name_it(tmp_path, monkeypatch, capsys):

@@ -286,16 +286,17 @@ solution.diff() -> str            # git diff from the seed to the delivered comm
 ### inbox and reply
 
 A campaign pauses when a session needs something only you can provide; see
-[the inbox](/docs/build/inbox). Two static methods act on a paused campaign
+[the inbox](/docs/build/inbox). Four methods act on a paused campaign
 directory.
 
 ```python
 Kapso.inbox(campaign: str) -> list[Request]
+Kapso.awaiting_resume(campaign: str) -> list[Request]
 Kapso.inbox_ideas(campaign: str) -> dict[int, str]
 Kapso.reply(campaign: str, request_id: int, note: str = "", *, allow_secret: bool = False) -> Solution | None
 ```
 
-`inbox` returns the open requests, oldest first, each with `id`, `key`, `hit`, `tried`, `fix` and `next_steps`. `inbox_ideas` returns one line per node of the campaign, the idea a request was made for, keyed by node id; `kapso inbox` prints it as the `for` row. `reply` records the note and, once every request of the node that asked is answered, resumes the campaign in this process and returns its result. It returns `None` when another request of that node is still open, or when the campaign was started with an `iteration_evaluator`: the callback lives in your script, so call `build()` again there with `resume=True`. It raises while a live process holds the campaign, and raises on a note shaped like a credential unless `allow_secret=True`: replies are plain text handed to the coder, so a value belongs in the `.env` the request's `fix` names.
+`inbox` returns the open requests, oldest first, each with `id`, `key`, `hit`, `tried`, `fix` and `next_steps`. `awaiting_resume` returns the answered requests a resume has not delivered, because the last one failed or was killed, and is empty while a live process holds the campaign. `inbox_ideas` returns one line per node of the campaign, the idea a request was made for, keyed by node id; `kapso inbox` prints it as the `for` row. `reply` records the note and, once every request of the node that asked is answered, resumes the campaign in this process and returns its result. It returns `None` when another request of that node is still open, or when the campaign was started with an `iteration_evaluator`: the callback lives in your script, so call `build()` again there with `resume=True`. It raises while a live process holds the campaign, and raises on a note shaped like a credential unless `allow_secret=True`: replies are plain text handed to the coder, so a value belongs in the `.env` the request's `fix` names. A resume that fails raises with the answer kept: call `reply` again to retry, with a note to replace the answer or an empty one to keep it.
 
 ## learn
 
