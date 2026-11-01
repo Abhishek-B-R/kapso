@@ -569,3 +569,32 @@ def test_a_finished_change_request_leaves_nothing_to_recover(maintained):
     assert not (
         maintained.workspace / ".kapso" / "evaluation_change_open.json"
     ).exists()
+
+
+# =========================================================================
+# The session transcript
+# =========================================================================
+
+
+def test_a_redo_reports_difficulties_from_its_own_transcript(campaign):
+    stream = (
+        campaign.workspace / ".kapso" / "sessions" / "generic_exp_1" / "stream.jsonl"
+    )
+    seen = {}
+
+    def write_and_die(node_id: int) -> None:
+        if node_id == 1:
+            stream.parent.mkdir(parents=True, exist_ok=True)
+            stream.write_text('{"dead": "attempt"}\n')
+            raise SimulatedKill()
+
+    campaign.during_implementation = write_and_die
+    with pytest.raises(SimulatedKill):
+        campaign.open().solve(experiment_max_iter=5)
+
+    campaign.during_implementation = lambda node_id: seen.update(
+        existed=stream.exists()
+    )
+    campaign.open(resume=True).solve(experiment_max_iter=1)
+
+    assert seen == {"existed": False}

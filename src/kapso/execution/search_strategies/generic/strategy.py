@@ -639,6 +639,13 @@ class GenericSearch(SearchStrategy):
             f"(from {parent.branch_name})"
         )
 
+        # The adapters append to the transcript, and the difficulties fallback
+        # reads all of it. One that already exists is a dead attempt's, on a
+        # different idea, like the session folder and branch the redo replaces.
+        stream_path = self._session_stream_path(branch_name)
+        if os.path.isfile(stream_path):
+            os.remove(stream_path)
+
         self._status_phase("implementation")
         (
             agent_output, implementation_telemetry, recovered, suspended, build_error,
@@ -1665,7 +1672,6 @@ class GenericSearch(SearchStrategy):
         stream_dir = os.path.join(
             self.workspace_dir, ".kapso", "sessions", branch_name
         )
-        os.makedirs(stream_dir, exist_ok=True)
         return os.path.join(stream_dir, "stream.jsonl")
 
     # The finishing sessions of an attempt, in order: what must still fit
