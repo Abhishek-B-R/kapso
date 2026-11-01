@@ -13,11 +13,14 @@ from typing import Optional
 import pytest
 
 import kapso.execution.coding_agents.factory as factory_module
+import kapso.execution.evaluation_maintainer.maintainer as maintainer_module
 import kapso.gated_mcp as gated_mcp_module
 from kapso.core.roles import SessionRole
+from kapso.execution.evaluation_maintainer import EvaluationMaintainerError
 from kapso.execution.experiment_workspace.experiment_session import SessionPushError
 from kapso.execution.inbox import file_requests, record_reply
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.execution.run_checkpoint import RunCheckpointStore
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.feedback_flow import generate_feedback
 from kapso.execution.search_strategies.generic.implementation import (
@@ -40,6 +43,17 @@ from test_ensemble_ideation import (
     make_ensemble_strategy,
 )
 from implementation_support import MCP_TOOL, FakeWorkspace, no_staging
+from tests.test_evaluation_maintainer_wiring import (
+    ScriptedMaintainerAgent,
+    manifest_stdout,
+    patch_maintainer_environment,
+    write_entrypoint,
+)
+from tests.test_run_checkpoint import (
+    _init_git_workspace,
+    _orchestrator,
+    _patch_orchestrator,
+)
 
 IMPLEMENTATION_ROLE = SessionRole(
     name="implementation",
@@ -425,3 +439,102 @@ def test_a_node_taking_over_the_ideation_bill_does_not_double_it(tmp_path, monke
     # A heartbeat at any point of the round reads one ideation bill.
     assert observed == [pytest.approx(IDEATION_USD)] * 2
     assert result.total_cost == pytest.approx(campaign.bill.total)
+
+
+REJECTED = "<change_verdict>reject</change_verdict><reason>candidate error</reason>"
+ACCEPTED = "<change_verdict>accept</change_verdict><reason>real defect</reason>"
+CHANGE_REQUEST = (
+    "<evaluation_change_request>the harness crashes</evaluation_change_request>"
+)
+MAINTAINER_SESSION_USD = 0.25
+
+
+def _edit_on_the_change_request(root: Path) -> None:
+    write_entrypoint(root)
+    if len(ScriptedMaintainerAgent.calls) > 1:
+        (root / "kapso_evaluation" / "kapso_eval.py").write_text("V2 = True\n")
+
+
+def _calibration_failing_after_setup(monkeypatch, failure) -> None:
+    runs = {"count": 0}
+
+    def run(command, cwd, capture_output, text, errors, timeout):
+        runs["count"] += 1
+        if runs["count"] > 1:
+            return failure()
+        return SimpleNamespace(returncode=0, stdout=manifest_stdout(), stderr="")
+
+    monkeypatch.setattr(maintainer_module, "subprocess", SimpleNamespace(run=run))
+
+
+@pytest.fixture
+def maintained_workspace(tmp_path, monkeypatch) -> Path:
+    workspace = tmp_path / "workspace"
+    _init_git_workspace(workspace)
+    _patch_orchestrator(monkeypatch)
+    patch_maintainer_environment(
+        monkeypatch,
+        ScriptedMaintainerAgent(_edit_on_the_change_request, output=ACCEPTED),
+    )
+    return workspace
+
+
+def _maintainer_spend_on_disk(workspace: Path) -> float:
+    stored = RunCheckpointStore(str(workspace)).load()
+    return stored.cost_by_component["evaluation_maintenance"]
+
+
+def test_a_change_request_that_fails_calibration_keeps_its_bill(
+    maintained_workspace, monkeypatch
+):
+    _calibration_failing_after_setup(
+        monkeypatch,
+        lambda: SimpleNamespace(returncode=1, stdout="", stderr="it crashed"),
+    )
+    orchestrator = _orchestrator(maintained_workspace)
+    orchestrator.search_strategy.next_agent_output = CHANGE_REQUEST
+
+    with pytest.raises(EvaluationMaintainerError, match="Calibration run failed"):
+        orchestrator.solve(experiment_max_iter=1)
+
+    assert _maintainer_spend_on_disk(maintained_workspace) == pytest.approx(
+        2 * MAINTAINER_SESSION_USD
+    )
+
+
+def test_a_kill_during_calibration_keeps_the_session_that_came_before(
+    maintained_workspace, monkeypatch
+):
+    """Calibration can run for many minutes: a heartbeat lands during it."""
+    store = RunCheckpointStore(str(maintained_workspace))
+    last_beat = {}
+
+    def die():
+        orchestrator._persist_budget_totals()
+        last_beat["bytes"] = store.path.read_bytes()
+        raise SimulatedKill()
+
+    _calibration_failing_after_setup(monkeypatch, die)
+    orchestrator = _orchestrator(maintained_workspace)
+    orchestrator.search_strategy.next_agent_output = CHANGE_REQUEST
+    with pytest.raises(SimulatedKill):
+        orchestrator.solve(experiment_max_iter=1)
+    store.path.write_bytes(last_beat["bytes"])
+
+    assert _maintainer_spend_on_disk(maintained_workspace) == pytest.approx(
+        2 * MAINTAINER_SESSION_USD
+    )
+
+
+def test_a_rejected_change_request_is_billed_once(maintained_workspace, monkeypatch):
+    patch_maintainer_environment(
+        monkeypatch, ScriptedMaintainerAgent(write_entrypoint, output=REJECTED)
+    )
+    orchestrator = _orchestrator(maintained_workspace)
+    orchestrator.search_strategy.next_agent_output = CHANGE_REQUEST
+
+    orchestrator.solve(experiment_max_iter=1)
+
+    assert _maintainer_spend_on_disk(maintained_workspace) == pytest.approx(
+        2 * MAINTAINER_SESSION_USD
+    )
