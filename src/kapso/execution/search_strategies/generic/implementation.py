@@ -655,7 +655,10 @@ def ensure_technical_difficulties(
         "[GenericSearch] technical_difficulties missing — "
         "running fallback reconstruction"
     )
-    node.technical_difficulties = generate_technical_difficulties(
+    (
+        node.technical_difficulties,
+        node.phase_telemetry["technical_difficulties"],
+    ) = generate_technical_difficulties(
         role=implementation_role,
         env_strip=env_strip,
         timeout_seconds=deadline_seconds,

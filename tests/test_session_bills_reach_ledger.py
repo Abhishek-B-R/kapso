@@ -1,8 +1,8 @@
 """Every paid session reaches the ledger when it ends, whatever comes after.
 
-The campaign tests run the real orchestrator over the real GenericSearch and
-the real run_implementation, with only the agent faked.
-Each fake session charges the shared Bill, so the ledger is compared with
+The campaign tests run the real orchestrator over the real GenericSearch, the
+real run_implementation and the real difficulties fallback, with only the agent
+faked. Each fake session charges the shared Bill, so the ledger is compared with
 what was actually charged. A process slice is a new orchestrator.
 """
 
@@ -42,6 +42,7 @@ IMPLEMENTATION_ROLE = SessionRole(
 )
 BUILD_USD = 0.5
 CONTINUATION_USD = 0.3
+DIFFICULTIES_USD = 0.15
 
 
 class RealBuildCampaign(Campaign):
@@ -57,6 +58,11 @@ class RealBuildCampaign(Campaign):
         class FakeAgent:
             def __init__(self, config):
                 self.cost = 0.0
+                # The difficulties fallback is the read-and-bash session.
+                self.reconstructs = config.agent_specific.get("allowed_tools") == [
+                    "Read",
+                    "Bash",
+                ]
 
             def initialize(self, workspace):
                 pass
@@ -70,6 +76,9 @@ class RealBuildCampaign(Campaign):
                 )
 
             def generate_code(self, prompt):
+                if self.reconstructs:
+                    self.cost = campaign.bill.charge(DIFFICULTIES_USD)["cost_usd"]
+                    return self._result()
                 self.cost = campaign.bill.charge(BUILD_USD)["cost_usd"]
                 if campaign.ask_on_node is None:
                     return self._result()
@@ -111,6 +120,18 @@ class RealBuildCampaign(Campaign):
             "render_summary_and_toc",
             classmethod(lambda cls, doc, max_chars=2500: "memory"),
         )
+
+    def _strategy(self):
+        strategy = super()._strategy()
+        strategy.__dict__.update(
+            implementation_role=IMPLEMENTATION_ROLE,
+            env_strip=[],
+            stage_harness_for=no_staging,
+            _finishing_deadline=lambda *args, **kwargs: (60, None),
+            _session_stream_path=lambda branch: str(self.tmp_path / f"{branch}.jsonl"),
+        )
+        del strategy.__dict__["_ensure_technical_difficulties"]
+        return strategy
 
     def _implement(self, **kwargs):
         branch_name = kwargs["branch_name"]
@@ -197,7 +218,11 @@ def test_a_failed_continuation_stays_on_the_ledger(campaign):
     campaign.resume_succeeds = True
     result = campaign.open(resume=True).solve(experiment_max_iter=1)
     assert campaign.bill.total == pytest.approx(
-        IDEATION_USD + BUILD_USD + 2 * CONTINUATION_USD + FEEDBACK_USD
+        IDEATION_USD
+        + BUILD_USD
+        + 2 * CONTINUATION_USD
+        + DIFFICULTIES_USD
+        + FEEDBACK_USD
     )
     assert result.total_cost == pytest.approx(campaign.bill.total)
     assert campaign.checkpoint().cumulative_cost == pytest.approx(campaign.bill.total)
@@ -245,3 +270,28 @@ def test_a_continuation_counts_once(campaign):
     assert campaign.checkpoint().cost_by_component["implementation"] == pytest.approx(
         BUILD_USD + CONTINUATION_USD
     )
+
+
+def test_the_difficulties_fallback_is_on_the_ledger(campaign):
+    result = campaign.open().solve(experiment_max_iter=1)
+
+    assert campaign.bill.total == pytest.approx(
+        IDEATION_USD + BUILD_USD + DIFFICULTIES_USD + FEEDBACK_USD
+    )
+    assert result.total_cost == pytest.approx(campaign.bill.total)
+    stored = campaign.checkpoint()
+    assert stored.cumulative_cost == pytest.approx(campaign.bill.total)
+    assert stored.cost_by_component["technical_difficulties"] == pytest.approx(
+        DIFFICULTIES_USD
+    )
+    node = campaign.orchestrator.search_strategy.node_history[0]
+    assert node.cost_usd == pytest.approx(campaign.bill.total)
+
+
+def test_the_difficulties_fallback_counts_against_the_cost_budget(campaign):
+    budget = IDEATION_USD + BUILD_USD + FEEDBACK_USD + DIFFICULTIES_USD / 2
+
+    result = campaign.open().solve(experiment_max_iter=3, cost_budget=budget)
+
+    assert result.stop_detail == "cost_budget"
+    assert result.iterations_run == 1
