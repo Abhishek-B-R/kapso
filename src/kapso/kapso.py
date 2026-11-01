@@ -20,6 +20,7 @@
 import atexit
 import json
 import os
+import shlex
 import subprocess
 import sys
 import uuid
@@ -65,9 +66,11 @@ from kapso.execution.inbox import (
     launch_mismatches,
     load_requests,
     read_launch_record,
+    awaiting_resume,
     record_reply,
     register_campaign,
     resume_arguments,
+    resume_lock,
     write_launch_record,
 )
 from kapso.execution.run_checkpoint import (
@@ -1578,6 +1581,27 @@ class Kapso:
         )
 
     @staticmethod
+    def awaiting_resume(campaign: str) -> List[Request]:
+        """The answered requests a resume has not delivered: the last one
+        failed or was killed, and `Kapso.reply` with the request's id tries
+        again. Empty while a live process holds the campaign."""
+        requests = load_requests(inbox_path(campaign))
+        store = RunCheckpointStore(campaign)
+        if not requests or not store.exists() or Kapso._live_status(campaign):
+            return []
+        nodes = store.load().strategy_state.get("node_history") or []
+        return awaiting_resume(requests, nodes)
+
+    @staticmethod
+    def _live_status(campaign: str) -> Optional[OperationStatusView]:
+        """The campaign's status view when a live process holds it."""
+        status_file = Path(campaign) / ".kapso" / "status.json"
+        if not status_file.is_file():
+            return None
+        view = OperationStatusView(status_file)
+        return view if view.alive else None
+
+    @staticmethod
     def inbox_ideas(campaign: str) -> Dict[int, str]:
         """One line per node of the campaign — the `for` row of a request
         — read from the checkpoint. Empty without a checkpoint."""
@@ -1601,23 +1625,42 @@ class Kapso:
         open, or a campaign started from a script with a callback — resume
         it from the script with resume=True).
 
+        The answer is on disk before the resume starts, and a resume that
+        fails raises with the answer kept: calling this again retries, with
+        a note replacing the answer and an empty one keeping it.
+
         Refuses while a live process holds the campaign, so nothing runs
-        twice. An empty note means "done"."""
+        twice. On a new request an empty note means "done"."""
         campaign_dir = str(Path(campaign).resolve())
         if not Path(campaign_dir, ".kapso").is_dir():
             raise FileNotFoundError(
                 f"{campaign_dir} is not a campaign directory on this machine"
             )
-        status_file = Path(campaign_dir) / ".kapso" / "status.json"
-        if status_file.is_file() and OperationStatusView(status_file).alive:
-            pid = OperationStatusView(status_file).data.get("pid")
+        live = cls._live_status(campaign_dir)
+        if live is not None:
             raise RuntimeError(
-                f"{campaign_dir} is running (pid {pid}); wait for it to pause "
-                "before replying"
+                f"{campaign_dir} is running (pid {live.data.get('pid')}); wait "
+                "for it to pause before replying"
             )
         path = inbox_path(campaign_dir)
-        request = record_reply(path, request_id, note)
-        print(f"#{request_id} answered.")
+        requests = load_requests(path)
+        current = requests.get(request_id)
+        answered_before = current is not None and not current.open
+        if answered_before and not (
+            any(other.node == current.node and other.open for other in requests.values())
+            or request_id in [r.id for r in cls.awaiting_resume(campaign_dir)]
+        ):
+            raise ValueError(
+                f"inbox request #{request_id} was already answered and nothing "
+                f"waits on a resume: {current.reply!r}. To continue the campaign: "
+                f"kapso evolve --output {shlex.quote(campaign_dir)} --resume"
+            )
+        if answered_before and (not note or note == current.reply):
+            request = current
+            print(f"#{request_id} keeps its answer: {request.reply!r}.")
+        else:
+            request = record_reply(path, request_id, note)
+            print(f"#{request_id} answered.")
         still_open = sorted(
             other.id
             for other in load_requests(path).values()
@@ -1637,22 +1680,31 @@ class Kapso:
                 "existed) — resume it from your script with resume=True."
             )
             return None
-        checkpoint = RunCheckpointStore(campaign_dir).load()
-        remaining = max(
-            1, int(record["max_iterations"]) - int(checkpoint.completed_iterations)
-        )
         print(
             f"Resuming {campaign_dir}: continuing node {request.node}'s session. "
-            "Ctrl-C stops it; resume later with kapso evolve --output "
-            f"{campaign_dir} --resume"
+            "Your reply is saved. If this stops or fails, fix the cause and run "
+            f"kapso inbox reply {shlex.quote(campaign_dir)} {request_id}"
         )
-        # Everything else a resume needs comes from the launch record.
-        kapso = cls(config_path=record["config_path"], kg_index=record["kg_index"])
-        return kapso.evolve(
-            output_path=campaign_dir,
-            max_iterations=remaining,
-            resume=True,
-        )
+        with resume_lock(campaign_dir):
+            # Another reply may have held the lock until now. A session it
+            # started and finished has read this answer; one that failed or
+            # was killed still owes a resume, and this one takes it over.
+            if load_requests(path)[request_id].continued and request_id not in [
+                r.id for r in cls.awaiting_resume(campaign_dir)
+            ]:
+                print(f"Another reply already resumed {campaign_dir}; nothing to run.")
+                return None
+            checkpoint = RunCheckpointStore(campaign_dir).load()
+            remaining = max(
+                1, int(record["max_iterations"]) - int(checkpoint.completed_iterations)
+            )
+            # Everything else a resume needs comes from the launch record.
+            kapso = cls(config_path=record["config_path"], kg_index=record["kg_index"])
+            return kapso.evolve(
+                output_path=campaign_dir,
+                max_iterations=remaining,
+                resume=True,
+            )
 
     def _launch_config_path(self) -> Optional[str]:
         """The config a launch record names: None for the packaged default.

@@ -43,7 +43,11 @@ load_dotenv(find_dotenv(usecwd=True))
 from kapso.kapso import Kapso, DeployStrategy, DEFAULT_CONFIG_PATH, DEFAULT_MAX_ITERATIONS
 from kapso.core.config import load_config, load_mode_config
 from kapso.execution.campaign_report import render_campaign_report
-from kapso.execution.inbox import list_registered_campaigns, render_requests
+from kapso.execution.inbox import (
+    list_registered_campaigns,
+    render_awaiting_resume,
+    render_requests,
+)
 from kapso.execution.run_checkpoint import RunCheckpointStore
 from kapso.core.preflight import (
     VERBS,
@@ -207,11 +211,13 @@ def _waiting_since(requests) -> str:
 
 def _render_campaign_inbox(campaign: Path) -> str:
     requests = Kapso.inbox(str(campaign))
-    if not requests:
+    awaiting = Kapso.awaiting_resume(str(campaign))
+    if not requests and not awaiting:
         return f"Nothing waiting on you in {campaign}."
-    label = f"  waiting {_waiting_since(requests)}"
-    if len(requests) > 1:
-        label += f" · {len(requests)} requests"
+    listed = requests or awaiting
+    label = f"  waiting {_waiting_since(listed)}"
+    if len(listed) > 1:
+        label += f" · {len(listed)} requests"
     goal = _campaign_goal(campaign)
     header = f"{campaign}  {goal}{label}" if goal else f"{campaign}{label}"
     target = f" {requests[0].id}" if len(requests) > 1 else ""
@@ -219,10 +225,19 @@ def _render_campaign_inbox(campaign: Path) -> str:
     # anywhere else the suggestion has to name it.
     if _campaign_here(Path.cwd().resolve()) != campaign.resolve():
         target = f" {shlex.quote(str(campaign))}{target}"
+    ideas = Kapso.inbox_ideas(str(campaign))
+    if not requests:
+        return "\n".join([
+            header,
+            "",
+            render_awaiting_resume(awaiting, ideas),
+            "",
+            f"  retry with   kapso inbox reply{target}        # keeps your reply; a note replaces it",
+        ])
     return "\n".join([
         header,
         "",
-        render_requests(requests, Kapso.inbox_ideas(str(campaign))),
+        render_requests(requests, ideas),
         "",
         f'  reply with   kapso inbox reply{target} "…"',
     ])
@@ -246,7 +261,7 @@ def cmd_inbox(args) -> None:
     waiting = [
         Path(entry["path"])
         for entry in list_registered_campaigns(registry)
-        if Kapso.inbox(entry["path"])
+        if Kapso.inbox(entry["path"]) or Kapso.awaiting_resume(entry["path"])
     ]
     if not waiting:
         print("Nothing waiting on you.")
@@ -256,7 +271,8 @@ def cmd_inbox(args) -> None:
 
 def cmd_inbox_reply(words, *, yes: bool) -> None:
     """Answer one request; the campaign resumes here when it can. The id
-    may be left out when one request is open; an empty note means done."""
+    may be left out when one request is open, or when a failed resume left
+    one to retry. An empty note means done, or on a retry keeps the reply."""
     words = list(words)
     explicit = None
     if words and not words[0].isdigit() and Path(words[0]).expanduser().is_dir():
@@ -265,15 +281,22 @@ def cmd_inbox_reply(words, *, yes: bool) -> None:
     if campaign is None:
         print("Error: not inside a campaign — name it: kapso inbox reply <campaign> [id] [note]")
         sys.exit(1)
-    if words and words[0].isdigit():
-        request_id = int(words.pop(0))
+    explicit_id = int(words.pop(0)) if words and words[0].isdigit() else None
+    note = " ".join(words)
+    if explicit_id is not None:
+        request_id = explicit_id
     else:
         open_requests = Kapso.inbox(str(campaign))
-        if len(open_requests) != 1:
+        # A retry of a node that asked for several things needs no choice of
+        # id unless a note has to go on one of them.
+        awaiting = [] if open_requests else Kapso.awaiting_resume(str(campaign))
+        if len(open_requests) == 1:
+            request_id = open_requests[0].id
+        elif awaiting and (len(awaiting) == 1 or not note):
+            request_id = awaiting[0].id
+        else:
             print("Error: which request? kapso inbox reply <id> [note]")
             sys.exit(1)
-        request_id = open_requests[0].id
-    note = " ".join(words)
     if _looks_like_a_secret(note) and not yes:
         print(
             "This reply looks like a credential. Replies are stored in plain "
