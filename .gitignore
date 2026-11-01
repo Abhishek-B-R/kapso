@@ -289,3 +289,6 @@ skills-lock.json
 # files here and symlinks .claude/skills/ at them, so ignoring only the symlink
 # directory above still leaves this one showing up in every commit.
 .agents/
+
+# Retrieval-eval results (benchmarks/kg_retrieval/README.md)
+benchmarks/kg_retrieval/results/
