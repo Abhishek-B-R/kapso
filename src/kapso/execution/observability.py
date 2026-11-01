@@ -156,7 +156,7 @@ def campaign_listing(registry_path, status_dir, *, everything: bool = False) -> 
             "path": str(campaign), "operation": "build",
             "state": "starting" if alive is not False else "stopped",
             "phase": None, "heartbeat_age_seconds": None, "best": None,
-            "stopped_reason": None, "alive": alive,
+            "stopped_reason": None, "alive": alive, "stalled": False,
         })
     root = Path(status_dir).expanduser()
     if root.is_dir():
@@ -180,7 +180,8 @@ def _listing_entry(view: "OperationStatusView", path: str) -> Dict[str, Any]:
         "heartbeat_age_seconds": round(view.heartbeat_age_seconds, 1),
         "best": view.best,
         "stopped_reason": view.data.get("stopped_reason"),
-        "alive": view.alive,
+        "alive": view.running,
+        "stalled": view.stalled and view.process_alive is True,
     }
 
 
@@ -191,10 +192,11 @@ def render_listing(entries: list) -> str:
     lines = []
     for entry in entries:
         waiting = entry["state"] == "done" and entry["stopped_reason"] == "waiting_for_user"
-        # A writer gone or silent past its beats is dead, whatever the
-        # file's own word; the single-campaign screen says the same.
+        # A writer gone is dead, whatever the file's own word; where the
+        # kernel cannot say, so is one silent past its beats. The
+        # single-campaign screen says the same.
         dead = entry["alive"] is False and entry["state"] in ("running", "starting")
-        state = "WAITING" if waiting else "DEAD" if dead else entry["state"].upper()
+        state = "WAITING" if waiting else "DEAD" if dead else "STALLED" if entry["stalled"] else entry["state"].upper()
         age = f"{entry['heartbeat_age_seconds']:.0f}s ago" if entry["heartbeat_age_seconds"] is not None else "-"
         best = entry["best"].get("score") if isinstance(entry["best"], dict) else None
         lines.append(
@@ -606,6 +608,20 @@ class OperationStatusView:
     @property
     def stalled(self) -> bool:
         return self.alive is False and self.state not in TERMINAL_STATES
+
+    @property
+    def running(self) -> Optional[bool]:
+        """Whether something is still working on this operation, which is what
+        a second session must not race. A process the kernel says is running
+        holds it however old its heartbeat is, because a heartbeat also stops
+        for a suspended process, a sleeping laptop or a heartbeat thread that
+        died. Where the kernel cannot say, this is `alive`, the heartbeat's
+        verdict, None included."""
+        if self.state in TERMINAL_STATES:
+            return False
+        if self.process_alive is None:
+            return self.alive
+        return self.process_alive
 
     # ---------------------------------------------------------- renderer
 

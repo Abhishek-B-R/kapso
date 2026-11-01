@@ -174,7 +174,7 @@ def cmd_inbox_reply(
             print("Error: --log must be outside the campaign directory", file=sys.stderr)
             sys.exit(1)
         located = OperationStatusView.locate(campaign)
-        if located is not None and OperationStatusView(located).alive:
+        if located is not None and OperationStatusView(located).running:
             pid = OperationStatusView(located).data.get("pid")
             print(f"{campaign} is running (pid {pid}); wait for it to pause before replying")
             sys.exit(1)
