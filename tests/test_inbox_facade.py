@@ -13,6 +13,7 @@ reply retries it.
 
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -363,6 +364,54 @@ def test_a_retry_refuses_a_live_campaign_and_it_awaits_nothing(tmp_path):
     assert Kapso.awaiting_resume(str(workspace)) == []
     with pytest.raises(RuntimeError, match="is running"):
         Kapso.reply(str(workspace), 1)
+
+
+def _two_replies(workspace: Path, monkeypatch, first_resume) -> List[Dict[str, Any]]:
+    """The first reply is inside its resume, past the live check, when the
+    second reply starts. Returns once both have finished."""
+    calls: List[Dict[str, Any]] = []
+    inside, release = threading.Event(), threading.Event()
+
+    def evolve(self, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            inside.set()
+            assert release.wait(10)
+            first_resume()
+        return "resumed"
+
+    monkeypatch.setattr(Kapso, "__init__", lambda self, config_path=None, kg_index=None, bank=None: None)
+    monkeypatch.setattr(Kapso, "evolve", evolve)
+    first = threading.Thread(target=Kapso.reply, args=(str(workspace), 1, "added the key"))
+    second = threading.Thread(target=Kapso.reply, args=(str(workspace), 1))
+    first.start()
+    assert inside.wait(10)
+    second.start()
+    second.join(0.3)
+    assert second.is_alive() and len(calls) == 1
+    release.set()
+    first.join(10)
+    second.join(10)
+    return calls
+
+
+def test_two_replies_resume_the_campaign_once(tmp_path, monkeypatch, capsys):
+    workspace = _paused_campaign(tmp_path)
+
+    def session_finished():
+        record_continued(inbox_path(workspace), [1], node=3, session="s")
+        store = RunCheckpointStore(str(workspace))
+        checkpoint = store.load()
+        checkpoint.strategy_state["node_history"][0].update(suspended=False, request_ids=[])
+        store.save(checkpoint)
+
+    assert len(_two_replies(workspace, monkeypatch, session_finished)) == 1
+    assert "Another reply already resumed" in capsys.readouterr().out
+
+
+def test_the_second_reply_takes_over_when_the_first_resume_never_started_a_session(tmp_path, monkeypatch):
+    workspace = _paused_campaign(tmp_path)
+    assert len(_two_replies(workspace, monkeypatch, lambda: None)) == 2
 
 
 def test_reply_needs_the_campaign_directory_here(tmp_path):

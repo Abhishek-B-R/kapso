@@ -69,6 +69,7 @@ from kapso.execution.inbox import (
     record_reply,
     register_campaign,
     resume_arguments,
+    resume_lock,
     write_launch_record,
 )
 from kapso.execution.run_checkpoint import (
@@ -1678,22 +1679,31 @@ class Kapso:
                 "existed) — resume it from your script with resume=True."
             )
             return None
-        checkpoint = RunCheckpointStore(campaign_dir).load()
-        remaining = max(
-            1, int(record["max_iterations"]) - int(checkpoint.completed_iterations)
-        )
         print(
             f"Resuming {campaign_dir}: continuing node {request.node}'s session. "
             "Your reply is saved. If this stops or fails, fix the cause and run "
             f"kapso inbox reply {campaign_dir} {request_id}"
         )
-        # Everything else a resume needs comes from the launch record.
-        kapso = cls(config_path=record["config_path"], kg_index=record["kg_index"])
-        return kapso.evolve(
-            output_path=campaign_dir,
-            max_iterations=remaining,
-            resume=True,
-        )
+        with resume_lock(campaign_dir):
+            # Another reply may have held the lock until now. A session it
+            # started and finished has read this answer; one that failed or
+            # was killed still owes a resume, and this one takes it over.
+            if load_requests(path)[request_id].continued and request_id not in [
+                r.id for r in cls.awaiting_resume(campaign_dir)
+            ]:
+                print(f"Another reply already resumed {campaign_dir}; nothing to run.")
+                return None
+            checkpoint = RunCheckpointStore(campaign_dir).load()
+            remaining = max(
+                1, int(record["max_iterations"]) - int(checkpoint.completed_iterations)
+            )
+            # Everything else a resume needs comes from the launch record.
+            kapso = cls(config_path=record["config_path"], kg_index=record["kg_index"])
+            return kapso.evolve(
+                output_path=campaign_dir,
+                max_iterations=remaining,
+                resume=True,
+            )
 
     def _launch_config_path(self) -> Optional[str]:
         """The config a launch record names: None for the packaged default.

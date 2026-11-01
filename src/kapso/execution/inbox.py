@@ -36,6 +36,7 @@ class InboxOpenError(RuntimeError):
 
 INBOX_RELATIVE_PATH = Path(".kapso") / "inbox.jsonl"
 LAUNCH_RELATIVE_PATH = Path(".kapso") / "launch.json"
+RESUME_LOCK_RELATIVE_PATH = Path(".kapso") / "resume.lock"
 LAUNCH_SCHEMA_VERSION = 1
 
 # The fields a session supplies for one request (Appendix A.2). All are
@@ -121,6 +122,18 @@ def _locked(path: Path) -> Iterator[Any]:
         handle.flush()
         os.fsync(handle.fileno())
         fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+@contextmanager
+def resume_lock(workspace_dir: str | Path) -> Iterator[None]:
+    """Held for the whole of a resume started from a reply, so two replies
+    cannot both resume the campaign. It blocks rather than refuses: the
+    second reply decides what to do after the first has finished, knowing
+    how it ended. The kernel releases it when the holder dies, so a killed
+    resume leaves nothing to clean up, and the sessions a resume starts do
+    not inherit it."""
+    with _locked(Path(workspace_dir).resolve() / RESUME_LOCK_RELATIVE_PATH):
+        yield
 
 
 def _parse_events(text: str, source: str) -> List[Dict[str, Any]]:
