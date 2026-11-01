@@ -1220,6 +1220,23 @@ def step_build_data_only(ctx: Context) -> Dict[str, Any]:
 PROPOSAL_STEPS = ("build-data-only", "build-empty-wish")
 
 
+def first_answer(rows: Sequence[Dict[str, Any]]) -> Optional[str]:
+    """The host's first turn as the step recorded it: the Claude Code
+    `result` row, or on Codex the last agent message before the persona's
+    first reply — the text `Turn.text` held live (the `-o` file is the
+    turn's last message), so the re-read asks `question_asked` what the
+    step asked it."""
+    last: Optional[str] = None
+    for row in rows:
+        if row.get("type") == "result" and isinstance(row.get("result"), str):
+            return row["result"]
+        if "persona_reply" in row and last is not None:
+            return last
+        if row.get("type") == "item.completed" and (row.get("item") or {}).get("type") == "agent_message":
+            last = row["item"].get("text") or ""
+    return last
+
+
 def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
     """An archived run read again under the current rules where the archive
     allows: the proposal steps' completion from the first host answer in
@@ -1235,7 +1252,7 @@ def rederive(record: Dict[str, Any], out: Path) -> Dict[str, Any]:
         transcript = out / "transcripts" / f"{step['name']}.jsonl"
         if not transcript.is_file():
             continue
-        first = next((row.get("result") or "" for row in (json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines() if line.startswith("{")) if row.get("type") == "result"), None)
+        first = first_answer([json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines() if line.startswith("{")])
         if first is None:
             continue
         launched = any("a campaign was launched: True" in note for note in step.get("notes", []))

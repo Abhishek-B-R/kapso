@@ -408,6 +408,19 @@ def test_an_archived_runs_proposal_steps_are_re_read_under_the_current_ask_detec
     again = proof.rederive(json.loads(json.dumps(record)), tmp_path)
     wish = {step["name"]: step for step in again["steps"]}["build-empty-wish"]
     assert wish["completed"] is True and "on the persona's own go" in wish["notes"][-1]
+    # A Codex transcript carries agent messages, not a result row: the first
+    # answer is the last agent message before the persona's first reply (the
+    # ninth S2 Codex launch's empty wish, skipped by a re-read that looked
+    # for the Claude row).
+    codex_rows = [json.dumps({"proof_prompt": "$kapso-build build something useful here"}),
+                  json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "I'm reading the repository."}}),
+                  json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "Here is the proposal. Approve it, or edit a line?"}}),
+                  json.dumps({"persona_reply": "Validator, not modelling: go.", "done": False}),
+                  json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "Launched."}})]
+    (tmp_path / "transcripts" / "build-empty-wish.jsonl").write_text("\n".join(codex_rows) + "\n", encoding="utf-8")
+    assert proof.first_answer([json.loads(row) for row in codex_rows]) == "Here is the proposal. Approve it, or edit a line?"
+    codex = proof.rederive(json.loads(json.dumps(record)), tmp_path)
+    assert {step["name"]: step for step in codex["steps"]}["build-empty-wish"]["completed"] is True
     assert proof.persona_approved(tmp_path / "transcripts" / "build-empty-wish.jsonl") is True
     assert proof.persona_approved(tmp_path / "transcripts" / "build-data-only.jsonl") is False, "no persona reply approved there"
 
