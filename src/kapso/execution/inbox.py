@@ -15,11 +15,13 @@ not hold) and the campaign registry (one line per launch, so ``kapso
 inbox`` with no campaign can list every campaign waiting on a person).
 
 Every read of the inbox file raises on a malformed line (Rule 2); a
-missing file is the documented "no requests" default.
+missing file is the documented "no requests" default. Only a line ending
+in a newline is an event: see ``_committed``.
 """
 
 import fcntl
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -87,17 +89,36 @@ class Request:
 # THE FILE
 # =============================================================================
 
+def _committed(text: str) -> str:
+    """The complete lines of the file. A writer acknowledges an event only
+    once its whole line is on disk, so a tail with no newline is a write
+    that never finished (a full disk, a killed process): nobody was told
+    it happened, and the request it was for is unchanged. That is not
+    corruption, and it must not make the campaign unreadable; a complete
+    line that does not parse still raises."""
+    return text[: text.rfind("\n") + 1]
+
+
 @contextmanager
 def _locked(path: Path) -> Iterator[Any]:
     """The inbox file opened for append-plus-read under an exclusive
     lock, so a read-fold-append sequence sees and writes a consistent
-    file even with the gate, the CLI and the orchestrator all writing."""
+    file even with the gate, the CLI and the orchestrator all writing.
+    Holding the lock proves no write is in flight, so an unfinished tail
+    is removed here, before an append could join it to the next event.
+    What the caller wrote is on disk when this returns."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+", encoding="utf-8") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         handle.seek(0)
+        text = handle.read()
+        committed = _committed(text)
+        if committed != text:
+            handle.truncate(len(committed.encode("utf-8")))
+        handle.seek(0)
         yield handle
         handle.flush()
+        os.fsync(handle.fileno())
         fcntl.flock(handle, fcntl.LOCK_UN)
 
 
@@ -122,7 +143,7 @@ def read_events(path: str | Path) -> List[Dict[str, Any]]:
     path = Path(path)
     if not path.is_file():
         return []
-    return _parse_events(path.read_text(encoding="utf-8"), str(path))
+    return _parse_events(_committed(path.read_text(encoding="utf-8")), str(path))
 
 
 def fold(events: Sequence[Dict[str, Any]]) -> Dict[int, Request]:
@@ -363,14 +384,21 @@ def launch_record_path(workspace_dir: str | Path) -> Path:
 def write_launch_record(workspace_dir: str | Path, record: Dict[str, Any]) -> Path:
     """Written once, on a fresh campaign; a resume never rewrites it.
     Paths are stored resolved: `kapso inbox reply` resumes from inside
-    the campaign, not from the directory the launch ran in."""
+    the campaign, not from the directory the launch ran in. Replaced
+    atomically: every resume reads this file, and a torn one would strand
+    the campaign."""
     path = launch_record_path(workspace_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"schema_version": LAUNCH_SCHEMA_VERSION, **record}
     for key in _RECORDED_PATH_KEYS:
         if payload.get(key):
             payload[key] = _resolved_path(payload[key])
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary = path.with_name(path.name + ".tmp")
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
     return path
 
 

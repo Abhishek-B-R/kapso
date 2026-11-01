@@ -7,10 +7,15 @@ carrying the previous reply; a reply must name an open request; a
 continue must follow a reply; concurrent writers never tear the file; a
 malformed line raises; a missing file is "no requests"; the launch record
 round-trips; the registry skips deleted campaigns and raises on a
-malformed line.
+malformed line. A write that never finished is not corruption: the event
+it was for did not happen, the file stays readable, and the next writer
+removes the fragment.
 """
 
 import json
+import os
+import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -122,6 +127,48 @@ def test_concurrent_writers_never_tear_the_file(tmp_path):
     requests = load_requests(path)
     assert sorted(requests) == list(range(1, 42))
     assert len(path.read_text().splitlines()) == 41
+
+
+def test_an_unfinished_write_leaves_the_request_answerable(tmp_path):
+    """A real short write, the way a full disk produces one: the writer is
+    allowed the first bytes of the event and then fails."""
+    path = inbox_path(tmp_path)
+    file_requests(path, node=3, session="s", entries=[ENTRY])
+    size = path.stat().st_size
+    writer = (
+        "import resource, sys\n"
+        "from kapso.execution.inbox import record_reply\n"
+        f"resource.setrlimit(resource.RLIMIT_FSIZE, ({size + 40}, resource.RLIM_INFINITY))\n"
+        f"record_reply({str(path)!r}, 1, 'added the key')\n"
+    )
+    assert subprocess.run([sys.executable, "-c", writer], capture_output=True).returncode != 0
+    assert path.stat().st_size == size + 40
+
+    assert load_requests(path)[1].open
+    assert record_reply(path, 1, "added the key").state == "answered"
+    assert load_requests(path)[1].reply == "added the key"
+    assert all(json.loads(line) for line in path.read_text().splitlines())
+
+
+def test_the_session_can_ask_after_an_unfinished_write(tmp_path):
+    path = inbox_path(tmp_path)
+    file_requests(path, node=3, session="s", entries=[ENTRY])
+    with open(path, "a") as handle:
+        handle.write('{"ts": "now", "event": "repl')
+    assert file_requests(path, node=3, session="s", entries=[DATA_ENTRY]) == [(2, None)]
+    assert sorted(load_requests(path)) == [1, 2]
+
+
+def test_a_failed_launch_record_write_leaves_the_old_record(tmp_path, monkeypatch):
+    write_launch_record(tmp_path, {"mode": "GENERIC"})
+
+    def no_replace(source, target):
+        raise OSError("killed before the replace")
+
+    monkeypatch.setattr(os, "replace", no_replace)
+    with pytest.raises(OSError):
+        write_launch_record(tmp_path, {"mode": "MINIMAL"})
+    assert read_launch_record(tmp_path)["mode"] == "GENERIC"
 
 
 def test_malformed_line_raises_and_missing_file_is_empty(tmp_path):
