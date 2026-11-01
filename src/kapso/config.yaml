@@ -130,8 +130,8 @@ defaults:
     embedding: null
   budget:
     # Durable-clock + status heartbeat interval. Feeds the orchestrator's
-    # checkpoint heartbeat daemon (elapsed_seconds stays fresh between
-    # boundary checkpoints) and the observability layer's liveness signal:
+    # checkpoint heartbeat daemon (elapsed_seconds and the spend stay fresh
+    # between boundary checkpoints) and the observability layer's liveness signal:
     # a status file whose heartbeat is 3 intervals stale renders STALLED.
     checkpoint_heartbeat_seconds: 60
   retry:

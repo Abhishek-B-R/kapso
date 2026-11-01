@@ -16,7 +16,7 @@ import logging
 import math
 from abc import ABC, abstractmethod
 from dataclasses import MISSING, dataclass, field, fields
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
 
 from kapso.execution.types import ContextData
 from kapso.execution.cost_estimator import validate_cost_refusal, validate_cost_value
@@ -468,6 +468,11 @@ class SearchStrategy(ABC):
     """
     
     WORKSPACE_FOLDER_BASE = 'tmp/search_strategy_workspace'
+
+    # The running round's nodes, on their way to the history: what they have
+    # spent is real before the round ends. A class default because many test
+    # harnesses build strategies through __new__.
+    in_flight_nodes: Sequence[SearchNode] = ()
     
     def __init__(self, config: SearchStrategyConfig, workspace_dir: Optional[str] = None, import_from_checkpoint: bool = False):
         """

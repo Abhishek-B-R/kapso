@@ -8,6 +8,7 @@ import pytest
 
 import kapso.execution.coding_agents.adapters.claude_code_agent as claude_module
 import kapso.gated_mcp as gated_mcp_module
+from kapso.execution.experiment_workspace.experiment_session import SessionPushError
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.generic.implementation import (
     run_implementation,
@@ -16,7 +17,13 @@ from kapso.execution.search_strategies.generic.implementation import (
 from test_implementation_web import MCP_TOOL, FakeWorkspace
 
 
-def run_session(tmp_path, monkeypatch, result):
+def run_session(
+    tmp_path,
+    monkeypatch,
+    result,
+    workspace=None,
+    note_session_spend=lambda telemetry: None,
+):
     """Drive run_implementation with an agent whose one session ends as ``result``."""
 
     class FakeAgent:
@@ -30,7 +37,7 @@ def run_session(tmp_path, monkeypatch, result):
             return result
 
         def get_cumulative_cost(self):
-            return 0.0
+            return 2.5
 
         def cleanup(self):
             pass
@@ -56,7 +63,7 @@ def run_session(tmp_path, monkeypatch, result):
         parent_branch_name="main",
         ideation_repo_memory_sections_consulted=None,
         lane_index=0,
-        workspace=FakeWorkspace(str(tmp_path)),
+        workspace=workspace or FakeWorkspace(str(tmp_path)),
         llm=None,
         registered_evaluation_manifest=None,
         sync_registered_evaluation=lambda folder: None,
@@ -79,8 +86,31 @@ def run_session(tmp_path, monkeypatch, result):
         lane_brief="",
         note_session_started=lambda: None,
         note_session_end_facts=lambda facts: None,
+        note_session_spend=note_session_spend,
         await_registered_evaluation=lambda output: None,
     )
+
+
+def test_a_session_bill_is_noted_before_the_close_that_can_fail(tmp_path, monkeypatch):
+    class PushFails(FakeWorkspace):
+        def finalize_session(self, session):
+            raise SessionPushError("origin rejected the push")
+
+    noted = []
+    with pytest.raises(SessionPushError):
+        run_session(
+            tmp_path,
+            monkeypatch,
+            SimpleNamespace(
+                success=True,
+                output="done",
+                metadata={"tool_calls": []},
+                error=None,
+            ),
+            workspace=PushFails(str(tmp_path)),
+            note_session_spend=noted.append,
+        )
+    assert [telemetry["cost_usd"] for telemetry in noted] == [2.5]
 
 
 def test_dead_session_returns_its_error_beside_its_output(tmp_path, monkeypatch):
