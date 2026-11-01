@@ -7,7 +7,8 @@ requests: ``requested`` (written by the session through the
 ``request_from_user`` tool), ``replied`` (written by ``kapso inbox
 reply``) and ``continued`` (written by the orchestrator when the session
 was resumed). A request's state is the fold of its events; nothing is
-ever rewritten, and no request carries a value.
+ever rewritten, and no request carries a value. A later ``replied`` before
+``continued`` replaces the answer, since no session has read it yet.
 
 Also the two small records that make a reply self-sufficient: the launch
 record (``.kapso/launch.json`` — the evolve arguments the checkpoint does
@@ -174,8 +175,10 @@ def fold(events: Sequence[Dict[str, Any]]) -> Dict[int, Request]:
             )
         request = requests[request_id]
         if kind == "replied":
-            if request.reply is not None:
-                raise ValueError(f"inbox request #{request_id} replied twice")
+            if request.continued:
+                raise ValueError(
+                    f"inbox request #{request_id} replied after it was continued"
+                )
             request.reply = str(event["note"])
             request.replied_at = str(event["ts"])
         else:
@@ -209,6 +212,22 @@ def all_answered(requests: Dict[int, Request], ids: Sequence[int]) -> bool:
     if not ids:
         return False
     return all(not request.open for request in requests_for_ids(requests, ids))
+
+
+def awaiting_resume(
+    requests: Dict[int, Request], node_history: Sequence[Dict[str, Any]]
+) -> List[Request]:
+    """The requests whose node the checkpoint still holds suspended with
+    every reply in: the person has done their part and the campaign owes a
+    resume, because the last one failed or was killed. The checkpoint
+    decides, not ``continued``, which is written as the session starts and
+    says nothing about whether it finished."""
+    awaiting: List[Request] = []
+    for node in node_history:
+        ids = node.get("request_ids") or []
+        if node.get("suspended") and all_answered(requests, ids):
+            awaiting.extend(requests_for_ids(requests, ids))
+    return awaiting
 
 
 def _validate_entries(entries: Any) -> List[Dict[str, str]]:
@@ -286,17 +305,18 @@ def file_requests(
 
 
 def record_reply(path: str | Path, request_id: int, note: str) -> Request:
-    """The person's answer. The request must exist and be open."""
+    """The person's answer. The request must exist, and a session must not
+    have been given an earlier answer yet: until then the latest one wins."""
     path = Path(path)
     with _locked(path) as handle:
         requests = fold(_parse_events(handle.read(), str(path)))
         if request_id not in requests:
             raise ValueError(f"inbox has no request #{request_id}")
         request = requests[request_id]
-        if not request.open:
+        if request.continued:
             raise ValueError(
-                f"inbox request #{request_id} was already answered: "
-                f"{request.reply!r}"
+                f"inbox request #{request_id} was already answered and handed "
+                f"to its session: {request.reply!r}"
             )
         event = {"ts": _utcnow(), "event": "replied", "id": request_id, "note": note}
         handle.write(json.dumps(event) + "\n")
@@ -550,6 +570,19 @@ def render_requests(requests: Sequence[Request], ideas: Dict[int, str]) -> str:
             f"      next   {request.next_steps}",
         ])
         blocks.append("\n".join(rows))
+    return "\n\n".join(blocks)
+
+
+def render_awaiting_resume(requests: Sequence[Request], ideas: Dict[int, str]) -> str:
+    """The rows of `kapso inbox` for replies a resume has not delivered."""
+    blocks = []
+    for request in requests:
+        idea = ideas.get(request.node, "")
+        blocks.append("\n".join([
+            f"  #{request.id}  {request.key}   answered, campaign not resumed",
+            f"      for    node {request.node} · {idea}" if idea else f"      for    node {request.node}",
+            f"      reply  {request.reply!r}",
+        ]))
     return "\n\n".join(blocks)
 
 

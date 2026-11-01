@@ -24,6 +24,7 @@ import pytest
 from kapso.execution.inbox import (
     LAUNCH_SCHEMA_VERSION,
     all_answered,
+    awaiting_resume,
     file_requests,
     inbox_path,
     launch_mismatches,
@@ -99,8 +100,38 @@ def test_reply_and_continue_are_validated(tmp_path):
     with pytest.raises(ValueError, match="still open"):
         record_continued(path, [1], node=0, session="s")
     record_reply(path, 1, "done")
+    record_continued(path, [1], node=0, session="s")
     with pytest.raises(ValueError, match="already answered"):
         record_reply(path, 1, "again")
+
+
+def test_a_later_reply_replaces_the_answer_until_a_session_reads_it(tmp_path):
+    path = inbox_path(tmp_path)
+    file_requests(path, node=0, session="s", entries=[ENTRY])
+    record_reply(path, 1, "added the key")
+    assert record_reply(path, 1, "use the staging key").reply == "use the staging key"
+    assert load_requests(path)[1].reply == "use the staging key"
+    assert [json.loads(line)["event"] for line in path.read_text().splitlines()] == [
+        "requested", "replied", "replied",
+    ]
+
+
+def test_awaiting_resume_follows_the_checkpoint_not_the_events(tmp_path):
+    path = inbox_path(tmp_path)
+    file_requests(path, node=3, session="s", entries=[ENTRY, DATA_ENTRY])
+    suspended = {"suspended": True, "request_ids": [1, 2]}
+
+    assert awaiting_resume(load_requests(path), [suspended]) == []
+    record_reply(path, 1, "added the key")
+    assert awaiting_resume(load_requests(path), [suspended]) == []
+    record_reply(path, 2, "dropped the file")
+    assert [r.id for r in awaiting_resume(load_requests(path), [suspended])] == [1, 2]
+    # A kill after the session started: `continued` is on file, the node is
+    # still suspended, and the resume is still owed.
+    record_continued(path, [1, 2], node=3, session="s")
+    assert [r.id for r in awaiting_resume(load_requests(path), [suspended])] == [1, 2]
+    # The node moved on, or a new request replaced these.
+    assert awaiting_resume(load_requests(path), [{"suspended": False, "request_ids": []}]) == []
 
 
 def test_entries_are_validated_before_anything_is_written(tmp_path):
