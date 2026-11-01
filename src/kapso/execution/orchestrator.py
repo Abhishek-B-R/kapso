@@ -1266,6 +1266,22 @@ class OrchestratorAgent:
         hook = getattr(self.search_strategy, "waiting_requests", None)
         return list(hook()) if callable(hook) else []
 
+    def _withdraw_orphaned_requests(self) -> None:
+        """Starting closes what a dead round asked: nothing will continue it.
+        Strategies without an inbox have nothing to close."""
+        hook = getattr(self.search_strategy, "withdraw_orphaned_requests", None)
+        # The harness setup is not a node and has no suspended flag: until it
+        # is done it runs again and reads what it asked.
+        setup_waits = {HARNESS_SETUP_NODE} if self._harness_setup is None else set()
+        withdrawn = hook(setup_waits) if callable(hook) else []
+        if withdrawn:
+            print(
+                "[Orchestrator] Withdrew inbox requests "
+                + ", ".join(f"#{request_id}" for request_id in withdrawn)
+                + ": the round that asked died before its checkpoint and is "
+                "redone; a session that still needs it asks again"
+            )
+
     def _pause_for_user(self, requests: List[Any]) -> None:
         """The campaign pauses: print what the person must answer, save a
         resumable checkpoint marked waiting_for_user, and remember the
@@ -1489,6 +1505,7 @@ class OrchestratorAgent:
             self.budget_spec = budget_spec
             self._fidelity_active = False
             self.budget_ledger.start_clock()
+            self._withdraw_orphaned_requests()
             # With a harness, the task statement every session reads first is
             # written before any session runs (and again after harness setup).
             # The effective budget, as resolved: what a session reading the

@@ -16,7 +16,7 @@ import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Collection, Dict, List, Optional, Sequence, Tuple
 
 from pathlib import Path
 from kapso.core.config import load_config
@@ -82,6 +82,7 @@ from kapso.execution.inbox import (
     read_launch_record,
     record_continued,
     requests_for_ids,
+    withdraw_orphaned_requests,
 )
 from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
 from kapso.execution.coding_agents.factory import CodingAgentFactory
@@ -1297,6 +1298,24 @@ class GenericSearch(SearchStrategy):
             for request in load_requests(settings["path"]).values()
             if request.open and request.node in waiting_nodes
         ]
+
+    def withdraw_orphaned_requests(self, also_waiting: Collection[int]) -> List[int]:
+        """Close the open requests of rounds the checkpoint does not have;
+        ``also_waiting`` names requesters that are not nodes."""
+        settings = getattr(self, "inbox_settings", None)
+        if not settings or not settings.get("enabled"):
+            return []
+        return withdraw_orphaned_requests(
+            settings["path"],
+            {
+                *also_waiting,
+                *(
+                    node.node_id
+                    for node in self.node_history
+                    if getattr(node, "suspended", False)
+                ),
+            },
+        )
 
     def _salvage_ideation_output(self, result) -> Optional[str]:
         """Recover a deadline-terminated ideation's partial output

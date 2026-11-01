@@ -18,12 +18,19 @@ import kapso.execution.evaluation_maintainer.maintainer as maintainer_module
 import kapso.execution.memories.experiment_memory.store as store_module
 import kapso.execution.orchestrator as orchestrator_module
 from kapso.execution.fidelity import EvaluationAttempt
-from kapso.execution.inbox import record_reply
+from kapso.execution.inbox import (
+    file_requests,
+    load_requests,
+    new_requests_for_session,
+    record_reply,
+    withdraw_orphaned_requests,
+)
 from kapso.execution.memories.experiment_memory.store import ExperimentHistoryStore
 from kapso.gated_mcp.gates.experiment_history_gate import ExperimentHistoryGate
 
 from tests.test_campaign_spend_durability import (
     Campaign,
+    ENTRY,
     FEEDBACK_USD,
     IDEATION_USD,
     SimulatedKill,
@@ -377,3 +384,91 @@ def test_reconcile_drops_strangers_and_pays_for_nothing_it_already_has(tmp_path)
         (1, "redo", 0.2),
     ]
     assert reopened.experiments[0].timestamp == stamped
+
+
+# =========================================================================
+# The inbox
+# =========================================================================
+
+
+def _kill_after_node_one_asks(campaign: AgentStoreCampaign) -> None:
+    """The session on node 1 files a request, and the process dies before the
+    pause reaches the checkpoint."""
+    campaign.inbox_enabled = True
+
+    def ask_and_die(node_id: int) -> None:
+        if node_id == 1:
+            file_requests(campaign.inbox, node=1, session="dead", entries=[ENTRY])
+            raise SimulatedKill()
+
+    campaign.during_implementation = ask_and_die
+    with pytest.raises(SimulatedKill):
+        campaign.open().solve(experiment_max_iter=5)
+    campaign.during_implementation = lambda node_id: None
+
+
+def test_a_redo_can_ask_again_what_a_dead_round_asked(campaign):
+    _kill_after_node_one_asks(campaign)
+    assert [request.id for request in load_requests(campaign.inbox).values()] == [1]
+
+    campaign.ask_on_node = 1
+    result = campaign.open(resume=True).solve(experiment_max_iter=1)
+
+    # The dead round's request is gone, and the redo's own question reached the
+    # adapter's tail: a join on an open key writes no event, so the session
+    # would have been told it was stopping and then left running.
+    assert result.stopped_reason == "waiting_for_user"
+    assert [request.id for request in load_requests(campaign.inbox).values()] == [2]
+    assert [request["id"] for request in result.requests] == [2]
+
+    record_reply(campaign.inbox, 2, "added the key")
+    result = campaign.open(resume=True).solve(experiment_max_iter=1)
+    assert result.stopped_reason == "max_iterations"
+    assert [record[0] for record in campaign.stored()] == [0, 1]
+
+
+def test_a_withdrawn_request_cannot_be_answered_and_its_id_is_never_reused(tmp_path):
+    path = tmp_path / "inbox.jsonl"
+    file_requests(path, node=1, session="dead", entries=[ENTRY])
+
+    assert withdraw_orphaned_requests(path, waiting_nodes=set()) == [1]
+
+    assert load_requests(path) == {}
+    with pytest.raises(ValueError, match="withdrawn"):
+        record_reply(path, 1, "too late")
+    ((request_id, previous_reply),) = file_requests(
+        path, node=2, session="live", entries=[ENTRY]
+    )
+    assert (request_id, previous_reply) == (2, None)
+    assert new_requests_for_session(path, "live", 0)[1] == [2]
+
+
+def test_only_what_nothing_waits_on_is_withdrawn(tmp_path):
+    path = tmp_path / "inbox.jsonl"
+    file_requests(
+        path,
+        node=0,
+        session="s0",
+        entries=[{**ENTRY, "key": "env:ANSWERED"}, {**ENTRY, "key": "env:WAITING"}],
+    )
+    record_reply(path, 1, "here")
+    file_requests(path, node=3, session="s3", entries=[{**ENTRY, "key": "env:DEAD"}])
+
+    assert withdraw_orphaned_requests(path, waiting_nodes={0}) == [3]
+
+    # The reply holds for the whole campaign; node 0 is still suspended.
+    requests = load_requests(path)
+    assert sorted(requests) == [1, 2]
+    assert requests[1].reply == "here"
+    assert requests[2].open
+
+
+def test_a_request_the_checkpoint_waits_on_survives_the_resume(campaign):
+    campaign.inbox_enabled = True
+    campaign.ask_on_node = 0
+    campaign.open().solve(experiment_max_iter=1)
+
+    result = campaign.open(resume=True).solve(experiment_max_iter=1)
+
+    assert result.stopped_reason == "waiting_for_user"
+    assert load_requests(campaign.inbox)[1].open
