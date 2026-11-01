@@ -20,7 +20,7 @@
 | inbox | 3 | 0 | 2.1 | 5 lines | yes | 2/2 | pass |
 | build-fraud | 2 | 1 | 2.2 | 10 lines | yes | 4/4 | pass |
 | build-data-only | 2 | 1 | 1.9 | 8 lines | yes | 1/1 | pass |
-| build-empty-wish | 2 | 1 | 2.0 | 7 lines | no | 1/1 | FAIL |
+| build-empty-wish | 2 | 1 | 2.0 | 7 lines | yes | 1/1 | pass |
 | harness-new | 2 | 1 | 2.5 | 20 lines | yes | 3/3 | pass |
 | review | 2 | 0 | 1.5 | 12 lines | yes | 2/2 | pass |
 | deploy | 2 | 0 | 6.2 | 6 lines | yes | 2/2 | pass |
@@ -64,10 +64,13 @@ Step notes:
 - build-fraud: evaluator files written by the session: ['evaluation/evaluate.py']
 - build-fraud: the evaluator's contract: ok
 - build-data-only: candidate criteria judged by hand from the answers artifact; a campaign was launched: False (the step forbids it)
+- build-data-only: re-read 2026-11-01 from the archive: the first answer asked under the current ask detector; a campaign was launched: False; the persona said DONE
 - build-empty-wish: candidate criteria judged by hand from the answers artifact; a campaign was launched: True (the step forbids it)
+- build-empty-wish: re-read 2026-11-01 from the archive: the first answer asked under the current ask detector; a campaign was launched: True on the persona's own go; the persona said DONE
 - harness-new: compared with the shipped harness by hand from harness-new-tree.txt
 - review: the churn campaign ended: done; the answer named the delivered branch 'generic_exp_0': True; a merge verdict: True
 - deploy: the deployed call against the delivered predictions: same
+- deploy: re-read 2026-11-01 from the archive: the deployed call against the delivered predictions: same
 - learn: the serving offer (session_sources) was made: True
 - learn: the learning crews ran on claude-opus-5-5 for this round (--learn-model): the token's window for the shipped model was spent
 - learn-complete: state done, bank 3f124f29 -> 67fe27fe; lesson landed 4 created, 0 updated; the bank lists 4 cards (a quality outcome, not a bar)
@@ -121,6 +124,7 @@ The user's events (DONE, the turn cap):
 
 Notes:
 - codex login: the device-auth ChatGPT session of the owner, pushed by fresh_machine.sh at 2026-10-31T18:29:31Z; no Codex credit of the run itself
+- re-derived 2026-11-01 under the current rules where the archive allows (the proposal steps' ask, the deploy step's parity; each says so)
 
 Transcripts:
 - transcripts/build-churn.jsonl
@@ -147,4 +151,4 @@ Transcripts:
 - transcripts/watch-2.jsonl
 - transcripts/watch.jsonl
 
-Result: FAIL (21/24 steps; steps failed: build-empty-wish, campaign-tools, second-engineer-build; the judge's bar not established)
+Result: FAIL (22/24 steps; steps failed: campaign-tools, second-engineer-build; the judge's bar not established)
