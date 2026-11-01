@@ -599,11 +599,16 @@ class OrchestratorAgent:
         return KnowledgeSearchFactory.create_null()
 
     def _live_phase_costs(self) -> Dict[str, float]:
-        """Attributed agent spend the resume checkpoint does not carry yet."""
+        """Attributed agent spend the resume checkpoint does not carry yet,
+        the running round's included. The heartbeat thread reads this while
+        the phases write, hence the copies."""
         live: Dict[str, float] = {}
-        for node in self.search_strategy.get_experiment_history():
+        for node in [
+            *self.search_strategy.get_experiment_history(),
+            *getattr(self.search_strategy, "in_flight_nodes", ()),
+        ]:
             carried = self._restored_phase_costs.get(node.node_id, {})
-            for phase_name, phase_values in node.phase_telemetry.items():
+            for phase_name, phase_values in list(node.phase_telemetry.items()):
                 live[phase_name] = (
                     live.get(phase_name, 0.0)
                     + phase_values.get("cost_usd", 0.0)
@@ -1029,9 +1034,20 @@ class OrchestratorAgent:
         view = self._platform_budget_view()
         return {} if view is None else {"platform_budget": view}
 
+    def _persist_budget_totals(self) -> None:
+        """Put the clock and the spend on disk between boundary checkpoints."""
+        if self.checkpoint_store is None:
+            return
+        with self._checkpoint_lock:
+            self.checkpoint_store.patch_budget_totals(
+                elapsed_seconds=self.get_elapsed_seconds(),
+                cumulative_cost=self.get_cumulative_cost(),
+                cost_by_component=self.budget_ledger.cost_by_component(),
+            )
+
     def _run_checkpoint_heartbeat(self, interval_seconds: float) -> None:
-        """Daemon loop: keep the durable clock fresh between boundary
-        checkpoints so a preemption cannot rewind the budget on resume.
+        """Daemon loop: keep the durable clock and spend fresh between
+        boundary checkpoints so a preemption cannot rewind the budget on resume.
         The same beat refreshes the observability status file — evolve's
         liveness signal rides this existing daemon (observability §2)."""
         while not self._heartbeat_stop.wait(interval_seconds):
@@ -1039,12 +1055,7 @@ class OrchestratorAgent:
                 self.operation_status.heartbeat(
                     budget=self._status_budget_view()
                 )
-            if self.checkpoint_store is None:
-                continue
-            with self._checkpoint_lock:
-                self.checkpoint_store.heartbeat_elapsed(
-                    self.get_elapsed_seconds()
-                )
+            self._persist_budget_totals()
 
     def _validate_restored_branch_refs(self) -> None:
         """Ensure successful checkpoint nodes still point to Git refs."""
@@ -1849,6 +1860,11 @@ class OrchestratorAgent:
                     self.knowledge_search.close()
                 except Exception:
                     pass
+            # A round that raised has no boundary checkpoint coming, and it
+            # is redone on resume: what it paid goes on disk now. Last, so a
+            # checkpoint that cannot be read does not skip the cleanup above.
+            if in_flight is not None:
+                self._persist_budget_totals()
 
         return SolveResult(
             best_experiment=self.search_strategy.get_deliverable_experiment(),

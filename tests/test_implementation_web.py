@@ -118,6 +118,7 @@ def run_fake_implementation(tmp_path, monkeypatch, *, implementation_cli,
         lane_brief="",
         note_session_started=lambda: None,
         note_session_end_facts=lambda facts: None,
+        note_session_spend=lambda telemetry: None,
         await_registered_evaluation=lambda output: None,
     )
     return captured["config"]
