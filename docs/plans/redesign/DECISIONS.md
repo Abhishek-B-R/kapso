@@ -3696,3 +3696,38 @@ enables every default gate, and a local start could not stage a bank in
 the time left to say where the verbs go. The step's probe figures and both
 sessions' answers are in the archive; this is the one miss the ninth
 launch carries, and the owner's finding.
+
+## The second port of `main`, at the merge: the retrieval eval's files are kapso overrides, its block under `benchmark` (2026-11-01)
+
+**Decision.** When the pull request from `redesign` to `main` opened
+conflicting (`main` had taken nineteen commits since the first port),
+`main` was merged into `redesign` and the thirteen conflicts resolved as
+ports, the rule WP11 set for the first twenty. Three of the ports chose a
+shape the owner did not discuss. The retrieval eval (pull request #180)
+resolved a mode config and layered `inference:` blocks by hand; the
+redesign has no modes, one packaged config and override files checked
+against it, so the eval's `config.yaml` and `config.local.yaml` are kapso
+override files with the eval's own settings under `benchmark`, the key
+the other runners use, each file checked by `load_config` and the
+engine's blocks (`models`, `retry`, `inference`) read from the layered
+files over the packaged config, the way a build's one override is read.
+The inbox reply's retry (pull request #182) lands in the CLI package's
+inbox verb and the facade's `reply`, whose resume runs under the resume
+lock with the record's `experiments`, `.env` and bank and whose refusals
+name `kapso build --output … --resume`; the credential guard holds on a
+retried note. The ledger tests (#181, #183) build the real `GenericSearch`
+through `__new__` and so carry the redesign's attributes (the round clock,
+the finishing cut, the harness, the normalized cost block, the workspace's
+repo for the attempt commit) and fake `load_config` in place of a mode
+loader; a missing config is a `ConfigError`, and the CLI's refusals are
+read on stderr.
+
+**Why.** The gate's eight reports were read from the wheel of the first
+merge candidate; the ports touch the inbox retry, the ledger across a
+resume and a benchmark runner, none a surface the reports measured, so
+the reports stand and the tests `main` brought, green on the ported
+code, are the port's gate. Keeping `main`'s mode loader alive for one
+runner would be the dual code path Rule 7 forbids.
+
+**Where.** The merge commit 4734dc45 on `redesign` (the ports in its message), `benchmarks/kg_retrieval/`,
+`src/kapso/cli/inbox.py`, `src/kapso/kapso.py`, the two ledger tests.
