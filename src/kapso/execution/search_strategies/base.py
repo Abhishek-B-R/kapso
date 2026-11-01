@@ -107,6 +107,7 @@ class SearchNode:
     started_at: str = ""  # ISO-8601 UTC
     phase_telemetry: Dict[str, Dict[str, float]] = field(default_factory=dict)
     # {"ideation": {"cost_usd": ..., "duration_seconds": ...}, "implementation": ..., "feedback": ...}
+    # A round's lanes share one ideation session; the first lane carries it.
 
     # Fidelity: the workload profile this node ran at, its promotion lineage,
     # and its append-only versioned measurements (see execution/fidelity.py).

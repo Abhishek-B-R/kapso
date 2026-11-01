@@ -913,7 +913,11 @@ class GenericSearch(SearchStrategy):
                     executor.map(
                         lambda args: self._run_expansion_lane(
                             problem, args[0], args[1], parent, decision,
-                            ideation_sections, ideation_telemetry,
+                            ideation_sections,
+                            # One session fed every lane and it is billed
+                            # once: the ledger, node.cost_usd and the campaign
+                            # knowledge totals all sum phases across nodes.
+                            ideation_telemetry if args[2] == 0 else {},
                             iteration_started_at, args[2],
                         ),
                         lane_args,
