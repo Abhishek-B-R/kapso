@@ -624,6 +624,8 @@ class GenericSearch(SearchStrategy):
         node.started_at = iteration_started_at
         node.phase_telemetry["ideation"] = ideation_telemetry
         self.in_flight_nodes.append(node)
+        if ideation_telemetry:
+            self.ideation_bills = []
         if decision is not None:
             node.build_fidelity = decision.build_fidelity
             node.eval_fidelity = decision.eval_fidelity
@@ -1107,11 +1109,18 @@ class GenericSearch(SearchStrategy):
             )
         return node
 
+    def _note_ideation_spend(self, cost_usd: float) -> None:
+        """An ideation session just ended. Its round has no node to carry the
+        bill until every session has finished, and those run for a long time
+        and can raise. Members run on threads, hence the list."""
+        self.ideation_bills.append(cost_usd)
+
     def _generate_solution(
         self, problem: str, parent_branch: str
     ) -> Tuple[List[str], List[str], Dict[str, float]]:
         """Generate solution(s) using Claude Code with MCP gates; returns
         (solutions, sections_consulted, phase_telemetry)."""
+        self.ideation_bills = []
         return generate_solution(
             problem,
             parent_branch,
@@ -1142,6 +1151,7 @@ class GenericSearch(SearchStrategy):
             artifacts_dir=self._ideation_artifacts_dir(),
             staged=self.stage_harness_for("ideation", ideation_dir, "lens_planner", self.ideation_lens_planner.cli),
         )
+        self._note_ideation_spend(result[1])
         # Planning runs inside the ideation step; flip the live phase back
         # so the sessions that follow are not reported as still planning.
         self._status_phase("ideation")
@@ -1197,6 +1207,7 @@ class GenericSearch(SearchStrategy):
             build_prompt=self._build_ideation_prompt,
             resolve_lenses=self._resolve_member_lenses,
             select_candidates=self._select_from_candidates,
+            note_session_spend=self._note_ideation_spend,
             stage_harness_for=self.stage_harness_for,
         )
 
@@ -1227,6 +1238,7 @@ class GenericSearch(SearchStrategy):
             env_strip=self.env_strip,
             env_defaults=self.env_defaults,
             artifacts_dir=self._ideation_artifacts_dir(),
+            note_session_spend=self._note_ideation_spend,
             stage_harness_for=self.stage_harness_for,
         )
 

@@ -521,6 +521,9 @@ class OrchestratorAgent:
         the running round's included. The heartbeat thread reads this while
         the phases write, hence the copies."""
         live: Dict[str, float] = {}
+        ideation_bills = list(getattr(self.search_strategy, "ideation_bills", ()))
+        if ideation_bills:
+            live["ideation"] = sum(ideation_bills)
         for node in [
             *self.search_strategy.get_experiment_history(),
             *getattr(self.search_strategy, "in_flight_nodes", ()),

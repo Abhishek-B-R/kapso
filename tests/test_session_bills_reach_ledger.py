@@ -30,6 +30,14 @@ from test_campaign_spend_durability import (
     FEEDBACK_USD,
     IDEATION_USD,
     Campaign,
+    SimulatedKill,
+)
+from test_ensemble_ideation import (
+    CLAUDE_MEMBER,
+    CODEX_MEMBER,
+    SELECTOR,
+    _plan,
+    make_ensemble_strategy,
 )
 from implementation_support import MCP_TOOL, FakeWorkspace, no_staging
 
@@ -340,3 +348,80 @@ def test_a_judge_whose_bookkeeping_raises_keeps_its_bill():
 
     assert node.feedback == "Error generating feedback: the run archive is gone"
     assert node.phase_telemetry["feedback"]["cost_usd"] == FEEDBACK_USD
+
+
+def _ensemble(tmp_path, monkeypatch):
+    return make_ensemble_strategy(
+        tmp_path,
+        monkeypatch,
+        ensemble=[dict(CODEX_MEMBER), dict(CLAUDE_MEMBER)],
+        selector=dict(SELECTOR),
+        claude_output=f"<solution>{_plan('claude')}</solution>",
+        codex_output=f"<solution>{_plan('codex')}</solution>",
+        selector_output=f"<solution_1>{_plan('picked')}</solution_1>",
+    )
+
+
+def test_ideation_bills_are_known_before_the_round_has_a_node(tmp_path, monkeypatch):
+    strategy, _ = _ensemble(tmp_path, monkeypatch)
+
+    def selector_dies(*args, **kwargs):
+        raise SimulatedKill()
+
+    strategy._select_from_candidates = selector_dies
+    with pytest.raises(SimulatedKill):
+        strategy._generate_solution("problem", "main")
+
+    # The claude member's session ended. Codex reports no cost.
+    assert strategy.ideation_bills == [1.0]
+
+
+def test_ideation_bills_add_up_to_the_phase_the_node_takes_over(tmp_path, monkeypatch):
+    strategy, _ = _ensemble(tmp_path, monkeypatch)
+
+    _, _, telemetry = strategy._generate_solution("problem", "main")
+
+    assert len(strategy.ideation_bills) >= 2  # a member and the selector
+    assert sum(strategy.ideation_bills) == telemetry["cost_usd"]
+
+
+def _ideation_noting_bills(campaign: Campaign, *, die: bool):
+    def generate(problem, parent):
+        strategy = campaign.orchestrator.search_strategy
+        strategy.ideation_bills = []
+        strategy._note_ideation_spend(campaign.bill.charge(IDEATION_USD)["cost_usd"])
+        if die:
+            raise RuntimeError("lens planner session failed: boom")
+        return (
+            list(campaign.solutions),
+            [],
+            {"cost_usd": IDEATION_USD, "duration_seconds": 1.0},
+        )
+
+    return generate
+
+
+def test_ideation_that_raises_stays_on_the_ledger(tmp_path, monkeypatch):
+    campaign = Campaign(tmp_path, monkeypatch)
+    campaign._generate_solution = _ideation_noting_bills(campaign, die=True)
+
+    with pytest.raises(RuntimeError, match="lens planner"):
+        campaign.open().solve(experiment_max_iter=1)
+
+    assert campaign.checkpoint().cumulative_cost == pytest.approx(IDEATION_USD)
+
+
+def test_a_node_taking_over_the_ideation_bill_does_not_double_it(tmp_path, monkeypatch):
+    campaign = Campaign(tmp_path, monkeypatch)
+    campaign.solutions = ["one", "two"]
+    campaign._generate_solution = _ideation_noting_bills(campaign, die=False)
+    observed = []
+    campaign.during_implementation = lambda node_id: observed.append(
+        campaign.orchestrator._live_phase_costs().get("ideation")
+    )
+
+    result = campaign.open().solve(experiment_max_iter=1)
+
+    # A heartbeat at any point of the round reads one ideation bill.
+    assert observed == [pytest.approx(IDEATION_USD)] * 2
+    assert result.total_cost == pytest.approx(campaign.bill.total)
