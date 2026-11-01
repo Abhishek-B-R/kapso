@@ -18,6 +18,8 @@ from kapso.core.roles import SessionRole
 from kapso.execution.experiment_workspace.experiment_session import SessionPushError
 from kapso.execution.inbox import file_requests, record_reply
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.execution.search_strategies.base import SearchNode
+from kapso.execution.search_strategies.generic.feedback_flow import generate_feedback
 from kapso.execution.search_strategies.generic.implementation import (
     ContinuationFailed,
     run_implementation,
@@ -295,3 +297,46 @@ def test_the_difficulties_fallback_counts_against_the_cost_budget(campaign):
 
     assert result.stop_detail == "cost_budget"
     assert result.iterations_run == 1
+
+
+class FakeJudge:
+    agent_type = "claude_code"
+
+    def attach_harness(self, staged):
+        pass
+
+    def generate(self, **kwargs):
+        return SimpleNamespace(
+            unjudged=None,
+            cards_load_bearing=[],
+            feedback="fine",
+            evaluation_valid=True,
+            score=0.5,
+            stop=False,
+            cost_usd=FEEDBACK_USD,
+            duration_seconds=1.0,
+        )
+
+
+def test_a_judge_whose_bookkeeping_raises_keeps_its_bill():
+    """generate_feedback absorbs the error, so nothing else would notice."""
+
+    def label_fails(record, valid):
+        raise OSError("the run archive is gone")
+
+    node = SearchNode(node_id=0, branch_name="generic_exp_0", workspace_dir="/tmp/none")
+    generate_feedback(
+        node,
+        feedback_generator=FakeJudge(),
+        goal="the goal",
+        axes="",
+        session_end_facts="",
+        deadline_seconds=60,
+        retry_deadline=lambda: (60, None),
+        manifest_of_record=lambda n: {"score": 0.5},
+        finalize_run_selection=label_fails,
+        stage_harness_for=no_staging,
+    )
+
+    assert node.feedback == "Error generating feedback: the run archive is gone"
+    assert node.phase_telemetry["feedback"]["cost_usd"] == FEEDBACK_USD
