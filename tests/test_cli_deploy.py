@@ -134,7 +134,7 @@ def test_the_lifecycle_flags_act_through_the_record(tmp_path, capsys):
 def test_the_status_rows_say_what_a_person_needs_while_deploying_and_after_a_failure(tmp_path, capsys):
     campaign = tmp_path / "campaign"
     campaign.mkdir()
-    fields = dict(host="claude_code:m", interpreter=sys.executable, env_names=[], options={}, commit="abc", branch=None,
+    fields = dict(host="claude_code:m", interpreter=sys.executable, env_names=[], options={}, commit="abc", branch=None, chosen_attempt=None,
                   harness_built=None, harness=None, harness_root=None, **PORTS)
     start_record(campaign, target_requested="docker", **fields)
     failed = start_record(campaign, target_requested="auto", **fields)

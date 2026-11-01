@@ -104,6 +104,30 @@ def recorded_campaign(tmp_path, fixture, branch="generic_exp_0", plant_commit=Tr
     return campaign, commit
 
 
+def deployable(tmp_path, fixture="churn-unjudged"):
+    """A recorded campaign that also has what a deployment copies: a file
+    tracked on `main` that the attempt deletes, a file only the attempt
+    has, untracked data, and a directory the workspace never carries."""
+    campaign, _ = recorded_campaign(tmp_path, fixture, plant_commit=False)
+    (campaign / "old.py").write_text("legacy = True\n")
+    git(campaign, "add", "old.py")
+    git(campaign, "commit", "-q", "-m", "main moves on")
+    git(campaign, "checkout", "-q", "generic_exp_0")
+    (campaign / ".claude" / "skills" / "from_the_attempt").mkdir(parents=True)
+    (campaign / ".claude" / "skills" / "from_the_attempt" / "SKILL.md").write_text("x")
+    git(campaign, "add", ".claude")
+    git(campaign, "commit", "-q", "-m", "the attempt's session left host files on the branch")
+    commit = git(campaign, "rev-parse", "HEAD")
+    git(campaign, "checkout", "-q", "main")
+    (campaign / "kapso_datasets").mkdir()
+    (campaign / "kapso_datasets" / "train.csv").write_text("id,y\n1,0\n")
+    state = campaign / ".kapso" / "run_state.json"
+    checkpoint = json.loads(state.read_text(encoding="utf-8"))
+    checkpoint["strategy_state"]["node_history"][0]["commit"] = commit
+    state.write_text(json.dumps(checkpoint), encoding="utf-8")
+    return campaign, commit
+
+
 def facade() -> Kapso:
     """A Kapso without `__init__`: the attributes `build()` reads. A new
     attribute set in `__init__` must be mirrored here (the stub gotcha).

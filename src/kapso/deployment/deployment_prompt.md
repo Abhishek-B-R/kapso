@@ -11,7 +11,7 @@ Its objective:
 
 {{objective}}
 
-Delivered: branch `{{branch}}` at commit `{{commit}}`, score {{score}}.
+{{origin}}: branch `{{branch}}` at commit `{{commit}}`, score {{score}}.
 
 ## The workspace
 

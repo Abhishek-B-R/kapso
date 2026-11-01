@@ -382,7 +382,7 @@ deploy(
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `solution` | The `Solution` from `build()`, or `Solution.open(path)`; its campaign checked out at the delivered candidate, tracked files unchanged | required |
+| `solution` | The `Solution` from `build()`, or `Solution.open(path)`; its campaign checked out at the delivered candidate, tracked files unchanged. An attempt from `Solution.open(path, branch=...)` deploys from its own commit instead, and the campaign stays where it is | required |
 | `target` | `auto` (the session chooses), a bundled target (`local`, `docker`, `modal`, `bentoml`, `langgraph`) or a target the build's harness ships | from config (`deployment.target`) |
 | `env` | Variables the software needs at runtime: written to `.env` in the deployment's workspace, named (never valued) in the prompt, set on every runtime the engine manages | `None` |
 | `options` | Options for the target's workflow, exported to its scripts as `KAPSO_OPTION_<NAME>` | `None` |
