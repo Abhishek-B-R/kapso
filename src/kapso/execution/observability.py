@@ -16,9 +16,11 @@ import tempfile
 import threading
 from abc import ABC
 from datetime import datetime, timezone
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
+from kapso.core.processes import process_start
 from kapso.execution.inbox import list_registered_campaigns, read_launch_receipt
 from kapso.execution.iteration_evaluator import comparison_summary
 
@@ -101,13 +103,21 @@ def platform_cost_summary(platform_budget: Mapping[str, Any]) -> str:
     return text
 
 
-def pid_alive(pid: Optional[int]) -> Optional[bool]:
-    """Whether a process exists: None where the kernel exposes no /proc
-    to ask, or with no pid to ask about."""
-    proc = Path("/proc")
-    if pid is None or not proc.is_dir():
+def pid_alive(pid: Optional[int], started: Optional[str] = None) -> Optional[bool]:
+    """Whether a process runs at `pid`, and is the one that recorded `started`
+    (its start stamp) when one was recorded: a later process handed the same
+    pid does not count. None with no pid, or where the kernel will not say."""
+    if pid is None:
         return None
-    return (proc / str(pid)).exists()
+    current = process_start(pid)
+    if current is None:
+        return None
+    return bool(current) and started in (None, current)
+
+
+def launch_alive(receipt: Mapping[str, Any]) -> Optional[bool]:
+    """Whether the child a launch receipt names still runs."""
+    return pid_alive(receipt["pid"], receipt.get("pid_started"))
 
 
 def source_line(source: Mapping[str, Any]) -> str:
@@ -141,7 +151,7 @@ def campaign_listing(registry_path, status_dir, *, everything: bool = False) -> 
         receipt = read_launch_receipt(campaign)
         if receipt is None:
             continue
-        alive = pid_alive(receipt["pid"])
+        alive = launch_alive(receipt)
         entries.append({
             "path": str(campaign), "operation": "build",
             "state": "starting" if alive is not False else "stopped",
@@ -285,6 +295,7 @@ class OperationStatus(ABC):
             "phases": list(self.PHASES),
             "state": "starting",
             "pid": os.getpid(),
+            "pid_started": process_start(os.getpid()),
             "started_at": now,
             "heartbeat_at": now,
             # A phase at birth keeps the state `starting`: the operation
@@ -564,17 +575,18 @@ class OperationStatusView:
         delta = datetime.now(timezone.utc) - _parse_at(started)
         return round(delta.total_seconds() / 60, 1)
 
-    @property
+    @cached_property
     def process_alive(self) -> Optional[bool]:
-        """Whether the pid that wrote the file still exists. The status file
+        """Whether the process that wrote the file still runs. The status file
         cannot record its own writer's death, so a fresh heartbeat proves
-        nothing once the process is gone. None where the kernel exposes no
-        /proc to ask; the heartbeat is then the only signal."""
-        return pid_alive(self.data.get("pid"))
+        nothing once the process is gone. A pid handed to a later process does
+        not count: its start stamp differs. None where the kernel will not say;
+        the heartbeat is then the only signal."""
+        return pid_alive(self.data.get("pid"), self.data.get("pid_started"))
 
     @property
     def dead(self) -> bool:
-        return self.process_alive is False and self.state not in TERMINAL_STATES
+        return self.state not in TERMINAL_STATES and self.process_alive is False
 
     @property
     def alive(self) -> Optional[bool]:
