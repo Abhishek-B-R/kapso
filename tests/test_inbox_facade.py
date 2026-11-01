@@ -12,6 +12,7 @@ reply retries it.
 """
 
 import json
+import shlex
 import os
 import threading
 from datetime import datetime, timezone
@@ -317,6 +318,19 @@ def test_a_retry_keeps_the_reply_and_resumes(tmp_path, monkeypatch, capsys):
         json.loads(line)["event"] == "replied"
         for line in inbox_path(workspace).read_text().splitlines()
     ) == 1
+
+
+def test_the_printed_retry_line_survives_a_space_in_the_path(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "my work"
+    root.mkdir()
+    workspace = _paused_campaign(root)
+    _resume_stub(monkeypatch, raises=RuntimeError("preflight: claude not on PATH"))
+    with pytest.raises(RuntimeError, match="preflight"):
+        Kapso.reply(str(workspace), 1, "added the key")
+
+    printed = capsys.readouterr().out
+    line = printed[printed.index("kapso inbox reply"):].splitlines()[0]
+    assert shlex.split(line)[3:] == [str(workspace.resolve()), "1"]
 
 
 def test_a_retry_with_a_new_note_replaces_the_reply(tmp_path, monkeypatch):

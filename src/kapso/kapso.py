@@ -20,6 +20,7 @@
 import atexit
 import json
 import os
+import shlex
 import subprocess
 import sys
 import uuid
@@ -1652,7 +1653,7 @@ class Kapso:
             raise ValueError(
                 f"inbox request #{request_id} was already answered and nothing "
                 f"waits on a resume: {current.reply!r}. To continue the campaign: "
-                f"kapso evolve --output {campaign_dir} --resume"
+                f"kapso evolve --output {shlex.quote(campaign_dir)} --resume"
             )
         if answered_before and (not note or note == current.reply):
             request = current
@@ -1682,7 +1683,7 @@ class Kapso:
         print(
             f"Resuming {campaign_dir}: continuing node {request.node}'s session. "
             "Your reply is saved. If this stops or fails, fix the cause and run "
-            f"kapso inbox reply {campaign_dir} {request_id}"
+            f"kapso inbox reply {shlex.quote(campaign_dir)} {request_id}"
         )
         with resume_lock(campaign_dir):
             # Another reply may have held the lock until now. A session it
