@@ -776,6 +776,7 @@ class OrchestratorAgent:
             return
         registry = self.evaluation_maintainer.registry
         if registry.exists():
+            self.evaluation_maintainer.recover_open_change()
             head = registry.head()
             current = build_evaluation_manifest(
                 self.evaluation_maintainer.evaluation_dir

@@ -17,6 +17,7 @@ from harness_support import fake_config
 import kapso.execution.evaluation_maintainer.maintainer as maintainer_module
 import kapso.execution.memories.experiment_memory.store as store_module
 import kapso.execution.orchestrator as orchestrator_module
+from kapso.execution.evaluation_maintainer.registry import EvaluationRegistry
 from kapso.execution.fidelity import EvaluationAttempt
 from kapso.execution.inbox import (
     file_requests,
@@ -472,3 +473,99 @@ def test_a_request_the_checkpoint_waits_on_survives_the_resume(campaign):
 
     assert result.stopped_reason == "waiting_for_user"
     assert load_requests(campaign.inbox)[1].open
+
+
+# =========================================================================
+# The registered evaluation
+# =========================================================================
+
+
+def half_edit(evaluation: Path) -> None:
+    (evaluation / "kapso_eval.py").write_text("ENTRYPOINT = True\nHALF_DONE = True\n")
+    (evaluation / "scratch.py").write_text("LEFTOVER = True\n")
+
+
+def test_a_kill_during_triage_does_not_lock_the_campaign_out(maintained):
+    maintained.kill_during_triage_of_node_one(half_edit)
+    head = EvaluationRegistry(str(maintained.workspace)).head()
+
+    # The refusal this replaces: "does not match the registered evaluator head".
+    result = maintained.open(resume=True).solve(experiment_max_iter=1)
+
+    assert result.stopped_reason == "max_iterations"
+    evaluation = maintained.workspace / "kapso_evaluation"
+    assert (evaluation / "kapso_eval.py").read_text() == "ENTRYPOINT = True\n"
+    assert not (evaluation / "scratch.py").exists()
+    assert (
+        EvaluationRegistry(str(maintained.workspace)).head().version
+        == head.version
+        == 1
+    )
+    assert not maintained.repo.is_dirty(path="kapso_evaluation")
+
+
+def test_edits_the_killed_agent_committed_are_undone_too(maintained):
+    def half_edit_and_commit(evaluation: Path) -> None:
+        half_edit(evaluation)
+        maintained.repo.git.add("-f", "kapso_evaluation")
+        maintained.repo.git.commit("-m", "wip")
+
+    maintained.kill_during_triage_of_node_one(half_edit_and_commit)
+
+    result = maintained.open(resume=True).solve(experiment_max_iter=1)
+
+    assert result.stopped_reason == "max_iterations"
+    evaluation = maintained.workspace / "kapso_evaluation"
+    assert (evaluation / "kapso_eval.py").read_text() == "ENTRYPOINT = True\n"
+    assert not (evaluation / "scratch.py").exists()
+
+
+def test_a_kill_between_registering_and_committing_keeps_the_verdict(
+    maintained, monkeypatch
+):
+    def fixed(evaluation: Path) -> None:
+        (evaluation / "kapso_eval.py").write_text("ENTRYPOINT = True\nFIXED = True\n")
+
+    maintained.change_request_on = 1
+    maintained.during_change_request = fixed
+    maintained.verdict = "<change_verdict>accept</change_verdict><reason>bug</reason>"
+    real_commit = maintainer_module.EvaluationMaintainer._commit_evaluation
+
+    def die_on_the_second_version(agent, message):
+        if "v2" in message:
+            raise SimulatedKill()
+        real_commit(agent, message)
+
+    monkeypatch.setattr(
+        maintainer_module.EvaluationMaintainer,
+        "_commit_evaluation",
+        die_on_the_second_version,
+    )
+    with pytest.raises(SimulatedKill):
+        maintained.open().solve(experiment_max_iter=5)
+    monkeypatch.setattr(
+        maintainer_module.EvaluationMaintainer,
+        "_commit_evaluation",
+        real_commit,
+    )
+    maintained.change_request_on = None
+
+    maintained.open(resume=True).solve(experiment_max_iter=1)
+
+    # v2 is committed, so a later failed triage restores v2 and not v1, and the
+    # scores moved onto it.
+    assert EvaluationRegistry(str(maintained.workspace)).head().version == 2
+    assert not maintained.repo.is_dirty(path="kapso_evaluation")
+    assert "FIXED" in maintained.repo.git.show("HEAD:kapso_evaluation/kapso_eval.py")
+    strategy = maintained.orchestrator.search_strategy
+    assert strategy.scores_evaluator_id == strategy.registered_evaluator_id
+
+
+def test_a_finished_change_request_leaves_nothing_to_recover(maintained):
+    maintained.change_request_on = 0
+
+    maintained.open().solve(experiment_max_iter=1)
+
+    assert not (
+        maintained.workspace / ".kapso" / "evaluation_change_open.json"
+    ).exists()
