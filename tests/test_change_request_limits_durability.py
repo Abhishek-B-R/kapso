@@ -7,9 +7,12 @@ process slice is a new OrchestratorAgent over the same workspace.
 
 from pathlib import Path
 
+import git
 import pytest
 
 import kapso.execution.orchestrator as orchestrator_module
+from kapso.execution.evaluation_maintainer import EvaluationMaintainerError
+from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.run_checkpoint import RunCheckpointStore
 
 from tests.harness_support import fake_config
@@ -20,6 +23,8 @@ from tests.test_evaluation_maintainer_wiring import (
     write_entrypoint,
 )
 from tests.test_run_checkpoint import (
+    FakeKnowledgeSearch,
+    FakeProblemHandler,
     _init_git_workspace,
     _orchestrator,
     _patch_orchestrator,
@@ -33,6 +38,7 @@ REJECT = (
     "<change_verdict>reject</change_verdict>"
     "<reason>candidate error, not an evaluation defect</reason>"
 )
+ACCEPT = "<change_verdict>accept</change_verdict><reason>real defect</reason>"
 
 
 class SimulatedKill(BaseException):
@@ -104,9 +110,7 @@ def test_a_session_killed_midway_still_counts(workspace, monkeypatch):
     def die_in_the_triage(root: Path) -> None:
         write_entrypoint(root)
         if _sessions_paid() == 2:
-            filed_when_the_session_started.append(
-                store.load().change_requests_filed
-            )
+            filed_when_the_session_started.append(store.load().change_requests_filed)
             raise SimulatedKill()
 
     patch_maintainer_environment(
@@ -130,3 +134,75 @@ def test_the_count_survives_the_heartbeat_and_the_boundary_saves(workspace):
 
     orchestrator._save_run_checkpoint(status="running")
     assert store.load().change_requests_filed == 1
+
+
+def _provided_workspace(path: Path) -> Path:
+    """A workspace whose kapso_evaluation/ holds the person's copied files,
+    with the originals beside it as the eval_dir they launched with."""
+    _init_git_workspace(path)
+    for evaluation in (path / "kapso_evaluation", path.parent / "provided"):
+        evaluation.mkdir()
+        (evaluation / "evaluate.py").write_text("SCORING = 'provided'\n")
+    repo = git.Repo(path)
+    repo.git.add(["kapso_evaluation"])
+    repo.git.commit("-m", "seed the provided evaluation")
+    return path
+
+
+def _provided_orchestrator(path: Path, *, resume: bool) -> OrchestratorAgent:
+    return OrchestratorAgent(
+        FakeProblemHandler(),
+        workspace_dir=str(path),
+        resume=resume,
+        knowledge_search=FakeKnowledgeSearch(),
+        goal="Improve support",
+        eval_dir=str(path.parent / "provided"),
+    )
+
+
+def _weaken_on_the_change_request(root: Path) -> None:
+    write_entrypoint(root)
+    if _sessions_paid() > 1:
+        (root / "kapso_evaluation" / "evaluate.py").write_text("SCORING = 'weakened'\n")
+
+
+def test_provided_files_stay_immutable_after_a_resume(tmp_path, monkeypatch):
+    workspace = _provided_workspace(tmp_path / "workspace")
+    _patch_orchestrator(monkeypatch)
+    patch_maintainer_environment(
+        monkeypatch,
+        ScriptedMaintainerAgent(_weaken_on_the_change_request, output=ACCEPT),
+    )
+    _provided_orchestrator(workspace, resume=False).solve(experiment_max_iter=1)
+    assert _sessions_paid() == 1
+
+    resumed = _provided_orchestrator(workspace, resume=True)
+    resumed.search_strategy.next_agent_output = CHANGE_REQUEST
+    with pytest.raises(EvaluationMaintainerError, match="modified"):
+        resumed.solve(experiment_max_iter=1)
+
+    assert "immutable: true" in ScriptedMaintainerAgent.calls[-1]
+    assert [
+        version.version for version in resumed.evaluation_maintainer.registry.versions()
+    ] == [1]
+
+
+def test_our_own_files_can_still_change_after_a_resume(tmp_path, monkeypatch):
+    workspace = _provided_workspace(tmp_path / "workspace")
+    _patch_orchestrator(monkeypatch)
+
+    def edit_only_the_wrapper(root: Path) -> None:
+        write_entrypoint(root)
+        if _sessions_paid() > 1:
+            (root / "kapso_evaluation" / "kapso_eval.py").write_text("V2 = True\n")
+
+    patch_maintainer_environment(
+        monkeypatch, ScriptedMaintainerAgent(edit_only_the_wrapper, output=ACCEPT)
+    )
+    _provided_orchestrator(workspace, resume=False).solve(experiment_max_iter=1)
+
+    resumed = _provided_orchestrator(workspace, resume=True)
+    resumed.search_strategy.next_agent_output = CHANGE_REQUEST
+    resumed.solve(experiment_max_iter=1)
+
+    assert resumed.evaluation_maintainer.registry.head().version == 2

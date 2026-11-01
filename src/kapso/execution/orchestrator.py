@@ -780,6 +780,9 @@ class OrchestratorAgent:
             return
         registry = self.evaluation_maintainer.registry
         if registry.exists():
+            self.evaluation_maintainer.restore_provided_baseline(
+                self._provided_evaluation_manifest or {}
+            )
             head = registry.head()
             current = build_evaluation_manifest(
                 self.evaluation_maintainer.evaluation_dir
