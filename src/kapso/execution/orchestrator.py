@@ -1103,6 +1103,15 @@ class OrchestratorAgent:
         )
         with self._checkpoint_lock:
             self.checkpoint_store.save(checkpoint)
+        # What agents read follows the checkpoint and never leads it: a round
+        # that dies before this point is redone on resume, so it must not be
+        # in the history. A process that dies right here catches up at the
+        # bootstrap checkpoint of the resume.
+        self.experiment_store.reconcile([
+            node
+            for node in self.search_strategy.get_experiment_history()
+            if not getattr(node, "suspended", False)
+        ])
 
     def _status_budget_view(self) -> Dict[str, Any]:
         """The status file's time-only budget payload (observability §1):
@@ -1855,13 +1864,6 @@ class OrchestratorAgent:
                     finalized_candidates,
                     iteration=self.completed_iterations + 1,
                 )
-
-                # Persist every candidate finalized in this strategy iteration.
-                # External metrics are attached before history and checkpoint
-                # writes so all durable representations agree.
-                if self.experiment_store:
-                    for candidate in finalized_candidates:
-                        self.experiment_store.add_experiment(candidate)
 
                 if not self._platform_budget_exhausted:
                     self._route_change_requests([
