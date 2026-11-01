@@ -415,7 +415,11 @@ class OrchestratorAgent:
             self._max_change_requests,
             self._transition_freeze_fraction,
         ) = self._create_evaluation_maintainer()
-        self._change_requests_filed = 0
+        self._change_requests_filed = (
+            self._resume_checkpoint.change_requests_filed
+            if self._resume_checkpoint is not None
+            else 0
+        )
         # The open requests a waiting_for_user stop leaves behind, as the
         # status file, the result and the on_status hook carry them.
         self._waiting_payload: List[Dict[str, Any]] = []
@@ -1018,7 +1022,13 @@ class OrchestratorAgent:
                     "requests this campaign"
                 )
                 return
+            # On disk before the session starts: a killed session was still
+            # paid for, and the round that dies is redone and may ask again.
             self._change_requests_filed += 1
+            with self._checkpoint_lock:
+                self.checkpoint_store.patch_change_requests_filed(
+                    self._change_requests_filed
+                )
             outcome = self.evaluation_maintainer.handle_change_request(
                 EvaluationChangeRequest(
                     iteration=self.completed_iterations + 1,
@@ -1100,6 +1110,7 @@ class OrchestratorAgent:
             harness=self.harness.ref_dict() if self.harness is not None else None,
             harness_setup=self._harness_setup,
             experience=self.experience,
+            change_requests_filed=self._change_requests_filed,
         )
         with self._checkpoint_lock:
             self.checkpoint_store.save(checkpoint)
