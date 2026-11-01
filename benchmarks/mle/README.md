@@ -8,161 +8,62 @@ Kapso achieved **#1 among open-source systems** on this benchmark. These results
 
 ![MLE-Bench Results](../../docs/images/mle-bench.png)
 
+## How it runs
+
+The runner launches `build()` with the bundled `predictive-modelling` harness. The Brief
+carries the competition's facts (its published description, the prepared data's layout,
+the submission contract, the held-out protocol, the caps, the packages the environment
+refuses); the harness carries the discipline (the task-type playbooks, the validation
+protocol, the EDA discipline, the hub fetch, ensembling); the provided grader
+(`data/generic_eval/grader.py`), registered by the evaluation maintainer, runs every
+candidate's `main.py` (debug mode as the gate, then full mode), validates its
+`final_submission.csv` with the competition's own validator and reads the held-out score
+the program reports in `<score>` tags: the score of record, oriented so that higher is
+better. The official grade on the private answers is computed once, after the campaign,
+on the delivered candidate, and written to `final_report.json` under the competition's
+archive root (`tmp/mle/<competition>/`, the `benchmark.work_root` key of `config.yaml`).
+
 ## Prerequisites
 
-Before installing MLE-Bench, ensure you have:
-
-1. **Core Kapso Agent installed** (from repository root):
+1. **Core Kapso installed** (from the repository root): `pip install -e .`
+2. **MLE-Bench** (needs git LFS):
    ```bash
-   pip install -r requirements.txt
+   git clone https://github.com/openai/mle-bench.git
+   cd mle-bench && git lfs install && git lfs fetch --all && git lfs pull && pip install -e . && cd ..
    ```
-
-2. **API Keys configured** in `.env` or environment:
-   ```bash
-   OPENAI_API_KEY=your-openai-api-key
-   GOOGLE_API_KEY=your-google-api-key
-   ```
-
-3. **Git LFS installed**:
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install git-lfs
-   
-   # macOS
-   brew install git-lfs
-   ```
-
-## Installation
-
-### Step 1: Clone and Install MLE-Bench
-
-```bash
-# Clone the repository
-git clone https://github.com/openai/mle-bench.git
-cd mle-bench
-
-# Initialize Git LFS and fetch large files (datasets)
-# First install git-lfs if not already installed:
-#   Ubuntu/Debian: sudo apt-get install git-lfs
-#   macOS: brew install git-lfs
-git lfs install
-git lfs fetch --all
-git lfs pull
-
-# Install the package
-pip install -e .
-
-# Return to Kapso directory
-cd ..
-```
-
-### Step 2: Install MLE-specific Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Step 3: (Optional) Setup Neo4j Knowledge Graph
-
-For enhanced ML domain knowledge:
-
-```bash
-# Start Neo4j container
-docker run -d \
-    --name neo4j \
-    --restart unless-stopped \
-    -p 7474:7474 -p 7687:7687 \
-    -e NEO4J_AUTH=neo4j/password \
-    neo4j:latest
-
-# Load knowledge graph data
-PYTHONPATH=. python src/agents/wiki_agent/kg_agent/kg_agent.py
-```
+3. **The hosts' credentials** in `.env`: the codex CLI's own login and `CLAUDE_CODE_OAUTH_TOKEN`
+   for the Claude sessions.
 
 ## Usage
 
 ```bash
 # List available competitions
-PYTHONPATH=. python -m benchmarks.mle.runner --list
-
-# List lite benchmark competitions
-PYTHONPATH=. python -m benchmarks.mle.runner --lite
+PYTHONPATH=. python -m benchmarks.mle.runner --list          # every competition
+PYTHONPATH=. python -m benchmarks.mle.runner --lite          # the lite roster
 
 # Solve a competition
-PYTHONPATH=. python -m benchmarks.mle.runner -c tabular-playground-series-dec-2021
-
-# With options
-PYTHONPATH=. python -m benchmarks.mle.runner \
-    -c tabular-playground-series-dec-2021 \
-    -i 20 \
-    -m MLE_GENERIC \
-    -d codex
+PYTHONPATH=. python -m benchmarks.mle.runner -c spooky-author-identification -i 20 --workspace tmp/mle_campaign
 ```
 
-## CLI Options
+## CLI options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-c, --competition` | Competition ID | Required |
-| `-i, --iterations` | Max experiment iterations | 20 |
-| `-m, --mode` | Config mode | `MLE_GENERIC` |
-| `-d, --coding-agent` | Coding agent | From config |
-| `--no-kg` | Disable knowledge graph | Enabled |
-| `--list` | List all competitions | - |
-| `--lite` | List lite competitions | - |
-| `--list-agents` | List coding agents | - |
+| `-i, --iterations` | `Budget.experiments` | the config's `budget.experiments` |
+| `--time-budget-hours` | `Budget.minutes`, in hours | the config's `budget.minutes` (unbounded) |
+| `-d, --coding-agent` | The host every role without a `cli` of its own runs on | `codex`, the override file's `host` |
+| `--harness` | A harness reference | the bundled `predictive-modelling` |
+| `--experience` | Comma-separated experience sources to serve | none |
+| `--workspace` / `--resume` | The campaign directory / continue the campaign in it | a fresh directory |
+| `--list` / `--lite` | List competitions | - |
 
-## Stages
+## Layout
 
-The handler automatically adjusts strategy based on budget progress:
-
-| Stage | Budget | Behavior |
-|-------|--------|----------|
-| **MINI TRAINING** | 0-35% | Sample training data (for datasets >30GB) |
-| **FULL TRAINING** | 35-80% | Train on complete dataset |
-| **FINAL ENSEMBLING** | 80-100% | Ensemble best models from history |
-
-## Output Structure
-
-The agent generates:
-
-```
-experiment_workspace/{uuid}/
-├── main.py                    # Entry point
-├── output_data_{branch}/
-│   ├── final_submission.csv   # Kaggle submission file
-│   └── checkpoints/           # Model checkpoints
-└── sessions/                  # Experiment branches
-```
-
-## Code Requirements
-
-Generated code must:
-- Support `--debug` flag for fast testing
-- Write `final_submission.csv` in the output directory
-- Print progress and metrics
-- Handle GPU efficiently (batch size, device selection)
-- Use early stopping and learning rate scheduling
-
-## Competition Types
-
-| Type | Examples |
-|------|----------|
-| Tabular | `tabular-playground-series-*` |
-| Image | `dogs-vs-cats-*`, `plant-pathology-*` |
-| Text | `spooky-author-identification`, `jigsaw-toxic-*` |
-| Audio | `mlsp-2013-birds` |
-
-Use `mlebench.registry.registry.get_lite_competition_ids()` for the lightweight benchmark.
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key (required) | - |
-| `GOOGLE_API_KEY` | Google API key for Gemini (required) | - |
-| `CUDA_DEVICE` | GPU device ID | `0` |
-| `MLE_SEED` | Random seed | `1` |
-| `NEO4J_URI` | Neo4j connection URI | `bolt://localhost:7687` |
-| `NEO4J_USER` | Neo4j username | `neo4j` |
-| `NEO4J_PASSWORD` | Neo4j password | `password` |
+| path | role |
+|---|---|
+| `runner.py` | the single-competition CLI on `build()`: prepares the data, stages the evaluation, writes the Brief, grades the delivery once |
+| `context.py` | the Brief from the competition's description and files |
+| `config.yaml` | the override file over the packaged config; the `benchmark:` block holds the runner's own keys (the archive root, the caps, the floor scores, the forbidden packages) |
+| `data/generic_eval/` | the provided grader and its README for the maintainer |
+| `data/generic_baseline/` | the seeded candidate: the sample submission and the floor score |

@@ -1,0 +1,51 @@
+Here's what I found. The repo has no evaluator and no train/test split. It has 20,000 labelled rows in `data/transactions.csv` with a 4.56% fraud rate, and the file's hash matches `MANIFEST.json`. The scorer, `repo/score.py`, is three hand-written rules. Its contract is `python score.py --data <dir> --out scores.csv`, which writes `id,fraud_probability` in input order. No harness, experience source or `kapso-config.yaml` is set up, so the brief uses no harness and no `--config` flag.
+
+**The evaluation I built (needs your approval):** `kapso_evaluation/evaluate.py`
+- **Data and split:** a stratified 75/25 split with seed 20261027. The 15,000 training rows go to `build_data/`, which is passed as `--data`. The 5,000 hold-out rows (228 frauds) and their labels stay in `kapso_evaluation/private/holdout.csv`.
+- **How it runs:** it gives the candidate's `score.py` the hold-out features only, without labels. If the output has wrong columns or row count, ids out of order, or values that are NaN or outside [0,1], it stops with a reason and a non-zero exit. A run takes about 5 seconds.
+- **Metric:** PR-AUC (average precision), since fraud is rare. The last line printed is `pr_auc: x`, along with ROC AUC and a 200-draw bootstrap standard error. `--fast` scores 1,000 rows and its number is not comparable with a full score.
+- **Leakage checks:** no duplicate feature rows within the data or across the split. There is no time or customer column, so ordering and grouping leaks can't occur here.
+- **Measured:** the current rules score **0.092**, which matches the 0.09 in a code comment in `generate.py`. A plain gradient-boosting model with no tuning scores 0.485. The true formula that generated the data scores 0.586 on this hold-out, which is the realistic ceiling. So I propose a target of 0.53, about one standard error below that ceiling.
+- `generate.py` contains that formula. It sits outside `repo/`, so the campaign never sees it.
+
+The brief, in `kapso-brief.md`:
+
+```
+Objective    Make the fraud scorer in this repository better: raise score.py's
+             PR-AUC on the protected hold-out from 0.092 to at least 0.53,
+             keeping its contract (python score.py --data <dir> --out scores.csv
+             writes id,fraud_probability for every row, in input order).
+Measured by  kapso_evaluation/evaluate.py, PR-AUC (average precision) of
+             fraud_probability on 5,000 held-out rows, last line "pr_auc: <value>"
+Baseline     0.092 (the three hand-written rules; bootstrap SE 0.015, ROC AUC 0.60)
+Target       0.53
+Rules
+  - the evaluator and its hold-out are never modified or read
+  - train only on kapso_datasets/transactions.csv (15,000 labelled rows)
+  - score.py keeps its command-line contract and runs offline in under 10 minutes
+  - no hard-coded per-id outputs
+Budget       minutes=60 experiments=10
+Harness      none
+Experience   none
+```
+
+Approve the evaluation and say **go**, or edit a line, for example the target or the budget.
+
+---
+
+I took "the first one" to mean you approve the evaluation and keep the brief as written. Nothing has been launched. If you meant something else, tell me what to change.
+
+Everything is in place for a later launch:
+- `kapso_evaluation/` holds only `evaluate.py` and `private/holdout.csv`. The baseline ran in a copy, so there's no leftover `result.json`.
+- `build_data/transactions.csv` has the 15,000 training rows.
+- `kapso-brief.md` is the brief, with a target PR-AUC of 0.53 against a baseline of 0.092.
+- `../fraud-data-campaign` doesn't exist yet, so it's free to use as the output directory.
+
+To launch it yourself:
+
+```bash
+kapso doctor build --json
+kapso build --brief kapso-brief.md --repo repo --evaluation kapso_evaluation --data build_data --output ../fraud-data-campaign --budget-minutes 60 --budget-experiments 10 --detach
+```
+
+You can then follow it with `kapso watch ../fraud-data-campaign --follow`. If it shows `WAITING ON YOU`, the campaign has paused, and you answer it through `kapso inbox`.

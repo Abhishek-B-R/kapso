@@ -38,25 +38,29 @@ Prior decision rationale: {{previous_rationale}}
 
 {{shared_artifacts_brief}}
 
-## Design axes of the solution space
+## Design axes of the solution space (the ones you named)
 
-{{design_axes}}
+{{axes}}
 
 ## Axis-coverage contract (anti-freeze)
 
 Campaigns measurably fail by silently freezing an axis once a champion
 exists (e.g. the input-representation axis never revisited while every
-iteration swaps model mechanisms). Whether you KEEP or REVISE, your paragraph must assign
+iteration swaps model mechanisms). Whether you KEEP or REVISE, assign
 each axis above exactly one status:
 - ACTIVE — a lens moves it this iteration (say which lens);
 - SATURATED — cite the measured evidence (an ablation/importance study, or
   the specific gated attempts on that axis that failed);
 - DEFERRED — one-line reason plus the concrete condition that reopens it.
-A paragraph that leaves an axis unmentioned is malformed. Statuses are
+On a KEEP the statuses go in your paragraph. On a REVISE they go in the
+`<axes>` block, which restates every axis above with its current status
+(replace the status an axis carries; an axis may be reworded, never
+dropped; a dimension the evidence revealed may be appended). A revision
+that leaves an axis out is malformed and is discarded. Statuses are
 dated claims, not verdicts: re-defend a SATURATED or DEFERRED claim
 whenever new evidence contradicts it.
 
-## How to decide (return economics)
+{{domain_guidance}}{{experience_intro}}## How to decide (return economics)
 
 - The campaign is rewarded ONLY for closing the gap to the GOAL's bar. A
   lens set that keeps producing champion-parity candidates while the
@@ -80,9 +84,14 @@ EITHER, to keep the current plan unchanged:
 
 <keep>one-paragraph return argument for keeping the current lenses</keep>
 
-OR, to revise, the full new plan ({{lens_count}} lenses, member order):
+OR, to revise, the full new plan ({{lens_count}} lenses, member order),
+every axis statused:
 
 <revision_rationale>what changed and why, incl. exhaustion evidence</revision_rationale>
+<axes>
+1. <axis> — ACTIVE (lens 2) | SATURATED: <evidence> | DEFERRED: <reason; reopens when ...>
+2. ...
+</axes>
 <lens_1>...</lens_1>
 <lens_2>...</lens_2>
 <sources>

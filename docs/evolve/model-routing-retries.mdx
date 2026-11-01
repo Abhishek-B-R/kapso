@@ -31,10 +31,10 @@ inference:
 A role inherits every `default` key it does not override, so `repo_memory: {}` is the default spec verbatim. Inference sessions never write (`sandbox: read-only`), and a failed or empty session raises rather than degrading silently.
 
 <Note>
-  The packaged config's `inference` block is the base layer; an `inference:` block in the file you pass with `--config` / `config_path` deep-merges over it, so overriding one key never forfeits the rest. Coding-agent models — such as `coding_agent.model` — stay explicit in your mode config because their provider and authentication are part of that agent's configuration.
+  The packaged config's `inference` block is the base layer; an `inference:` block in your override file deep-merges over it, so overriding one key never forfeits the rest. The build's own sessions are not routed here: they are the roles under `search_strategy.params`, each resolving to an entry of the `hosts` table.
 </Note>
 
-`Kapso.research()` runs on the `research` role, whose `web_search: true` carries the CLI's live-web tool; `depth="light"` requests medium search context and `depth="deep"` high.
+`kapso experience add --research` runs its web search on the `research` role, whose `web_search: true` carries the CLI's live-web tool, at the deep search depth.
 
 ## The embedding route
 
@@ -62,7 +62,7 @@ Authentication, permission, bad-request, context-window, invalid
 configuration, and programming errors are raised immediately. Kapso does not
 sleep and retry a bad API key or a malformed call.
 
-The retry budget comes from the mode's `retry` block; `max_attempts` includes the initial call:
+The retry budget comes from the config's `retry` block; `max_attempts` includes the initial call:
 
 ```yaml
 retry:
@@ -92,7 +92,7 @@ server abandons mid-stream cannot block the calling thread forever.
 ## Standalone use
 
 ```python
-from kapso.core import LLMBackend, RetryPolicy
+from kapso.core.llm import LLMBackend, RetryPolicy
 
 llm = LLMBackend(
     models={"embedding": "text-embedding-3-small"},

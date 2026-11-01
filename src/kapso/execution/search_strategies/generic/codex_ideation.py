@@ -16,13 +16,19 @@ stream and the final-message file are PERSISTED there instead of deleted,
 so a failed member turn leaves evidence on disk.
 """
 
+import json
 import os
 import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
+
+from kapso.execution.coding_agents.base import CodingResult
+from kapso.execution.coding_agents.session_record import record_run, start_run
+from kapso.execution.coding_agents.transcripts import CODEX_EVENT_HEAD, CODEX_HOST, events, stream_lines
 
 # Grace between SIGTERM and SIGKILL on deadline (mirrors the Claude adapter).
 _DEADLINE_GRACE_SECONDS = 5.0
@@ -43,27 +49,90 @@ def ideation_stream_path(artifacts_dir: str, cli: str, model: str) -> str:
     return os.path.join(artifacts_dir, f"{cli}_{safe_model}.stream.txt")
 
 
+def agent_messages(stream: str) -> str:
+    """The agent's own messages in a `codex exec --json` stream, joined:
+    what a killed turn said before it died. Lines that are not events are
+    skipped, as is the line the kill cut; an event-shaped line that does
+    not parse raises."""
+    texts = []
+    for event in events(stream_lines(stream), CODEX_EVENT_HEAD):
+        item = event.get("item") or {}
+        if event.get("type") == "item.completed" and item.get("type") == "agent_message" and item.get("text"):
+            texts.append(item["text"])
+    return "\n".join(texts)
+
+
 def run_codex_ideation(
     prompt: str,
     model: str,
     cwd: str,
-    timeout_seconds: float,
+    timeout_seconds: float | None,
     effort: str | None = None,
     artifacts_dir: str | None = None,
     web_search: bool = True,
+    extra_args: list[str] | None = None,
+    extra_env: dict[str, str] | None = None,
+    record_path: str | None = None,
+    env_strip: list[str] | None = None,
+    env_defaults: dict[str, str] | None = None,
 ) -> tuple[str, bool, float, dict]:
-    """Run one read-only `codex exec` ideation call.
+    """Run one read-only `codex exec --json` ideation call, recorded in
+    the session's record when it keeps one (`record_path`; the stream it
+    digests is the artifacts' stream file).
 
     Returns (output_text, timed_out, duration_seconds, meta) where meta is
     {"last_message_empty": bool, "stream_tail": str, "stream_path": str|None,
     "last_path": str|None}. Output prefers the clean final message; a killed
-    or aborted turn falls back to the merged transcript stream (which echoes
-    the submitted prompt — callers must filter echo artifacts).
+    or aborted turn falls back to the agent's messages in the event stream
+    (which may echo the submitted prompt — callers must filter echo
+    artifacts).
     """
     if not shutil.which("codex"):
         raise RuntimeError(
             "Codex CLI not found. Install with: npm install -g @openai/codex"
         )
+    stream_path = ideation_stream_path(artifacts_dir, "codex", model) if artifacts_dir else None
+    recorder = start_run(CODEX_HOST, model, record_path, stream_path, deadline_seconds=timeout_seconds)
+    outcome: tuple | None = None
+    try:
+        outcome = _run_codex_turn(
+            prompt, model, cwd, timeout_seconds, effort, artifacts_dir, web_search, extra_args, extra_env,
+            env_strip, env_defaults,
+        )
+    finally:
+        record_run(recorder, _as_result(outcome), sys.exc_info()[1])
+    return outcome
+
+
+def _as_result(outcome: tuple | None) -> CodingResult | None:
+    """The runner's tuple in the shape the run entry reads."""
+    if outcome is None:
+        return None
+    output, timed_out, _duration, meta = outcome
+    error = (
+        "codex ideation timed out" if timed_out
+        else "codex ideation produced no final message" if meta["last_message_empty"]
+        else None
+    )
+    return CodingResult(
+        success=error is None, output=output, error=error,
+        metadata={"deadline_exceeded": timed_out},
+    )
+
+
+def _run_codex_turn(
+    prompt: str,
+    model: str,
+    cwd: str,
+    timeout_seconds: float,
+    effort: str | None,
+    artifacts_dir: str | None,
+    web_search: bool,
+    extra_args: list[str] | None,
+    extra_env: dict[str, str] | None,
+    env_strip: list[str] | None = None,
+    env_defaults: dict[str, str] | None = None,
+) -> tuple[str, bool, float, dict]:
 
     if artifacts_dir:
         os.makedirs(artifacts_dir, exist_ok=True)
@@ -84,13 +153,16 @@ def run_codex_ideation(
         persist = False
 
     # --output-last-message isolates the agent's final answer from the
-    # transcript stream; --search enables the native web_search tool (dropped
-    # when web_search=False, e.g. leakage-safe harvest runs on past contests).
+    # transcript stream; --search enables the live native web search, and
+    # `web_search="disabled"` turns the native search off altogether (the
+    # engine's boundary: omitting --search alone leaves Codex's default
+    # cached search on; the key's values are verified against the CLI).
     cmd = ["codex"]
     if web_search:
         cmd.append("--search")
     cmd.extend([
         "exec",
+        "--json",
         "--sandbox",
         "read-only",
         "--skip-git-repo-check",
@@ -101,15 +173,31 @@ def run_codex_ideation(
     ])
     if effort:
         cmd.extend(["-c", f'model_reasoning_effort="{effort}"'])
+    if not web_search:
+        cmd.extend(["-c", 'web_search="disabled"'])
+    # A harness's servers, agent roles and hook trust for this session
+    # (kapso.harness.staging.StagedHarness.codex_exec_args).
+    cmd.extend(extra_args or [])
     # Prompt via stdin, never argv (same self-pkill hazard as the Claude
     # adapter: argv-borne prompt text makes kill patterns match ancestors).
 
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
+    # The engine's own rules for every session (search_strategy.params):
+    # the variables stripped, and the defaults set where absent.
+    for name in env_strip or []:
+        env.pop(name, None)
+    for name, value in (env_defaults or {}).items():
+        env.setdefault(name, value)
+    # A harness's variables (KAPSO_HARNESS_ROOT), as every staged session
+    # gets them (kapso.harness.staging.StagedHarness.env).
+    env.update(extra_env or {})
 
     # Stream to a file, not a PIPE: codex output can exceed the 64KB pipe
     # buffer mid-run, which would deadlock a poll loop.
-    out_file = open(out_path, "w")
+    # Appended, never replaced: the run entry digests the lines this
+    # invocation added from the offset it started at.
+    out_file = open(out_path, "a")
     started = time.monotonic()
     process = subprocess.Popen(
         cmd,
@@ -124,8 +212,10 @@ def run_codex_ideation(
     process.stdin.write(prompt)
     process.stdin.close()
 
-    deadline = started + timeout_seconds
-    while process.poll() is None and time.monotonic() < deadline:
+    # No deadline (an unbudgeted campaign, no configured timeout): the
+    # turn runs to its end.
+    deadline = None if timeout_seconds is None else started + timeout_seconds
+    while process.poll() is None and (deadline is None or time.monotonic() < deadline):
         time.sleep(_POLL_INTERVAL_SECONDS)
 
     timed_out = process.poll() is None
@@ -147,8 +237,9 @@ def run_codex_ideation(
         os.unlink(last_path)
         os.unlink(out_path)
 
-    # Prefer the clean final message; a killed/aborted run has only its stream.
-    output = last_message if last_message else stream
+    # Prefer the clean final message; a killed/aborted run has only its
+    # stream, whose agent messages are its text.
+    output = last_message if last_message else agent_messages(stream)
     meta = {
         "last_message_empty": not last_message,
         "stream_tail": stream[-STREAM_TAIL_CHARS:],

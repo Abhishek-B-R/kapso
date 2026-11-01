@@ -1,0 +1,12 @@
+{"proof_prompt": "$kapso watch ../churn-campaign"}
+{"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "I\u2019m using the Kapso skill to watch the campaign and check its progress."}}
+{"type": "item.completed", "item": {"id": "item_5", "type": "agent_message", "text": "`kapso watch ../churn-campaign --json` returned `no_status`: that campaign directory doesn\u2019t exist.\n\nThe sibling directory `../churn-pause` does exist. Did you mean to watch that campaign?"}}
+{"proof_prompt": "$kapso watch ../churn-campaign"}
+{"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "I\u2019m using the Kapso skill to check the campaign and follow its progress."}}
+{"type": "item.completed", "item": {"id": "item_4", "type": "agent_message", "text": "Campaign is running in **ideation, iteration 1**, with a fresh heartbeat.\nNo scored candidate or best branch yet.\n**26 of 30 minutes remain**; 1.5 minutes are reserved."}}
+{"proof_prompt": "$kapso watch ../churn-campaign"}
+{"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "I\u2019m using the Kapso skill to watch the campaign and check its status."}}
+{"type": "item.completed", "item": {"id": "item_4", "type": "agent_message", "text": "Running: iteration 1, **ideation** phase.\nBest score: none reported yet.\nBudget: about **59 of 60 minutes remaining**."}}
+{"proof_prompt": "$kapso watch ../churn-campaign"}
+{"type": "item.completed", "item": {"id": "item_0", "type": "agent_message", "text": "I\u2019m using the Kapso skill to watch the campaign and check its current status."}}
+{"type": "item.completed", "item": {"id": "item_4", "type": "agent_message", "text": "Campaign is **running**, in ideation for iteration 1.\nNo best score or branch reported yet.\nBudget: about **59 of 60 minutes remaining**."}}

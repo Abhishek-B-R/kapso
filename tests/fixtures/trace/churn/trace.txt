@@ -1,0 +1,39 @@
+trace of <campaign> — complete
+objective       Raise the churn model's out-of-sample ROC AUC above 0.85
+harness         none
+served          mine at a9ddad3d302d, measured by you
+evaluator       none registered: the agent's own evaluation
+budget          14.0 of 15.0 min (the launch's over the brief's 45.0 min)
+cost            $2.814
+stopped         max_iterations; 1 experiment
+delivered       generic_exp_0 @ ff9d7bdd774b
+
+ATTEMPTS
+node 0  generic_exp_0  from main  14.0 min  $2.814
+  idea          Core Idea: Replace the linear churn model with a **very shallow, seed-bagged `HistGradientBoostingClassifier`** (native categorical + native NaN handling) rank…
+  sessions
+    generic_exp_0                  claude_code success     3.9 min  $0.940  13 turns  tools Bash 12
+  evaluation    score 0.846 (provided), valid
+  verification  none (no harness verification)
+  judge         valid, continue: Verdict: 0.8460 — short of the 0.85 bar by 0.004. Do not consolidate.
+  cards read    none
+  load-bearing  none
+
+LESSONS
+mine at a9ddad3d302d, measured by you: 0 cards served (none of the bank's cards is eligible under this campaign's coordinate)
+  read by nobody
+
+VOIDED OR REJECTED
+  none
+
+SESSIONS FAILED
+  none
+
+DELIVERED
+generic_exp_0 @ ff9d7bdd774b (base 19bf1ea5c7ab)
+files changed   PLAN.md, changes.log, kapso_evaluation/eval_profile.md, kapso_evaluation/result.json, output_data_generic_exp_0/eval.pid, output_data_generic_exp_0/oof.pid, output_data_generic_exp_0/oof_check.py, predict.py, predictions.csv
+verification    none (no harness verification)
+integrity       provided; intact
+hooks           none staged in its sessions (no hook could deny anything)
+failures        none in its sessions
+judge           Verdict: 0.8460 — short of the 0.85 bar by 0.004. Do not consolidate.  (--branch generic_exp_0 for the words in full)

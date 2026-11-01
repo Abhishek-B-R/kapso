@@ -1,0 +1,75 @@
+{
+  "module": "setup",
+  "host": "claude_code",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "83b6c0b60d6ac724613c469bc1315d5cba32420bdf705d8f4c2c04c73d834f2b",
+    "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+  },
+  "session_dir": "/campaign",
+  "pages": [
+    "guardrails.md",
+    "setup.md"
+  ],
+  "skills": [
+    "market-data"
+  ],
+  "mcp_servers": [
+    "market-data"
+  ],
+  "agents": [],
+  "hooks": [
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared"
+  ],
+  "prepared": [],
+  "stream": "/campaign/.kapso/sessions/harness_setup/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-25T18:22:35+00:00",
+      "ended": "2026-10-25T18:25:40+00:00",
+      "duration_seconds": 185.935,
+      "deadline_seconds": null,
+      "model": "claude-opus-5",
+      "cli_session_id": "81e893f7-74a1-4da0-b7de-d6a9e65b80e3",
+      "exit": "success",
+      "error": null,
+      "retry_reason": null,
+      "cost_usd": 0.99886,
+      "cost_cumulative": 0.9988595,
+      "turns": 24,
+      "usage": null,
+      "tools": {
+        "Bash": 17,
+        "Skill": 1,
+        "ToolSearch": 1,
+        "mcp__market-data__snapshot": 1,
+        "mcp__market-data__list_instruments": 1,
+        "mcp__market-data__get_bars": 1
+      },
+      "gates": {
+        "market-data": {
+          "snapshot": 1,
+          "list_instruments": 1,
+          "get_bars": 1
+        }
+      },
+      "hooks": [
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": null,
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        }
+      ],
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": "Setup is complete.\n\n**Prepared resource \u2014 `market-data`** (`prepared/market-data/`): ALPHA, BETA, GAMMA as byte-identical copies of `kapso_datasets/bars/`, plus `MANIFEST.json` recording source, instruments, range and sha256 `a6fbcfad\u202652463c`. Built with the market-data server's `snapshot` tool (setup is the one module without the `deny-snapshot` hook). Verified the server reads it back live and that it stops at 2023-12-29 \u2014 no 2024 leakage. `kapso_datasets/` and `kapso_evaluation/` are untouched.\n\n**Domain statement** (`.kapso/harness_setup/statement.md`) records the instruments and daily frequency, the pinned window, the cost model read off the evaluator (close-to-close returns, 5 bps per unit of turnover, no separate slippage or spread, no risk-free rate), the evaluation command and what it measures, dev vs. 2024 windows, the [-1, 1] per-instrument limit with 1.0\u00d7 gross portfolio exposure, and the budget. Beyond the required list it captures what I verified about the data:\n\n- The series are **synthetic** \u2014 all start at 100.0, `open` always equals the prior `close`, 260 bars/year, Mon\u2013Fri with no holidays (2023-12-25 is a bar), one shared calendar. So the market-data skill's adjustment and survivorship warnings don't bite here, which saves a later session the investigation.\n- Daily returns are **near-uncorrelated** (pairwise |\u03c1| \u2264 0.03). Since the score averages the three instruments' net P&L, independent edges diversify toward \u221a3 \u00d7 a per-instrument Sharpe \u2014 that's the main lever on 0.14 \u2192 1.0, and a one-instrument strategy gets diluted.\n- Two traps that change the score silently rather than erroring: the evaluator annualises with 252 while the data year is 260 bars, and it calls `signal(bars)` once on dev+2024 concatenated and applies its own `shift(1)`, so an internal shift throws away a day. The look-ahead write hook does *not* catch that second one.\n\n**Two things to flag:**\n\n1. The task statement contradicts itself on budget \u2014 the Brief says `minutes=75`, the Budget section says `minutes=40.0`. I flagged it rather than resolving it, since setup can't tell which the engine enforces, and advised planning against the tighter 40.\n2. The repo memory I was given claimed setup had already pinned the snapshot today and described a stale `kapso_evaluation/result.json`. Neither existed \u2014 `prepared/` was absent. Its data facts all held up once I re-derived them, so I've corrected the file to drop the false `result.json` claim and added the correlation and budget findings.\n\nNothing the task statement names was missing, so I raised no `request_from_user`. As instructed, I ran neither the evaluation nor any backtest \u2014 the 0.14 baseline in the statement is quoted from the brief, not reproduced. I confirmed the private 2024 directory holds the three expected files **by name only**, without reading any prices."
+    }
+  ]
+}

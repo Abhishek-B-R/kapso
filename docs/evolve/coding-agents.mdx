@@ -9,19 +9,19 @@ A coding agent is what actually writes the code during an experiment. Kapso driv
 
 ## Which agents can I use?
 
-| Agent | Description | Default model | Install |
-|-------|-------------|---------------|---------|
-| `claude_code` | Anthropic Claude Code CLI, for complex refactoring and planning | `claude-opus-4-5` (registry; both shipped modes override to `claude-opus-5`) | `npm install -g @anthropic-ai/claude-code` |
-| `codex` | OpenAI Codex CLI, non-interactive exec with a full-access sandbox | `gpt-5.6-sol` | `npm install -g @openai/codex` |
-| `gemini` | Google Gemini SDK, code generation with file parsing | `gemini-2.5-flash` | `pip install google-generativeai` |
-| `openhands` | OpenHands agent SDK with a sandboxed execution environment | `gpt-4.1-mini` | `pip install openhands-ai litellm` |
-| `oss_claude_code` | Claude Code CLI driven by an OSS model over an Anthropic-compatible endpoint | `glm-5p2` | `npm install -g @anthropic-ai/claude-code` |
-| `vertex_claude_code` | Claude Code CLI driven by a Vertex AI Model Garden open model through a local LiteLLM bridge | `zai-org/glm-5.2-maas` | `npm install -g @anthropic-ai/claude-code && pip install 'litellm[proxy]>=1.103' google-cloud-aiplatform` |
-| `aider` | Git-centric diff-based editing. Legacy, and needs Python 3.12 or older | — | `pip install "leeroo-kapso[aider]"` |
+| Agent | Description | Serves | Install |
+|-------|-------------|--------|---------|
+| `claude_code` | Anthropic Claude Code CLI, for complex refactoring and planning | `claude-*` models only; the packaged host runs `claude-opus-5` | `npm install -g @anthropic-ai/claude-code` |
+| `codex` | OpenAI Codex CLI, non-interactive exec with a full-access sandbox | everything but `claude-*`; the packaged host runs `gpt-5.6-sol` | `npm install -g @openai/codex` |
+| `gemini` | Google Gemini SDK, code generation with file parsing | any model it is given, such as `gemini-2.5-flash` | `pip install google-generativeai` |
+| `openhands` | OpenHands agent SDK with a sandboxed execution environment | any, such as `gpt-4.1-mini` | `pip install openhands-ai litellm` |
+| `oss_claude_code` | Claude Code CLI driven by an OSS model over an Anthropic-compatible endpoint | any, such as `glm-5p2` | `npm install -g @anthropic-ai/claude-code` |
+| `vertex_claude_code` | Claude Code CLI driven by a Vertex AI Model Garden open model through a local LiteLLM bridge | any, such as `zai-org/glm-5.2-maas` | `npm install -g @anthropic-ai/claude-code && pip install 'litellm[proxy]>=1.103' google-cloud-aiplatform` |
+| `aider` | Git-centric diff-based editing. Legacy, and needs Python 3.12 or older | any | `pip install "leeroo-kapso[aider]"` |
 
-Both shipped config modes, `GENERIC` and `MINIMAL`, set `coding_agent.type: claude_code`, so that is the agent you get unless you override it.
+An agent runs a build's sessions as a host: an entry of the config's `hosts` table naming the model it is asked for and its own settings. The packaged table names `claude_code` with `claude-opus-5` and `codex` with `gpt-5.6-sol`, and `search_strategy.params.host` makes `claude_code` the host every role runs on unless the role names its own `cli`; `kapso build --coding-agent codex` moves the default host for a campaign. A host must be able to serve its model: the preflight refuses `codex` asked for a `claude-*` model before a session runs. See [Configuration](/docs/reference/configuration#hosts).
 
-An agent is only registered if its dependencies import, so `aider` is absent from a default install and `kapso --list-agents` shows six. Run that command to see what is actually available on your machine — it prints each registered agent with its description, default model, install command and the environment variables it reads:
+An agent is only registered if its dependencies import, so `aider` is absent from a default install and `kapso --list-agents` shows six. Run that command to see what is actually available on your machine — it prints each registered agent with its description, install command and the environment variables it reads:
 
 ```bash
 kapso --list-agents
@@ -78,19 +78,17 @@ print(f"Cost: ${result.cost:.4f}")
 
 ## Claude Code
 
-Anthropic's CLI, and what both shipped config modes use. Best on complex refactoring and planning, with MCP tool support.
+Anthropic's CLI, the packaged default host. Best on complex refactoring and planning, with MCP tool support.
 
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
 ```yaml
-coding_agent:
-  type: "claude_code"
-  model: "claude-opus-5"
-  agent_specific:
-    auth_mode: "oauth"
-    claude_md_path: "CLAUDE.md"
+hosts:
+  claude_code:
+    model: claude-opus-5
+    auth_mode: oauth
 ```
 
 ### How do I authenticate Claude Code?
@@ -102,21 +100,20 @@ coding_agent:
 | `oauth` | `claude auth login`, or `CLAUDE_CODE_OAUTH_TOKEN` | Uses the current user's Claude CLI subscription login |
 | `api_key` | `ANTHROPIC_API_KEY` | Requires direct Anthropic API credentials |
 | `auto` | Either of the above | Takes whichever is present; never Bedrock |
-| `bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, or `AWS_ACCESS_KEY_ID` with `AWS_SECRET_ACCESS_KEY`, or `AWS_PROFILE` | Runs Claude Code against Amazon Bedrock in the region named by `agent_specific.aws_region` |
+| `bedrock` | `AWS_BEARER_TOKEN_BEDROCK`, or `AWS_ACCESS_KEY_ID` with `AWS_SECRET_ACCESS_KEY`, or `AWS_PROFILE` | Runs Claude Code against Amazon Bedrock in the region the host's `aws_region` names |
 
-The shipped config sets `oauth` on every Claude Code block, and the low-level adapter defaults to `auto`. For a non-interactive environment set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
+The packaged host sets `oauth`, and the low-level adapter defaults to `auto`. For a non-interactive environment set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
 
 An explicit mode removes higher-precedence credentials from the Claude subprocess environment, so `oauth` ignores an inherited `ANTHROPIC_API_KEY`, and `bedrock` drops every Anthropic credential so the CLI cannot bill the wrong provider. The parent process environment is never modified.
 
 Bedrock happens only when a config names it. `auto` never resolves to Bedrock, even with AWS credentials in the environment, so an existing campaign never changes provider, cost or model naming behind your back. Two things change together with the mode: `aws_region` is required and read from the config, never from `AWS_REGION`, and models are named by Bedrock inference profile id (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) rather than by the aliases the other modes take. A missing region or missing credentials fails when the agent is constructed, with the fix in the message.
 
 ```yaml
-coding_agent:
-  type: "claude_code"
-  model: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-  agent_specific:
-    auth_mode: "bedrock"
-    aws_region: "us-east-1"
+hosts:
+  claude_code:
+    model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    auth_mode: bedrock
+    aws_region: us-east-1
 ```
 
 ## Codex
@@ -129,9 +126,10 @@ codex login
 ```
 
 ```yaml
-coding_agent:
-  type: "codex"
-  model: "gpt-5.6-sol"
+hosts:
+  codex:
+    model: gpt-5.6-sol
+    effort: xhigh
 ```
 
 Set `CODEX_API_KEY` in `.env` instead of logging in for a non-interactive environment.
@@ -141,10 +139,9 @@ Set `CODEX_API_KEY` in `.env` instead of logging in for a non-interactive enviro
 Google's SDK, via `pip install google-generativeai`. Fast and cost-effective for iterative refinement.
 
 ```yaml
-coding_agent:
-  type: "gemini"
-  model: "gemini-2.5-flash"
-  debug_model: "gemini-2.5-flash"
+hosts:
+  gemini:
+    model: gemini-2.5-flash
 ```
 
 Set `GOOGLE_API_KEY` in `.env`.
@@ -164,11 +161,9 @@ pip install openhands-ai litellm
 ```
 
 ```yaml
-coding_agent:
-  type: "openhands"
-  model: "gpt-4.1-mini"
-  agent_specific:
-    max_iterations: 30
+hosts:
+  openhands:
+    model: gpt-4.1-mini
 ```
 
 ## OSS Claude Code
@@ -176,9 +171,11 @@ coding_agent:
 The Claude Code CLI pointed at an open-source model over an Anthropic-compatible endpoint, such as GLM on Fireworks. Same CLI, different backend.
 
 ```yaml
-coding_agent:
-  type: "oss_claude_code"
-  model: "accounts/fireworks/models/glm-5p2"
+hosts:
+  oss_claude_code:
+    model: accounts/fireworks/models/glm-5p2
+    base_url: https://<the endpoint>      # the Anthropic-compatible endpoint
+    auth_token_env: FIREWORKS_API_KEY    # the variable holding its key, read from .env
 ```
 
 ## Vertex AI Claude Code
@@ -186,19 +183,18 @@ coding_agent:
 The Claude Code CLI driven by an open model that Vertex AI Model Garden serves as a managed API, such as GLM 5.2. Vertex speaks the OpenAI protocol and authenticates with Google credentials, neither of which the CLI understands, so the adapter starts a local [LiteLLM](https://docs.litellm.ai/docs/simple_proxy) proxy on an ephemeral port: the CLI talks Anthropic to the proxy, the proxy talks Vertex to Google. One proxy serves every session of the process and stops with it. The proxy port is guarded by a random key minted per process, and the CLI's first-party credentials, update checks and telemetry are kept away from it.
 
 ```yaml
-coding_agent:
-  type: "vertex_claude_code"
-  model: "zai-org/glm-5.2-maas"
-  agent_specific:
-    vertex_project: "my-gcp-project"   # the project billed for the model
-    vertex_location: "global"          # where Vertex serves the open models
-    bridge_startup_timeout: 60         # seconds to wait for the proxy
-    effort: "high"                     # the model's reasoning effort; omit for its default
+hosts:
+  vertex_claude_code:
+    model: zai-org/glm-5.2-maas
+    vertex_project: my-gcp-project      # the project billed for the model
+    vertex_location: global             # where Vertex serves the open models
+    bridge_startup_timeout: 60          # seconds to wait for the proxy
+    effort: high                        # the model's reasoning effort; omit for its default
 ```
 
 Setup, besides the CLI: `pip install 'litellm[proxy]>=1.103' google-cloud-aiplatform` in a venv of its own whose `bin` is on PATH (the proxy and the Vertex SDK its route imports; older LiteLLM releases do not know the Model Garden open models, and Kapso's own environment pins an older LiteLLM for its utility calls) and a Google credential that google-auth can find: `gcloud auth application-default login` on a workstation, or the service account of a Compute Engine machine (with the Vertex AI User role). The proxy reads the credential; Kapso never does. A bridge counts as up only after one one-token request has reached the model and come back, so a missing credential, a wrong project or an unknown model fails at start with Vertex's reason, not mid-session. The same block works for the learning sessions: set `learner.ingestor.cli` and `learner.merger.cli` to `vertex_claude_code` with the model and `agent_specific` beside them. `kapso doctor` checks the proxy binary, the credential file and the project before a run starts.
 
-The manifest also sets `CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000` in the CLI's environment (set-if-absent, through `env_defaults`): open models write big files in one turn and the CLI's default 32k cap aborts the session; override it in `agent_specific.env_defaults` if your model's limit differs.
+The manifest also sets `CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000` in the CLI's environment (set-if-absent, through `env_defaults`): open models write big files in one turn and the CLI's default 32k cap aborts the session; override it in `search_strategy.params.session_env_defaults` if your model's limit differs.
 
 `effort` means the same thing here as for the other agents, the session's reasoning effort, but it is applied differently: the CLI's `--effort` flag is an Anthropic-only request field that the proxy would drop, so the adapter sets the value as the open model's `reasoning_effort` on the proxy, for every request of the session. Vertex accepts `minimal`, `low`, `medium`, `high` and `max` for GLM 5.2 and rejects anything else; `xhigh`, the shipped default, is sent as `max`, which is how Z.ai defines it. Omitting the key leaves the model's own default (`max` for GLM 5.2); other open models take their own values. The learner's `effort` reaches the model the same way when the learner runs on this agent.
 
@@ -213,10 +209,8 @@ Provider and model support for individual request fields varies.
 ### Text-only inference
 
 Configure a role whose entire context is supplied in its prompt, such as
-knowledge-search reranking. Copy the packaged `src/kapso/config.yaml` to
-`kapso-config.yaml` and add this role override under `inference`. Keep the
-other sections, especially `modes`; an inference-only file is not a complete
-configuration for `evolve`:
+knowledge-search reranking. Put this role override under `inference` in your
+override file; everything the file does not name keeps the packaged value:
 
 ```yaml
 inference:
@@ -232,17 +226,18 @@ inference:
         temperature: 0.1
 ```
 
-Load it with `Kapso(config_path="kapso-config.yaml")` or
-`kapso evolve --config kapso-config.yaml --goal "..."`.
-`kapso research --config ...` also accepts a config path, but its research
-role must use a web-capable agent. Plain Chat Completions supplies no web
-search here; attempting that route fails explicitly before an API request.
+Load it with `Kapso(config="kapso-config.yaml")` or
+`kapso build --config kapso-config.yaml --goal "..."`.
+`kapso experience add --research ... --config ...` also accepts a config
+path, but its `research` role must use a web-capable agent. Plain Chat
+Completions supplies no web search here; attempting that route fails
+explicitly before an API request.
 
 Inference returns text without interpreting it as file edits. Nested
 `agent_specific` settings inherit from `inference.default` and can be
 partially overridden per role. Setting the default to `openai_compatible`
-does not replace `GENERIC` ideation or implementation: those sessions still
-use their separately configured Claude Code/Codex backends. Keep roles that
+does not replace the build's ideation or implementation sessions: those run
+on the hosts their roles name. Keep roles that
 need filesystem or web tools on a capable agent.
 
 ### Endpoint and request settings
@@ -251,7 +246,7 @@ need filesystem or web tools on a capable agent.
 is defined in `agents.yaml`; shell variables cannot override it. Use HTTPS:
 HTTP is accepted only for loopback hosts (`localhost`, `127.0.0.0/8`, or `::1`).
 The KG graph-search embeddings client likewise uses a config-only endpoint;
-set `knowledge_search.params.embedding_base_url` in the active mode when
+set `knowledge_search.params.embedding_base_url` in your config when
 embeddings need a different provider. That endpoint must support the
 configured embedding model.
 
@@ -283,7 +278,7 @@ request timeout. Token usage is returned in metadata; monetary cost tracking
 is unavailable, so do not rely on Kapso's cost budget to cap provider charges.
 
 The adapter is registered for `CliInference` with `inference_only: true` in
-`agents.yaml`. It is excluded from both `evolve -a` and
+`agents.yaml`. It is excluded from both `build -a` and
 `deploy --coding-agent` choices. It cannot read or write workspace files,
 execute commands, use tools, or verify evaluation results; all context must
 be supplied in the prompt. Provider and transport errors propagate; empty,
@@ -307,7 +302,7 @@ class CodingResult:
 
 ## What must an agent return?
 
-When used with `kapso.evolve()`, the coding agent must end its response with XML tags:
+When used with `kapso.build()`, the coding agent must end its response with XML tags:
 
 ```xml
 <code_changes_summary>Brief description of changes made</code_changes_summary>
@@ -319,7 +314,7 @@ When used with `kapso.evolve()`, the coding agent must end its response with XML
 
 The search strategy extracts these tags (`score` becomes a float; `null` or an empty value becomes `None`) and hands them to the feedback generator to validate the evaluation and decide whether to continue. There is no fallback format: output without the tags is a warning and an empty result.
 
-An implementation session may also end without the tags by calling the `request_from_user` tool when the session needs something only a person can provide. Kapso later resumes that very session with your reply, through `claude -p --resume` for Claude Code and `codex exec resume` for Codex, which is why implementation sessions are launched with a session id (`--session-id` on Claude Code, `--json` on Codex to capture the thread id). See the [inbox](/docs/evolve/inbox).
+An implementation session may also end without the tags by calling the `request_from_user` tool when the session needs something only a person can provide. Kapso later resumes that very session with your reply, through `claude -p --resume` for Claude Code and `codex exec resume` for Codex, which is why implementation sessions are launched with a session id (`--session-id` on Claude Code, `--json` on Codex to capture the thread id). See the [inbox](/docs/build/inbox).
 
 ### Example agent output
 
@@ -448,7 +443,7 @@ def get_capabilities(self) -> Dict[str, bool]:
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Configuration" icon="gear" href="/docs/reference/configuration#coding_agent-and-feedback_generator">
+  <Card title="Configuration" icon="gear" href="/docs/reference/configuration#hosts">
     The coding_agent block, and auth_mode
   </Card>
   <Card title="Experiment lifecycle" icon="rotate" href="/docs/evolve/experiment-lifecycle">
@@ -456,6 +451,6 @@ def get_capabilities(self) -> Dict[str, bool]:
   </Card>
 </CardGroup>
 
-Related pages: [Configuration](/docs/reference/configuration#coding_agent-and-feedback_generator) · [Experiment lifecycle](/docs/evolve/experiment-lifecycle) · [Orchestrator](/docs/evolve/orchestrator)
+Related pages: [Configuration](/docs/reference/configuration#hosts) · [Experiment lifecycle](/docs/evolve/experiment-lifecycle) · [Orchestrator](/docs/evolve/orchestrator)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

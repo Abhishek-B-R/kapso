@@ -18,14 +18,16 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from kapso.core.config import load_platform_defaults
-from kapso.gated_mcp.presets import knowledge_tools_block, user_setup_gaps
+from pathlib import Path
+from kapso.core.config import load_config
+from kapso.gated_mcp.presets import HOSTED_GATE, knowledge_tools_block, user_setup_gaps
 from kapso.execution.search_strategies.base import (
     SearchStrategy,
     SearchStrategyConfig,
     SearchNode,
 )
 from kapso.execution.search_strategies.factory import register_strategy
+from kapso.execution.evaluation_archive import label_run_of_record
 from kapso.execution.cost_estimator import (
     DEFAULT_COST_CONFIG,
     normalize_cost_config,
@@ -48,20 +50,18 @@ from kapso.execution.search_strategies.generic.expansion_lanes import (
     render_lane_brief,
     validate_node_expansion_config,
 )
+from kapso.execution.search_strategies.generic.feedback_generator import FeedbackGenerator
 from kapso.execution.search_strategies.generic.feedback_flow import (
     extract_agent_result,
     generate_feedback,
     measured_cost_from_output,
 )
 from kapso.execution.search_strategies.generic.ideation import (
-    ENSEMBLE_CANDIDATES_PER_MEMBER,
     build_ideation_prompt,
     campaign_state_brief,
     generate_solution,
     generate_solution_ensemble,
-    normalize_ensemble_member,
     normalize_ensemble_time_split,
-    normalize_ideation_ensemble,
     salvage_ideation_output,
     select_from_candidates,
 )
@@ -83,13 +83,23 @@ from kapso.execution.inbox import (
     record_continued,
     requests_for_ids,
 )
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.execution.coding_agents.factory import CodingAgentFactory
+from kapso.harness.staging import TASK_STATEMENT_FILE, StagedHarness, host_for, stage_harness
+from kapso.harness.verdict import VERDICT_FILE, is_deliverable, is_void, read_verdict, unverified, verification_dir
 from kapso.execution.search_strategies.generic.lens_planning import (
-    design_axes_brief,
-    normalize_design_axes,
-    normalize_ideation_lens_planner,
+    axes_brief,
+    current_plan_axes,
     resolve_member_lenses,
     run_lens_planner_session,
-    validate_lens_planner_against_ensemble,
+    validate_lens_planner,
+)
+from kapso.core.roles import (
+    SELECTOR_CLIS,
+    check_params,
+    resolve_members,
+    resolve_optional,
+    resolve_role,
 )
 from kapso.execution.search_strategies.generic.registered_evaluation import (
     await_registered_evaluation,
@@ -108,7 +118,7 @@ from kapso.execution.search_strategies.generic.shared_cache import (
 
 
 PARENT_POLICIES = frozenset({"best", "baseline", "weighted"})
-DEFAULT_PARENT_SAMPLING = load_platform_defaults()["search_strategy"]["params"][
+DEFAULT_PARENT_SAMPLING = load_config()["search_strategy"]["params"][
     "parent_sampling"
 ]
 
@@ -167,11 +177,12 @@ def rank_candidates(
     """Scored candidates best first, as the campaign ranks them. A node
     whose evaluation never completed (score=None) never ranks; on
     minimize metrics it would otherwise key as 0 and out-rank every real
-    score."""
+    score. A node the judge never read ranks nowhere either."""
     scored = [
         node
         for node in nodes
         if not node.had_error and node.evaluation_valid and node.score is not None
+        and not node.unjudged
     ]
     return sorted(
         scored,
@@ -248,6 +259,12 @@ def resolve_inbox_settings(
     return resolved
 
 
+# The harness's verification session (kapso.harness.verdict): its prompt,
+# and how many times a session that wrote no verdict runs before the
+# attempt is left unverified.
+VERIFICATION_PROMPT = "execution/search_strategies/generic/prompts/verification.md"
+
+
 @register_strategy("generic")
 class GenericSearch(SearchStrategy):
     """
@@ -265,162 +282,118 @@ class GenericSearch(SearchStrategy):
     - MCP gates for external knowledge (wiki_idea_search, wiki_code_search, research_*, experiment_history, repo_memory)
     - RepoMemory access via MCP tools for architecture understanding
     
-    Config params:
-        - idea_generation_model: Model for solution generation (default: claude-opus-4-5-20251101)
-        - implementation_model: Model for implementation (default: claude-opus-4-5-20251101)
-        - auth_mode: Claude authentication mode: auto, oauth, or api_key
-          (default: adapter auto-resolution — API key, then subscription login)
-        - ideation_timeout: Ideation session deadline in seconds. Default
-          None: no deadline — the session is bounded only by an explicit
-          time budget, when one is set.
-        - implementation_timeout: Implementation session deadline in
-          seconds. Default None: no deadline (budget-bounded only).
-        - gate_failure_policy: Missing gate capability behavior: skip, warn, or error
-          (default: warn)
-        - effort: Optional reasoning effort for both agent sessions
-          (low|medium|high|xhigh); None keeps the CLI default
-        - ideation_ensemble: Optional list of parallel ideation members,
-          each {cli: claude_code|codex|oss_claude_code, model, effort?,
-          lens?}; oss_claude_code members additionally require base_url +
-          auth_token_env (Anthropic-compatible endpoint + the NAME of the
-          env var holding its key). Omit for single-session ideation
-          (default)
-        - ideation_selector: Required with ideation_ensemble — the
-          selector-critic session {cli: claude_code|codex, model, effort?}
-        - ensemble_time_split: Optional {member_fraction, selector_fraction,
-          selector_min_seconds?} carving the ensemble's ideation clamp
-          between the member fan-out and the selector. Default absent = NO
-          split — each role gets the full clamped ideation timeout, the
-          selector's clamp recomputed after the members finish.
-        - parent_policy: Parent branch selection: best, baseline or weighted
-          (default: best). `weighted` samples a scored candidate by rank,
-          down-weighted by how many children it already has; its temperature,
-          offspring_penalty and seed come from `parent_sampling`.
-          Under `best`, before any validly evaluated node exists, the latest
-          committed non-error, non-tampered node is used so in-progress work
-          continues in place; `main` only when no committed work exists.
-        - ideation_gates: MCP gates for ideation (default: ["research", "experiment_history", "repo_memory", "leeroopedia"])
-        - implementation_gates: MCP gates for implementation (default: ["research", "repo_memory", "leeroopedia"])
-        - implementation_web: Live-web access in implementation sessions —
-          claude WebSearch/WebFetch and codex --search (default: True).
-          Independent of the ideation `web_search` knob.
+    Config (`search_strategy.params`, every key in the packaged config,
+    refused by name otherwise — kapso.core.roles):
+        - host: the CLI every session runs on unless its role names one;
+          the config's `hosts` table gives each CLI its model and its own
+          settings (auth_mode, effort, vertex_project, …)
+        - ideation, implementation, judge: the roles, each {cli, model,
+          effort, timeout} over the host's values; ideation also carries
+          `gates`, `candidates_per_member`, `ensemble` (parallel members
+          [{cli, model, effort, lens}, …]), `selector`, `lens_planner`
+          ({cli, model, effort, timeout}) and `ensemble_time_split`;
+          implementation also `gates` and `fallback_model` (a second model
+          tried once when the session crashes). A timeout is the session's
+          deadline in seconds; None means the budget's clamp alone.
+        - gate_failure_policy: a gate the machine cannot serve: skip, warn or error
+        - parent_policy: best (the champion) or baseline
+        - node_expansion_value, expansion_lane_env: parallel implementation
+          lanes per iteration and their environments
+        - env_strip, session_env_defaults: every session's environment
+        - shared_cache_dir, registered_evaluation_archive_glob,
+          repo_memory_failure_policy, repo_memory_max_retries, cost
+    The engine threads the rest at launch (bank_serving, experience_intro_path,
+    kg_index_path, hosted, inbox, experiment_history_path).
     """
-    
+
     def __init__(self, config: SearchStrategyConfig, workspace_dir: Optional[str] = None, import_from_checkpoint: bool = False):
         """Initialize generic search strategy."""
-        parent_policy = normalize_parent_policy(
-            (config.params or {}).get("parent_policy", "best")
-        )
-        self.cost_config = normalize_cost_config((config.params or {}).get("cost"))
-        self.parent_sampling = normalize_parent_sampling(
-            (config.params or {}).get("parent_sampling")
-        )
+        params = config.params or {}
+        check_params(params, engine=True)
+        parent_policy = normalize_parent_policy(params["parent_policy"])
+        self.cost_config = normalize_cost_config(params.get("cost"))
+        self.parent_sampling = normalize_parent_sampling(params["parent_sampling"])
         self.before_candidate_evaluation = None
         # How each node's build session ended, keyed by node id: the lanes
         # of one round run at once and each judge reads only its own node's.
         self._session_end_facts: Dict[int, str] = {}
         super().__init__(config, workspace_dir, import_from_checkpoint)
-        
-        # Config params for ideation
-        self.idea_generation_model = self.params.get(
-            "idea_generation_model", 
-            "claude-opus-5"
-        )
-        # Subscription-first (bedrock removed 2026-08-26 by user
-        # direction): an explicit auth_mode threads through; otherwise the
-        # adapter auto-resolves (API key, then the CLI subscription login).
-        if self.params.get("auth_mode") is not None:
-            self._claude_auth_settings = {"auth_mode": self.params["auth_mode"]}
-        else:
-            self._claude_auth_settings = {}
-        # None (the default) means no session deadline: sessions run to
-        # completion, bounded only by the time budget when one exists.
-        self.ideation_timeout = self.params.get("ideation_timeout")
-        # Ideation web access: gates the codex member's --search AND the lens
-        # planner's WebSearch/WebFetch tools. Default True (Claude members and
-        # implementation never had web). Set False for leakage-safe harvest
-        # runs on past contests whose reference solutions are published online.
-        self.ideation_web_search = self.params.get("web_search", True)
-        # Tools to hard-ban on every ideation Claude session when web is off
-        # (via --disallowedTools; --allowedTools does not restrict under
-        # skip-permissions). Empty when web is on.
-        self._web_disallowed_tools = (
-            [] if self.ideation_web_search else ["WebSearch", "WebFetch"]
-        )
-        # Optional reasoning-effort for BOTH agent sessions (ideation and
-        # implementation); None keeps the CLI's default.
-        self.session_effort = self.params.get("effort")
-        # Env vars stripped from every Claude session this strategy spawns
+
+        # The sessions by role over the hosts table (roles.py): ideation,
+        # implementation (the verification, the harness setup and the
+        # difficulties reconstruction follow it) and the judge, which the
+        # orchestrator builds from the same role.
+        self.hosts = dict(config.hosts)
+        self.ideation_role = resolve_role(self.hosts, self.params, "ideation")
+        self.implementation_role = resolve_role(self.hosts, self.params, "implementation")
+        self.judge_role = resolve_role(self.hosts, self.params, "judge")
+        ideation = self.params["ideation"]
+        implementation = self.params["implementation"]
+        # Env vars stripped from every session this strategy spawns
         # (ideation, ensemble members, selector, implementation). Used for
         # credential containment: the orchestrating process may hold a key
         # (e.g. OPENAI_API_KEY for the utility LLM) that agent sessions must
         # not inherit. The codex ideation runner strips its own env.
-        self.env_strip = list(self.params.get("env_strip", []))
-        # Env defaults for every Claude session (set-if-absent in the child
-        # env; ambient wrapper values keep precedence). Carries the Bash-tool
+        self.env_strip = list(self.params["env_strip"])
+        # Env defaults for every session (set-if-absent in the child env;
+        # ambient wrapper values keep precedence). Carries the Bash-tool
         # clock policy so blocking evaluations are possible (finding 14).
-        self.env_defaults = dict(self.params.get("session_env_defaults", {}))
+        self.env_defaults = dict(self.params["session_env_defaults"])
         # Knowledge-bank serving (serving-agentic-redesign.md): the KAPSO_*
         # env mapping the bank gate resolves on, staged by the campaign
         # launcher (prepare_campaign_serving). None = serving off. Threads
         # into ideation, implementation, and lens-planner sessions — never
         # the feedback judge.
         self.bank_serving = self.params.get("bank_serving")
-        # Knowledge-store index for the wiki-search gates (learn_knowledge
-        # / index_kg write it; the facade threads it per campaign).
+        # The experience intro's path (wp3-experience.md): what the
+        # campaign is served, compiled from the loaded sources and staged
+        # into the serving directory AFTER construction (a seeded
+        # workspace must be empty then), so it is read when a prompt is
+        # built, never here. None = nothing loaded.
+        self.experience_intro_path = self.params.get("experience_intro_path")
+        # The loaded index's record for the wiki-search gates (an ingest
+        # writes it; the facade threads it per campaign).
         self.kg_index_path = self.params.get("kg_index_path")
         # Durable-archive recovery root for the registered evaluation (glob
         # of run archive parents, e.g. "tmp/relbench/*/runs"). None disables
         # archive recovery; the live-process wait still applies.
-        self.registered_evaluation_archive_glob = self.params.get(
-            "registered_evaluation_archive_glob"
-        )
-        # Optional ensemble ideation: N parallel CLI members + a selector.
-        self.ideation_ensemble = normalize_ideation_ensemble(
-            self.params.get("ideation_ensemble")
-        )
-        raw_selector = self.params.get("ideation_selector")
-        self.ideation_selector = (
-            normalize_ensemble_member(raw_selector, role="ideation_selector")
-            if raw_selector is not None
-            else None
-        )
-        if self.ideation_ensemble and self.ideation_selector is None:
+        self.registered_evaluation_archive_glob = self.params["registered_evaluation_archive_glob"]
+        # Ensemble ideation: parallel members, each a spec of its own over
+        # the hosts table, pooled by a selector. None: the ideation role
+        # alone, one session.
+        self.ideation_ensemble = resolve_members(self.hosts, self.params, ideation["ensemble"])
+        self.ideation_selector = resolve_optional(self.hosts, self.params, ideation["selector"], name="selector")
+        if self.ideation_selector is not None and self.ideation_selector.cli not in SELECTOR_CLIS:
             raise ValueError(
-                "ideation_ensemble requires an ideation_selector member"
+                "search_strategy.params.ideation.selector.cli must be one of "
+                f"{', '.join(SELECTOR_CLIS)} (the selector reads the worktree to verify candidates)"
             )
-        if self.ideation_selector and self.ideation_selector["cli"] not in (
-            "claude_code",
-            "codex",
-        ):
+        self.ideation_candidates_per_member = int(ideation["candidates_per_member"])
+        if self.ideation_candidates_per_member < 1:
             raise ValueError(
-                "ideation_selector.cli must be claude_code or codex (the "
-                "selector reads the worktree to verify candidates)"
+                "search_strategy.params.ideation.candidates_per_member must be >= 1, got "
+                f"{self.ideation_candidates_per_member}"
+            )
+        # A pool of more than one candidate needs a selector.
+        if (len(self.ideation_ensemble or [None]) * self.ideation_candidates_per_member > 1
+                and self.ideation_selector is None):
+            raise ValueError(
+                "search_strategy.params.ideation: more than one candidate per iteration "
+                "(members × candidates_per_member) needs a selector"
             )
         # Optional member/selector ideation time split (design #5). Default
         # None = NO split: each role gets the full clamped ideation timeout.
-        self.ensemble_time_split = normalize_ensemble_time_split(
-            self.params.get("ensemble_time_split")
-        )
+        self.ensemble_time_split = normalize_ensemble_time_split(ideation["ensemble_time_split"])
         # Optional task-aware lens planning: a web-enabled Claude session
         # designs the member lenses for THIS task at iteration 1, then a
         # keep-or-revise session re-judges the plan against the campaign
         # evidence EVERY later iteration (current plan in
         # .kapso/lens_plan.json, audit trail in lens_plan_history.jsonl).
         # Static member lenses are forbidden while it is enabled.
-        self.ideation_lens_planner = normalize_ideation_lens_planner(
-            self.params.get("ideation_lens_planner")
+        self.ideation_lens_planner = resolve_optional(
+            self.hosts, self.params, ideation["lens_planner"], name="lens_planner",
         )
-        validate_lens_planner_against_ensemble(
-            self.ideation_lens_planner, self.ideation_ensemble
-        )
-        # Design axes of the solution space (anti-freeze contract): the lens
-        # replanner must status every axis each iteration and the feedback
-        # generator reports the per-axis frontier. Task vocabulary comes
-        # from the mode config; the generic default covers common ML axes.
-        self.design_axes = normalize_design_axes(
-            self.params.get("design_axes")
-        )
+        validate_lens_planner(self.ideation_lens_planner, self.ideation_ensemble)
         # K-way node expansion: the selector emits top-K solutions and each
         # is implemented/evaluated/fed-back on its own branch, in parallel,
         # with a barrier before the next iteration. K=1 is today's path.
@@ -432,51 +405,19 @@ class GenericSearch(SearchStrategy):
             self.ideation_ensemble,
             self.ideation_selector,
         )
-        # Include experiment_history, repo_memory, and leeroopedia gates by default for ideation
-        self.ideation_gates = self.params.get("ideation_gates", ["research", "experiment_history", "repo_memory", "leeroopedia"])
-        
-        # Config params for implementation
-        self.implementation_model = self.params.get(
-            "implementation_model",
-            "claude-opus-5"
-        )
-        # Which CLI runs implementation sessions. Both mount the gate MCP
-        # servers; codex reports no cost telemetry (ledger undercounts).
+        # The hosted gate is an experience source: loading it mounts it
+        # (below), and a config list that names it does not — what is
+        # loaded is what is served, and the records name it.
+        self.hosted = self.params.get("hosted")
+        self.ideation_gates = [gate for gate in ideation["gates"] if gate != HOSTED_GATE]
         # A crashed implementation session (provider safety classifier, CLI
         # abort) leaves the lane's remaining time unused. When set, a crash
         # retries ONCE on this model — contest 5 (2026-08-06) lost both lanes
         # to codex's "flagged for possible cybersecurity risk" kill on an
         # adversarial-robustness task.
-        self.implementation_fallback_model = self.params.get(
-            "implementation_fallback_model"
-        )
-        self.implementation_cli = str(
-            self.params.get("implementation_cli", "claude_code")
-        )
-        if self.implementation_cli not in ("claude_code", "codex"):
-            raise ValueError(
-                "implementation_cli must be claude_code or codex, got "
-                f"{self.implementation_cli!r}"
-            )
-        # Web access in implementation sessions (independent of the ideation
-        # `web_search` knob): gates the claude whitelist's WebSearch/WebFetch
-        # AND the codex --search flag. Default True; benchmarks whose
-        # protocol forbids live web during implementation (e.g. relbench's
-        # temporal-leakage rules) set false in their mode config.
-        self.implementation_web = self.params.get("implementation_web", True)
-        self.ideation_candidates_per_member = int(
-            self.params.get(
-                "ideation_candidates_per_member", ENSEMBLE_CANDIDATES_PER_MEMBER
-            )
-        )
-        if self.ideation_candidates_per_member < 1:
-            raise ValueError(
-                "ideation_candidates_per_member must be >= 1, got "
-                f"{self.ideation_candidates_per_member}"
-            )
-        self.implementation_timeout = self.params.get("implementation_timeout")
-        self.gate_failure_policy = self.params.get("gate_failure_policy", "warn")
-        self.implementation_gates = self.params.get("implementation_gates", ["research", "repo_memory", "leeroopedia"])
+        self.implementation_fallback_model = implementation["fallback_model"]
+        self.gate_failure_policy = self.params["gate_failure_policy"]
+        self.implementation_gates = [gate for gate in implementation["gates"] if gate != HOSTED_GATE]
         # The campaign inbox (docs/research/evolve-hub-design.md v4): with
         # it on, implementation sessions get the request_from_user gate and
         # a session that asks is stopped; the campaign pauses until the
@@ -498,16 +439,21 @@ class GenericSearch(SearchStrategy):
             for gates in (self.ideation_gates, self.implementation_gates):
                 if "bank" not in gates:
                     gates.append("bank")
-        # Same law for the knowledge store: when a KG index is staged the
-        # wiki-search gates must be mounted, or learn_knowledge writes
-        # pages no campaign can read (E2E review 2026-08-24, blocker 2).
+        # Same law for the knowledge store: when an index is loaded the
+        # wiki-search gates must be mounted, or an ingest writes pages
+        # no campaign can read (E2E review 2026-08-24, blocker 2).
         if self.params.get("kg_index_path"):
             for gates in (self.ideation_gates, self.implementation_gates):
                 for gate in ("idea", "code"):
                     if gate not in gates:
                         gates.append(gate)
+        # And for the hosted source: loading it is what mounts its server
+        # (docs/plans/redesign/wp3-experience.md); no config list names it.
+        if self.hosted:
+            for gates in (self.ideation_gates, self.implementation_gates):
+                gates.append(HOSTED_GATE)
         self.parent_policy = parent_policy
-        
+
         # Experiment history path (set by orchestrator)
         self.experiment_history_path = self.params.get(
             "experiment_history_path",
@@ -520,13 +466,13 @@ class GenericSearch(SearchStrategy):
         # into ideation + implementation prompts as OPTIONAL context.
         self.shared_cache_dir, self.shared_artifacts_brief = (
             build_shared_artifacts_brief(
-                self.workspace_dir, self.params.get("shared_cache_dir")
+                self.workspace_dir, self.params["shared_cache_dir"]
             )
         )
         self.env_defaults.setdefault(
             SHARED_CACHE_ENV_VAR, str(self.shared_cache_dir)
         )
-        
+
         # State
         self.node_history: List[SearchNode] = []
         self.iteration_count = 0
@@ -541,9 +487,9 @@ class GenericSearch(SearchStrategy):
         self.recent_error_count = 3  # Number of recent errors to include in prompts
 
         print(f"[GenericSearch] Initialized:")
-        print(f"  - idea_generation_model: {self.idea_generation_model}")
-        print(f"  - implementation_model: {self.implementation_model}")
-        print(f"  - auth: {self._claude_auth_settings}")
+        print(f"  - ideation: {self.ideation_role.label}")
+        print(f"  - implementation: {self.implementation_role.label}")
+        print(f"  - judge: {self.judge_role.label}")
         print(f"  - ideation_gates: {self.ideation_gates}")
         print(f"  - implementation_gates: {self.implementation_gates}")
         print(f"  - gate_failure_policy: {self.gate_failure_policy}")
@@ -563,22 +509,6 @@ class GenericSearch(SearchStrategy):
         print(f"  - experiment_history_path: {self.experiment_history_path}")
         print(f"  - feedback_generator: {'configured' if self.feedback_generator else 'not configured'}")
         
-        # Initialize workspace with empty main file only for empty workspaces.
-        # If the workspace is seeded from an existing repo, we must not overwrite it.
-        if workspace_dir is None and not self.workspace.is_seeded:
-            self._initialize_workspace()
-    
-    def _initialize_workspace(self) -> None:
-        """Create initial empty main file."""
-        session = self.workspace.create_experiment_session(
-            branch_name=self.workspace.get_current_branch()
-        )
-        session.generate_code(
-            f"<problem>\n{self.problem_handler.get_problem_context()}\n</problem>\n\n"
-            + "Create an empty main with a main() function placeholder. No comments."
-        )
-        self.workspace.finalize_session(session)
-        self.workspace.repo.git.stash()
 
     def run(self, context: Any, budget_progress: float = 0.0) -> SearchNode:
         """
@@ -609,8 +539,11 @@ class GenericSearch(SearchStrategy):
         else:
             problem = str(getattr(context, "problem", context))
 
+        self.finishing_cut = None
         waiting = self._answered_suspended_node()
         if waiting is not None:
+            # A continuation is not a new round: the last round's duration
+            # stands for the next admission.
             return self._continue_node(waiting, problem)
 
         self.iteration_count += 1
@@ -645,7 +578,7 @@ class GenericSearch(SearchStrategy):
         for solution in solutions:
             print(f"[GenericSearch] Generated solution ({len(solution)} chars)")
 
-        return self._expand_round(
+        representative = self._expand_round(
             problem=problem,
             solutions=solutions,
             parent=parent,
@@ -655,6 +588,10 @@ class GenericSearch(SearchStrategy):
             iteration_started_at=iteration_started_at,
             iteration_started_monotonic=iteration_started_monotonic,
         )
+        # The round's wall time, from its ideation's start to its last
+        # lane's judgment: what the next admission must cover.
+        self.last_round_seconds = time.monotonic() - iteration_started_monotonic
+        return representative
 
     def _run_expansion_lane(
         self,
@@ -682,6 +619,7 @@ class GenericSearch(SearchStrategy):
             parent_node_id=parent.node_id,
             solution=solution,
             workspace_dir=self.workspace_dir,
+            iteration=self.iteration_count,
         )
         node.started_at = iteration_started_at
         node.phase_telemetry["ideation"] = ideation_telemetry
@@ -718,6 +656,15 @@ class GenericSearch(SearchStrategy):
         node.branch_name = branch_name
         node.parent_branch_name = parent.branch_name
         node.agent_output = agent_output
+        if not implementation_telemetry and build_error is not None:
+            # The session was not launched (no room under the floor): no
+            # branch exists; the node records why and is judged by nobody.
+            node.had_error = True
+            node.error_message = build_error
+            node.evaluation_valid = False
+            node.score = None
+            node.unjudged = f"the implementation was not launched: {build_error}"
+            return node
         node.code_diff = self._get_code_diff(branch_name, parent.branch_name)
         self._absorb_implementation(
             node, agent_output, recovered, suspended, build_error, lane_tag
@@ -816,6 +763,9 @@ class GenericSearch(SearchStrategy):
                 f"{', '.join(f'#{i}' for i in node.request_ids)}"
             )
         return node
+
+    def continues_an_answered_node(self) -> bool:
+        return self._answered_suspended_node() is not None
 
     def _continue_node(self, node: SearchNode, problem: str) -> SearchNode:
         """The inbox continuation: resume the node's stored CLI session with
@@ -960,8 +910,17 @@ class GenericSearch(SearchStrategy):
                     f"[GenericSearch] node {node.node_id} waits for the person "
                     "— not judged until it is continued"
                 )
+            elif node.unjudged:
+                # A node whose session was never launched: nothing to
+                # evaluate, verify or judge; the reason is on the node.
+                print(f"[GenericSearch] node {node.node_id} {node.unjudged}")
             elif self.enforce_evaluation_integrity(node):
                 if self._evaluate_admitted_candidate(node, lane_index=lane_index):
+                    node.commit = self._attempt_commit(node.branch_name)
+                    self._verify_attempt(node)
+                    # The judge's phase, published again after a verification
+                    # (which publishes its own).
+                    self._status_phase("feedback")
                     self._generate_feedback(node)
                     self._record_evaluation_attempt(node)
             else:
@@ -988,6 +947,108 @@ class GenericSearch(SearchStrategy):
                     f"[GenericSearch] ✓ Node {node.node_id} completed: "
                     f"score={node.score}, should_stop={node.should_stop}"
                 )
+
+    def _verify_attempt(self, node: SearchNode) -> None:
+        """The harness's verification session for one attempt, between the
+        evaluation and the judge, when the harness has verification
+        content: the attempt's diff and evaluation output at named paths,
+        a detached worktree of its branch, and a verdict file the session
+        writes. The verdict is the node's own state: the judge reads it
+        and a void is ANDed into validity after the judge; delivery skips
+        an unverified attempt. A session that writes no verdict runs once
+        more, then the attempt is unverified."""
+        harness = self.harness
+        if harness is None or not harness.has_content("verification"):
+            return
+        self._status_phase("verification")
+        # The attempt's own host verifies it: the implementation CLI, so a
+        # campaign on Codex is verified under Codex's hooks and roles.
+        host = self.implementation_role.cli
+        directory = verification_dir(Path(self.workspace_dir), node.branch_name)
+        directory.mkdir(parents=True, exist_ok=True)
+        # The attempt's own changes: the engine's bookkeeping under .kapso/
+        # (repo memory, for one) is committed on the branch too and is not
+        # the verifier's to read.
+        (directory / "diff.patch").write_text(
+            self.workspace.repo.git.diff(f"main...{node.branch_name}", "--", ".", ":(exclude).kapso"),
+            encoding="utf-8",
+        )
+        (directory / "evaluation_output.txt").write_text(node.evaluation_output or "", encoding="utf-8")
+        verdict_path = directory / VERDICT_FILE
+        if verdict_path.exists():
+            verdict_path.unlink()
+        started = time.monotonic()
+        cost = 0.0
+        failure = None
+        _deadline, not_launched = self._finishing_deadline(
+            "verification", float(harness.settings["verification_minutes"]) * 60.0,
+        )
+        if not_launched is not None:
+            # A finishing session with less room than the floor is not
+            # launched; the attempt says why, and the round reports the cut.
+            node.verification = unverified(f"the verification session was not launched: {not_launched}")
+            node.phase_telemetry["verification"] = {"cost_usd": 0.0, "duration_seconds": 0.0}
+            self._note_finishing_cut(f"the verification of node {node.node_id} was not launched: {not_launched}")
+            print(f"[GenericSearch] Verification of node {node.node_id}: {node.verification['summary']}")
+            return
+        with self.workspace.materialize_ref(node.branch_name) as worktree:
+            staged = self.stage_harness_for("verification", worktree, f"verification/{node.branch_name}", host)
+            prompt = render_prompt(load_prompt(VERIFICATION_PROMPT), {
+                "branch": node.branch_name,
+                "diff_path": str(directory / "diff.patch"),
+                "evaluation_output_path": str(directory / "evaluation_output.txt"),
+                "verdict_path": str(verdict_path),
+                "task_statement_path": str(Path(worktree) / TASK_STATEMENT_FILE),
+                "domain_guidance": optional_block(staged.guidance),
+            })
+            own = {
+                "env_strip": self.env_strip,
+                "env_defaults": self.env_defaults,
+                "allowed_tools": ["Read", "Bash", "Write", *staged.allowed_tools],
+                "streaming": True,
+                # The verdict lives outside the worktree; codex's sandbox
+                # must be told it may write there.
+                **({"add_dirs": [str(directory)]} if host == "codex" else {}),
+            }
+            for _attempt in range(int(harness.settings["verification_attempts"])):
+                # The room at each attempt: a retry gets what is left, not
+                # what the first attempt was given, and none under the floor.
+                deadline, not_launched = self._finishing_deadline(
+                    "verification", float(harness.settings["verification_minutes"]) * 60.0,
+                )
+                if not_launched is not None:
+                    failure = failure or f"no room for another attempt: {not_launched}"
+                    self._note_finishing_cut(f"the verification of node {node.node_id} was cut: {failure}")
+                    break
+                own["timeout"] = deadline
+                config = CodingAgentFactory.session_config(self.implementation_role, own, staged)
+                agent = CodingAgentFactory.create(config)
+                agent.initialize(worktree)
+                result = agent.generate_code(prompt)
+                cost += agent.get_cumulative_cost()
+                agent.cleanup()
+                if verdict_path.is_file():
+                    break
+                failure = result.error if not result.success else None
+                killed = bool(result.metadata.get("deadline_exceeded")) and not result.metadata.get("completed_before_kill")
+                if killed and own["timeout"] < float(harness.settings["verification_minutes"]) * 60.0:
+                    # The budget, not the session's own cap, set the deadline
+                    # that cut it: a retry would get less still.
+                    failure = failure or "the session was cut at the budget's deadline without a verdict"
+                    self._note_finishing_cut(f"the verification of node {node.node_id} was cut: {failure}")
+                    break
+        node.verification = read_verdict(verdict_path)
+        if node.verification["verdict"] == "unverified" and failure:
+            # Why nothing was written, for the judge and the record: a
+            # session that died is not one that chose silence.
+            node.verification["summary"] = f"the verification session failed: {failure}"
+        node.phase_telemetry["verification"] = {
+            "cost_usd": cost, "duration_seconds": time.monotonic() - started,
+        }
+        print(
+            f"[GenericSearch] Verification of node {node.node_id}: "
+            f"{node.verification['verdict']} — {node.verification['summary']}"
+        )
 
     def _cost_enabled(self) -> bool:
         return bool(getattr(self, "cost_config", {}).get("enabled"))
@@ -1018,9 +1079,17 @@ class GenericSearch(SearchStrategy):
         validate_cost_value(node.estimated_cost, self.cost_config["unit"])
         self._status_phase("evaluation")
         started = time.monotonic()
+        deadline, not_launched = self._finishing_deadline("evaluation", self.implementation_role.timeout)
+        if not_launched is not None:
+            node.evaluation_output = f"Evaluation not run: {not_launched}"
+            node.evaluation_valid = False
+            node.phase_telemetry["evaluation"] = {"duration_seconds": 0.0}
+            self._note_finishing_cut(f"the evaluation run of node {node.node_id} was not launched: {not_launched}")
+            print(f"[GenericSearch] node {node.node_id} {node.evaluation_output}")
+            return node
         run = execute_candidate_evaluation(
             node,
-            deadline_seconds=self._clamped_timeout(self.implementation_timeout),
+            deadline_seconds=deadline,
             registered_evaluation_command=self.registered_evaluation_command,
             workspace=self.workspace, workspace_dir=self.workspace_dir,
             env_strip=self.env_strip,
@@ -1063,18 +1132,10 @@ class GenericSearch(SearchStrategy):
             gate_failure_policy=self.gate_failure_policy,
             bank_serving=self.bank_serving,
             kg_index_path=self.kg_index_path,
-            ideation_web_search=self.ideation_web_search,
-            ideation_ensemble=self.ideation_ensemble,
-            idea_generation_model=self.idea_generation_model,
-            claude_auth_settings=self._claude_auth_settings,
-            env_strip=self.env_strip,
-            env_defaults=self.env_defaults,
-            web_disallowed_tools=self._web_disallowed_tools,
-            clamped_timeout=self._clamped_timeout,
-            ideation_timeout=self.ideation_timeout,
-            session_effort=self.session_effort,
-            build_prompt=self._build_ideation_prompt,
+            hosted=self.hosted,
+            web=self.ideation_role.web,
             run_ensemble=self._generate_solution_ensemble,
+            session=f"ideation/iter{self.iteration_count}",
         )
 
     def _run_lens_planner_session(self, prompt: str, ideation_dir: str):
@@ -1085,13 +1146,11 @@ class GenericSearch(SearchStrategy):
             ideation_dir,
             planner=self.ideation_lens_planner,
             bank_serving=self.bank_serving,
-            claude_auth_settings=self._claude_auth_settings,
             env_strip=self.env_strip,
             env_defaults=self.env_defaults,
-            web_disallowed_tools=self._web_disallowed_tools,
-            ideation_web_search=self.ideation_web_search,
-            session_effort=self.session_effort,
+            clamped_timeout=self._clamped_timeout,
             artifacts_dir=self._ideation_artifacts_dir(),
+            staged=self.stage_harness_for("ideation", ideation_dir, "lens_planner", self.ideation_lens_planner.cli),
         )
         # Planning runs inside the ideation step; flip the live phase back
         # so the sessions that follow are not reported as still planning.
@@ -1112,11 +1171,14 @@ class GenericSearch(SearchStrategy):
             workspace_dir=self.workspace_dir,
             iteration_count=self.iteration_count,
             shared_artifacts_brief=self.shared_artifacts_brief,
-            design_axes=self.design_axes,
             node_history=self.node_history,
             campaign_state_brief=self._campaign_state_brief,
             get_best_experiment=self.get_best_experiment,
             run_planner_session=self._run_lens_planner_session,
+            domain_guidance=self.stage_harness_for(
+                "ideation", ideation_dir, "lens_planner", self.ideation_lens_planner.cli,
+            ).guidance,
+            experience_intro=self.experience_intro(),
         )
 
     def _generate_solution_ensemble(
@@ -1134,21 +1196,18 @@ class GenericSearch(SearchStrategy):
             ideation_dir=ideation_dir,
             mcp_servers=mcp_servers,
             ideation_allowed_tools=ideation_allowed_tools,
-            ideation_ensemble=self.ideation_ensemble,
+            members=self.ideation_ensemble or [self.ideation_role],
             ideation_candidates_per_member=self.ideation_candidates_per_member,
             ensemble_time_split=self.ensemble_time_split,
-            ideation_web_search=self.ideation_web_search,
-            claude_auth_settings=self._claude_auth_settings,
             env_strip=self.env_strip,
             env_defaults=self.env_defaults,
-            web_disallowed_tools=self._web_disallowed_tools,
-            session_effort=self.session_effort,
             clamped_timeout=self._clamped_timeout,
-            ideation_timeout=self.ideation_timeout,
+            ideation_timeout=self.ideation_role.timeout,
             artifacts_dir=self._ideation_artifacts_dir(),
             build_prompt=self._build_ideation_prompt,
             resolve_lenses=self._resolve_member_lenses,
             select_candidates=self._select_from_candidates,
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _campaign_state_brief(self) -> str:
@@ -1175,11 +1234,10 @@ class GenericSearch(SearchStrategy):
             ideation_selector=self.ideation_selector,
             node_expansion_value=self.node_expansion_value,
             campaign_state=self._campaign_state_brief(),
-            claude_auth_settings=self._claude_auth_settings,
             env_strip=self.env_strip,
             env_defaults=self.env_defaults,
-            session_effort=self.session_effort,
             artifacts_dir=self._ideation_artifacts_dir(),
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _build_ideation_prompt(
@@ -1187,6 +1245,7 @@ class GenericSearch(SearchStrategy):
         problem: str,
         repo_memory_brief: str,
         allowed_tools: Sequence[str] = (),
+        domain_guidance: str = "",
     ) -> str:
         """Build the ideation prompt for Claude Code; ``allowed_tools`` is
         the session's whitelist, which decides whose gate guidance the
@@ -1198,7 +1257,18 @@ class GenericSearch(SearchStrategy):
             shared_artifacts_brief=self.shared_artifacts_brief,
             inbox_ideation=self._render_inbox_ideation(),
             knowledge_tools=knowledge_tools_block("ideation", allowed_tools),
+            domain_guidance=domain_guidance,
+            experience_intro=self.experience_intro(),
         )
+
+    def experience_intro(self) -> str:
+        """The intro the campaign's sessions read — what it is served,
+        measured before — from the serving directory the launcher staged;
+        "" when nothing is loaded. Read at prompt time: a path with no file
+        behind it is a staging failure, and raises."""
+        if not self.experience_intro_path:
+            return ""
+        return Path(self.experience_intro_path).read_text()
 
     def _render_inbox_ideation(self) -> str:
         """The inbox block for ideation: the rule against designing around
@@ -1248,6 +1318,17 @@ class GenericSearch(SearchStrategy):
         phase telemetry, recovered manifest line, suspended-session record
         or None, the session's error when it died or None)."""
         lane_env = lane_env_overlay(self.expansion_lane_env, lane_index)
+        room = self._room()
+        if room is not None and room < self.budget_snapshot.min_agent_timeout_seconds:
+            # A search session with less room than the floor is not
+            # launched: the lane records why, and the next admission reads
+            # the round that overran.
+            reason = (
+                f"the budget left {max(room, 0.0):.0f}s for the implementation, "
+                f"under the {self.budget_snapshot.min_agent_timeout_seconds:.0f}s floor"
+            )
+            print(f"[GenericSearch] Implementation of {branch_name} not launched: {reason}")
+            return f"Implementation not launched: {reason}", {}, None, None, reason
         return run_implementation(
             solution=solution,
             problem=problem,
@@ -1265,17 +1346,13 @@ class GenericSearch(SearchStrategy):
             gate_failure_policy=self.gate_failure_policy,
             bank_serving=self.bank_serving,
             kg_index_path=self.kg_index_path,
-            implementation_cli=self.implementation_cli,
-            implementation_model=self.implementation_model,
+            hosted=self.hosted,
+            implementation_role=self.implementation_role,
             implementation_fallback_model=self.implementation_fallback_model,
-            implementation_web=self.implementation_web,
-            claude_auth_settings=self._claude_auth_settings,
             env_strip=self.env_strip,
             env_defaults=self.env_defaults,
             lane_env=lane_env,
-            session_effort=self.session_effort,
             clamped_timeout=self._clamped_timeout,
-            implementation_timeout=self.implementation_timeout,
             session_stream_path=self._session_stream_path,
             build_prompt=self._build_implementation_prompt,
             previous_errors_text="\n".join(
@@ -1303,6 +1380,7 @@ class GenericSearch(SearchStrategy):
             inbox_settings=getattr(self, "inbox_settings", None),
             continuation=continuation,
             defer_evaluation=self._cost_enabled(),
+            stage_harness_for=self.stage_harness_for,
         )
 
     def _note_session_spend(self, node_id: int, telemetry: Dict[str, float]) -> None:
@@ -1324,6 +1402,7 @@ class GenericSearch(SearchStrategy):
         lane_brief: str = "",
         inbox_section: str = "",
         allowed_tools: Sequence[str] = (),
+        domain_guidance: str = "",
     ) -> str:
         """Build the implementation prompt for Claude Code; ``allowed_tools``
         is the session's whitelist, which decides whose gate guidance the
@@ -1343,6 +1422,8 @@ class GenericSearch(SearchStrategy):
             lane_brief=lane_brief,
             inbox_section=inbox_section,
             knowledge_tools=knowledge_tools_block("implementation", allowed_tools),
+            domain_guidance=domain_guidance,
+            experience_intro=self.experience_intro(),
         )
 
     def _manifest_of_record(self, node: SearchNode) -> Optional[Dict[str, Any]]:
@@ -1458,8 +1539,9 @@ class GenericSearch(SearchStrategy):
         # OLD (defective-evaluator) measurement. Without this the live
         # requester stayed invalid forever — excluded from parenting and
         # delivery despite carrying an honest new-head score. Tampering
-        # nodes never reach the bridge (integrity errors are filtered).
-        node.evaluation_valid = True
+        # nodes never reach the bridge (integrity errors are filtered); a
+        # harness void stands whatever the measurement.
+        node.evaluation_valid = not is_void(node.verification)
         return True
 
     def refresh_score_projections(
@@ -1480,11 +1562,12 @@ class GenericSearch(SearchStrategy):
     def _evaluation_instructions(self) -> str:
         """The evaluation contract the implementer follows: build-only in
         cost mode, where Kapso runs the evaluator after admission; otherwise
-        the registered contract when a maintainer owns evaluation, or the
-        historical build-your-own instructions."""
+        the registered contract when a maintainer owns evaluation, the
+        provided suite's when the build brought one, build-your-own else."""
+        provided = bool(self.provided_evaluation_manifest)
         if self._cost_enabled():
-            return deferred_evaluation_instructions(self.registered_evaluation_command)
-        return evaluation_instructions(self.registered_evaluation_command)
+            return deferred_evaluation_instructions(self.registered_evaluation_command, provided=provided)
+        return evaluation_instructions(self.registered_evaluation_command, provided=provided)
 
     def _ensure_technical_difficulties(self, node) -> None:
         """Run the fallback reconstruction when the implementor's
@@ -1492,16 +1575,25 @@ class GenericSearch(SearchStrategy):
         never score/outcome-based)."""
         if (node.technical_difficulties or "").strip():
             return
+        deadline, not_launched = self._finishing_deadline("reconstruction", None)
+        if not_launched is not None:
+            node.technical_difficulties = f"(the reconstruction was not launched: {not_launched})"
+            self._note_finishing_cut(f"the reconstruction for node {node.node_id} was not launched: {not_launched}")
+            return
+        # Staged like every session, on the implementation role's host, in
+        # the campaign (the branch is read there): its record is
+        # `difficulties/<branch>`.
+        staged = self.stage_harness_for(
+            "implementation", self.workspace_dir, f"difficulties/{node.branch_name}", self.implementation_role.cli,
+        )
         ensure_technical_difficulties(
             node,
-            implementation_model=self.implementation_model,
-            claude_auth_settings=self._claude_auth_settings,
+            implementation_role=self.implementation_role,
             env_strip=self.env_strip,
-            session_effort=self.session_effort,
-            clamped_timeout=self._clamped_timeout,
-            ideation_timeout=self.ideation_timeout,
+            deadline_seconds=deadline,
             workspace_dir=self.workspace_dir,
             session_stream_path=self._session_stream_path,
+            staged=staged,
         )
 
     def _await_registered_evaluation(self, output_text: str, session: str):
@@ -1516,10 +1608,28 @@ class GenericSearch(SearchStrategy):
                 self.registered_evaluation_archive_glob
             ),
             clamped_timeout=self._clamped_timeout,
-            implementation_timeout=self.implementation_timeout,
+            implementation_timeout=self.implementation_role.timeout,
             session_started_ts=getattr(
                 self, "_last_session_started_ts", 0.0
             ),
+        )
+
+    def stage_harness_for(self, module: str, session_dir: str, label: str, agent_type: str) -> StagedHarness:
+        """What the loaded harness gives one session of a module, staged
+        into the session's directory (nothing without a harness, the
+        session's record all the same). An ideation session's id is
+        prefixed with the iteration, so the staging records sit beside the
+        ideation artifacts."""
+        session_id = f"ideation/iter{self.iteration_count}/{label}" if module == "ideation" else label
+        if self.harness is not None and not session_dir:
+            raise ValueError(f"the {module} session {session_id} has no directory to stage into")
+        return stage_harness(
+            self.harness, module,
+            # A session with no directory of its own (the judge's) runs in
+            # the campaign; nothing is staged into it without a harness.
+            session_dir=Path(session_dir) if session_dir else Path(self.workspace_dir),
+            campaign_dir=Path(self.workspace_dir),
+            session_id=session_id, host=host_for(agent_type),
         )
 
     def _ideation_artifacts_dir(self) -> str:
@@ -1539,30 +1649,75 @@ class GenericSearch(SearchStrategy):
         os.makedirs(stream_dir, exist_ok=True)
         return os.path.join(stream_dir, "stream.jsonl")
 
-    def _clamped_timeout(
-        self, configured_seconds: Optional[float]
-    ) -> Optional[float]:
-        """Bound an agent deadline by the searchable budget, when known.
+    # The finishing sessions of an attempt, in order: what must still fit
+    # after each is the obligations the later ones carry (the budget's end,
+    # docs/plans/redesign/wp4-config.md).
+    FINISHING_STAGES = ("reconstruction", "evaluation", "verification", "judge")
 
-        ``configured_seconds`` None means the phase has no configured
-        deadline: the result is the budget remainder when a budget exists,
-        and None (unbounded) otherwise.
-
-        The snapshot is frozen at iteration start; the monotonic anchor
-        discounts whatever this iteration's earlier phases already burned,
-        so implementation clamps against what actually remains after
-        ideation, not the iteration-start remainder.
-        """
+    def _room(self, *, finishing: bool = False, obligations_seconds: float = 0.0) -> Optional[float]:
+        """The time a session launched now may take; None without a time
+        budget. The snapshot is frozen at iteration start; the monotonic
+        anchor discounts what this iteration's earlier phases burned."""
         if self.budget_snapshot is None:
-            return configured_seconds
+            return None
         drift = (
             time.monotonic() - self.budget_snapshot_monotonic
             if self.budget_snapshot_monotonic is not None
             else 0.0
         )
-        return self.budget_snapshot.clamp_timeout(
-            configured_seconds, elapsed_since_snapshot=drift
+        return self.budget_snapshot.room(
+            obligations_seconds, finishing=finishing, elapsed_since_snapshot=drift,
         )
+
+    def _clamped_timeout(self, configured_seconds: Optional[float]) -> Optional[float]:
+        """A search session's deadline (setup, ideation, implementation):
+        its configured timeout bounded by the searchable remainder, never
+        raised; the configured timeout alone without a time budget."""
+        if self.budget_snapshot is None:
+            return configured_seconds
+        return self.budget_snapshot.deadline(configured_seconds, self._room())
+
+    def _obligations_after(self, stage: str) -> float:
+        """What must still fit after a finishing ``stage``: the evaluation
+        run in cost mode and the verification when the harness verifies,
+        each at the floor (a verification cut short is unverified, and the
+        judge still speaks); the judge at its reserve — its last observed
+        duration, the config's `judge_reserve_seconds` before one, since a
+        judge takes minutes, and a judge kept at the floor let a
+        verification run the remainder down to 59 s for it, under the
+        floor, the hour's attempt then unjudged (the release gate,
+        2026-10-30); and the delivery's protected slice."""
+        snapshot = self.budget_snapshot
+        later = self.FINISHING_STAGES[self.FINISHING_STAGES.index(stage) + 1:]
+        reserves = {
+            "evaluation": snapshot.min_agent_timeout_seconds if self._cost_enabled() else 0.0,
+            "verification": (
+                snapshot.min_agent_timeout_seconds
+                if self.harness is not None and self.harness.has_content("verification") else 0.0
+            ),
+            "judge": snapshot.judge_reserve_seconds,
+        }
+        return sum(reserves[name] for name in later) + snapshot.delivery_seconds
+
+    def _finishing_deadline(
+        self, stage: str, configured_seconds: Optional[float],
+    ) -> Tuple[Optional[float], Optional[str]]:
+        """A finishing session's deadline, or the reason it is not
+        launched: its room is the whole remainder less the obligations
+        after it, and a room under the floor launches nothing."""
+        if self.budget_snapshot is None:
+            return configured_seconds, None
+        room = self._room(finishing=True, obligations_seconds=self._obligations_after(stage))
+        floor = self.budget_snapshot.min_agent_timeout_seconds
+        if room is not None and room < floor:
+            return None, f"the budget left {max(room, 0.0):.0f}s for the {stage}, under the {floor:.0f}s floor"
+        return self.budget_snapshot.deadline(configured_seconds, room), None
+
+    def _note_finishing_cut(self, reason: str) -> None:
+        """The first finishing session of the round not launched or cut:
+        the orchestrator stops the campaign on it, by name."""
+        if self.finishing_cut is None:
+            self.finishing_cut = reason
 
     def _render_budget_status(self) -> str:
         """Deterministic budget block for prompts. Advisory only — never a
@@ -1624,7 +1779,8 @@ class GenericSearch(SearchStrategy):
         # work (a deadline-killed implementation, an evaluation that never
         # ran) is still real progress; branching from `main` strands it on
         # its branch and the next iteration redoes it. Integrity-flagged
-        # candidates stay excluded — never build on an evaluator tamperer.
+        # candidates stay excluded — never build on an evaluator tamperer,
+        # nor on an attempt the harness voided.
         committed = [
             node
             for node in self.node_history
@@ -1632,6 +1788,8 @@ class GenericSearch(SearchStrategy):
             and not node.evaluation_integrity_error
             and not node.cost_refusal
             and not getattr(node, "suspended", False)
+            and not is_void(node.verification)
+            and not node.unjudged
             and node.code_diff.strip()
             and node.branch_name
         ]
@@ -1686,9 +1844,17 @@ class GenericSearch(SearchStrategy):
         }
 
     def get_deliverable_experiment(self) -> Optional[SearchNode]:
-        """The node the campaign delivers: see `select_deliverable`."""
+        """The node the campaign delivers: the committed-slot winner under
+        the registered evaluator (`select_deliverable`), among the attempts
+        the harness could verify and the judge read. An attempt the harness
+        could not verify stays a parent but is never delivered
+        (kapso.harness.verdict); one the judge never read is neither."""
+        candidates = [
+            node for node in self.node_history
+            if is_deliverable(node.verification) and not node.unjudged
+        ]
         return select_deliverable(
-            self.node_history,
+            candidates,
             evaluator_id=self.registered_evaluator_id,
             selection_config=self._selection_config(),
         )
@@ -1735,6 +1901,11 @@ class GenericSearch(SearchStrategy):
     # Feedback and Result Extraction (Generic-specific)
     # =========================================================================
 
+    def _attempt_commit(self, branch_name: str) -> str:
+        """The branch's head when the attempt is evaluated: the commit the
+        record names for it."""
+        return self.workspace.repo.commit(branch_name).hexsha
+
     def _judge_end_facts(self, node: SearchNode) -> str:
         """Harness ground truth for the judge: how the build session ended
         and, when Kapso frame-ran the evaluator, how that run ended; the
@@ -1747,23 +1918,58 @@ class GenericSearch(SearchStrategy):
 
     def _generate_feedback(self, node: SearchNode) -> SearchNode:
         """Judge one node with the FeedbackGenerator (updates the node
-        in-place with feedback, score, and should_stop)."""
-        return generate_feedback(
+        in-place with feedback, score, and should_stop); an attempt the
+        budget leaves no judge for is `unjudged`, with the reason."""
+        configured = (
+            self.feedback_generator.configured_timeout_seconds
+            if self.feedback_generator is not None else None
+        )
+        deadline, not_launched = self._finishing_deadline("judge", configured)
+        if not_launched is not None:
+            node.unjudged = f"the budget left no time for the judge ({not_launched})"
+            self._note_finishing_cut(f"node {node.node_id} unjudged: {not_launched}")
+            print(f"[GenericSearch] node {node.node_id} unjudged: {node.unjudged}")
+            return node
+        rooms = [deadline]
+
+        def retry_deadline():
+            # The retry's room, re-computed; remembered so the attempt
+            # says which deadline cut it.
+            room, not_launched = self._finishing_deadline("judge", configured)
+            rooms.append(room)
+            return room, not_launched
+
+        generate_feedback(
             node,
             feedback_generator=self.feedback_generator,
             goal=self.goal,
-            design_axes=design_axes_brief(self.design_axes),
+            axes=axes_brief(current_plan_axes(self.workspace_dir)),
             session_end_facts=self._judge_end_facts(node),
-            clamped_timeout=self._clamped_timeout,
+            deadline_seconds=deadline,
+            retry_deadline=retry_deadline,
             manifest_of_record=self._manifest_of_record,
             finalize_run_selection=(
-                lambda manifest, valid:
-                self.problem_handler.finalize_run_selection(manifest, valid)
+                lambda manifest, valid: label_run_of_record(
+                    self.registered_evaluation_archive_glob, manifest, valid
+                )
             ),
             # The frame run's verdict: in cost mode a session's own claim
             # of validity never reaches the judge.
             execution_valid=node.evaluation_valid if self._cost_enabled() else True,
+            stage_harness_for=self.stage_harness_for,
+            verification=node.verification,
         )
+        # The deadline that cut the judge was the budget's when the run it
+        # cut (the first, or the retry) had a room below the configured
+        # timeout: the attempt says so, and the round reports the
+        # finishing cut; a retry refused for want of room is one too.
+        budget_set = rooms[-1] is not None and (configured is None or rooms[-1] < configured)
+        if node.unjudged == FeedbackGenerator.DEADLINE_REASON and budget_set:
+            node.unjudged = "the judge's session ended at the budget's deadline"
+            self._note_finishing_cut(f"node {node.node_id} unjudged: {node.unjudged}")
+        elif node.unjudged.startswith("no tags, and no room for a retry"):
+            self._note_finishing_cut(f"node {node.node_id} unjudged: {node.unjudged}")
+        return node
 
     def _extract_agent_result(self, agent_output: str) -> dict:
         """Extract the structured XML-tag result from agent output
@@ -1786,6 +1992,7 @@ class GenericSearch(SearchStrategy):
             ),
             "scores_evaluator_id": self.scores_evaluator_id,
             "evaluator_transition": self.evaluator_transition,
+            "round_seconds": self.last_round_seconds,
         }
 
     def load_state(self, state: Dict[str, Any]) -> None:
@@ -1800,6 +2007,7 @@ class GenericSearch(SearchStrategy):
         self.node_history = [
             SearchNode.from_dict(node_data) for node_data in raw_history
         ]
+        self.last_round_seconds = state["round_seconds"]
         node_ids = [node.node_id for node in self.node_history]
         if node_ids != list(range(len(self.node_history))):
             raise ValueError(

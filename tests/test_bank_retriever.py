@@ -8,16 +8,17 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
-from kapso.learning.bank import Bank, Card, split_card_text
+from kapso.learning.bank import Bank, Card, dump_ledger, split_card_text
 from kapso.learning.retriever import (
-    compile_intro,
     probe_offers,
     render_cards,
     render_index,
 )
+from kapso.learning.serving_launch import compile_intro
 
-TASK = {"family": "entity_binary_classification", "dataset": "rel-hm"}
+TASK = {"harness": "trading"}
 
 
 # One shared confidence string: the assessor writes it into BOTH
@@ -133,20 +134,50 @@ def build_bank(tmp_path, cards=None):
 
 def test_card_parse_and_eligibility(tmp_path):
     # Regression: scope is the eligibility law — domain covers everything, a
-    # coordinate list covers exactly its coordinates, tags never participate.
+    # coordinate list covers exactly the harnesses it names, tags never
+    # participate, and the retired family:/dataset: coordinates match nothing.
     root = build_bank(tmp_path, {
         "domain-card": card_text("domain-card", scope="domain"),
-        "hm-card": card_text("hm-card", scope=["dataset:rel-hm"]),
-        "family-card": card_text(
-            "family-card", scope=["family:entity_binary_classification"]),
-        "other-card": card_text("other-card", scope=["dataset:rel-avito"],
+        "trading-card": card_text("trading-card", scope=["harness:trading"]),
+        "none-card": card_text("none-card", scope=["harness:none"]),
+        "other-card": card_text("other-card", scope=["harness:other"],
                                 tags=("data:grouped_rows",)),
+        "legacy-card": card_text(
+            "legacy-card", scope=["family:entity_binary_classification"]),
     })
     bank = Bank(str(root))
     assert bank.cards["domain-card"].eligible_for(TASK)
-    assert bank.cards["hm-card"].eligible_for(TASK)
-    assert bank.cards["family-card"].eligible_for(TASK)
+    assert bank.cards["trading-card"].eligible_for(TASK)
+    assert not bank.cards["none-card"].eligible_for(TASK)
+    assert bank.cards["none-card"].eligible_for({"harness": "none"})
     assert not bank.cards["other-card"].eligible_for(TASK)
+    assert not bank.cards["legacy-card"].eligible_for(TASK)
+
+
+def test_the_scope_rule_filters_your_bank_and_names_the_lift(tmp_path):
+    # The index and both reads follow the scope rule (wp3-experience.md):
+    # `mine` at its default scope serves the cards whose scope covers the
+    # harness coordinate; `all` (mine:all, a bank you read) serves everything.
+    root = build_bank(tmp_path, {
+        "domain-card": card_text("domain-card"),
+        "other-card": card_text("other-card", scope=["harness:other"]),
+    })
+    bank = Bank(str(root))
+    every = render_index(bank, TASK)
+    assert [row["card"] for row in every["listed"]] == ["domain-card", "other-card"]
+    mine = render_index(bank, TASK, scope="harness")
+    assert [row["card"] for row in mine["listed"]] == ["domain-card"]
+    assert "[card:other-card]" not in mine["text"]
+    read = render_cards(bank, TASK, ["domain-card", "other-card"], False, {}, scope="harness")
+    assert [row["card"] for row in read["served"]] == ["domain-card"]
+    assert read["refused"] == [{
+        "card": "other-card",
+        "reason": "out of scope under harness:trading (scope ['harness:other']; "
+                  "`mine:all` serves every card you measured)",
+    }]
+    assert "*not served:* other-card" in read["text"]
+    lifted = render_cards(bank, TASK, ["other-card"], False, {})
+    assert [row["card"] for row in lifted["served"]] == ["other-card"]
 
 
 def test_horizontal_rule_in_body_is_not_the_ledger_delimiter(tmp_path):
@@ -203,17 +234,23 @@ def test_quarantine_is_law(tmp_path):
 
 
 def test_intro_and_launch_record(tmp_path):
-    # Regression: the intro is the whole push surface — head stamp + the
-    # three tool names, never card content; the launch record is v2 shape.
-    root = build_bank(tmp_path, {"a-card": card_text("a-card")})
+    # Regression: the surface a hindcast or a scenario replays is the one
+    # a campaign loading `mine` is served under the task's coordinate at
+    # its default scope — the head, the count the scope serves, the three
+    # tool names, never card content; the record is the campaign's shape.
+    root = build_bank(tmp_path, {
+        "a-card": card_text("a-card"),
+        "elsewhere-card": card_text("elsewhere-card", scope=["harness:lending"]),
+    })
     result = compile_intro(Bank(str(root)), TASK, "lr_head")
-    assert "lr_head" in result["intro"]
+    assert "1 card measured by you, under the trading harness, from your bank at head `lr_head`" in result["intro"]
     for tool in ("bank_index()", "bank_get_card(", "bank_get_card_with_evidence("):
         assert tool in result["intro"]
     assert "[card:a-card]" not in result["intro"]  # no card content pushed
     assert result["record"] == {
-        "mode": "agentic", "task": dict(TASK), "bank_head": "lr_head",
-        "gaps": ["no procedure in the bank covers this task's scope"],
+        "task": dict(TASK),
+        "sources": [{"reference": "mine", "kind": "bank", "resolved": str(root), "head": "lr_head",
+                     "provenance": "measured by you", "scope": "harness", "cards": 1}],
     }
 
 
@@ -288,7 +325,7 @@ def test_probe_offers_cap_eligibility_and_ride_reads(tmp_path):
     root = build_bank(tmp_path, {
         "strong-card": card_text("strong-card", score=0.8),
         "weak-card": card_text("weak-card", score=0.4),
-        "avito-card": card_text("avito-card", scope=["dataset:rel-avito"]),
+        "avito-card": card_text("avito-card", scope=["harness:other"]),
     })
     bank = Bank(str(root))
     (root / "index").mkdir(exist_ok=True)
@@ -442,3 +479,65 @@ def test_flat_procedure_file_fails_the_transaction(tmp_path):
         {"rule": 35, "section": 25, "confidence": 8},
     ).validate()
     assert not any("invisible to the read layer" in f for f in findings), findings
+
+
+def reported_card(name, drop="", **source):
+    """A procedure card whose only evidence is a `reported` entry — what a
+    conversion of a curated book writes (benchmarks/ioai2026/book_to_bank.py)."""
+    body, ledger_text = split_card_text(card_text(name, kind="procedure", state="candidate"))
+    ledger = yaml.safe_load(ledger_text)
+    fields = {
+        "url": "https://example.org/winner", "author": "A. Winner", "licence": "MIT",
+        "score": "LB 0.79", "protocol": "the public leaderboard, fetched", **source,
+    }
+    if drop:
+        del fields[drop]
+    ledger["evidence"] = [{"source": fields, "verdict": "reported", "note": "a winner's notebook"}]
+    return f"{body}\n\n---\n\n```yaml\n{dump_ledger(ledger)}```\n"
+
+
+def test_reported_evidence_names_its_source_whole_and_serves_as_reported_by_others(tmp_path):
+    # Regression: a converted card (a score others reported at a source) is
+    # a valid card only with the five source fields, serves with the
+    # "reported by others" provenance line at every depth, renders its
+    # source in the evidence trail, and never passes as our measurement — a
+    # card with one executed entry beside the reported one is not "reported
+    # only" and carries no such line.
+    root = build_bank(tmp_path, {
+        "winner-recipe": reported_card("winner-recipe"),
+        "no-protocol": reported_card("no-protocol", protocol=""),
+        "no-score-key": reported_card("no-score-key", drop="score"),
+    })
+    (root / "procedures" / "winner-recipe" / "code").mkdir()
+    bank = Bank(str(root))
+    assert bank.cards["winner-recipe"].conformance_findings() == []
+    assert bank.cards["winner-recipe"].reported_only
+    assert bank.cards["no-protocol"].conformance_findings() == [
+        "no-protocol: reported evidence protocol is empty"
+    ]
+    assert bank.cards["no-score-key"].conformance_findings() == [
+        "no-score-key: reported evidence source lacks score"
+    ]
+    assert bank.executed_closure(bank.cards["winner-recipe"]) == []
+
+    served = render_cards(bank, TASK, ["winner-recipe"], True, {})
+    text = served["text"]
+    assert f"code: {root / 'procedures' / 'winner-recipe' / 'code'}" in text
+    assert "*provenance:* reported by others — the score is the source's, not a kapso measurement" in text
+    assert (
+        "- verdict=reported (reported by others, not a kapso measurement) "
+        "url=https://example.org/winner author=A. Winner licence=MIT score=LB 0.79 "
+        "protocol=the public leaderboard, fetched"
+    ) in text
+    assert "note: a winner's notebook" in text
+    assert "*provenance:*" in render_cards(bank, TASK, ["winner-recipe"], False, {})["text"]
+
+    mixed_text = card_text("mixed", kind="procedure", state="candidate")
+    body, ledger_text = split_card_text(mixed_text)
+    ledger = yaml.safe_load(ledger_text)
+    ledger["evidence"].append(yaml.safe_load(split_card_text(reported_card("x"))[1])["evidence"][0])
+    mixed_root = build_bank(tmp_path / "mixed", {"mixed": f"{body}\n\n---\n\n```yaml\n{dump_ledger(ledger)}```\n"})
+    mixed_bank = Bank(str(mixed_root))
+    assert mixed_bank.cards["mixed"].conformance_findings() == []
+    assert not mixed_bank.cards["mixed"].reported_only
+    assert "*provenance:*" not in render_cards(mixed_bank, TASK, ["mixed"], False, {})["text"]

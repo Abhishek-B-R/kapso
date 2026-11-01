@@ -6,15 +6,16 @@ from types import SimpleNamespace
 
 import pytest
 
-import kapso.execution.coding_agents.adapters.claude_code_agent as claude_module
+import kapso.execution.coding_agents.factory as factory_module
 import kapso.gated_mcp as gated_mcp_module
+from kapso.core.roles import SessionRole
 from kapso.execution.experiment_workspace.experiment_session import SessionPushError
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.search_strategies.generic.implementation import (
     run_implementation,
 )
 
-from test_implementation_web import MCP_TOOL, FakeWorkspace
+from implementation_support import MCP_TOOL, FakeWorkspace, no_staging
 
 
 def run_session(
@@ -42,7 +43,7 @@ def run_session(
         def cleanup(self):
             pass
 
-    monkeypatch.setattr(claude_module, "ClaudeCodeCodingAgent", FakeAgent)
+    monkeypatch.setattr(factory_module.CodingAgentFactory, "create", classmethod(lambda cls, config: FakeAgent(config)))
     monkeypatch.setattr(
         gated_mcp_module, "get_mcp_config", lambda **kw: ({}, [MCP_TOOL])
     )
@@ -57,6 +58,7 @@ def run_session(
         classmethod(lambda cls, doc, max_chars=2500: "memory"),
     )
     return run_implementation(
+        stage_harness_for=no_staging,
         solution="the plan",
         problem="the problem",
         branch_name="candidate-1",
@@ -69,17 +71,15 @@ def run_session(
         sync_registered_evaluation=lambda folder: None,
         implementation_gates=["repo_memory"],
         gate_failure_policy="skip",
-        implementation_cli="claude_code",
-        implementation_model="the-model",
+        implementation_role=SessionRole(
+            name="implementation", cli="claude_code", model="the-model",
+            effort=None, timeout=600, settings={"auth_mode": "oauth"}, web=False,
+        ),
         implementation_fallback_model=None,
-        implementation_web=False,
-        claude_auth_settings={"auth_mode": "oauth"},
         env_strip=[],
         env_defaults={},
         lane_env=None,
-        session_effort=None,
         clamped_timeout=lambda seconds: seconds,
-        implementation_timeout=600,
         session_stream_path=lambda branch: str(tmp_path / f"{branch}.jsonl"),
         build_prompt=lambda **kw: "the prompt",
         previous_errors_text="",

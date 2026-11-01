@@ -17,18 +17,15 @@ estimator, caps, and ranking weight.
 ## Configuration
 
 ```yaml
-modes:
-  GENERIC:
-    search_strategy:
-      type: generic
-      params:
-        cost:
-          enabled: true
-          estimator: my_campaign.costs.estimate_candidate
-          cap_per_candidate: 10.0
-          campaign_budget: 50.0
-          unit: credits
-          weight: 0.1
+search_strategy:
+  params:
+    cost:
+      enabled: true
+      estimator: my_campaign.costs.estimate_candidate
+      cap_per_candidate: 10.0
+      campaign_budget: 50.0
+      unit: credits
+      weight: 0.1
 ```
 
 The packaged defaults are `enabled: false`, `estimator: null`,
@@ -37,8 +34,8 @@ The packaged defaults are `enabled: false`, `estimator: null`,
 an estimator fails during initialization.
 Amounts, caps, budgets, and weights must be finite and non-negative.
 
-The packaged source is `defaults.search_strategy.params.cost`, inherited by
-every mode. A mode can override individual cost keys. Cost-aware campaigns
+The packaged source is `search_strategy.params.cost`; an override file sets
+the keys it changes. Cost-aware campaigns
 require the `generic` strategy and `budget.fidelity.mode: off`. They also reject
 evaluator transitions before running a bridge evaluation. Those features can
 remeasure a candidate, while this policy accounts for one evaluation per node.
@@ -173,8 +170,8 @@ number the refusal records as `campaign_cost_used`.
 | `.kapso/status.json`, recent ring | The node-completed note gains a clause: `cost: 1.5 credits (measured)`, `cost: 2.0 credits (estimate)`, `refused: campaign_budget (2.0 estimate, 2.0/3.0 used)`, or `cost: not estimated` for a build that never reached admission |
 | `.kapso/status.json`, payload | `platform_budget: {used, budget, unit, refused}`, present only when cost is enabled; `kapso watch --json` passes it through |
 | `kapso watch ./campaign` | A second bar under the time bar: `cost:   ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░ 2.0/3.0 credits, 1 candidate refused` |
-| `kapso watch ./campaign --tree` | `cost: 2.0` on each node's row after its score, measured over estimated, and `refused` as the outcome of a cost-refused node |
-| `kapso evolve`, the completion summary | `Platform cost: 2.0/3.0 credits, 1 candidate refused` |
+| `kapso trace ./campaign` | `cost: 2.0` on each attempt's evaluation line after its score, measured over estimated, and `refused` as the outcome of a cost-refused attempt |
+| `kapso build`, the completion summary | `Platform cost: 2.0/3.0 credits, 1 candidate refused` |
 
 A campaign with cost disabled prints, writes and renders none of this.
 

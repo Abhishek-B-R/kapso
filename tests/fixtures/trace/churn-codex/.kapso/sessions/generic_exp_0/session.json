@@ -1,0 +1,50 @@
+{
+  "module": "implementation",
+  "host": "codex",
+  "harness": null,
+  "session_dir": "/campaign/sessions/generic_exp_0",
+  "pages": [],
+  "skills": [],
+  "mcp_servers": [],
+  "agents": [],
+  "hooks": [],
+  "prepared": [],
+  "stream": "/campaign/.kapso/sessions/generic_exp_0/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-26T14:33:16+00:00",
+      "ended": "2026-10-26T14:37:07+00:00",
+      "duration_seconds": 231.103,
+      "model": "gpt-5.6-sol",
+      "cli_session_id": "01a178a1-43e3-70c3-a455-47da38df6292",
+      "exit": "success",
+      "error": null,
+      "retry_reason": null,
+      "cost_usd": null,
+      "cost_cumulative": null,
+      "turns": 1,
+      "usage": {
+        "input_tokens": 617805,
+        "cached_input_tokens": 580992,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 12519,
+        "reasoning_output_tokens": 3752
+      },
+      "tools": {
+        "command_execution": 10,
+        "file_change": 5
+      },
+      "gates": {},
+      "hooks": null,
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [
+        "PLAN.md",
+        "changes.log",
+        "kapso_evaluation/eval_profile.md",
+        "predict.py"
+      ],
+      "last_message": "<code_changes_summary>\nProfiled and documented evaluation mechanics, data distributions, coverage axes, and runtime. Implemented training-only categorical vocabularies, feature exclusions, and the deterministic three-seed native-categorical XGBoost model. The initial XGBoost/CatBoost blend scored 0.8491, triggering the prescribed pure-XGBoost fallback, which scored 0.8490 while preserving the required output contract.\n</code_changes_summary>\n\n<evaluation_script_path>\nkapso_evaluation/evaluate.py\n</evaluation_script_path>\n\n<evaluation_output>\nrows: 3000  seconds: 2.1  fast: False\nauc: 0.8490\n</evaluation_output>\n\n<score>\n0.8490\n</score>\n\n<technical_difficulties>\nThe initial XGBoost probe failed with `TypeError: Category index must contain only values of the same type ... boolean`; converting boolean categorical values to strings before constructing training-derived categorical dtypes fixed it. A profiling script raised `ValueError: invalid literal for int() with base 10: 'C000001'` because customer IDs are strings, so subsequent profiling preserved them as strings. A compound delete/add patch targeting `predict.py` twice was rejected; replacing it with one update patch succeeded. The specified ensemble scored 0.8491, narrowly below the 0.85 target; its predeclared pure-XGBoost fallback scored 0.8490, and no third private-score experiment was used.\n</technical_difficulties>"
+    }
+  ]
+}

@@ -102,8 +102,9 @@ Remove the eval Neo4j with `docker rm -f kapso-eval-neo4j`.
   corpus embeds only the opening, which is slightly pessimistic for retrieval
   on those pages.
 - Each rerank is one LLM sample; three runs give a range, not a confidence
-  interval. The reranker also returns few pages (about 2.6 on average), so
-  recall@k flattens past k=3; MRR and recall@1 carry the signal.
+  interval. The reranker also returns few pages (about 2.6 on average in the
+  runs recorded for pull request #180, 2026-11-01), so recall@k flattens past
+  k=3; MRR and recall@1 carry the signal.
 - The cap binds on only the six long pages, about 12% of the corpus (the real
   historical corpus has about 6% over 300 characters, all Implementations), so
   `on_cap300` and `on_nocap` can only differ where a target or a competitor is

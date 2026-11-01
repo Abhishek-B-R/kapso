@@ -1,0 +1,31 @@
+{
+ "operation": "build",
+ "phases": [
+  "setup",
+  "harness_setup",
+  "lens_planning",
+  "ideation",
+  "implementation",
+  "evaluation",
+  "verification",
+  "feedback"
+ ],
+ "state": "running",
+ "pid": 31625,
+ "started_at": "2026-10-27T02:11:22+00:00",
+ "heartbeat_at": "2026-10-27T02:11:23+00:00",
+ "phase": "ideation",
+ "phase_started_at": "2026-10-27T02:11:23+00:00",
+ "recent": [
+  "02:11 iteration 1 started (budget 0%)"
+ ],
+ "harness": null,
+ "experience": [],
+ "heartbeat_seconds": 60.0,
+ "budget": {
+  "elapsed_min": 0.0,
+  "total_min": 10.0,
+  "reserve_min": 1.5
+ },
+ "iteration": 1
+}

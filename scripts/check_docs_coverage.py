@@ -2,14 +2,17 @@
 """Fail when the reference docs do not mention part of the public surface.
 
 The CLI reference sat at one of eight commands for seven months because
-nothing connected `cli.py` to `docs/reference/`. This closes that loop: add a
-command or a public method and the docs build fails until it is written up.
+nothing connected the CLI source to `docs/reference/`. This closes that loop:
+add a command or a public method and the docs build fails until it is written
+up.
 
-Reads argparse subparser names out of cli.py and public method names out of
-kapso.py, then checks each one appears in the matching reference page. Text
-presence is a deliberately shallow test — it cannot tell whether the prose is
-any good, only whether the surface was acknowledged at all, which is the
-failure that actually happened.
+Reads argparse subparser names out of the `kapso.cli` package (one module per
+verb), public method names out of kapso.py and the plugin's command files
+under plugin/commands/, then checks each one appears in the matching page:
+the CLI and API references, and the plugin page, which is the one copy of
+the commands' table. Text presence is a deliberately shallow test
+— it cannot tell whether the prose is any good, only whether the surface was
+acknowledged at all, which is the failure that actually happened.
 """
 
 import re
@@ -17,17 +20,21 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-CLI_SOURCE = REPO / "src" / "kapso" / "cli.py"
+CLI_PACKAGE = REPO / "src" / "kapso" / "cli"
 API_SOURCE = REPO / "src" / "kapso" / "kapso.py"
 CLI_DOC = REPO / "docs" / "reference" / "cli.mdx"
 API_DOC = REPO / "docs" / "reference" / "kapso-api.mdx"
+PLUGIN_COMMANDS = REPO / "plugin" / "commands"
+PLUGIN_DOC = REPO / "docs" / "coding-agent-skills.mdx"
 
 # Each entry maps the argparse variable holding a subparser group to the
 # command prefix its names appear under in the docs.
 SUBPARSER_GROUPS = (
     ("subparsers", "kapso"),
     ("learn_sub", "kapso learn"),
-    ("bank_sub", "kapso bank"),
+    ("dev_sub", "kapso learn dev"),
+    ("sub", "kapso harness"),
+    ("experience_sub", "kapso experience"),
 )
 
 
@@ -37,9 +44,26 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def read_package(package: Path) -> str:
+    """Every module of a package as one text, so a subparser group declared
+    in any verb module is found."""
+    modules = sorted(package.glob("*.py"))
+    if not modules:
+        raise FileNotFoundError(f"expected Python modules under {package}")
+    return "\n".join(read(module) for module in modules)
+
+
 def subcommands(source: str, variable: str) -> list[str]:
-    pattern = re.escape(variable) + r'\.add_parser\(\s*\n?\s*"([a-z][a-z_-]*)"'
+    pattern = r"(?<![A-Za-z0-9_])" + re.escape(variable) + r'\.add_parser\(\s*\n?\s*"([a-z][a-z_-]*)"'
     return sorted(set(re.findall(pattern, source)))
+
+
+def plugin_commands(directory: Path) -> list[str]:
+    """The plugin's commands: one Markdown file per command, named `/kapso:<stem>` on the page."""
+    files = sorted(directory.glob("*.md"))
+    if not files:
+        raise FileNotFoundError(f"expected command files under {directory}")
+    return [file.stem for file in files]
 
 
 def public_methods(source: str) -> list[str]:
@@ -48,10 +72,11 @@ def public_methods(source: str) -> list[str]:
 
 
 def main() -> int:
-    cli_source = read(CLI_SOURCE)
+    cli_source = read_package(CLI_PACKAGE)
     api_source = read(API_SOURCE)
     cli_doc = read(CLI_DOC)
     api_doc = read(API_DOC)
+    plugin_doc = read(PLUGIN_DOC)
 
     missing: list[str] = []
     checked = 0
@@ -67,14 +92,19 @@ def main() -> int:
         if name not in api_doc:
             missing.append(f"{API_DOC.name} does not mention `{name}`")
 
+    for name in plugin_commands(PLUGIN_COMMANDS):
+        checked += 1
+        if f"/kapso:{name}" not in plugin_doc:
+            missing.append(f"{PLUGIN_DOC.name} does not mention `/kapso:{name}`")
+
     if missing:
         print(f"Reference docs are missing {len(missing)} of {checked} public names:\n")
         for line in missing:
             print(f"  {line}")
-        print("\nDocument the new surface in docs/reference/, then rerun.")
+        print("\nDocument the new surface in docs/reference/ (a plugin command on docs/coding-agent-skills.mdx), then rerun.")
         return 1
 
-    print(f"Reference covers all {checked} public commands and methods.")
+    print(f"Reference covers all {checked} public commands, methods and plugin commands.")
     return 0
 
 

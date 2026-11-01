@@ -12,9 +12,11 @@
 
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
+import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,10 +32,25 @@ from kapso.execution.search_strategies import (
 )
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.search_strategies.generic import FeedbackGenerator, FeedbackResult
+from kapso.execution.search_strategies.generic.implementation import render_inbox_section
 from kapso.environment.handlers.base import ProblemHandler
-from kapso.execution.inbox import idea_line, render_pause_block, request_payload
-from kapso.core.cli_inference import CliInference, resolve_inference_config
-from kapso.core.config import load_mode_config
+from kapso.execution.inbox import (
+    idea_line,
+    continue_answered,
+    load_requests,
+    open_requests,
+    render_pause_block,
+    request_payload,
+)
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.gated_mcp.presets import get_mcp_config, knowledge_tools_block
+from kapso.harness.load import HarnessError
+from kapso.harness.staging import PREPARED_DIR, TASK_STATEMENT_FILE, engine_session_record
+from kapso.harness.task_statement import prepared_names, setup_statement_path, write_task_statement
+from kapso.core.agent_manifest import load_agent_manifest
+from kapso.core.cli_inference import CliInference
+from kapso.core.config import load_config
+from kapso.core.roles import BUILD_CONFIG_BLOCKS, SPEC_KEYS, check_maintainer, resolve_role, resolve_spec, validate_config
 from kapso.execution.search_strategies.base import ExperimentResult, SearchNode
 from kapso.execution.memories.experiment_memory import ExperimentHistoryStore
 from kapso.execution.cost_estimator import (
@@ -53,10 +70,11 @@ from kapso.execution.iteration_evaluator import (
 )
 from kapso.execution.evaluation_integrity import (
     build_evaluation_manifest,
+    launch_evaluation_manifest,
     manifest_fingerprint,
     verify_data_manifest,
 )
-from kapso.execution.observability import EvolveStatus, knowledge_summary
+from kapso.execution.observability import BuildStatus, knowledge_summary
 from kapso.execution.run_checkpoint import (
     RunCheckpoint,
     RunCheckpointError,
@@ -66,10 +84,14 @@ from kapso.execution.run_checkpoint import (
     config_fingerprint,
 )
 from kapso.execution.budget import (
+    ATTEMPT_WOULD_NOT_FIT,
+    DELIVERY_SECONDS,
+    FINISHING_CUT,
     BudgetLedger,
     BudgetSnapshot,
     BudgetSpec,
     CostEntry,
+    admission_refusal,
 )
 from kapso.execution.evaluation_maintainer import (
     EvaluationChangeRequest,
@@ -89,22 +111,26 @@ CHANGE_REQUEST_PATTERN = re.compile(
     re.DOTALL,
 )
 
-# The fast fraction is deliberately absent: it is single-sourced in the
-# fidelity block (budget.fidelity.eval.fast_fraction).
-_MAINTAINER_BLOCK_KEYS = {
-    "type",
-    "model",
-    "debug_model",
-    "agent_specific",
-    "subsample_seed",
-    "calibration_fraction",
-    "calibration_timeout_seconds",
-    "fast_variant_threshold_minutes",
-    "overhead_factor",
-    "max_change_requests",
-    "transition_freeze_fraction",
-    "protected_data_paths",
-}
+
+
+# The harness setup session (kapso.harness): its inbox identity, the node
+# it files requests under (none: it runs before the first experiment), its
+# prompt, the line that offers the inbox, and the campaign directories it
+# must leave alone.
+HARNESS_SETUP_SESSION = "harness_setup"
+HARNESS_SETUP_NODE = -1
+HARNESS_SETUP_PROMPT = "execution/search_strategies/generic/prompts/harness_setup.md"
+HARNESS_SETUP_INBOX_LINE = (
+    "\n- If an input the task statement names is missing (a file, a variable), ask for it "
+    "with the request_from_user tool, naming it exactly, and finish; the campaign pauses "
+    "and your session runs again once the person has answered.\n"
+)
+PINNED_DIRECTORIES = ("kapso_evaluation", "kapso_datasets")
+
+
+def _directory_manifest(path: Path) -> Dict[str, str]:
+    """The files under a campaign directory by hash; {} when it is absent."""
+    return build_evaluation_manifest(str(path)) if path.is_dir() else {}
 
 
 @dataclass
@@ -116,8 +142,9 @@ class SolveResult:
     iterations_run: int
     total_cost: float
     cumulative_iterations: int = 0
-    # Which budget dial triggered a budget_exhausted stop:
-    # "time_budget" | "cost_budget" | "finalization_reserve" | None
+    # Which budget dial triggered a budget_exhausted stop: "time_budget",
+    # "cost_budget", "attempt_would_not_fit" (admission), "finishing_cut"
+    # (a finishing session not launched or cut), or None.
     stop_detail: Optional[str] = None
     # The open inbox requests when stopped_reason is "waiting_for_user":
     # what the person must answer before the campaign continues.
@@ -140,11 +167,11 @@ class OrchestratorAgent:
     
     Args:
         problem_handler: Handler for the problem being solved
-        config_path: Path to benchmark-specific config.yaml file
-        mode: Configuration mode to use (if None, uses default_mode from config)
-        coding_agent: Coding agent to use (overrides config if specified)
-        is_kg_active: Whether to use the knowledge graph
-        goal: The goal/objective for the evolve process
+        config_path: The override file over the packaged config (None: the
+            packaged defaults alone)
+        coding_agent: The host every session runs on unless its role names
+            one (`search_strategy.params.host`)
+        goal: The goal text of the build (the rendered brief)
         iteration_evaluator: Optional observational callback for each finalized
             candidate Git ref
         iteration_evaluator_failure_policy: ``record`` or ``raise``
@@ -154,9 +181,7 @@ class OrchestratorAgent:
         self, 
         problem_handler: ProblemHandler,
         config_path: Optional[str] = None,
-        mode: Optional[str] = None,
         coding_agent: Optional[str] = None,
-        is_kg_active: bool = False,
         knowledge_search: Optional[KnowledgeSearch] = None,
         workspace_dir: Optional[str] = None,
         resume: bool = False,
@@ -167,13 +192,29 @@ class OrchestratorAgent:
         data_dir: Optional[str] = None,
         goal: Optional[str] = None,
         strategy_params_overrides: Optional[Dict[str, Any]] = None,
+        harness: Optional[Any] = None,
+        experience: Optional[List[Dict[str, Any]]] = None,
     ):
         self.problem_handler = problem_handler
+        # The loaded harness (kapso.harness.Harness) or None: threaded to the
+        # strategy and every session, written into the checkpoint and the
+        # status file, never part of the config fingerprint (its hash is
+        # its own check, with its own message, in the facade).
+        self.harness = harness
+        # What the campaign is served (the experience package's records):
+        # the loaded sources as plain records, written into the status
+        # file and the checkpoint beside the harness; the facade's launch
+        # record fingerprints the list.
+        self.experience: List[Dict[str, Any]] = [dict(source) for source in experience or []]
+        self._harness_setup: Optional[Dict[str, Any]] = None
+        # The requests the harness setup session filed with the inbox: the
+        # campaign pauses on them before iteration 1.
+        self._setup_requests: List[Any] = []
+        self._task_budget: Dict[str, Any] = {}
         # The problem's scoring direction: the history store ranks by it and
         # the checkpoint records it for the MCP history process.
         self.maximize_scoring = getattr(problem_handler, "maximize_scoring", True)
         self.config_path = config_path
-        self.mode = mode
         self.goal = goal or ""
         # Per-campaign strategy-param overrides merged over the mode
         # config's params (the facade's serving hook uses this to thread
@@ -183,9 +224,13 @@ class OrchestratorAgent:
         self._strategy_params_overrides = dict(strategy_params_overrides or {})
         # Load once before constructing shared services so model roles and retry
         # behavior apply consistently across strategy, memory, and commit calls.
-        self.mode_config = load_mode_config(config_path, mode)
-        model_routes = self.mode_config.get("models")
-        retry_config = self.mode_config.get("retry")
+        self.config = load_config(config_path)
+        # The checks the walk cannot make (the hosts against the adapters,
+        # the roles, the maintainer), here as in the facade and the doctor:
+        # a benchmark runner constructs the campaign directly.
+        validate_config(self.config, load_agent_manifest()["agents"])
+        model_routes = self.config["models"]
+        retry_config = self.config["retry"]
         # CLI-only inference (cli-only-inference-design.md): the object
         # every consumer receives as `llm` runs completions as coding-agent
         # sessions; embeddings and the cost meter delegate to the inner
@@ -209,7 +254,7 @@ class OrchestratorAgent:
         (
             self.strategy_type,
             self.strategy_params,
-        ) = self._resolve_search_strategy_config()
+        ) = self._resolve_search_strategy_config(coding_agent)
         self.cost_config = normalize_cost_config(self.strategy_params.get("cost"))
         self.strategy_params["cost"] = self.cost_config
         if self.cost_config["enabled"] and self.strategy_type != "generic":
@@ -218,7 +263,7 @@ class OrchestratorAgent:
         # The campaign inbox (docs/research/evolve-hub-design.md v4) rides
         # the mode config into the strategy params — fingerprinted like
         # every other setting, so a resume never flips it silently.
-        inbox_block = self.mode_config.get("inbox")
+        inbox_block = self.config["inbox"]
         if inbox_block is not None:
             self.strategy_params = {
                 **self.strategy_params, "inbox": dict(inbox_block),
@@ -227,21 +272,15 @@ class OrchestratorAgent:
         # max_iterations (a solve() argument that was never fingerprinted).
         # Excluding the budget block keeps "resume with a bigger budget"
         # possible under strict resume validation.
-        self._config_budget = dict(self.mode_config.get("budget") or {})
+        self._config_budget = dict(self.config["budget"])
         fingerprint_config = {
             "strategy_type": self.strategy_type,
             "strategy_params": self.strategy_params,
-            "mode": self.mode,
-            "mode_config": {
-                key: value
-                for key, value in self.mode_config.items()
-                if key != "budget"
-            },
-            "coding_agent_override": coding_agent,
+            "config": {key: self.config[key] for key in BUILD_CONFIG_BLOCKS},
         }
         self._provided_evaluation_manifest: Optional[Dict[str, str]] = None
         if eval_dir:
-            self._provided_evaluation_manifest = build_evaluation_manifest(
+            self._provided_evaluation_manifest = launch_evaluation_manifest(
                 eval_dir
             )
             fingerprint_config["provided_evaluation_fingerprint"] = (
@@ -262,10 +301,12 @@ class OrchestratorAgent:
         self.checkpoint_store: Optional[RunCheckpointStore] = None
         self._checkpoint_lock = threading.Lock()
         self._heartbeat_stop = threading.Event()
-        # Observability (design §2): created by solve() once the budget is
-        # resolved; lives at <workspace>/.kapso/status.json.
-        self.operation_status: Optional[EvolveStatus] = None
+        # Observability (design §2): the strategy constructor opens the
+        # status file at workspace setup; solve() adopts it below once the
+        # budget is resolved. Lives at <workspace>/.kapso/status.json.
+        self.operation_status: Optional[BuildStatus] = None
         self._status_budget_total_min: Optional[float] = None
+        self._status_reserve_seconds: Optional[float] = None
         self._resume_checkpoint: Optional[RunCheckpoint] = None
         self.completed_iterations = 0
         self._prior_cost = 0.0
@@ -294,6 +335,7 @@ class OrchestratorAgent:
                 cost_config=self.cost_config,
             )
             self._resume_checkpoint = checkpoint
+            self._harness_setup = checkpoint.harness_setup
             self.completed_iterations = checkpoint.completed_iterations
             self._prior_cost = float(checkpoint.cumulative_cost)
             self._prior_elapsed_seconds = float(checkpoint.elapsed_seconds)
@@ -313,7 +355,7 @@ class OrchestratorAgent:
         self.experiment_store: Optional[ExperimentHistoryStore] = None
         
         # Create feedback generator FIRST (needed by search strategy)
-        self.feedback_generator = self._create_feedback_generator(coding_agent)
+        self.feedback_generator = self._create_feedback_generator()
         
         # Track feedback for next iteration
         self.current_feedback: Optional[str] = (
@@ -325,7 +367,6 @@ class OrchestratorAgent:
         
         # Create search strategy (uses feedback_generator)
         self.search_strategy = self._create_search_strategy(
-            coding_agent=coding_agent,
             workspace_dir=workspace_dir,
             start_from_checkpoint=self.resume,
         )
@@ -366,9 +407,7 @@ class OrchestratorAgent:
 
         # Resolved before the maintainer: the fast fraction is single-sourced
         # in the fidelity block and the maintainer calibrates at that value.
-        self.fidelity_spec = FidelitySpec.resolve(
-            self._config_budget.get("fidelity")
-        )
+        self.fidelity_spec = FidelitySpec.resolve(self._config_budget["fidelity"])
         if self.cost_config["enabled"] and self.fidelity_spec.mode != "off":
             raise ValueError("cost.enabled requires budget.fidelity.mode: off")
         (
@@ -400,7 +439,7 @@ class OrchestratorAgent:
         # shipped default) the store is recency-only — a documented
         # capability absence, not an embedding call that fails at the
         # first node's bookkeeping.
-        embedding_model = (self.mode_config.get("models") or {}).get("embedding")
+        embedding_model = self.config["models"]["embedding"]
         self.experiment_store = ExperimentHistoryStore(
             json_path=experiment_history_path,
             goal=self.goal,
@@ -410,117 +449,44 @@ class OrchestratorAgent:
         )
         
         # Create knowledge search backend (or use provided instance).
-        # This allows Kapso.evolve() to inject a concrete backend (e.g., kg_graph_search)
+        # This allows Kapso.build() to inject a concrete backend (e.g., kg_graph_search)
         # without relying on config defaults (which may point to a different backend).
-        if knowledge_search is not None:
-            self.knowledge_search = knowledge_search
-            self._owns_knowledge_search = False
-        else:
-            self.knowledge_search = self._create_knowledge_search(
-                is_kg_active=is_kg_active,
-            )
-            # We created it inside the orchestrator → we should close it.
-            self._owns_knowledge_search = True
-    
-    def _create_feedback_generator(
-        self,
-        coding_agent: Optional[str] = None,
-    ) -> FeedbackGenerator:
-        """
-        Create feedback generator.
-        
-        Uses the same coding agent type as the developer agent by default.
-        """
-        # Get coding agent config from mode config
-        mode_config = self.mode_config
-        # Check for dedicated feedback_generator config first, fall back to coding_agent
-        feedback_config = mode_config.get('feedback_generator', {}) if mode_config else {}
-        coding_config = mode_config.get('coding_agent', {}) if mode_config else {}
-        
-        # Use feedback_generator config if available, otherwise fall back to coding_agent config
-        if feedback_config:
-            agent_type = feedback_config.get('type', 'claude_code')
-            agent_model = feedback_config.get('model')
-            agent_debug_model = feedback_config.get('debug_model')
-            agent_specific = feedback_config.get('agent_specific', {})
-        else:
-            # Fall back to coding_agent config
-            agent_type = coding_agent or coding_config.get('type', 'claude_code')
-            agent_model = coding_config.get('model')
-            agent_debug_model = coding_config.get('debug_model')
-            agent_specific = coding_config.get('agent_specific', {})
-        
-        # Build config for feedback generator
-        feedback_agent_config = CodingAgentFactory.build_config(
-            agent_type=agent_type,
-            model=agent_model,
-            debug_model=agent_debug_model,
-            agent_specific=agent_specific,
+        # The search over a loaded index comes from the facade, connected
+        # from the index's record; nothing loaded is the null search. The
+        # orchestrator builds no backend of its own: a config's
+        # `knowledge_search` block is the index's parameters, not a switch
+        # (the WP2 finding: a build with nothing loaded died here for a
+        # missing embedding key).
+        self.knowledge_search = (
+            knowledge_search if knowledge_search is not None else KnowledgeSearchFactory.create_null()
         )
-        
+        self._owns_knowledge_search = False
+    
+    def _create_feedback_generator(self) -> FeedbackGenerator:
+        """The judge: the `judge` role over the hosts table (kapso.core.roles)."""
+        role = resolve_role(self.config["hosts"], self.strategy_params, "judge")
         return FeedbackGenerator(
-            coding_agent_config=feedback_agent_config,
+            coding_agent_config=CodingAgentFactory.session_config(
+                role, {"streaming": True, "timeout": role.timeout},
+            ),
         )
 
     def _create_search_strategy(
         self,
-        coding_agent: Optional[str],
         workspace_dir: Optional[str],
         start_from_checkpoint: bool,
     ) -> SearchStrategy:
-        """
-        Create search strategy from config.
-        
-        Args:
-            coding_agent: Override coding agent type
-            
-        Returns:
-            Configured SearchStrategy instance
-        """
-        mode_config = self.mode_config
-        strategy_type = self.strategy_type
-        strategy_params = self.strategy_params
-
-        if not mode_config:
-            coding_agent_type = coding_agent or "claude_code"
-            coding_agent_model = None
-            coding_agent_debug_model = None
-            coding_agent_specific = None
-        else:
-            # Extract coding agent config
-            coding_config = mode_config.get('coding_agent', {})
-            if coding_agent:
-                coding_agent_type = coding_agent
-                coding_agent_model = None
-                coding_agent_debug_model = None
-                coding_agent_specific = None
-            elif coding_config:
-                coding_agent_type = coding_config.get('type', 'aider')
-                coding_agent_model = coding_config.get('model')
-                coding_agent_debug_model = coding_config.get('debug_model')
-                # Support agent_specific from YAML config (e.g., auth_mode for Claude Code)
-                coding_agent_specific = coding_config.get('agent_specific')
-            else:
-                coding_agent_type = 'aider'
-                coding_agent_model = None
-                coding_agent_debug_model = None
-                coding_agent_specific = None
-        
-        # Build coding agent config
-        coding_agent_config = CodingAgentFactory.build_config(
-            agent_type=coding_agent_type,
-            model=coding_agent_model,
-            debug_model=coding_agent_debug_model,
-            agent_specific=coding_agent_specific,
-        )
-        
-        # Create strategy via factory
+        """The search strategy from the resolved config; the workspace's
+        sessions carry the implementation role's host."""
+        role = resolve_role(self.config["hosts"], self.strategy_params, "implementation")
+        coding_agent_config = CodingAgentFactory.session_config(role, {})
         return SearchStrategyFactory.create(
-            strategy_type=strategy_type,
+            strategy_type=self.strategy_type,
             problem_handler=self.problem_handler,
             llm=self.llm,
             coding_agent_config=coding_agent_config,
-            params=strategy_params,
+            hosts=self.config["hosts"],
+            params=self.strategy_params,
             workspace_dir=workspace_dir,
             start_from_checkpoint=start_from_checkpoint,
             initial_repo=self.initial_repo,
@@ -529,74 +495,26 @@ class OrchestratorAgent:
             data_dir=self.data_dir,
             feedback_generator=self.feedback_generator,
             goal=self.goal,
+            status_heartbeat_seconds=self._status_heartbeat_seconds(),
+            harness=self.harness,
+            experience=self.experience,
         )
 
-    def _resolve_search_strategy_config(self) -> Tuple[str, Dict[str, Any]]:
-        """Resolve strategy identity before a resume mutates the workspace."""
-        mode_config = self.mode_config
-        if not mode_config:
-            return "generic", dict(self._strategy_params_overrides)
+    def _status_heartbeat_seconds(self) -> Optional[float]:
+        """The status file's cadence: the same budget key that paces the
+        checkpoint heartbeat (Rule 1 — one knob for both beats)."""
+        interval = self._config_budget["checkpoint_heartbeat_seconds"]
+        return float(interval) if interval else None
 
-        search_config = mode_config.get("search_strategy", {})
-        if search_config:
-            return (
-                search_config.get("type", "generic"),
-                {
-                    **(search_config.get("params", {}) or {}),
-                    **self._strategy_params_overrides,
-                },
-            )
-
-        # A mode without a search_strategy block gets the same plain
-        # generic default as running with no mode config at all. (The old
-        # branch here resolved eleven mode-level tree-search knobs that no
-        # config ever defined — stale-code audit 2026-08-26, R1.)
-        return "generic", dict(self._strategy_params_overrides)
-
-    def _create_knowledge_search(
-        self,
-        is_kg_active: bool,
-    ) -> KnowledgeSearch:
-        """
-        Create knowledge search backend from config.
-        
-        Args:
-            is_kg_active: Whether to enable knowledge graph
-            
-        Returns:
-            Configured KnowledgeSearch instance
-        """
-        mode_config = self.mode_config
-        
-        # Check for knowledge_search config (new format)
-        ks_config = mode_config.get('knowledge_search', {})
-        
-        if ks_config:
-            resolved_config = dict(ks_config)
-            resolved_params = dict(resolved_config.get("params") or {})
-            resolved_params.setdefault("models", mode_config.get("models"))
-            resolved_params.setdefault("retry", mode_config.get("retry"))
-            resolved_params.setdefault(
-                "inference", resolve_inference_config(self.config_path)
-            )
-            resolved_config["params"] = resolved_params
-            return KnowledgeSearchFactory.create_from_config(resolved_config)
-        
-        # No knowledge_search block: the caller's is_kg_active decides.
-        # (The knowledge_retriever / use_knowledge_graph legacy config
-        # shapes died here — stale-code audit 2026-08-26, R3: no config
-        # anywhere defined either.)
-        if is_kg_active:
-            return KnowledgeSearchFactory.create(
-                search_type="kg_llm_navigation",
-                params={
-                    "models": mode_config.get("models"),
-                    "retry": mode_config.get("retry"),
-                },
-            )
-        
-        # Default: disabled
-        return KnowledgeSearchFactory.create_null()
+    def _resolve_search_strategy_config(self, coding_agent: Optional[str]) -> Tuple[str, Dict[str, Any]]:
+        """The strategy's type and parameters: the config's block, the
+        engine's own parameters over it, and `--coding-agent` as the host
+        every role without a `cli` of its own runs on."""
+        search_config = self.config["search_strategy"]
+        params = {**search_config["params"], **self._strategy_params_overrides}
+        if coding_agent:
+            params["host"] = coding_agent
+        return search_config["type"], params
 
     def _live_phase_costs(self) -> Dict[str, float]:
         """Attributed agent spend the resume checkpoint does not carry yet,
@@ -618,45 +536,36 @@ class OrchestratorAgent:
 
     def _create_evaluation_maintainer(self):
         """Build the maintainer when the mode config declares one."""
-        block = self.mode_config.get("evaluation_maintainer")
-        if not block:
+        block = self.config["evaluation_maintainer"]
+        check_maintainer(block)
+        if not block["enabled"]:
             return None, 0, 1.0
-        unknown = sorted(set(block) - _MAINTAINER_BLOCK_KEYS)
-        if unknown:
-            raise ValueError(
-                "Unknown evaluation_maintainer config keys: "
-                + ", ".join(unknown)
-            )
-        agent_config = CodingAgentFactory.build_config(
-            agent_type=block.get("type", "claude_code"),
-            model=block.get("model"),
-            debug_model=block.get("debug_model"),
-            agent_specific=block.get("agent_specific", {}),
+        role = resolve_spec(
+            self.config["hosts"], self.strategy_params["host"],
+            {key: block[key] for key in SPEC_KEYS if key in block},
+            name="evaluation_maintainer", origin="evaluation_maintainer",
         )
+        agent_config = CodingAgentFactory.session_config(role, {"timeout": role.timeout})
         maintainer = EvaluationMaintainer(
             coding_agent_config=agent_config,
             workspace_dir=self.search_strategy.workspace_dir,
             # Single-sourced in the fidelity block: the fraction the policy
             # requests is the fraction the maintainer calibrates and registers.
             fast_fraction=self.fidelity_spec.eval_fast_fraction,
-            subsample_seed=block.get("subsample_seed", 1337),
-            calibration_fraction=block.get("calibration_fraction", 0.03),
-            calibration_timeout_seconds=block.get(
-                "calibration_timeout_seconds", 900
-            ),
-            fast_variant_threshold_seconds=(
-                block.get("fast_variant_threshold_minutes", 20) * 60
-            ),
-            overhead_factor=block.get("overhead_factor", 1.25),
-            protected_data_paths=block.get("protected_data_paths", []),
+            subsample_seed=block["subsample_seed"],
+            calibration_fraction=block["calibration_fraction"],
+            calibration_timeout_seconds=block["calibration_timeout_seconds"],
+            fast_variant_threshold_seconds=block["fast_variant_threshold_minutes"] * 60,
+            overhead_factor=block["overhead_factor"],
+            protected_data_paths=list(block["protected_data_paths"]),
         )
-        freeze_fraction = block.get("transition_freeze_fraction", 0.85)
+        freeze_fraction = block["transition_freeze_fraction"]
         if not 0.0 < freeze_fraction <= 1.0:
             raise ValueError(
                 "transition_freeze_fraction must be in (0, 1], got "
                 f"{freeze_fraction!r}"
             )
-        return maintainer, block.get("max_change_requests", 3), freeze_fraction
+        return maintainer, int(block["max_change_requests"]), freeze_fraction
 
     def _record_maintainer_spend(self) -> None:
         telemetry = self.evaluation_maintainer.last_transaction_telemetry
@@ -688,6 +597,179 @@ class OrchestratorAgent:
             self.evaluation_maintainer.record_run
         )
 
+    def _write_task_statement(self, **budget: Any) -> None:
+        """`<campaign>/kapso_task.md`, rendered by the engine from the brief,
+        the effective budget, the references, the setup session's statement
+        and the prepared resources; nothing without a harness."""
+        if self.harness is None:
+            return
+        campaign = Path(self.search_strategy.workspace_dir)
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", TASK_STATEMENT_FILE],
+            cwd=campaign, capture_output=True, text=True,
+        )
+        if tracked.returncode == 0:
+            raise HarnessError(
+                f"the repository tracks {TASK_STATEMENT_FILE}, the task statement the engine writes at "
+                "the campaign root for every session; rename or untrack it before building with a harness"
+            )
+        write_task_statement(
+            campaign,
+            brief_text=self.goal,
+            harness=self.harness,
+            budget=budget,
+            evaluation_dir=self.eval_dir,
+            data_dir=self.data_dir,
+        )
+
+    def _run_harness_setup(self) -> None:
+        """The harness's setup session, once per fresh campaign, at the
+        campaign root, when the harness has setup content: it writes its
+        domain statement and prepared resources; the engine composes the
+        task statement from them, verifies the pinned evaluation and data,
+        records the step in the checkpoint and the status file, and pauses
+        the campaign when the session asked the person for an input."""
+        harness = self.harness
+        if harness is None or not harness.has_content("setup") or self._harness_setup is not None:
+            return
+        strategy = self.search_strategy
+        # The launch predicate, as for every session: no room under the
+        # floor, no launch — and the setup is the campaign's precondition,
+        # so the campaign stops here with the reason.
+        room = strategy._room()
+        if room is not None and room < strategy.budget_snapshot.min_agent_timeout_seconds:
+            raise HarnessError(
+                f"the budget leaves {max(room, 0.0) / 60:.1f} min for the harness setup session of "
+                f"{harness.label()}, under the {strategy.budget_snapshot.min_agent_timeout_seconds:.0f} s floor "
+                f"({strategy.budget_snapshot.finalization_reserve_seconds / 60:.1f} min of the budget are kept for "
+                "finishing); give the campaign more minutes"
+            )
+        campaign = Path(strategy.workspace_dir)
+        strategy._status_phase("harness_setup")
+        host = strategy.implementation_role.cli
+        staged = strategy.stage_harness_for("setup", str(campaign), HARNESS_SETUP_SESSION, host)
+        pinned = {name: _directory_manifest(campaign / name) for name in PINNED_DIRECTORIES}
+
+        inbox = getattr(strategy, "inbox_settings", None)
+        inbox_on = bool(inbox and inbox.get("enabled"))
+        mcp_servers: Dict[str, Any] = {}
+        mcp_tools: List[str] = []
+        inbox_agent_settings: Dict[str, Any] = {}
+        if inbox_on:
+            # The inbox id doubles as the host's session id, which Claude
+            # Code requires to be a UUID; the setup session is found again
+            # by its node id, not by this value.
+            inbox_session_id = str(uuid.uuid4())
+            mcp_servers, mcp_tools = get_mcp_config(
+                gates=["inbox"],
+                include_base_tools=False,
+                gate_failure_policy=strategy.gate_failure_policy,
+                inbox={
+                    "KAPSO_INBOX_PATH": str(inbox["path"]),
+                    "KAPSO_SESSION_ID": inbox_session_id,
+                    "KAPSO_NODE_ID": str(HARNESS_SETUP_NODE),
+                },
+            )
+            inbox_agent_settings = {
+                "session_id": inbox_session_id,
+                "inbox_path": str(inbox["path"]),
+                "inbox_stop_grace_seconds": float(inbox["stop_grace_seconds"]),
+            }
+        allowed = [
+            "Read", "Write", "Edit", "Bash",
+            *[tool for tool in mcp_tools if tool.startswith("mcp__")],
+            *staged.allowed_tools,
+        ]
+        config = CodingAgentFactory.session_config(strategy.implementation_role, {
+            "env_strip": strategy.env_strip,
+            "env_defaults": strategy.env_defaults,
+            "mcp_servers": mcp_servers,
+            "allowed_tools": allowed,
+            "timeout": strategy._clamped_timeout(float(harness.settings["setup_minutes"]) * 60.0),
+            "streaming": True,
+            **inbox_agent_settings,
+        }, staged)
+        answered = (
+            render_inbox_section(load_requests(inbox["path"]), dotenv_path=inbox.get("dotenv_path", ""))
+            if inbox_on else ""
+        )
+        if inbox_on:
+            # A restarted setup session carries the person's replies: the
+            # setup's answered requests are continued by it, and the record
+            # says so — a search node's session records its own on resume,
+            # and the setup's were left `answered`, the request's promise
+            # of a resumption unkept in the record (the S2 gate, 2026-10-30).
+            continue_answered(inbox["path"], node=HARNESS_SETUP_NODE, session=inbox_session_id)
+        prompt = render_prompt(load_prompt(HARNESS_SETUP_PROMPT), {
+            "task_statement_path": str(campaign / TASK_STATEMENT_FILE),
+            "statement_path": setup_statement_path(campaign).relative_to(campaign).as_posix(),
+            "prepared_dir": PREPARED_DIR,
+            "inbox_line": HARNESS_SETUP_INBOX_LINE if inbox_on else "",
+            "knowledge_tools": (
+                knowledge_tools_block("implementation", allowed) if inbox_on
+                else "The harness's own servers and skills, listed below; no engine knowledge tools in this session."
+            ),
+            "domain_guidance": optional_block(
+                staged.guidance + (("\n\n" + answered) if answered else "")
+            ),
+        })
+
+        print(f"[Orchestrator] Harness setup session starting ({host}, {harness.label()})")
+        started = time.monotonic()
+        agent = CodingAgentFactory.create(config)
+        agent.initialize(str(campaign))
+        result = agent.generate_code(prompt)
+        cost = agent.get_cumulative_cost()
+        agent.cleanup()
+        duration = time.monotonic() - started
+        self.budget_ledger.record(
+            CostEntry(component="harness_setup", cost_usd=float(cost), duration_seconds=duration)
+        )
+        for name, before in pinned.items():
+            if _directory_manifest(campaign / name) != before:
+                raise HarnessError(
+                    f"the harness setup session of {harness.label()} changed {name}/, the campaign's "
+                    f"pinned {'evaluation' if name == 'kapso_evaluation' else 'data'}; a harness prepares "
+                    f"resources under {PREPARED_DIR}/ and leaves these alone"
+                )
+        if inbox_on:
+            asked = [
+                request for request in open_requests(load_requests(inbox["path"]))
+                if request.node == HARNESS_SETUP_NODE
+            ]
+            if asked:
+                self._setup_requests = asked
+                print(
+                    f"[Orchestrator] Harness setup asked the person ({len(asked)} request(s)); "
+                    "the campaign pauses before its first experiment"
+                )
+                return
+        if not result.success:
+            raise HarnessError(f"the harness setup session of {harness.label()} failed: {result.error}")
+        prepared = list(prepared_names(campaign))
+        self._harness_setup = {
+            "done": True,
+            "prepared": prepared,
+            "cost_usd": float(cost),
+            "duration_seconds": round(duration, 1),
+        }
+        self._write_task_statement(**self._task_budget)
+        status = getattr(strategy, "operation_status", None)
+        if status is not None:
+            status.update(harness_setup={"prepared": prepared})
+        self._save_run_checkpoint(status="running")
+        print(f"[Orchestrator] Harness setup done: prepared {', '.join(prepared) or 'nothing'}")
+
+    def _stage_maintainer(self, module: str, label: str):
+        """The harness's module for one maintainer session at the campaign
+        root; None without a harness."""
+        if self.harness is None:
+            return None
+        return self.search_strategy.stage_harness_for(
+            module, self.search_strategy.workspace_dir, label,
+            self.evaluation_maintainer.coding_agent_config.agent_type,
+        )
+
     def _ensure_evaluation_registered(self) -> None:
         """Run the maintainer's setup once; validate consistency on resume."""
         if self.evaluation_maintainer is None:
@@ -717,6 +799,7 @@ class OrchestratorAgent:
                 goal=self.goal,
                 eval_dir=self.eval_dir,
                 data_dir=self.data_dir,
+                staged=self._stage_maintainer("setup", "evaluation_setup"),
             )
             self._record_maintainer_spend()
         self._adopt_registered_evaluation()
@@ -942,7 +1025,8 @@ class OrchestratorAgent:
                     requested_by="implementation",
                     summary=match.group(1).strip(),
                     evidence=candidate.evaluation_output or "",
-                )
+                ),
+                staged=self._stage_maintainer("verification", f"evaluation/change_{candidate.node_id}"),
             )
             self._record_maintainer_spend()
             print(
@@ -983,6 +1067,14 @@ class OrchestratorAgent:
         """The durable clock: prior slices plus the live one."""
         return self.budget_ledger.elapsed_seconds()
 
+    def _goal_already_achieved(self) -> bool:
+        """Whether the campaign already stopped on its goal: the latest
+        node voted stop and the handler honours the vote. True only on a
+        resume whose delivery never completed (the checkpoint stays
+        `running` until it does)."""
+        history = self.search_strategy.get_experiment_history()
+        return bool(history) and bool(history[-1].should_stop) and bool(self.strategy_params["honor_agent_stop"])
+
     def _save_run_checkpoint(
         self, *, status: str, last_stop: Optional[str] = None
     ) -> None:
@@ -1005,16 +1097,64 @@ class OrchestratorAgent:
             last_stop=last_stop,
             cost_config=self.cost_config,
             maximize_scoring=self.maximize_scoring,
+            harness=self.harness.ref_dict() if self.harness is not None else None,
+            harness_setup=self._harness_setup,
+            experience=self.experience,
         )
         with self._checkpoint_lock:
             self.checkpoint_store.save(checkpoint)
 
     def _status_budget_view(self) -> Dict[str, Any]:
-        """The status file's time-only budget payload (observability §1)."""
+        """The status file's time-only budget payload (observability §1):
+        the clock, the budget and the round's reserve for finishing."""
         return {
             "elapsed_min": round(self.get_elapsed_seconds() / 60, 1),
             "total_min": self._status_budget_total_min,
+            "reserve_min": (
+                round(self._status_reserve_seconds / 60, 1)
+                if self._status_reserve_seconds is not None and self._status_budget_total_min is not None
+                else None
+            ),
         }
+
+    def _delivery_seconds(self) -> float:
+        """The delivery's protected slice: the fidelity measurement when a
+        maintainer measures the delivered artifact, the final checkout's
+        seconds otherwise."""
+        if self._fidelity_active:
+            return self.evaluation_maintainer.timing(1.0).upper_seconds
+        return DELIVERY_SECONDS
+
+    def _round_reserve_seconds(self, budget_spec: BudgetSpec) -> float:
+        """The reserve this round keeps out of the search: the set one,
+        else derived from the obligations — the harness's verification
+        minutes when it verifies, the judge's last observed duration (the
+        config's judge reserve before one: a judge takes minutes, and a
+        reserve at the floor let the first attempt's verification run the
+        remainder down to 59 s for it, under the floor, the hour's attempt
+        then unjudged — the release gate, 2026-10-30), the delivery's
+        slice; either bounded by a quarter of the budget."""
+        bounded = budget_spec.bounded_reserve_seconds()
+        if bounded is not None:
+            return bounded
+        verification = (
+            float(self.harness.settings["verification_minutes"]) * 60.0
+            if self.harness is not None and self.harness.has_content("verification")
+            else 0.0
+        )
+        return budget_spec.bound_reserve(verification + self._judge_reserve_seconds(budget_spec) + self._delivery_seconds())
+
+    def _judge_reserve_seconds(self, budget_spec: BudgetSpec) -> float:
+        """What this round keeps for the judge: the last judge's observed
+        duration in the campaign, the config's reserve before one. The
+        round's reserve holds it back from the search, and the strategy's
+        finishing stages leave it standing (the snapshot carries it)."""
+        observed = [
+            node.phase_telemetry["feedback"]["duration_seconds"]
+            for node in self.search_strategy.get_experiment_history()
+            if "feedback" in node.phase_telemetry
+        ]
+        return observed[-1] if observed else budget_spec.judge_reserve_seconds
 
     def _platform_budget_view(self) -> Optional[Dict[str, Any]]:
         """The campaign's platform spend against its budget, in the
@@ -1048,7 +1188,7 @@ class OrchestratorAgent:
     def _run_checkpoint_heartbeat(self, interval_seconds: float) -> None:
         """Daemon loop: keep the durable clock and spend fresh between
         boundary checkpoints so a preemption cannot rewind the budget on resume.
-        The same beat refreshes the observability status file — evolve's
+        The same beat refreshes the observability status file — a build's
         liveness signal rides this existing daemon (observability §2)."""
         while not self._heartbeat_stop.wait(interval_seconds):
             if self.operation_status is not None:
@@ -1112,6 +1252,8 @@ class OrchestratorAgent:
     def _waiting_requests(self) -> List[Any]:
         """Open inbox requests of nodes waiting for the person; empty for
         strategies without an inbox."""
+        if self._setup_requests:
+            return list(self._setup_requests)
         hook = getattr(self.search_strategy, "waiting_requests", None)
         return list(hook()) if callable(hook) else []
 
@@ -1289,9 +1431,15 @@ class OrchestratorAgent:
         cost_budget: Optional[float] = None,
         finalization_reserve_minutes: Optional[float] = None,
         on_status: Optional[Callable[[Dict[str, Any]], None]] = None,
+        finish: Optional[Callable[["SolveResult"], None]] = None,
     ) -> SolveResult:
         """
-        Run the main experimentation loop.
+        Run the main experimentation loop. `finish`, when given, runs
+        inside the protected region after the search and before the
+        terminal publish: the caller's delivery (the checkout and the
+        record), so a watcher that sees `done` finds the record, and a
+        delivery that raises is published as the campaign's failure with
+        a checkpoint a resume can finish from.
         
         In the new design:
         1. Developer agent implements solution and runs evaluation
@@ -1313,92 +1461,155 @@ class OrchestratorAgent:
         Returns:
             SolveResult with best_experiment, final_feedback, stopped_reason
         """
-        # Explicit arguments win over the mode config's optional budget block.
-        budget_spec = BudgetSpec.resolve(
-            config_block=self._config_budget,
-            time_budget_minutes=time_budget_minutes,
-            cost_budget=cost_budget,
-            finalization_reserve_minutes=finalization_reserve_minutes,
-        )
-        # Pinned for components that run outside the iteration loop (the
-        # evaluator-transition bridge derives its deadline from it).
-        self.budget_spec = budget_spec
-        self.budget_ledger.start_clock()
-        # The maintainer's setup transaction runs inside the budgeted clock,
-        # before iteration 1; on resume it validates registry consistency.
-        self._ensure_evaluation_registered()
-
-        # The fidelity policy: deterministic profile grants over measured
-        # evaluation timing. Enabled by mode (or auto-affordability); the
-        # escrowed reserve becomes the committed-run slot when active.
-        fidelity_policy: Optional[FidelityPolicy] = None
-        fidelity_active = False
-        if (
-            self.fidelity_spec.mode != "off"
-            and self.evaluation_maintainer is not None
-        ):
-            fidelity_policy = FidelityPolicy(
-                spec=self.fidelity_spec,
-                strategy=self.search_strategy,
-                maintainer=self.evaluation_maintainer,
-            )
-            # Auto mode prices a full run from restored history: a fresh
-            # campaign is conservatively tiered; every resume re-prices.
-            fidelity_active = fidelity_policy.enabled(
-                budget_spec.time_budget_seconds,
-                self.search_strategy.get_experiment_history(),
-                self._probe_estimate_seconds(budget_spec),
-            )
-        self._fidelity_active = fidelity_active
-        # Replay a pending transition or anchor restored scores on the
-        # current registry head before any selection happens.
-        self._reconcile_evaluator_state()
-        reserve_run_pending = False
-        insured_logged = False
-
-        stopped_reason = "max_iterations"  # default
-        self._platform_budget_exhausted = False
-        stop_detail: Optional[str] = None
-        iterations_run = 0
-
-        # Bootstrap checkpoint: registration and reconciliation are paid,
-        # durable work — a crash at any later point must resume instead of
-        # restarting the campaign (and re-buying the maintainer setup).
-        self._save_run_checkpoint(status="running")
-        heartbeat_seconds = self._config_budget.get("checkpoint_heartbeat_seconds")
-
-        # Observability (design §1/§2): the status file lives with the
-        # campaign's artifacts; the checkpoint-heartbeat daemon below is
-        # its liveness signal, so no separate daemon thread is started.
-        self._status_budget_total_min = (
-            round(budget_spec.time_budget_seconds / 60, 1)
-            if budget_spec.time_budget_seconds is not None else None
-        )
-        self.operation_status = EvolveStatus(
-            Path(self.search_strategy.workspace.workspace_dir)
-            / ".kapso" / "status.json",
-            heartbeat_seconds=(
-                float(heartbeat_seconds) if heartbeat_seconds else None
-            ),
-            on_status=on_status,
-            budget=self._status_budget_view(),
-            **self._status_platform_budget_payload(),
-        )
-        self.search_strategy.operation_status = self.operation_status
-        print(f"status: {self.operation_status.path}")
-
-        if heartbeat_seconds and self.checkpoint_store is not None:
-            threading.Thread(
-                target=self._run_checkpoint_heartbeat,
-                args=(float(heartbeat_seconds),),
-                name="run-checkpoint-heartbeat",
-                daemon=True,
-            ).start()
-
-        # Get problem context once (experiment history is accessed via MCP)
-        problem = self.problem_handler.get_problem_context()
-
+        # The protected region is the whole of solve(): from its first
+        # statement on, an exception in flight is published as the
+        # campaign's failure in the `finally` below (wp6-observability.md,
+        # change 6), and the delivery the caller hands in as `finish` runs
+        # inside it too.
+        result: Optional[SolveResult] = None
         try:
+            # Explicit arguments win over the mode config's optional budget block.
+            budget_spec = BudgetSpec.resolve(
+                config_block=self._config_budget,
+                time_budget_minutes=time_budget_minutes,
+                cost_budget=cost_budget,
+                finalization_reserve_minutes=finalization_reserve_minutes,
+            )
+            # Pinned for components that run outside the iteration loop (the
+            # evaluator-transition bridge derives its deadline from it).
+            self.budget_spec = budget_spec
+            self._fidelity_active = False
+            self.budget_ledger.start_clock()
+            # With a harness, the task statement every session reads first is
+            # written before any session runs (and again after harness setup).
+            # The effective budget, as resolved: what a session reading the
+            # statement must plan against.
+            self._task_budget = dict(
+                experiments=experiment_max_iter,
+                minutes=budget_spec.time_budget_seconds / 60.0 if budget_spec.time_budget_seconds is not None else None,
+                usd=budget_spec.cost_budget_usd,
+                reserve_minutes=(
+                    budget_spec.bounded_reserve_seconds() / 60.0
+                    if budget_spec.bounded_reserve_seconds() is not None else None
+                ),
+            )
+            self._write_task_statement(**self._task_budget)
+            # The harness's own setup session, once, before the evaluation is
+            # registered: a domain statement and prepared resources. The data
+            # copy is pinned across it and across the maintainer's session,
+            # which carries the harness's setup module too.
+            campaign = Path(self.search_strategy.workspace_dir)
+            pinned_data = _directory_manifest(campaign / "kapso_datasets") if self.harness is not None else None
+            if self.harness is not None:
+                # The setup session's clamp reads a budget view too: without one
+                # a one-minute campaign would start a twenty-minute session.
+                self.search_strategy.observe_budget(BudgetSnapshot(
+                    iteration_index=0,
+                    max_iterations=experiment_max_iter,
+                    elapsed_seconds=self.get_elapsed_seconds(),
+                    cost_usd=self.get_cumulative_cost(),
+                    time_budget_seconds=budget_spec.time_budget_seconds,
+                    cost_budget_usd=budget_spec.cost_budget_usd,
+                    finalization_reserve_seconds=self._round_reserve_seconds(budget_spec),
+                    min_agent_timeout_seconds=budget_spec.min_agent_timeout_seconds,
+                    judge_reserve_seconds=self._judge_reserve_seconds(budget_spec),
+                    delivery_seconds=self._delivery_seconds(),
+                ))
+            self._run_harness_setup()
+            # The maintainer's setup transaction runs inside the budgeted clock,
+            # before iteration 1; on resume it validates registry consistency.
+            # Not while the setup session's question stands: the campaign
+            # pauses before spending the maintainer's session on an input the
+            # person has not given.
+            if not self._setup_requests:
+                self._ensure_evaluation_registered()
+                if pinned_data is not None and _directory_manifest(campaign / "kapso_datasets") != pinned_data:
+                    raise HarnessError(
+                        "the evaluation maintainer's setup session changed kapso_datasets/, the campaign's "
+                        "pinned data, with the harness's setup module staged; a session prepares resources "
+                        f"under {PREPARED_DIR}/ and leaves the data alone"
+                    )
+
+            # The fidelity policy: deterministic profile grants over measured
+            # evaluation timing. Enabled by mode (or auto-affordability); the
+            # escrowed reserve becomes the committed-run slot when active.
+            fidelity_policy: Optional[FidelityPolicy] = None
+            fidelity_active = False
+            if (
+                self.fidelity_spec.mode != "off"
+                and self.evaluation_maintainer is not None
+            ):
+                fidelity_policy = FidelityPolicy(
+                    spec=self.fidelity_spec,
+                    strategy=self.search_strategy,
+                    maintainer=self.evaluation_maintainer,
+                )
+                # Auto mode prices a full run from restored history: a fresh
+                # campaign is conservatively tiered; every resume re-prices.
+                fidelity_active = fidelity_policy.enabled(
+                    budget_spec.time_budget_seconds,
+                    self.search_strategy.get_experiment_history(),
+                    self._probe_estimate_seconds(budget_spec),
+                )
+            self._fidelity_active = fidelity_active
+            # Replay a pending transition or anchor restored scores on the
+            # current registry head before any selection happens.
+            self._reconcile_evaluator_state()
+            reserve_run_pending = False
+
+            stopped_reason = "max_iterations"  # default
+            self._platform_budget_exhausted = False
+            stop_detail: Optional[str] = None
+            iterations_run = 0
+
+            # Bootstrap checkpoint: registration and reconciliation are paid,
+            # durable work — a crash at any later point must resume instead of
+            # restarting the campaign (and re-buying the maintainer setup).
+            self._save_run_checkpoint(status="running")
+            heartbeat_seconds = self._status_heartbeat_seconds()
+
+            # Observability (design §1/§2): the status file lives with the
+            # campaign's artifacts. The strategy constructor opened it at
+            # workspace setup (phase `setup`, state `starting`); the loop adopts
+            # it here — the caller's hook, the budget view, and from now on the
+            # checkpoint-heartbeat daemon below beats it too. A strategy built
+            # outside the base constructor (a test double) gets one now.
+            self._status_budget_total_min = (
+                round(budget_spec.time_budget_seconds / 60, 1)
+                if budget_spec.time_budget_seconds is not None else None
+            )
+            # A new slice on a finished status (solve() called again on the
+            # same orchestrator) opens a fresh file, as every slice always did.
+            status = getattr(self.search_strategy, "operation_status", None)
+            if status is None or status.terminal:
+                status = BuildStatus(
+                    Path(self.search_strategy.workspace.workspace_dir)
+                    / ".kapso" / "status.json",
+                    heartbeat_seconds=heartbeat_seconds,
+                    harness=self.harness.ref_dict() if self.harness is not None else None,
+                    experience=self.experience,
+                )
+            status.observe(on_status)
+            status.update(
+                heartbeat_seconds=heartbeat_seconds,
+                budget=self._status_budget_view(),
+                **self._status_platform_budget_payload(),
+            )
+            self.operation_status = status
+            self.search_strategy.operation_status = status
+            print(f"status: {self.operation_status.path}")
+
+            if heartbeat_seconds and self.checkpoint_store is not None:
+                threading.Thread(
+                    target=self._run_checkpoint_heartbeat,
+                    args=(float(heartbeat_seconds),),
+                    name="run-checkpoint-heartbeat",
+                    daemon=True,
+                ).start()
+
+            # Get problem context once (experiment history is accessed via MCP)
+            problem = self.problem_handler.get_problem_context()
+
             for i in range(experiment_max_iter):
                 # A node waiting for the person means no new work: the
                 # campaign pauses until the reply is in (design v4 §4.3).
@@ -1406,6 +1617,12 @@ class OrchestratorAgent:
                 if waiting:
                     self._pause_for_user(waiting)
                     stopped_reason = "waiting_for_user"
+                    break
+                if self._goal_already_achieved():
+                    # A resume of a campaign that stopped on its goal but
+                    # never delivered: nothing to search, the delivery is
+                    # what is left.
+                    stopped_reason = "goal_achieved"
                     break
 
                 # The platform budget is read from history before the
@@ -1434,28 +1651,9 @@ class OrchestratorAgent:
                     )
                     if fidelity_active
                     and budget_spec.time_budget_seconds is not None
-                    else budget_spec.finalization_reserve_seconds
+                    else self._round_reserve_seconds(budget_spec)
                 )
-                # Handler-level insurance: a confirmed deliverable on disk
-                # means the endgame risk is already covered — the reserve
-                # shrinks to what freeze still costs (same principle as the
-                # fidelity champion-shrink) and the insured admission floor
-                # applies, keeping late iterations available.
-                insured_reserve_seconds = (
-                    self.problem_handler.deliverable_ready_reserve_seconds()
-                )
-                if insured_reserve_seconds is not None:
-                    shrunk = min(
-                        effective_reserve_seconds, insured_reserve_seconds
-                    )
-                    if shrunk < effective_reserve_seconds and not insured_logged:
-                        print(
-                            "[Orchestrator] Deliverable insured — reserve "
-                            f"{effective_reserve_seconds:.0f}s -> {shrunk:.0f}s, "
-                            "insured admission floor active"
-                        )
-                        insured_logged = True
-                    effective_reserve_seconds = shrunk
+                self._status_reserve_seconds = effective_reserve_seconds
                 # Build the per-iteration budget view from the durable clock,
                 # so a resumed campaign continues its budget instead of
                 # resetting it. Strategies get the snapshot read-only.
@@ -1470,6 +1668,8 @@ class OrchestratorAgent:
                     min_agent_timeout_seconds=(
                         budget_spec.min_agent_timeout_seconds
                     ),
+                    judge_reserve_seconds=self._judge_reserve_seconds(budget_spec),
+                    delivery_seconds=self._delivery_seconds(),
                 )
                 self.search_strategy.observe_budget(snapshot)
                 budget_progress = snapshot.progress_percent
@@ -1493,19 +1693,32 @@ class OrchestratorAgent:
                     )
                     break
 
-                # The reserve gate: refuse admission when what remains
-                # outside the escrowed finalization reserve cannot hold one
-                # more iteration. Hard arithmetic only — no estimation. With
-                # fidelity active and no full-size result yet, the trip does
-                # not merely stop: it grants the guaranteed reserve run.
+                # Admission (the budget's end, wp4-config.md): an ordinary
+                # round is admitted when the searchable remainder covers
+                # the larger of the floor and the last completed round. With
+                # fidelity active and no full-size result yet, a refusal
+                # grants the guaranteed reserve run instead of stopping.
                 remaining_after_reserve = snapshot.remaining_after_reserve
-                if (
-                    remaining_after_reserve is not None
-                    and remaining_after_reserve
-                    <= budget_spec.effective_min_iteration_seconds(
-                        insured=insured_reserve_seconds is not None
+                needed_seconds = budget_spec.min_iteration_seconds
+                last_round = self.search_strategy.last_round_seconds
+                if last_round is not None:
+                    needed_seconds = max(needed_seconds, last_round)
+                # A continuation is not a round: a node suspended on a
+                # request the person has answered resumes its own session
+                # whatever the remainder, since the attempt is under way and
+                # the person answered (the release gate's S5 saw a resume
+                # refused on the paused attempt's own elapsed time — "the
+                # last took 18.2 min" — and the reply never reach the
+                # session). The continuation's result is judged like any
+                # finished node; the next admission sees the real remainder.
+                continuation = self.search_strategy.continues_an_answered_node()
+                if continuation and remaining_after_reserve is not None and remaining_after_reserve < needed_seconds:
+                    print(
+                        "[Orchestrator] Continuing the node that waited on the inbox: "
+                        f"the remaining {max(remaining_after_reserve, 0.0) / 60:.1f} min would not admit a new attempt, "
+                        "and a continuation is not one"
                     )
-                ):
+                if not continuation and remaining_after_reserve is not None and remaining_after_reserve < needed_seconds:
                     champion = (
                         fidelity_policy.full_champion(
                             self.search_strategy.get_experiment_history()
@@ -1547,15 +1760,18 @@ class OrchestratorAgent:
                             min_agent_timeout_seconds=(
                                 budget_spec.min_agent_timeout_seconds
                             ),
+                            judge_reserve_seconds=self._judge_reserve_seconds(budget_spec),
+                            delivery_seconds=self._delivery_seconds(),
                         )
                         self.search_strategy.observe_budget(snapshot)
                     else:
-                        print(
-                            "[Orchestrator] Stopping: finalization reserve "
-                            "reached — protecting the endgame window"
+                        prose = admission_refusal(
+                            remaining_after_reserve, needed_seconds, last_round,
                         )
+                        print(f"[Orchestrator] Stopping: {prose}")
+                        self.operation_status.note(f"stopping: {prose}")
                         stopped_reason = "budget_exhausted"
-                        stop_detail = "finalization_reserve"
+                        stop_detail = ATTEMPT_WOULD_NOT_FIT
                         self._save_run_checkpoint(
                             status="running",
                             last_stop=stop_detail,
@@ -1712,6 +1928,7 @@ class OrchestratorAgent:
                         evaluation_valid=node.evaluation_valid,
                         feedback=node.feedback,
                         score=node.score,
+                        cards_load_bearing=list(node.cards_load_bearing),
                     )
 
                 self.current_feedback = node.feedback
@@ -1722,6 +1939,17 @@ class OrchestratorAgent:
                     self._save_run_checkpoint(
                         status="running", last_stop=stopped_reason,
                     )
+                    break
+                cut = self.search_strategy.finishing_cut
+                if cut is not None:
+                    # A finishing session of this round was not launched
+                    # or was cut: the budget's end, said by name.
+                    prose = f"a finishing session was cut: {cut}"
+                    print(f"[Orchestrator] Stopping: {prose}")
+                    self.operation_status.note(f"stopping: {prose}")
+                    stopped_reason = "budget_exhausted"
+                    stop_detail = FINISHING_CUT
+                    self._save_run_checkpoint(status="running", last_stop=stop_detail)
                     break
                 time_budget_exhausted = (
                     budget_spec.time_budget_seconds is not None
@@ -1742,16 +1970,17 @@ class OrchestratorAgent:
                         if time_budget_exhausted
                         else "cost_budget"
                     )
-                # A stop vote only ends the campaign when the handler's task
-                # semantics allow it: open-ended maximization has no "goal
-                # achieved", so there the vote is advisory and the budget is
-                # the only clock.
+                # A stop vote only ends the campaign when the config says the
+                # task has a goal to reach: open-ended maximization has no
+                # "goal achieved", so there the vote is advisory and the
+                # budget is the only clock.
                 stopping = (
                     node.should_stop
-                    and self.problem_handler.honor_agent_stop
+                    and bool(self.strategy_params["honor_agent_stop"])
                 )
+                # `completed` is saved after the delivery, below.
                 self._save_run_checkpoint(
-                    status="completed" if stopping else "running",
+                    status="running",
                     last_stop=stop_detail if budget_exhausted else None,
                 )
 
@@ -1801,12 +2030,11 @@ class OrchestratorAgent:
                             f"{'recorded' if measured else 'failed'} for "
                             f"node {node.node_id}"
                         )
-                    print(
-                        "[Orchestrator] Reserve run complete — stopping "
-                        "with the finalization window honored"
-                    )
+                    prose = "the escrowed full-size attempt was the last the budget covers"
+                    print(f"[Orchestrator] Stopping: {prose}")
+                    self.operation_status.note(f"stopping: {prose}")
                     stopped_reason = "budget_exhausted"
-                    stop_detail = "finalization_reserve"
+                    stop_detail = ATTEMPT_WOULD_NOT_FIT
                     self._save_run_checkpoint(
                         status="running",
                         last_stop=stop_detail,
@@ -1830,6 +2058,26 @@ class OrchestratorAgent:
             if stopped_reason == "max_iterations":
                 # Persist even a zero-iteration slice so it can be resumed.
                 self._save_run_checkpoint(status="running")
+            result = SolveResult(
+                best_experiment=self.search_strategy.get_deliverable_experiment(),
+                final_feedback=self.last_feedback_result,
+                stopped_reason=stopped_reason,
+                iterations_run=iterations_run,
+                total_cost=self.get_cumulative_cost(),
+                cumulative_iterations=self.completed_iterations,
+                stop_detail=stop_detail,
+                requests=(
+                    list(self._waiting_payload)
+                    if stopped_reason == "waiting_for_user" else []
+                ),
+                platform_budget=self._platform_budget_view(),
+            )
+            if finish is not None:
+                finish(result)
+            if stopped_reason == "goal_achieved":
+                # Completed only once delivered: a delivery that raised
+                # leaves a checkpoint a resume can finish from.
+                self._save_run_checkpoint(status="completed")
         finally:
             self._heartbeat_stop.set()
             # Terminal status without an except: sys.exc_info() inside a
@@ -1837,12 +2085,17 @@ class OrchestratorAgent:
             # closes on both paths and the error still propagates
             # unhandled (Rule 2).
             in_flight = sys.exc_info()[1]
-            if in_flight is not None:
-                self.operation_status.failed(
+            # Before the loop adopted the status (an exception in the
+            # harness setup), the strategy's own is the campaign's.
+            status = self.operation_status or getattr(self.search_strategy, "operation_status", None)
+            if status is None or status.terminal:
+                pass
+            elif in_flight is not None:
+                status.failed(
                     in_flight, budget=self._status_budget_view()
                 )
             else:
-                self.operation_status.done(
+                status.done(
                     stopped_reason=stopped_reason,
                     stop_detail=stop_detail,
                     budget=self._status_budget_view(),
@@ -1866,17 +2119,4 @@ class OrchestratorAgent:
             if in_flight is not None:
                 self._persist_budget_totals()
 
-        return SolveResult(
-            best_experiment=self.search_strategy.get_deliverable_experiment(),
-            final_feedback=self.last_feedback_result,
-            stopped_reason=stopped_reason,
-            iterations_run=iterations_run,
-            total_cost=self.get_cumulative_cost(),
-            cumulative_iterations=self.completed_iterations,
-            stop_detail=stop_detail,
-            requests=(
-                list(self._waiting_payload)
-                if stopped_reason == "waiting_for_user" else []
-            ),
-            platform_budget=self._platform_budget_view(),
-        )
+        return result

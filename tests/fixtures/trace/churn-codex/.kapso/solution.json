@@ -1,0 +1,41 @@
+{
+  "schema_version": 5,
+  "brief": {
+    "objective": "Raise the churn model's out-of-sample ROC AUC above 0.85\nwithout changing the prediction contract: predict.py keeps\nwriting id,churn_probability for every holdout id.",
+    "measured_by": "kapso_evaluation/evaluate.py, ROC AUC on the held-out rows",
+    "baseline": "0.797 (the shipped logistic regression, bootstrap SE 0.010)",
+    "target": "0.85",
+    "rules": [
+      "the evaluator is never modified",
+      "no fitting on the holdout rows; the labels are not in the workspace"
+    ],
+    "budget": {
+      "minutes": 45.0,
+      "experiments": 3,
+      "usd": null,
+      "reserve_minutes": null
+    },
+    "harness": null,
+    "experience": []
+  },
+  "branch": "generic_exp_0",
+  "commit": "9ee5956a1bf929500cb7429dc0639a60d7b3b592",
+  "base_commit": "525033782312029ab2d4ebda3689b279307b0730",
+  "score": 0.849,
+  "goal_achieved": false,
+  "stopped_reason": "budget_exhausted",
+  "stop_detail": "attempt_would_not_fit",
+  "experiments": 1,
+  "experiments_total": 1,
+  "cost_usd": 0.0,
+  "requests": [],
+  "feedback": "FIRST ACTION: bank the reproducible 0.8491 XGBoost/CatBoost blend. The saved blend predictions are strictly better on the same 3,000-row evaluation, while the shipped predictions exactly match the 0.8490 pure-XGBoost fallback. Restore and commit the matching 65/35 blend implementation, verify that it reproduces the saved artifact, and make it the incumbent; do not merely hardcode the saved predictions.\n\nThe goal was not achieved: 0.8490 is below the strict greater-than-0.85 target. Even the banked 0.8491 result remains 0.0009 short. Both the 0.0001 artifact difference and the remaining gap are far below the stated 0.010 bootstrap SE, so treat them as noise rather than evidence for further seed, weight, or feature-list polishing.\n\nThe evaluation is fair for this submission. The evaluator is unchanged, deletes stale output, runs the fixed prediction command, validates columns, duplicate IDs, coverage, finiteness and bounds, joins private labels by ID, and computes full-sample ROC AUC. Although it does not reject extra prediction IDs, the session independently verified exactly 3,000 unique holdout IDs in original order, so that omission did not affect this score. No evaluation tampering or holdout fitting is evident.\n\nContest economics: time-to-first-strong-score A \u2014 the 0.8491 full score landed at about minute 3 of a 231-second implementation session. Critical-path velocity A \u2014 two full-fidelity artifacts were scored in 3.85 minutes, about 0.52 validated artifacts per minute. Confirmation overhead A \u2014 the approximately 0.28 compute-minutes of direct contract checks were mandatory integrity gates, with no discretionary repeat confirmations. The bold choice to evaluate the strongest blend first was correct, and the predeclared fallback avoided private-score fishing. However, ending with roughly 41 of 45 minutes and experiment three unused was poor campaign allocation once the target remained unmet; the fallback scored 0.0001 worse and earned no return.\n\nCounterfactual ledger: approximately 0.56 compute-minutes produced and scored both candidates, approximately 0.28 compute-minutes were mandatory contract-gate duplicate fits, and zero discretionary confirmation time was wasted; leaving roughly 41 wall-minutes and one experiment idle cost one genuinely new model family and the only remaining chance to close the 0.0009 gap.\n\nPLAN.md adherence: A. The declared profiling, implementation, contract gate, evaluation, and freeze capture occurred; activating the fallback was a deliberate, documented revision already prescribed by the solution, not undeclared drift.\n\nFor the final experiment, avoid validation-polishing of this highly correlated XGBoost/CatBoost lineage. Test a structurally different, variance-controlled GA2M/Explainable Boosting model with bagged learned univariate shapes and a small training-selected interaction set. Compare it against the banked blend using repeated stratified folds plus multiple blocked/rolling splits, tracking paired mean and worst-fold AUC. Spend the final full evaluation only if it improves internal mean by roughly 0.002\u20130.003 and does not degrade blocked validation; otherwise retain the banked blend.\n\nKeep the immutable rules verbatim: the evaluator is never modified; no fitting on the holdout rows; the labels are not in the workspace. Preserve the exact id,churn_probability output for every holdout ID.",
+  "evaluator": null,
+  "harness": null,
+  "experience": [],
+  "verification": null,
+  "rejected_candidates": 0,
+  "callback_metrics": {},
+  "callback_primary_metric": null,
+  "session_failures": []
+}

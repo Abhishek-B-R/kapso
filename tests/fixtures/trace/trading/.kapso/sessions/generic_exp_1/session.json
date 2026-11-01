@@ -1,0 +1,74 @@
+{
+  "module": "implementation",
+  "host": "claude_code",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "83b6c0b60d6ac724613c469bc1315d5cba32420bdf705d8f4c2c04c73d834f2b",
+    "source": "/home/ubuntu/fixture/examples/harnesses/trading"
+  },
+  "session_dir": "/campaign/sessions/generic_exp_1",
+  "pages": [
+    "guardrails.md",
+    "implementation.md"
+  ],
+  "skills": [
+    "backtesting",
+    "market-data",
+    "risk-limits",
+    "lookahead-scan"
+  ],
+  "mcp_servers": [
+    "market-data"
+  ],
+  "agents": [
+    "lookahead-auditor"
+  ],
+  "hooks": [
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared",
+    "deny-snapshot",
+    "scan-writes",
+    "require-results"
+  ],
+  "prepared": [
+    "market-data"
+  ],
+  "stream": "/campaign/.kapso/sessions/generic_exp_1/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-25T18:59:34+00:00",
+      "ended": "2026-10-25T19:02:37+00:00",
+      "duration_seconds": 183.232,
+      "deadline_seconds": null,
+      "model": "claude-opus-5",
+      "cli_session_id": "1a982e17-62db-497e-9b9a-0cf66a542182",
+      "exit": "timeout",
+      "error": "Claude Code CLI exceeded its 182.63159913599975s deadline and was terminated",
+      "retry_reason": null,
+      "cost_usd": null,
+      "cost_cumulative": null,
+      "turns": 0,
+      "usage": null,
+      "tools": {
+        "Bash": 14
+      },
+      "gates": {},
+      "hooks": [
+        {
+          "event": "SessionStart",
+          "name": "SessionStart:startup",
+          "decision": "context",
+          "reason": null,
+          "exit_code": 0,
+          "outcome": "success"
+        }
+      ],
+      "delegates": [],
+      "host_errors": [],
+      "files_changed": [],
+      "last_message": "I'll start by orienting in the repo and checking the state of things."
+    }
+  ]
+}

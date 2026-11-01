@@ -24,8 +24,7 @@ from dotenv import find_dotenv, load_dotenv
 
 from benchmarks.kg_retrieval.labels import load_labels
 from benchmarks.kg_retrieval.metrics import aggregate
-from kapso.core.cli_inference import resolve_inference_config
-from kapso.core.config import deep_merge, load_config, load_mode_config
+from kapso.core.config import RUNNER_KEY, deep_merge, load_config, read_yaml
 from kapso.knowledge_base.search import (
     KGIndexInput,
     KGSearchFilters,
@@ -287,27 +286,31 @@ def validate_arms(arms):
 
 
 def load_layers(config_paths):
-    """The eval config: later files deep-merge over earlier ones."""
+    """The override files, later ones deep-merged over earlier ones; each
+    is checked as a kapso override, the eval's own settings under
+    `benchmark` (the runners' key)."""
     merged = {}
     for path in config_paths:
-        merged = deep_merge(merged, load_config(path))
+        load_config(path)
+        merged = deep_merge(merged, read_yaml(path))
     return merged
 
 
-def build_search(config_paths, eval_config):
-    """A KGGraphSearch with the reranker on, so a call can switch it off."""
-    mode_config = load_mode_config(config_paths[0])
-    inference = resolve_inference_config(config_paths[0])
-    for path in config_paths[1:]:
-        layer = load_config(path).get("inference", {})
-        inference = deep_merge(inference, layer)
+def build_search(layers, eval_config):
+    """A KGGraphSearch with the reranker on, so a call can switch it off;
+    the engine's blocks come from the layered files over the packaged
+    config, the way a build's one override does."""
+    config = deep_merge(
+        load_config(),
+        {key: value for key, value in layers.items() if key != RUNNER_KEY},
+    )
     params = dict(eval_config["search"])
     params.update(
         include_connected_pages=False,
         use_llm_reranker=True,
-        models=mode_config.get("models"),
-        retry=mode_config.get("retry"),
-        inference=inference,
+        models=config["models"],
+        retry=config["retry"],
+        inference=config["inference"],
     )
     check_isolated(params)
     return KnowledgeSearchFactory.create(SEARCH_BACKEND, params=params)
@@ -323,7 +326,8 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
-    eval_config = load_layers(args.config)["retrieval_eval"]
+    layers = load_layers(args.config)
+    eval_config = layers[RUNNER_KEY]
     validate_arms(eval_config["arms"])
     ks, top_k, pool_size = (
         eval_config["ks"],
@@ -342,7 +346,7 @@ def main(argv=None):
     if not any(query.stress for query in queries):
         raise ValueError("no stress queries in the labels")
 
-    search = build_search(args.config, eval_config)
+    search = build_search(layers, eval_config)
     if eval_config["index_corpus"]:
         search.index(KGIndexInput(wiki_dir=corpus_dir))
     report = evaluate(

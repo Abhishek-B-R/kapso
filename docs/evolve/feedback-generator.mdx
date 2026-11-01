@@ -96,21 +96,23 @@ Suggestions:
 
 ## How do I use it?
 
-### Automatic (via evolve)
+### Automatic (via build)
 
-The feedback generator is automatically used when you call `kapso.evolve()`:
+The feedback generator is automatically used when you call `kapso.build()`:
 
 ```python
-solution = kapso.evolve(
-    goal="Build a classifier with accuracy > 0.9",
-    max_iterations=10,
+from kapso import Budget
+
+solution = kapso.build(
+    "Build a classifier with accuracy > 0.9",
+    budget=Budget(experiments=10),
 )
 
 # Check if goal was achieved
-if solution.succeeded:
-    print(f"Goal achieved with score: {solution.final_score}")
+if solution.goal_achieved:
+    print(f"Goal achieved with score: {solution.score}")
 else:
-    print(f"Final feedback: {solution.final_feedback.feedback}")
+    print(f"Final feedback: {solution.feedback}")
 ```
 
 ### Direct usage
@@ -141,14 +143,15 @@ else:
 
 ## Configuration
 
-The feedback generator is integrated within the search strategy. You can configure the agent type in the search strategy configuration:
+The judge is the `judge` role of the search strategy: its own `cli`, `model`, `effort` and `timeout`, the build's host where unset. A judge that answers in full without its tags is resumed once in its own session with the nudge; one cut at the budget's deadline leaves the attempt `unjudged` (see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends)).
 
 ```yaml
-feedback_generator:
-  type: "claude_code"
-  model: "claude-opus-5"
-  agent_specific:
-    auth_mode: "oauth"
+search_strategy:
+  params:
+    judge:
+      cli: codex
+      effort: xhigh
+      timeout: 900
 ```
 
 ## How does the search strategy use it?
@@ -195,13 +198,13 @@ goal = "Build a good classifier"
 
 ### 2. Let agent build evaluation
 
-Don't provide `eval_dir` unless you have specific evaluation requirements. The agent builds domain-appropriate evaluation:
+Pass an evaluation directory when you have one; otherwise the campaign builds the evaluator from the brief. The agent builds domain-appropriate evaluation:
 
 ```python
 # Agent builds evaluation dynamically
-solution = kapso.evolve(
-    goal="Optimize inference speed to < 10ms per sample",
-    max_iterations=10,
+solution = kapso.build(
+    "Optimize inference speed to < 10ms per sample",
+    budget=Budget(experiments=10),
 )
 ```
 

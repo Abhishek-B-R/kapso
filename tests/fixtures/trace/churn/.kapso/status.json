@@ -1,0 +1,51 @@
+{
+ "operation": "build",
+ "phases": [
+  "setup",
+  "harness_setup",
+  "lens_planning",
+  "ideation",
+  "implementation",
+  "evaluation",
+  "verification",
+  "feedback"
+ ],
+ "state": "done",
+ "pid": 14225,
+ "started_at": "2026-10-25T19:09:47+00:00",
+ "heartbeat_at": "2026-10-25T19:23:48+00:00",
+ "phase": "feedback",
+ "phase_started_at": "2026-10-25T19:20:56+00:00",
+ "recent": [
+  "19:09 iteration 1 started (budget 0%)",
+  "19:23 node 0 completed score=0.846; knowledge: experiment_history 1 (get_top_experiments); bank 1 (bank_index)"
+ ],
+ "harness": null,
+ "experience": [
+  {
+   "reference": "mine",
+   "kind": "bank",
+   "resolved": "/home/ubuntu/.kapso/bank.git",
+   "head": "a9ddad3d302dcaa258cca1d213f33bd5bd0600f0",
+   "provenance": "measured by you",
+   "scope": "harness"
+  }
+ ],
+ "heartbeat_seconds": 60.0,
+ "budget": {
+  "elapsed_min": 14.0,
+  "total_min": 15.0
+ },
+ "iteration": 1,
+ "last": {
+  "score": 0.846,
+  "node": 0
+ },
+ "best": {
+  "score": 0.846,
+  "node": 0
+ },
+ "finished_at": "2026-10-25T19:23:48+00:00",
+ "stopped_reason": "max_iterations",
+ "stop_detail": null
+}

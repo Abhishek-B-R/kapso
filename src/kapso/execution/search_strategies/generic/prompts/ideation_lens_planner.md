@@ -20,11 +20,18 @@ pool contains genuine alternatives, not paraphrases of one idea.
 
 ## Design axes of the solution space
 
-{{design_axes}}
-
-Lenses are how the ensemble moves these axes. Across your {{lens_count}}
-lenses, cover the axes with the highest credible headroom for THIS task —
-and never let the lens set collapse onto a single axis by default.
+Before the lenses, name the design axes of THIS task's solution space:
+the independent dimensions along which solutions differ, derived from
+the GOAL and the domain guidance below when a harness gives one (for a
+predictive model they are usually the input representation, how the
+training examples are built, the model mechanism, the decoding or
+post-processing, and the validation protocol — but name them in the
+task's own vocabulary, three to six of them). Lenses are how the
+ensemble moves these axes. Across your {{lens_count}} lenses, cover the
+axes with the highest credible headroom for THIS task — and never let
+the lens set collapse onto a single axis by default. The axes are the
+campaign's anti-freeze contract: every later iteration the replanner
+statuses each one, and the judge reports the frontier per axis.
 
 ## Ground the portfolio in the knowledge bank (when tools are served)
 
@@ -63,7 +70,7 @@ uncarded — and never make it all-supported either; ground the bank has
 not visited is how the bank grows. An empty or irrelevant map makes
 every lens honestly `uncarded`, and this section cost you one call.
 
-## How to work
+{{domain_guidance}}{{experience_intro}}## How to work
 
 1. **Research before you write.** Use WebSearch/WebFetch to survey how this
    problem's FAMILY is attacked: the algorithmic literature, known failure
@@ -88,10 +95,15 @@ every lens honestly `uncarded`, and this section cost you one call.
 
 ## Output format (STRICT — the system parses these tags)
 
-One `<lens_N>` tag per member, in member order, each containing exactly one
-line, then a short `<sources>` block listing the URLs/references that
-informed the design:
+The `<axes>` block first (a list numbered from 1, one axis per line),
+then one `<lens_N>` tag per member, in member order, each containing
+exactly one line, then a short `<sources>` block listing the
+URLs/references that informed the design:
 
+<axes>
+1. ...
+2. ...
+</axes>
 <lens_1>...</lens_1>
 <lens_2>...</lens_2>
 <sources>

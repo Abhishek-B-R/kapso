@@ -206,6 +206,7 @@ def test_node_round_trips_fidelity_fields_and_attempts():
 
 def make_strategy():
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.registered_evaluator_id = "eval-v1"
     strategy.registered_subsample_seed = 1337
     strategy.fidelity_decision = None
@@ -253,6 +254,7 @@ def test_strategy_records_attempts_only_for_trustworthy_scores():
 
 def test_projection_refresh_moves_the_frontier_to_the_new_ruler():
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.problem_handler = SimpleNamespace(maximize_scoring=True)
 
     old_leader = SearchNode(node_id=0, branch_name="a", score=0.9)
@@ -284,6 +286,7 @@ def test_deliverable_prefers_committed_tier_over_fast_leader():
     follows the tier walk; parent selection alone stays on projections.
     """
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.problem_handler = SimpleNamespace(maximize_scoring=True)
     strategy.registered_evaluator_id = "eval-v1"
 
@@ -390,6 +393,7 @@ def test_minimize_unscored_valid_node_never_ranks_best():
     so the unscored node became "best" for parent selection and history
     ranking. Unscored nodes must stay out of best/top."""
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.problem_handler = SimpleNamespace(maximize_scoring=False)
     champion = SearchNode(node_id=5, branch_name="exp_5", score=2.6433)
     worse = SearchNode(node_id=7, branch_name="exp_7", score=2.6440)
@@ -406,6 +410,7 @@ def test_minimize_parent_selection_prefers_scored_champion():
     """The live failure: exp_9's parent became unscored exp_8 instead of
     champion exp_5. parent_policy=best must chain from the score leader."""
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.problem_handler = SimpleNamespace(maximize_scoring=False)
     strategy.parent_policy = "best"
     champion = SearchNode(node_id=5, branch_name="exp_5", score=2.6433)
@@ -420,6 +425,7 @@ def test_all_unscored_history_yields_no_best_experiment():
     committed-work fallback in _select_parent owns that case, not a
     None-keyed impostor."""
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.problem_handler = SimpleNamespace(maximize_scoring=False)
     strategy.node_history = [
         SearchNode(node_id=0, branch_name="exp_0", score=None),

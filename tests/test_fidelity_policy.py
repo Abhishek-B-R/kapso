@@ -26,6 +26,7 @@ from kapso.execution.fidelity import (
 )
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from tests.harness_support import fake_config
 
 from tests.test_evaluation_maintainer_wiring import (
     ScriptedMaintainerAgent,
@@ -337,6 +338,7 @@ def test_validate_grant_short_circuits_and_appends_a_full_attempt(
     target.branch_name = "generic_exp_0"
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.iteration_count = 0
     strategy.node_history = [target]
     strategy.registered_evaluator_id = "ev-1"
@@ -407,23 +409,18 @@ def test_fidelity_without_a_maintainer_fails_loud(tmp_path, monkeypatch):
     _init_git_workspace(workspace)
     _patch_orchestrator(monkeypatch)
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "budget": {"fidelity": {"mode": "on"}},
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(budget={"fidelity": {"mode": "on"}}),
     )
 
     with pytest.raises(ValueError, match="evaluation_maintainer"):
         _orchestrator(workspace)
 
 
-def fidelity_mode_config(config_path, mode):
-    return {
-        "search_strategy": {"type": "generic", "params": {}},
-        "evaluation_maintainer": {"type": "claude_code"},
-        "budget": {
+def fidelity_config(config_path=None):
+    return fake_config(
+        evaluation_maintainer={"enabled": True},
+        budget={
             "min_iteration_seconds": 90,
             "fidelity": {
                 "mode": "on",
@@ -432,7 +429,7 @@ def fidelity_mode_config(config_path, mode):
                 "committed_run_fraction": 0.45,
             },
         },
-    }
+    )
 
 
 def test_probe_grants_and_reserve_slot_reach_the_strategy(
@@ -445,7 +442,7 @@ def test_probe_grants_and_reserve_slot_reach_the_strategy(
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", fidelity_mode_config
+        orchestrator_module, "load_config", fidelity_config
     )
 
     orchestrator = _orchestrator(workspace)
@@ -467,7 +464,7 @@ def test_reserve_gate_executes_the_escrowed_full_run(tmp_path, monkeypatch):
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", fidelity_mode_config
+        orchestrator_module, "load_config", fidelity_config
     )
 
     orchestrator = _orchestrator(workspace)
@@ -482,7 +479,7 @@ def test_reserve_gate_executes_the_escrowed_full_run(tmp_path, monkeypatch):
     assert decisions[0].reserve_run is True
     assert result.iterations_run == 1
     assert result.stopped_reason == "budget_exhausted"
-    assert result.stop_detail == "finalization_reserve"
+    assert result.stop_detail == "attempt_would_not_fit"
     # The reserve run SPENDS the escrow — except the measurement's slice:
     # the campaign reserve is released (the live escrowed iteration was
     # once killed at the 60s floor) and the timing model's full-eval upper
@@ -530,6 +527,7 @@ def test_frame_run_overrun_is_a_failed_attempt_not_a_crash(
     target.branch_name = "generic_exp_0"
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.node_history = [target]
     strategy.registered_evaluator_id = "ev-1"
     strategy.registered_subsample_seed = 1337
@@ -613,6 +611,7 @@ def test_frame_run_refuses_tampered_data(tmp_path, monkeypatch):
     target.branch_name = "generic_exp_0"
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.node_history = [target]
     strategy.registered_evaluator_id = "ev-1"
     strategy.registered_subsample_seed = 1337
@@ -708,7 +707,7 @@ def test_champion_shrink_returns_escrow_to_the_search_window(
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", fidelity_mode_config
+        orchestrator_module, "load_config", fidelity_config
     )
 
     orchestrator = _orchestrator(workspace)
@@ -791,6 +790,7 @@ def test_frame_run_reports_its_duration_to_the_recorder(
     target.branch_name = "generic_exp_0"
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.node_history = [target]
     strategy.registered_evaluator_id = "ev-1"
     strategy.registered_subsample_seed = 1337

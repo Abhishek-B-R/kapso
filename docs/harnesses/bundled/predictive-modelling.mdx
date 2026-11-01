@@ -1,0 +1,85 @@
+---
+title: "The predictive-modelling harness"
+sidebarTitle: "Predictive modelling"
+description: "The harness that ships for structured prediction: a test set that never trains, cross-validation discipline, leakage as the failure that voids, features before architectures, ensembling last. What it ships, where it came from, and how to run a task on it."
+keywords: ["predictive-modelling harness", "Kapso harness", "RelBench", "MLE-bench", "leakage", "cross-validation", "temporal protocol", "tabular modelling"]
+---
+
+`predictive-modelling` is the harness for structured prediction: a table or a relational database with a target to predict, a validation protocol, and a test set the campaign never trains on. It ships inside the package and loads by name. Its skills name two situations in particular, a relational database with a temporal cutoff and a flat prediction table, and its playbooks cover the other task shapes (text, images, audio, detection and the rest).
+
+What it holds is the discipline, not the task: the brief, the evaluator, the data and the starting repository are yours. The domain stops at the candidate; deployment is the engine's bundled targets.
+
+## Where it came from
+
+The harness was written from the benchmarks the engine was measured on: first RelBench (the feature practices that measured positive when ablated, the temporal protocol, the leakage audit), then MLE-bench (the task-type playbooks and the Kaggle-shaped validation discipline). Every practice is stated as a thing to measure on the task at hand and keep only where its own numbers agree, never as a benchmark's constant: the package's gate runs `check` over each bundled harness at the packaged page budget and scans it for a benchmark constant. The results on those benchmarks, with who ran them and when, are on [RelBench](/docs/benchmarks/relbench) and [MLE-Bench](/docs/benchmarks/mle-bench).
+
+## What it ships
+
+```bash
+kapso harness check predictive-modelling
+```
+
+```text
+check ok (12 skills, 1 agents, 0 servers, 3 hooks)
+name     predictive-modelling 0.3.3
+```
+
+Two pages reach every session: `instructions/guardrails.md`, the standing rules (the task statement before anything else, the data and its shape, the protocol the evaluator fixes), and the module's own page, one each for setup, ideation, implementation, verification, feedback and learning. The skills, the delegate and the hooks are defined once and listed per module:
+
+| Module | Skills | Delegates | Hooks |
+|---|---|---|---|
+| `setup` | sanitized-copy, temporal-protocol, relbench-api, living-documents, hf-model-fetch | | |
+| `ideation` | relational-feature-practices, temporal-protocol, living-documents, task-type-playbooks, ensembling | | protect-prepared |
+| `implementation` | relational-feature-practices, temporal-protocol, relbench-api, living-documents, leakage-scan, cv-protocol, task-type-playbooks, tabular-modeling, ensembling, eda-discipline | leakage-auditor | protect-prepared, deny-web-fetch, deny-web |
+| `verification` | leakage-scan, temporal-protocol | leakage-auditor | protect-prepared, deny-web-fetch, deny-web |
+| `feedback` | cv-protocol, ensembling | | protect-prepared |
+| `learning` | | | |
+
+### The skills
+
+| Skill | What it teaches |
+|---|---|
+| `cv-protocol` | How a change is accepted and a score is read: the official validation number as the selection signal and never the tuning target, a bootstrap gate on internal resampling, folds grouped by the repeated unit |
+| `eda-discipline` | What a run prints so the next session can read it: an exploration block at the start, an error-analysis block at the end, timings per stage, a debug mode over a sample |
+| `ensembling` | How a final ensemble is built and judged: members chosen for decorrelation, the blend that fits the metric, measured against the plain combination |
+| `hf-model-fetch` | How setup finds, screens and pins the pretrained models and companion datasets a task allows from the hub |
+| `leakage-scan` | A static scan for data-access leaks: a label read from test data, a transform fitted on train and test together, a fit on validation labels, and the relational rules on top |
+| `living-documents` | The two append-only files a campaign keeps in its shared artifact directory, the table information and the feature history |
+| `relational-feature-practices` | Practices for relational and tabular prediction that measured positive when ablated, each stated as a thing to measure on the task at hand |
+| `relbench-api` | How to read a relational benchmark database and its task tables through the library from a sanitized copy |
+| `sanitized-copy` | What the sanitized, read-only copy of a time-cut relational database holds and how setup builds it |
+| `tabular-modeling` | The practices for a flat prediction table: many features before any architecture, gradient-boosted trees as the default with their traps, distribution shift, dimensionality |
+| `task-type-playbooks` | The approaches that have won on each kind of prediction task, with the model families that work and the conditions under which they do |
+| `temporal-protocol` | The three temporal regimes of a time-cut task, what each lets a row see, and the one load that silently cripples a rolling model |
+
+### The delegate
+
+`leakage-auditor` audits one attempt for leakage in data access, joins, time handling, the split and the validation chain, and reports pass, fail or inconclusive with evidence. Implementation sessions can call it before they finish; verification sessions call it for the verdict.
+
+### The hooks
+
+- `protect-prepared`, on the file tools: the pinned snapshot under `prepared/` is read-only, since it is what makes attempts comparable. A session that wants derived data writes it somewhere else.
+- `deny-web-fetch`, on the shell, and `deny-web`, on the native web tools: no web in implementation and verification. A candidate's data is the task's data and the sanitized copy, so every attempt sees the same rows and nothing dated after the cutoff.
+
+### The environment
+
+`requirements.txt` lists the Python packages the skills' scripts need. Nothing is installed for you: `kapso harness check` prints a `needs` line with the install command for each one this machine lacks, and a build refuses to start while one is unmet.
+
+## Run a task on it
+
+```bash
+kapso build --harness predictive-modelling --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+```
+
+The brief's `Harness predictive-modelling` line and `kapso.load_harness("predictive-modelling")` name it the same way. The campaign then runs as [Use a harness](/docs/harnesses/use) describes: the setup session pins what every later session should find ready under `prepared/` (a sanitized copy of a time-cut database with the test cutoff applied; the pretrained models and companion datasets the task allows, screened and pinned) and writes the domain statement into the task statement; each implementation session works on its own branch under the hooks; each attempt is verified by a session that reads its diff and its evaluation output, with the leakage auditor's report, and a void attempt keeps its branch and is never delivered.
+
+The benchmark runners run on it by default. Each keeps the task material (the download, the sanitized copy, the provided grader, the brief) and launches the build with this harness; `--harness` names another.
+
+```bash
+expert-relbench -s rel-f1 -t driver-position
+PYTHONPATH=. python -m benchmarks.mle.runner --competition <id>
+```
+
+Related pages: [Use a harness](/docs/harnesses/use) · [Competitive programming](/docs/harnesses/bundled/competitive-programming) · [Write a harness](/docs/harnesses/write) · [Harness reference](/docs/reference/harness) · [RelBench](/docs/benchmarks/relbench) · [MLE-Bench](/docs/benchmarks/mle-bench)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

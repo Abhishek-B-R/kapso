@@ -1,167 +1,60 @@
-"""Contract tests for the Kaggle code-competition benchmark.
+"""Contract tests for the Kaggle code-competition benchmark on build()
+(docs/plans/redesign/wp8-harness-ports.md, change 14).
 
-What must hold: the handler context is the statement plus the minimal kapso
-contract (and stays free of the removed protocol/economics sermons), the
-runner's leaderboard parsing survives CLI pagination noise and windows
-submissions to the run, and the preflight parses a competition slug from its
-URL (fail-loud on a malformed one).
+What must hold: the Brief is the preflight's statement plus the campaign's
+facts and the organizers' rules; the contest root carries the harness's
+conventions (the descriptor, the procedure, the ticket office, the rules);
+the submission procedure submits and records; the provided evaluation
+attributes the ledger to the candidate by content and reports scored,
+pending, rejected, out-of-window and missing as distinct outcomes; the
+submissions list is read page by page in the CLI's own status spelling,
+and the final selection follows the metric's direction inside the run
+window; the preflight's root is validated fail-loud.
 """
 
+import hashlib
 import json
 import os
 import shutil
+import subprocess
+import sys
 import time
+from pathlib import Path
 
 import pytest
 import yaml
 
+from kapso.handles import Brief
 from benchmarks.ioai2026 import kernel_slots
-from benchmarks.ioai2026.handler import KaggleNotebookHandler
-from benchmarks.ioai2026.preflight import SPEC_PATH, build_prompt, validate_root
+from benchmarks.ioai2026.context import PROCEDURE, build_brief
+from benchmarks.ioai2026.data.generic_eval.evaluate import list_submissions, normalize_status, parse_submissions_page
+from benchmarks.ioai2026.preflight import RULES_PATH, SPEC_PATH, build_prompt, validate_root
 from benchmarks.ioai2026.runner import (
-    RULES_PATH,
+    CONTEST_ROOT,
+    EVALUATION_SUITE,
+    LEDGER,
+    SUBMIT_PATH,
     audit_kernel,
     banked_kernel_refs,
     best_public_score,
-    classify_submit_output,
     discover_run_kernels,
-    parse_submissions_json,
+    kernel_metadata_dirs,
     rank_harvest_candidates,
     kernels_run_since,
+    stage_contest_root,
     submission_matches_template,
 )
+from benchmarks.ioai2026.submit import classify_submit_output
 
-CONFIG_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "benchmarks", "ioai2026", "config.yaml"
-)
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "benchmarks", "ioai2026", "config.yaml")
 
-SESSION_CAPS = {"ideation_timeout": 1080, "implementation_timeout": 5400}
-KAGGLE = {"competition": "ioai-2026-ai-models-track-practice-task-1"}
-
-
-def make_handler(tmp_path, **overrides):
-    task_dir = tmp_path / "task"
-    task_dir.mkdir(exist_ok=True)
-    (task_dir / "RULES.md").write_text("rules body")
-    (task_dir / "KAGGLE_CLI.md").write_text("playbook body")
-    kwargs = dict(
-        task_dir=str(tmp_path / "task"),
-        statement="statement body",
-        deadline_ts=time.time() + 7200,
-        session_caps=SESSION_CAPS,
-        kaggle=KAGGLE,
-        insured_reserve_seconds=300.0,
-    )
-    kwargs.update(overrides)
-    return KaggleNotebookHandler(**kwargs)
-
-
-def test_handler_context_is_statement_plus_minimal_contract(tmp_path):
-    handler = make_handler(tmp_path)
-    context = handler.get_problem_context()
-    assert context.startswith("statement body")
-    assert KAGGLE["competition"] in context
-    assert "operator approval" not in context
-    # Competition framing, not a safety floor: highest expected score wins.
-    assert "highest expected final score" in context
-    assert "at least one" not in context
-    # End-to-end clock: submission round trips are inside the budget.
-    assert "END-TO-END" in context and "round trip" in context
-    # Ideas and code come off Kaggle; best_score.log carries only what is
-    # actually banked, which is what releases the finalization reserve.
-    assert "kaggle competitions submissions" in context
-    assert "kernels pull" in context
-    assert "KAGGLE_CLI.md" in context
-    assert "best_score.log" in context and "public scores only" in context
-    assert "<score>" in context
-    # Private leaderboard decides; public is feedback — don't overfit it.
-    assert "PRIVATE leaderboard" in context
-    assert "public-split quirks" in context
-    # Shared knowledge bank: defined for every module, first search priority,
-    # web second (full web search stays allowed, just lower priority). The
-    # handler context owns the bank's layout; the router is the platform-wide
-    # INDEX.md (design decision #13).
-    assert "knowledge_bank" in context and "INDEX.md" in context
-    assert "book_index.md" not in context
-    assert "problem.md" in context and "idea.md" in context
-    assert "FIRST priority" in context and "the open web is second" in context
-    # The winning-solutions-corpus advice lives HERE, not in the generic
-    # prompts (platform de-scent: benchmark-related sources -> handler).
-    assert "winning solutions, top public notebooks" in context
-    assert "EVERY module" in context
-    # The protocol/economics sermons must stay gone.
-    for banned in ("SUBMISSION BUDGET", "INSURANCE", "flock",
-                   "Reward & time economics", "push TWICE"):
-        assert banned not in context
-    # The lane loop is part of the contract: three submit-and-learn rounds,
-    # ROI defined as beating the board (a stable baseline is worth zero),
-    # and web search named as available for the between-round study.
-    assert "TEN submit-and-learn rounds" in context
-    assert "per-lane ceiling" in context
-    assert "web" in context and "search" in context
-    assert "worth ZERO" in context
-    assert "PREDICT" in context and "calibration gap" in context
-    # The 2026-08-03 k=8 run: six lanes exited voluntarily with ~70 min left —
-    # the ROI bar and "ceiling, not a target" read as permission to stop. The
-    # contract now ties session end to the time gate alone.
-    assert "ends ONLY when the remaining time" in context
-    assert "one unacceptable outcome" in context
-    # Contest 3 burned 15/15 team submissions by T+64; contest 4's hard gate
-    # then over-rotated (stopped with 7 submissions unspent). The gate is a
-    # late-game PRIORITY plus an anti-waste rule — never a stop sign.
-    assert "more than 85% of the budget" in context
-    assert "NOT a stop sign" in context
-    assert "left unspent at the deadline is thrown away" in context
-    assert "local=<x>" in context
-    # Budget the contract we author, not the environment it renders in: the
-    # statement is unbounded and the task dir is 37 chars in production but
-    # ~140 under pytest, which used to make this guard measure tmp_path. The
-    # ceiling moves only when a channel is deliberately added (the team-shared
-    # budget gate being the latest, approved 2026-08-06) — never to fit new
-    # prose.
-    contract = context.split("# Kapso operational context", 1)[1]
-    assert len(contract.replace(handler.task_dir, "/task")) < 6500
-
-
-def test_handler_never_honors_agent_stop(tmp_path):
+def test_the_override_file_makes_the_stop_vote_advisory():
     # A competition has no "goal achieved" — the radar rehearsal's judges
     # voted stop at 0.982/1.0 and ended the campaign 25 min early with an
-    # upload unspent. The campaign clock is the only stop.
-    assert make_handler(tmp_path).honor_agent_stop is False
-
-
-def test_handler_rejects_missing_kaggle_slug(tmp_path):
-    with pytest.raises(ValueError, match="kaggle"):
-        make_handler(tmp_path, kaggle={})
-
-
-def test_handler_requires_the_staged_rules_and_points_the_agent_at_them(tmp_path):
-    # A run without the organizers' rules could ship a solution that breaks one
-    # (two GPUs, an external checkpoint) and be voided — so fail at construction.
-    context = make_handler(tmp_path).get_problem_context()
-    assert os.path.join(str(tmp_path / "task"), "RULES.md") in context
-    # The rules themselves stay in RULES.md: the handler is the modality-agnostic
-    # contract, and not every task submits a kernel — some only upload a
-    # prediction file. Reading past attempts off Kaggle is fine; authoring or
-    # pushing a kernel here is what misleads those tasks.
-    body = context.split("# Kapso operational context", 1)[1].lower()
-    for kernel_mechanic in ("cuda", "kernels push", "machine_shape",
-                            "enable_gpu", "kernel-metadata"):
-        assert kernel_mechanic not in body
-    os.remove(tmp_path / "task" / "KAGGLE_CLI.md")
-    with pytest.raises(FileNotFoundError, match="KAGGLE_CLI.md"):
-        KaggleNotebookHandler(
-            task_dir=str(tmp_path / "task"), statement="s",
-            deadline_ts=time.time() + 60, session_caps=SESSION_CAPS,
-            kaggle=KAGGLE, insured_reserve_seconds=300.0,
-        )
-    os.remove(tmp_path / "task" / "RULES.md")
-    with pytest.raises(FileNotFoundError, match="RULES.md"):
-        KaggleNotebookHandler(
-            task_dir=str(tmp_path / "task"), statement="s",
-            deadline_ts=time.time() + 60, session_caps=SESSION_CAPS,
-            kaggle=KAGGLE, insured_reserve_seconds=300.0,
-        )
+    # upload unspent. The campaign clock is the only stop: the config key.
+    with open(CONFIG_PATH) as f:
+        params = yaml.safe_load(f)["search_strategy"]["params"]
+    assert params["honor_agent_stop"] is False
 
 
 def test_staged_rules_carry_the_binding_kernel_constraints():
@@ -189,32 +82,6 @@ def test_preflight_spec_authors_no_submit_mechanics():
     assert "kernels push" not in spec
 
 
-def test_runner_stages_the_real_cli_playbook():
-    # The statement authors no CLI mechanics and the handler hard-requires
-    # KAGGLE_CLI.md, so the runner's staging source must exist and must be the
-    # actual playbook — a moved/renamed skill would otherwise strand every
-    # lane with no submit mechanics at all.
-    from benchmarks.ioai2026.runner import SKILL_PATH
-    assert os.path.isfile(SKILL_PATH)
-    skill = open(SKILL_PATH, encoding="utf-8").read()
-    assert "kernels push" in skill and "competitions submit" in skill
-    # The statement carries a time cap only as a value; the playbook must own
-    # the mechanics that enforce it, or lanes can't apply the cap to pushes.
-    assert "--timeout <seconds>" in skill
-    # Contest 1 (2026-08-04): submissions score on Kaggle's backend and are
-    # never slot-gated; a playbook regression here re-serializes the endgame.
-    assert "Submissions need NO ticket" in skill.replace("**", "")
-    assert "submit it promptly" in skill.replace("**", "")
-    # Every task carries a kernel time cap: a timeout-stopped run surfaces as
-    # CANCEL (not ERROR) with a truncated log, so kernels must self-report
-    # runtime — dropping either fact blinds lanes to cap overruns.
-    assert "CANCEL_ACKNOWLEDGED" in skill.replace("**", "")
-    assert "TOTAL_ELAPSED" in skill
-    # The playbook must agree with RULES.md's never-P100 pin, not offer P100
-    # as a neutral example (P100 provisions but cannot train).
-    assert "P100 provisions but cannot train" in skill
-
-
 def test_harvest_template_is_found_wherever_the_dataset_nests_it(tmp_path):
     # timed-deps competitions nest the sample under dataset/archive/; the old
     # fixed dataset/submission.csv raise killed two runs' whole leaderboard
@@ -230,32 +97,63 @@ def test_harvest_template_is_found_wherever_the_dataset_nests_it(tmp_path):
     assert matches and matches[0].endswith(os.path.join("archive", "submission.csv"))
 
 
-def test_parse_submissions_json_tolerates_pagination_noise():
+def test_a_submissions_page_yields_its_rows_and_the_next_token():
+    # The CLI's status is its enum's repr (the archived list of 2026-10-29:
+    # `SubmissionStatus.COMPLETE`); the token line sits beside the payload;
+    # a competition without a submission prints a sentence, not JSON.
     raw = (
         "Next Page Token = CfDJ8ABC\n"
-        '[{"date": "2026-07-22 15:30:00", "status": "complete", '
+        '[{"date": "2026-07-22 15:30:00", "status": "SubmissionStatus.COMPLETE", '
         '"publicScore": "0.71", "description": "baseline"}]'
     )
-    subs = parse_submissions_json(raw)
-    assert subs[0]["publicScore"] == "0.71"
+    rows, token = parse_submissions_page(raw)
+    assert rows[0]["publicScore"] == "0.71" and token == "CfDJ8ABC"
+    assert parse_submissions_page('[{"date": "x"}]\nNext Page Token = tail\n') == ([{"date": "x"}], "tail")
+    assert parse_submissions_page("No submissions found\n") == ([], None)
     with pytest.raises(ValueError, match="JSON payload"):
-        parse_submissions_json("no brackets here")
+        parse_submissions_page("no brackets here")
+    assert normalize_status("SubmissionStatus.COMPLETE") == "complete"
+    assert normalize_status("SubmissionStatus.ERROR") == "error" and normalize_status(None) == ""
 
 
-def test_best_public_score_windows_to_run_start():
-    submissions = [
-        {"date": "2026-07-22 10:00:00", "status": "complete",
-         "publicScore": "0.99", "description": "yesterday's run"},
-        {"date": "2026-07-22 15:30:00", "status": "complete",
-         "publicScore": "0.41", "description": "insurance"},
-        {"date": "2026-07-22 16:10:00", "status": "complete",
-         "publicScore": "0.78", "description": "distill"},
-        {"date": "2026-07-22 16:40:00", "status": "pending",
-         "publicScore": "", "description": "still scoring"},
+def test_the_listing_walks_every_page(tmp_path):
+    # Twenty rows a page by default: the listing asks for the page size the
+    # config sets and follows the token until the last page.
+    log = tmp_path / "args.log"
+    page_one = ('[{"date": "2026-07-22 15:30:00", "status": "SubmissionStatus.PENDING", "publicScore": "", '
+                '"description": "newer"}]')
+    page_two = ('[{"date": "2026-07-22 10:00:00", "status": "SubmissionStatus.COMPLETE", "publicScore": "0.5", '
+                '"description": "older"}]')
+    env = fake_kaggle(tmp_path / "bin", f"echo \"$*\" >> {log}\ncase \"$*\" in\n  *'--page-token p2'*) echo '{page_two}' ;;\n"
+                      f"  *) echo 'Next Page Token = p2'; echo '{page_one}' ;;\nesac")
+    rows = list_submissions(env["PATH"].split(":")[0] + "/kaggle", "spooky", 200, 30)
+    assert [row["description"] for row in rows] == ["newer", "older"]
+    calls = log.read_text().splitlines()
+    assert len(calls) == 2 and all("--page-size 200" in call for call in calls)
+    assert "--page-token" not in calls[0] and calls[1].endswith("--page-token p2")
+
+
+def test_the_final_selection_follows_the_metrics_direction_inside_the_window():
+    # The Kaggle swap's four scored submissions (a log loss, 2026-10-29):
+    # the best is the lowest, 0.30161, not the 0.33053 a maximum picks; a
+    # submission dated after the window's end counts no more than one
+    # before its start.
+    swap = [
+        ("2026-10-29 16:52:25", "0.33053"), ("2026-10-29 17:00:55", "0.30161"),
+        ("2026-10-29 17:29:39", "0.32387"), ("2026-10-29 17:37:16", "0.32479"),
     ]
-    report = best_public_score(submissions, "2026-07-22T15:00:00+00:00")
-    assert report["best"]["score"] == 0.78
-    assert len(report["submissions"]) == 3  # pre-run entry excluded
+    submissions = [{"date": date, "status": "SubmissionStatus.COMPLETE", "publicScore": score, "description": "x"}
+                   for date, score in swap]
+    submissions += [
+        {"date": "2026-10-29 10:00:00", "status": "SubmissionStatus.COMPLETE", "publicScore": "0.1", "description": "yesterday"},
+        {"date": "2026-10-29 19:00:00", "status": "SubmissionStatus.COMPLETE", "publicScore": "0.2", "description": "late"},
+        {"date": "2026-10-29 17:40:00", "status": "SubmissionStatus.PENDING", "publicScore": "", "description": "still scoring"},
+    ]
+    window = ("2026-10-29T16:50:00+00:00", "2026-10-29T18:50:00+00:00")
+    lower = best_public_score(submissions, *window, higher_is_better=False)
+    assert lower["best"]["score"] == 0.30161 and lower["best"]["status"] == "complete"
+    assert len(lower["submissions"]) == 5 and {row["status"] for row in lower["submissions"]} == {"complete", "pending"}
+    assert best_public_score(submissions, *window, higher_is_better=True)["best"]["score"] == 0.33053
 
 
 def test_audit_kernel_flags_external_pulls(tmp_path):
@@ -268,20 +166,6 @@ def test_audit_kernel_flags_external_pulls(tmp_path):
     )
     findings = audit_kernel(str(kernel))
     assert len(findings) == 1 and "MIT/ast-finetuned" in findings[0]
-
-
-def test_reserve_is_insured_only_once_a_public_score_is_banked(tmp_path):
-    # The full reserve covers one submission round trip; it is released only
-    # when a score is actually on the leaderboard, never merely attempted.
-    handler = make_handler(tmp_path)
-    assert handler.deliverable_ready_reserve_seconds() is None
-    log = os.path.join(handler.task_dir, "best_score.log")
-    with open(log, "w") as f:
-        f.write("0.0 2026-07-29T16:00:00Z placeholder\n")
-    assert handler.deliverable_ready_reserve_seconds() is None
-    with open(log, "a") as f:
-        f.write("0.83626 2026-07-29T16:20:00Z lane0\n")
-    assert handler.deliverable_ready_reserve_seconds() == 300.0
 
 
 def test_discover_run_kernels_finds_namespaced_lane_dirs(tmp_path):
@@ -315,13 +199,13 @@ def test_submission_matches_template_gates_on_ids_not_just_size(tmp_path):
     assert not submission_matches_template(str(short), str(template))
 
 
-def make_slots_task(tmp_path, gpu=2, cpu=5, ttl=600, aging=900):
+def make_slots_task(tmp_path, gpu=2, cpu=5, ttl=600, aging=900, higher_is_better=True):
     task = tmp_path / "task"
     task.mkdir(exist_ok=True)
     (task / ".kernel_slots_config.json").write_text(json.dumps(
         {"gpu": gpu, "cpu": cpu, "ttl_seconds": ttl,
          "reap_interval_seconds": 60, "verify_timeout_seconds": 30,
-         "aging_seconds": aging}))
+         "aging_seconds": aging, "poll_seconds": 5, "higher_is_better": higher_is_better}))
     return str(task)
 
 
@@ -355,6 +239,22 @@ def test_queue_orders_by_banked_evidence_within_a_tier(tmp_path):
     assert grab_as(task, "lane2", "o/upper6-lora", now=t0 + 3)["ticket"] is None
     assert grab_as(task, "lane6", "o/imprinted-head", now=t0 + 4)["ticket"] is None
     assert grab_as(task, "lane1", "o/fresh-idea", now=t0 + 5)["ticket"]
+
+
+def test_queue_orders_banked_evidence_in_the_metrics_direction(tmp_path):
+    # The Kaggle swap's metric is a log loss (2026-10-29): the lane whose
+    # banked score is LOWER holds the stronger evidence and goes first.
+    task = make_slots_task(tmp_path, gpu=1, higher_is_better=False)
+    held = grab_as(task, "holder", "o/holder-k")["ticket"]
+    t0 = time.time()
+    assert grab_as(task, "lane-anchor", "o/anchor", now=t0)["ticket"] is None
+    assert grab_as(task, "lane-gated", "o/gated", now=t0 + 1)["ticket"] is None
+    bank(task, 0.33053, "o/anchor")
+    bank(task, 0.30161, "o/gated")
+    kernel_slots.release(task, held)
+    assert grab_as(task, "lane-anchor", "o/anchor", now=t0 + 2)["ticket"] is None
+    assert grab_as(task, "lane-gated", "o/gated", now=t0 + 3)["ticket"]
+    assert kernel_slots.status(task)["gpu"]["queue"][0]["best_public"] == 0.33053
 
 
 def test_queue_aging_promotes_weak_lanes_but_never_into_ship(tmp_path):
@@ -405,8 +305,8 @@ def test_lane_identity_survives_shell_quote_artifacts(tmp_path):
     bank(task, 0.83369, "o/lda-lane7")
     kernel_slots.release(task, held)
     ledger = kernel_slots.read_ledger(os.path.join(task, ".kernel_slots.json"))
-    assert kernel_slots.lane_best_public(task, ledger, "lane7'") == 0.83369
-    assert kernel_slots.lane_best_public(task, ledger, "lane7") == 0.83369
+    assert kernel_slots.lane_best_public(task, ledger, "lane7'", True) == 0.83369
+    assert kernel_slots.lane_best_public(task, ledger, "lane7", True) == 0.83369
 
 
 def grab(task, pool="gpu", kind="push", lane="lane", priority=None,
@@ -512,62 +412,17 @@ def test_kernel_slots_fails_loud_without_its_config(tmp_path):
 
 def test_classify_submit_output_reads_text_not_exit_codes():
     # Verified live 2026-08-02: the kaggle CLI exits 0 even on a rejected
-    # submission, so the output text is the only signal.
+    # submission, so the output text is the only signal. The bare number is
+    # not one (the review's finding: a progress bar's 400k and a message's
+    # local=0.4003 both carry it); what the CLI did not confirm is pending.
     assert classify_submit_output("", "403 Client Error: Forbidden for url: "
                                   ".../CreateCodeSubmission") == "rejected-403"
     assert classify_submit_output("400 Client Error: Bad Request", "") == "rejected-400"
-    assert classify_submit_output("", "") == "accepted"
-    assert classify_submit_output("Successfully submitted", "") == "accepted"
-
-
-def test_runner_stages_knowledge_bank_and_fails_loud(tmp_path):
-    # Configured-but-missing bank dir is a launch defect (a box that never
-    # received the gitignored bank must die at launch); a present bank is
-    # staged whole into the task dir. The staged bank must carry INDEX.md —
-    # the platform-wide entry point (design decision #13) — so a stale
-    # pre-rename local bank (book_index.md only) dies at launch too.
-    import benchmarks.ioai2026.runner as runner_mod
-    src = tmp_path / "bank"
-    (src / "some-problem").mkdir(parents=True)
-    (src / "INDEX.md").write_text("# book")
-    (src / "some-problem" / "idea.md").write_text("idea")
-    stale = tmp_path / "stale-bank"
-    stale.mkdir()
-    (stale / "book_index.md").write_text("# pre-rename book")
-    task = tmp_path / "task"; task.mkdir()
-
-    def stage(bank_rel):
-        # Mirrors the runner's staging semantics (copy, then INDEX.md gate).
-        bank_src = os.path.join(str(tmp_path), bank_rel)
-        if not os.path.isdir(bank_src):
-            raise FileNotFoundError(bank_rel)
-        dst = os.path.join(str(task), "knowledge_bank")
-        if os.path.isdir(dst):
-            shutil.rmtree(dst)
-        shutil.copytree(bank_src, dst)
-        if not os.path.isfile(os.path.join(dst, "INDEX.md")):
-            raise FileNotFoundError(
-                f"staged knowledge bank {dst} has no INDEX.md — rename the "
-                "bank's book_index.md to INDEX.md"
-            )
-        return dst
-
-    with pytest.raises(FileNotFoundError):
-        stage("no-such-bank")
-    with pytest.raises(FileNotFoundError, match="INDEX.md"):
-        stage("stale-bank")
-    dst = stage("bank")
-    assert os.path.isfile(os.path.join(dst, "INDEX.md"))
-    assert os.path.isfile(os.path.join(dst, "some-problem", "idea.md"))
-    # and the real runner module wires the same semantics from config
-    runner_source = open(runner_mod.__file__).read()
-    assert "INDEX.md" in runner_source and "book_index.md to INDEX.md" in runner_source
-    cfg = yaml.safe_load(open(runner_mod.CONFIG_PATH))["modes"]["KAGGLE"]
-    assert cfg["knowledge_bank_dir"] == "benchmarks/ioai2026/knowledge_bank"
-    # Deliberately no isdir() on the bank itself: the bank is gitignored,
-    # launch-shipped material — its presence is a box-provisioning fact, not a
-    # repo contract. The fail-loud staging path above pins the actual behavior
-    # when it is missing.
+    assert classify_submit_output("", "error: argument command: invalid choice") == "rejected-error"
+    assert classify_submit_output("Successfully submitted to Spooky", "") == "accepted"
+    assert classify_submit_output("100%|██████████| 400k/400k [00:01<00:00]", "") == "pending"
+    assert classify_submit_output("submission: nb-svm local=0.4003 [kapso-ab12]", "") == "pending"
+    assert classify_submit_output("", "") == "pending"
 
 
 def test_kernels_run_since_treats_not_found_as_empty(tmp_path):
@@ -582,20 +437,20 @@ def test_kernels_run_since_treats_not_found_as_empty(tmp_path):
 
 def test_harvest_ranks_never_scored_kernels_first(tmp_path):
     # Run 5 submitted two already-scored kernels (alphabetical order) while
-    # two unscored ones bounced off the full pool and were lost.
-    task = tmp_path / "task"
-    task.mkdir()
-    (task / "best_score.log").write_text(
-        "0.85952 2026-08-02T15:22:42Z owner/scored-a lane0 storyboard\n"
-        "0.84514 2026-08-02T15:27:33Z - file-upload entry, no kernel\n"
-        "bad-line-without-ref\n"
-    )
-    banked = banked_kernel_refs(str(task))
+    # two unscored ones bounced off the full pool and were lost. The ledger
+    # the submission procedure writes is what makes a banked score visible.
+    ledger = tmp_path / "submissions.json"
+    ledger.write_text(json.dumps({"submissions": [
+        {"kernel_ref": "owner/scored-a", "public_score": 0.85952, "status": "complete"},
+        {"file": "out.csv", "public_score": 0.84514, "status": "complete"},
+        {"kernel_ref": "owner/pending-d", "public_score": None, "status": "pending"},
+    ]}))
+    banked = banked_kernel_refs(str(ledger))
     assert banked == {"owner/scored-a"}
     refs = ["owner/scored-a", "owner/unscored-b", "owner/unscored-c"]
     assert rank_harvest_candidates(refs, banked) == [
         "owner/unscored-b", "owner/unscored-c", "owner/scored-a"]
-    assert banked_kernel_refs(str(tmp_path / "nowhere")) == set()
+    assert banked_kernel_refs(str(tmp_path / "nowhere.json")) == set()
 
 
 def test_preflight_prompt_carries_brief_verbatim_and_full():
@@ -630,6 +485,9 @@ def test_preflight_validate_root_is_fail_loud(tmp_path):
     with pytest.raises(SystemExit, match="no competition slug"):
         validate_root(str(task))
     (task / "kaggle.json").write_text(json.dumps({"competition": "some-comp"}))
+    with pytest.raises(SystemExit, match="higher_is_better"):
+        validate_root(str(task))
+    (task / "kaggle.json").write_text(json.dumps({"competition": "some-comp", "higher_is_better": True}))
     assert validate_root(str(task)) == "some-comp"
 
 
@@ -637,7 +495,7 @@ def test_preflight_spec_owns_scaffolding_and_brief_authority():
     spec = open(SPEC_PATH, encoding="utf-8").read()
     assert "Scaffolding you do first" in spec
     assert "competitions download" in spec
-    assert '{"competition": "<slug>"}' in spec
+    assert '"higher_is_better": true|false' in spec
     assert "the brief is the authoritative copy" in spec
     assert "Starter Prompt" in spec
     # A task-published per-kernel time cap (contest 1: 600s) must be hunted for
@@ -646,19 +504,259 @@ def test_preflight_spec_owns_scaffolding_and_brief_authority():
         in spec.replace("**", "")
 
 
-def test_kaggle_mode_config_minimal_knobs():
+def test_kaggle_config_minimal_knobs():
+    """The benchmark's file is an override over the packaged config: the
+    engine's settings at the top level, the runner's own under `benchmark`."""
     with open(CONFIG_PATH) as f:
-        mode = yaml.safe_load(f)["modes"]["KAGGLE"]
-    assert "kaggle" not in mode  # slug comes from the run root, not config
-    assert "contest_economics" not in mode
-    assert mode["budget"] == {"min_iteration_seconds": 900}
+        config = yaml.safe_load(f)
+    benchmark = config["benchmark"]
+    assert "kaggle" not in benchmark  # slug comes from the run root, not config
+    assert "contest_economics" not in benchmark
+    assert "knowledge_bank_dir" not in benchmark  # the book is served as experience, not staged
+    assert config["budget"] == {"min_iteration_seconds": 900}
     # Zero harvest carve-out (user-set 2026-08-05): lanes own in-window
     # shipping; the campaign runs to the wall and the post-window harvest
     # is a no-op.
-    assert mode["session_budget"]["harvest_window_minutes"] == 0
-    assert mode["final_eval"]["harvest_budget_seconds"] == 0
+    assert benchmark["session_budget"]["harvest_window_minutes"] == 0
+    assert benchmark["final_eval"]["harvest_budget_seconds"] == 0
     # Contest 5 (2026-08-06): the provider's safety classifier killed both
     # lanes' codex sessions on an adversarial task; a crash now retries once
     # on a second model instead of forfeiting the lane's remaining time.
-    params = mode["search_strategy"]["params"]
-    assert params["implementation_fallback_model"] == "gpt-5.5"
+    params = config["search_strategy"]["params"]
+    assert params["implementation"]["fallback_model"] == "gpt-5.5"
+
+
+# ---------------------------------------------------------------------------
+# The Brief, the contest root, the procedure and the evaluation
+# ---------------------------------------------------------------------------
+
+COMPUTE = {"has_gpu": True, "gpu_name": "NVIDIA A100-SXM4-40GB, 40960 MiB", "num_cpus": 12, "mem_gb": 85}
+LIMITS = {"gpu": 2, "cpu": 5, "ttl_seconds": 600, "reap_interval_seconds": 60, "verify_timeout_seconds": 120,
+          "poll_seconds": 5, "aging_seconds": 900}
+LISTING = {"submissions_page_size": 200, "timeout_seconds": 900}
+WINDOW = ("2026-10-29T10:00:00+00:00", "2026-10-29T16:00:00+00:00")
+
+
+def test_the_brief_is_the_statement_plus_the_campaigns_facts_and_the_rules(tmp_path):
+    rules = open(RULES_PATH, encoding="utf-8").read()
+    brief = build_brief(
+        statement="# Practice task\n\nPredict the label of every test row.\n", competition="ioai-practice-1",
+        higher_is_better=False, dataset_dir=tmp_path / "dataset", artifacts_dir=tmp_path / "artifacts",
+        deadline_utc="2026-10-29T18:00:00+00:00", ledger_path=tmp_path / "contest_root" / "submissions.json",
+        shared_root=tmp_path / "contest_root", pool_limits=LIMITS, rules_text=rules,
+        shared_cache_dir=tmp_path / "shared", compute=COMPUTE,
+    )
+    objective = brief.objective
+    assert objective.startswith("# Practice task")
+    assert "`ioai-practice-1`" in objective and "2026-10-29T18:00:00+00:00" in objective
+    assert PROCEDURE in objective and str(tmp_path / "contest_root" / "submissions.json") in objective
+    assert f"python3 {tmp_path / 'contest_root' / 'kernel_slots.py'}" in objective
+    assert "2 GPU and 5 CPU" in objective and "NVIDIA A100" in objective
+    assert brief.measured_by.startswith("the public leaderboard score") and "lower is better" in brief.measured_by
+    assert "pending submission is not yet a score" in brief.measured_by
+    assert "## The organizers' binding rules" in objective and "cuda:0" in objective and "is 50 per task" in objective
+    assert any("pinned at `kapso_datasets/RULES.md`" in rule for rule in brief.rules)
+    assert brief.baseline is None
+    for banned in ("TEN submit-and-learn rounds", "worth ZERO", "knowledge_bank", "SKIP", "STEAL"):
+        assert banned not in objective, banned
+    assert Brief.parse(brief.render()) == brief
+
+
+def test_the_contest_root_carries_the_harness_conventions(tmp_path):
+    task = tmp_path / "task"
+    task.mkdir()
+    shutil.copy2(RULES_PATH, task / "RULES.md")                          # the preflight's pinned copy
+    (task / CONTEST_ROOT).mkdir()
+    for ledger in (kernel_slots.LEDGER_NAME, LEDGER):                    # an earlier launch's ledgers
+        (task / CONTEST_ROOT / ledger).write_text("{}")
+    # A resume keeps the campaign's state: scored submissions, attribution, tickets.
+    root = stage_contest_root(str(task), "ioai-practice-1", True, WINDOW, LIMITS, LISTING, fresh=False)
+    assert all((task / CONTEST_ROOT / ledger).read_text() == "{}" for ledger in (kernel_slots.LEDGER_NAME, LEDGER))
+    # A new campaign starts afresh: an earlier launch's submission is not its insurance.
+    root = stage_contest_root(str(task), "ioai-practice-1", True, WINDOW, LIMITS, LISTING, fresh=True)
+    assert root == str(task / CONTEST_ROOT)
+    descriptor = json.loads((task / CONTEST_ROOT / "contest.json").read_text())
+    assert descriptor == {
+        "competition": "ioai-practice-1", "ledger": str(task / CONTEST_ROOT / LEDGER), "procedure": PROCEDURE,
+        "higher_is_better": True, "window_start": WINDOW[0], "window_end": WINDOW[1], "shared_root": root,
+        "list_page_size": 200, "list_timeout_seconds": 900,
+    }
+    assert json.loads((task / CONTEST_ROOT / kernel_slots.CONFIG_NAME).read_text()) == {**LIMITS, "higher_is_better": True}
+    assert not any((task / CONTEST_ROOT / ledger).exists() for ledger in (kernel_slots.LEDGER_NAME, LEDGER))
+    for name in ("submit.py", "kernel_slots.py", "RULES.md"):
+        assert (task / CONTEST_ROOT / name).is_file()
+    assert "cuda:0" in (task / CONTEST_ROOT / "RULES.md").read_text()
+
+
+def fake_kaggle(directory: Path, body: str) -> dict:
+    """A `kaggle` on PATH that prints `body`: the environment for a subprocess."""
+    directory.mkdir(parents=True, exist_ok=True)
+    binary = directory / "kaggle"
+    binary.write_text("#!/bin/sh\n" + body + "\n")
+    binary.chmod(0o755)
+    return {**os.environ, "PATH": f"{directory}:{os.environ['PATH']}"}
+
+
+def candidate_repo(tmp_path, higher_is_better=False, window=WINDOW):
+    """A session clone as the engine lays it out: the data with the
+    descriptor, the provided evaluation, a kernel folder."""
+    repo = tmp_path / "repo"
+    shared_root = tmp_path / "contest_root"
+    shared_root.mkdir()
+    (repo / "kapso_datasets").mkdir(parents=True)
+    shutil.copy2(SUBMIT_PATH, repo / "kapso_datasets" / "submit.py")
+    (repo / "kapso_datasets" / "contest.json").write_text(json.dumps({
+        "competition": "ioai-practice-1", "ledger": str(shared_root / LEDGER), "procedure": PROCEDURE,
+        "higher_is_better": higher_is_better, "window_start": window[0], "window_end": window[1],
+        "shared_root": str(shared_root), "list_page_size": 200, "list_timeout_seconds": 30,
+    }))
+    (repo / "kapso_evaluation").mkdir()
+    shutil.copy2(EVALUATION_SUITE / "evaluate.py", repo / "kapso_evaluation" / "evaluate.py")
+    (repo / "kernel").mkdir()
+    (repo / "kernel" / "kernel-metadata.json").write_text(json.dumps({"id": "me/kernel-a", "code_file": "script.py"}))
+    (repo / "kernel" / "script.py").write_text("print('model')\n")
+    return repo, shared_root / LEDGER, shared_root
+
+
+def run_in(repo: Path, command: list, env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, *command], cwd=str(repo), env=env, capture_output=True, text=True)
+
+
+def test_the_procedure_submits_and_records_the_entry_by_content(tmp_path):
+    repo, ledger, _shared = candidate_repo(tmp_path)
+    env = fake_kaggle(tmp_path / "bin", "echo 'Successfully submitted to ioai-practice-1'")
+    done = run_in(repo, ["kapso_datasets/submit.py", "--kernel", "me/kernel-a", "--version", "3", "-m", "blend local=0.91"], env)
+    assert done.returncode == 0, done.stderr
+    (entry,) = json.loads(ledger.read_text())["submissions"]
+    assert entry["competition"] == "ioai-practice-1" and entry["kernel_ref"] == "me/kernel-a" and entry["version"] == 3
+    assert entry["submission_id"].startswith("kapso-") and entry["message"] == f"blend local=0.91 [{entry['submission_id']}]"
+    assert entry["kernel_sha256"] == hashlib.sha256(b"print('model')\n").hexdigest()
+    assert entry["status"] == "pending" and entry["verdict"] == "accepted" and entry["public_score"] is None
+    # A file upload records the file's hash; a rejection is recorded and exits non-zero.
+    (repo / "out.csv").write_text("id,y\n1,0\n")
+    rejected = fake_kaggle(tmp_path / "bin403", "echo '403 Client Error: Forbidden for url: .../CreateSubmission' >&2")
+    done = run_in(repo, ["kapso_datasets/submit.py", "--file", "out.csv", "-m", "upload local=0.5"], rejected)
+    assert done.returncode == 2
+    entries = json.loads(ledger.read_text())["submissions"]
+    assert len(entries) == 2 and entries[1]["file"] == "out.csv" and entries[1]["status"] == "rejected"
+    assert entries[1]["verdict"] == "rejected-403" and entries[1]["file_sha256"] == hashlib.sha256(b"id,y\n1,0\n").hexdigest()
+    # The recorded paths are relative to the repository root and inside it:
+    # the evaluation finds the same file in the candidate's tree.
+    for arguments in (["--file", str(repo / "out.csv")], ["--file", "../out.csv"],
+                      ["--kernel", "me/kernel-a", "--version", "3", "--kernel-dir", str(repo / "kernel")]):
+        refused = run_in(repo, ["kapso_datasets/submit.py", *arguments, "-m", "x"], env)
+        assert refused.returncode == 1 and "relative to the repository root" in refused.stderr
+    assert len(json.loads(ledger.read_text())["submissions"]) == 2
+
+
+def write_ledger(ledger: Path, entries: list) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(json.dumps({"submissions": entries}))
+
+
+def mine(**overrides) -> dict:
+    entry = {
+        "competition": "ioai-practice-1", "submission_id": "kapso-aa11", "message": "blend local=0.91 [kapso-aa11]",
+        "submitted_at": "2026-10-29T11:00:00+00:00", "status": "pending", "public_score": None, "ref": None,
+        "kernel_ref": "me/kernel-a", "version": 3, "code_file": "kernel/script.py",
+        "kernel_sha256": hashlib.sha256(b"print('model')\n").hexdigest(), "verdict": "accepted", "output": "",
+    }
+    entry.update(overrides)
+    return entry
+
+
+SCORED_AT = "2026-10-29T11:10:00+00:00"
+OTHER = mine(submission_id="kapso-bb22", message="other [kapso-bb22]", kernel_sha256="0" * 64, status="complete",
+             public_score=0.99, scored_at=SCORED_AT)
+
+
+class TestProvidedEvaluation:
+    def evaluate(self, repo, env):
+        return run_in(repo, ["kapso_evaluation/evaluate.py"], env)
+
+    def test_missing_when_no_submission_of_this_candidate_is_recorded(self, tmp_path):
+        repo, ledger, _shared = candidate_repo(tmp_path)
+        env = fake_kaggle(tmp_path / "bin", "echo '[]'")
+        assert self.evaluate(repo, env).returncode == 11
+        write_ledger(ledger, [OTHER])
+        done = self.evaluate(repo, env)
+        assert done.returncode == 11 and "no submission of this candidate" in done.stdout
+
+    def test_a_scored_submission_is_refreshed_attributed_and_oriented(self, tmp_path):
+        # The row's status is the CLI's own spelling (the arm's archive,
+        # 2026-10-29): the shorter word left every scored submission pending.
+        repo, ledger, shared = candidate_repo(tmp_path, higher_is_better=False)
+        write_ledger(ledger, [OTHER, mine()])
+        rows = json.dumps([{"ref": 777, "date": "2026-10-29 11:05:00", "status": "SubmissionStatus.COMPLETE",
+                            "publicScore": "0.42", "description": "blend local=0.91 [kapso-aa11]"}])
+        env = fake_kaggle(tmp_path / "bin", f"echo '{rows}'")
+        done = self.evaluate(repo, env)
+        assert done.returncode == 0, done.stdout + done.stderr
+        line = [line for line in done.stdout.splitlines() if line.startswith("KAPSO_EVAL_MANIFEST")][-1]
+        result = json.loads(line.split(" ", 1)[1])
+        refreshed = json.loads(ledger.read_text())["submissions"][1]
+        assert result == {"score": -0.42, "raw_score": 0.42, "higher_is_better": False, "submission_id": "kapso-aa11",
+                          "ref": 777, "submitted_at": "2026-10-29T11:00:00+00:00", "scored_at": refreshed["scored_at"]}
+        assert refreshed["status"] == "complete" and refreshed["public_score"] == 0.42 and refreshed["ref"] == 777
+        assert refreshed["scored_at"].endswith("+00:00")
+        assert (shared / "best_score.log").read_text().startswith("0.42 2026-10-29T11:00:00+00:00 me/kernel-a blend")
+
+    def test_the_refresh_keeps_a_submission_made_during_the_listing(self, tmp_path):
+        # The listing runs outside the lock; a lane's submission appended
+        # meanwhile survives the merge, and the merged file is whole.
+        repo, ledger, _shared = candidate_repo(tmp_path)
+        write_ledger(ledger, [mine()])
+        rows = json.dumps([{"ref": 5, "date": "2026-10-29 11:05:00", "status": "SubmissionStatus.COMPLETE",
+                            "publicScore": "0.42", "description": "blend local=0.91 [kapso-aa11]"}])
+        appender = tmp_path / "append.py"
+        appender.write_text(
+            "import json, sys\nfrom pathlib import Path\n"
+            f"path = Path({str(ledger)!r})\nledger = json.loads(path.read_text())\n"
+            f"ledger['submissions'].append({mine(submission_id='kapso-bb22', message='late [kapso-bb22]')!r})\n"
+            "path.write_text(json.dumps(ledger))\n"
+        )
+        env = fake_kaggle(tmp_path / "bin", f"{sys.executable} {appender}\necho '{rows}'")
+        assert self.evaluate(repo, env).returncode == 0
+        first, second = json.loads(ledger.read_text())["submissions"]
+        assert first["status"] == "complete" and first["public_score"] == 0.42
+        assert second["submission_id"] == "kapso-bb22" and second["status"] == "pending"
+        assert not ledger.with_name(ledger.name + ".tmp").exists()
+
+    def test_pending_rejected_and_out_of_window_are_distinct_outcomes(self, tmp_path):
+        repo, ledger, _shared = candidate_repo(tmp_path)
+        env = fake_kaggle(tmp_path / "bin", "echo '[]'")
+        write_ledger(ledger, [mine()])
+        done = self.evaluate(repo, env)
+        assert done.returncode == 12 and "pending" in done.stdout
+        write_ledger(ledger, [mine(status="rejected", verdict="rejected-403", output="403 Client Error")])
+        done = self.evaluate(repo, env)
+        assert done.returncode == 13 and "403 Client Error" in done.stdout
+        errored = json.dumps([{"ref": 1, "status": "SubmissionStatus.ERROR", "errorDescription": "Evaluation exception",
+                               "publicScore": "", "description": "blend local=0.91 [kapso-aa11]"}])
+        write_ledger(ledger, [mine()])
+        done = self.evaluate(repo, fake_kaggle(tmp_path / "binerr", f"echo '{errored}'"))
+        assert done.returncode == 13 and "Evaluation exception" in done.stdout
+        for outside in ("2026-10-29T09:00:00+00:00", "2026-10-29T16:00:01+00:00"):
+            write_ledger(ledger, [mine(status="complete", public_score=0.5, submitted_at=outside, scored_at=SCORED_AT)])
+            assert self.evaluate(repo, env).returncode == 14
+        write_ledger(ledger, [mine(status="complete", public_score=0.5, submitted_at=WINDOW[1], scored_at=SCORED_AT)])
+        assert self.evaluate(repo, env).returncode == 0
+
+    def test_the_latest_of_this_candidates_submissions_is_reported(self, tmp_path):
+        repo, ledger, _shared = candidate_repo(tmp_path, higher_is_better=True)
+        write_ledger(ledger, [
+            mine(status="complete", public_score=0.7, submitted_at="2026-10-29T11:00:00+00:00", scored_at=SCORED_AT),
+            mine(submission_id="kapso-cc33", status="complete", public_score=0.6, submitted_at="2026-10-29T12:00:00+00:00",
+                 scored_at=SCORED_AT),
+        ])
+        done = self.evaluate(repo, fake_kaggle(tmp_path / "bin", "echo '[]'"))
+        assert done.returncode == 0 and '"raw_score": 0.6' in done.stdout and '"submission_id": "kapso-cc33"' in done.stdout
+
+
+def test_kernel_folders_are_found_anywhere_under_the_task_dir(tmp_path):
+    task = tmp_path / "task"
+    for folder in ("kapso_campaign/sessions/lane0/kernel", "contest_root/.git/kernel", "kapso_campaign/kernel"):
+        (task / folder).mkdir(parents=True)
+        (task / folder / "kernel-metadata.json").write_text(json.dumps({"id": "me/k", "code_file": "script.py"}))
+    found = kernel_metadata_dirs(str(task))
+    assert found == [str(task / "kapso_campaign" / "kernel"), str(task / "kapso_campaign" / "sessions" / "lane0" / "kernel")]

@@ -1,0 +1,26 @@
+name: trading-author
+role: quantitative developer who owns the trading repository and wants a harness written for it
+expertise: fluent in Python, pandas and backtesting; has read Kapso's harness page once; writes harnesses for the first time
+knows: >
+  the repository holds daily bars for three instruments under data/, a
+  strategy.py with a signal(bars) function, an evaluator that scores the
+  2024 window out of sample; the attempts should vary the signal family
+  (trend, mean reversion, volatility targeting), the lookback and the
+  sizing rule, one axis per attempt; before a candidate counts the
+  look-ahead scan must pass, the backtest must cover 2021 to 2023 and the
+  risk line (max drawdown, annual turnover) must be printed; feedback
+  should prefer robust over spectacular, a consistent Sharpe across years
+  over one great year, and say which axis to try next; deployment is
+  paper trading only, the target the deploy call's; learning needs nothing
+  beyond the defaults; the setup pins the data snapshot once, records its
+  hash, and every session reads the snapshot, never a live fetch
+wants: a harness that passes check, with a page per module the repository is silent on, written in the cheapest form, then one probe build on it
+patience: 8
+answers: >
+  short and concrete; answers every numbered question in one reply, in
+  the question's order; says "go" when a proposal is right; corrects one
+  line rather than re-explaining; does not volunteer what nobody asked
+pushes_back_when: >
+  asked something the repository already says; a page would run past
+  forty lines; a hook is proposed without the mistake it catches; the
+  assistant writes files before being told to

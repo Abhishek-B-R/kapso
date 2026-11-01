@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+import kapso.core.preflight as preflight
 from kapso.core.preflight import PreflightError
 from kapso.kapso import Kapso
 from kapso.learning.bank_remote import connect_bank
@@ -17,25 +18,33 @@ from tests.test_bank_retriever import card_text
 from tests.test_update_frame import seed_bank_home
 
 
+def _git_workspace(path: Path) -> None:
+    """A workspace a build reads commits from: a git repo on main."""
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@t",
+         "commit", "-q", "--allow-empty", "-m", "seed"],
+        check=True,
+    )
+
+
 def facade_config(tmp_path) -> str:
-    """A minimal real config file exercising the actual load path."""
+    """A minimal override file exercising the actual load path: the
+    packaged defaults with the test's own places over them."""
     config = {
-        "default_mode": "GENERIC",
-        "defaults": {"models": {"embedding": "e"},
-                     "retry": {"request_timeout_seconds": 600}},
-        "modes": {"GENERIC": {
-            "knowledge_search": {
-                "type": "kg_graph_search", "enabled": True, "params": {}},
-            # evolve() registers every launch; keep it out of ~/.kapso
-            "inbox": {"registry": str(tmp_path / "campaigns.jsonl")},
-        }},
+        "models": {"embedding": "e"},
+        "retry": {"request_timeout_seconds": 600},
+        "knowledge_search": {"type": "kg_graph_search", "params": {}},
+        # build() registers every launch; keep it out of ~/.kapso
+        "inbox": {"registry": str(tmp_path / "campaigns.jsonl")},
         "learning": {
             "trajectory_store": {"local": str(tmp_path / "store"),
                                  "remote": None},
             "import_report_dir": str(tmp_path / "imports"),
             "status_dir": str(tmp_path / "status"),
             "harvest": {"enabled": True},
-            "serving": {"enabled": False},
+            "serving": {"session_root": str(tmp_path / "serving")},
             "bank": {"local_path": str(tmp_path / "bank-home.git")},
             "retriever": {"probe_budget": 1},
             "graders": {"run_root": str(tmp_path / "graders")},
@@ -76,7 +85,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             fake._config = config
             return fake
 
-        def mine(self, trajectory_id, force=False):
+        def mine(self, trajectory_id, force=False, harness=None, status=None):
             calls.mined.append(trajectory_id)
             # Stamp the manifest as the real miner does, so learn()'s
             # mined-once idempotency is exercised for real.
@@ -92,7 +101,7 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             return f"mined/{trajectory_id}"
 
     class FakeGrading:
-        def __init__(self, store, config):
+        def __init__(self, store, config, bank_home=None):
             pass
 
         def grade_exam(self, trajectory_id, bank_dir, bank_head,
@@ -106,10 +115,10 @@ def stub_chain(monkeypatch, bank_home, lesson_commit_message=None):
             return report
 
     class FakeUpdate:
-        def __init__(self, store, config):
+        def __init__(self, store, config, bank_home=None):
             pass
 
-        def run_update(self, batch, run_root, learner_version):
+        def run_update(self, batch, run_root, learner_version, harness=None):
             calls.updates.append(
                 {"batch": batch, "version": learner_version}
             )
@@ -153,7 +162,7 @@ def test_learn_dir_dispatch_exam_pin_and_admitted(tmp_path, monkeypatch):
     # from real git heads with the created card named.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
-    kapso = Kapso(config_path=config_path)
+    kapso = Kapso(config=config_path)
     calls = stub_chain(monkeypatch, kapso._bank_home,
                        lesson_commit_message="lesson: facade test card")
     head_before = kapso._bank_head()
@@ -184,7 +193,7 @@ def test_learn_store_id_skips_import_and_no_admission_is_honest(
     # moves nothing reports admitted=False with empty card lists.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
-    kapso = Kapso(config_path=config_path)
+    kapso = Kapso(config=config_path)
     calls = stub_chain(monkeypatch, kapso._bank_home)  # update commits nothing
 
     first = kapso.learn(str(make_campaign_dir(tmp_path)),
@@ -200,10 +209,10 @@ def test_learn_store_id_skips_import_and_no_admission_is_honest(
 def test_learn_auto_inits_missing_bank_then_fails_on_bad_source(tmp_path):
     # Regression (onboarding E2E finding #2): a missing bank home is not a
     # setup error — learn() founds it automatically, so the README's
-    # evolve→learn loop needs zero bank ceremony. The bogus source still
+    # build→learn loop needs zero bank ceremony. The bogus source still
     # fails loud, but only AFTER the bank exists.
     config_path = facade_config(tmp_path)
-    kapso = Kapso(config_path=config_path)
+    kapso = Kapso(config=config_path)
     assert not kapso._bank_home.exists()
     with pytest.raises(FileNotFoundError, match="neither a store"):
         kapso.learn(str(tmp_path / "nowhere"))
@@ -211,6 +220,7 @@ def test_learn_auto_inits_missing_bank_then_fails_on_bad_source(tmp_path):
     assert kapso._bank_head()  # skeleton commit landed
 
 
+@pytest.mark.preflight
 def test_learn_push_preflight_fires_before_any_pipeline_work(
     tmp_path, monkeypatch
 ):
@@ -220,8 +230,12 @@ def test_learn_push_preflight_fires_before_any_pipeline_work(
     # local-only.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
-    kapso = Kapso(config_path=config_path)
+    kapso = Kapso(config=config_path)
     calls = stub_chain(monkeypatch, kapso._bank_home)
+    monkeypatch.setattr(preflight.shutil, "which", lambda name, *args, **kwargs: f"/usr/bin/{name}")
+    monkeypatch.setattr(preflight, "claude_logged_in", lambda: True)
+    monkeypatch.setattr(preflight, "codex_authenticated", lambda: True)
+    monkeypatch.setenv("OPENAI_API_KEY", "set")
     subprocess.run(
         ["git", "--git-dir", str(kapso._bank_home), "remote", "add",
          "origin", str(tmp_path / "no-such-remote.git")],
@@ -244,12 +258,12 @@ def test_learn_push_preflight_fires_before_any_pipeline_work(
 
 
 def test_learn_pushes_to_connected_origin(tmp_path, monkeypatch):
-    # Regression: with an origin attached (kapso bank connect), learn()
+    # Regression: with an origin attached (kapso experience share), learn()
     # pushes main+tags there by default and the share remote ends at the
     # post-lesson head — the multi-machine share contract.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
-    kapso = Kapso(config_path=config_path)
+    kapso = Kapso(config=config_path)
     stub_chain(monkeypatch, kapso._bank_home,
                lesson_commit_message="lesson: pushed card")
     share = tmp_path / "share.git"
@@ -277,7 +291,7 @@ def test_close_releases_backend_and_registers_atexit(tmp_path, monkeypatch):
     registered = []
     monkeypatch.setattr(facade_module.atexit, "register",
                         lambda fn: registered.append(fn))
-    kapso = Kapso(config_path=facade_config(tmp_path))
+    kapso = Kapso(config=facade_config(tmp_path))
     assert kapso.close in registered
     closed = []
     kapso.knowledge_search = SimpleNamespace(close=lambda: closed.append(True))
@@ -288,7 +302,7 @@ def test_close_releases_backend_and_registers_atexit(tmp_path, monkeypatch):
 def test_bank_constructor_override_beats_config(tmp_path):
     config_path = facade_config(tmp_path)
     other = tmp_path / "other-bank.git"
-    kapso = Kapso(config_path=config_path, bank=str(other))
+    kapso = Kapso(config=config_path, bank=str(other))
     assert kapso._bank_home == other
 
 
@@ -296,29 +310,29 @@ def test_memory_status_shapes(tmp_path):
     # Regression: memory reports both stores truthfully — before a bank
     # exists (uninitialized) and after (head + card count).
     config_path = facade_config(tmp_path)
-    kapso = Kapso(config_path=config_path)
+    kapso = Kapso(config=config_path)
     status = kapso.memory
     assert isinstance(status, MemoryStatus)
-    assert status.knowledge_enabled is False
     assert status.bank_head is None
     assert "not initialized" in status.explain()
 
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
-    status = Kapso(config_path=config_path).memory
+    status = Kapso(config=config_path).memory
     assert status.bank_head is not None
     assert status.bank_active_cards == 1
     assert "1 active cards" in status.explain()
 
 
-def test_evolve_serving_staging_and_disabled_byte_identity(
+def test_build_serving_staging_and_nothing_loaded_byte_identity(
     tmp_path, monkeypatch
 ):
-    # Regression (design §4): serving on + bank present -> the intro rides
-    # the problem context, bank_serving reaches the orchestrator, and the
-    # provenance stamp lands; serving off -> context byte-identical to the
-    # pre-serving facade and no override is passed.
+    # Regression (wp3-experience.md): `mine` loaded -> the intro rides the
+    # problem context, bank_serving reaches the orchestrator, and the
+    # record lands in the workspace; nothing loaded -> context
+    # byte-identical to the pre-serving facade and no override is passed.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
+    _git_workspace(tmp_path / "ws")
 
     captured = {}
 
@@ -334,6 +348,7 @@ def test_evolve_serving_staging_and_disabled_byte_identity(
             self.search_strategy = SimpleNamespace(
                 workspace=SimpleNamespace(workspace_dir=str(tmp_path / "ws")),
                 checkout_to_best_experiment_branch=lambda: "main",
+                get_deliverable_experiment=lambda: None,
                 get_deliverable_score=lambda: None,
                 get_experiment_history=lambda best_last=True: [],
                 iteration_evaluations=[],
@@ -344,39 +359,46 @@ def test_evolve_serving_staging_and_disabled_byte_identity(
             )
 
         def solve(self, **kwargs):
-            return SimpleNamespace(
+            result = SimpleNamespace(
                 final_feedback=None, iterations_run=0,
                 cumulative_iterations=0, total_cost=0.0,
                 stopped_reason="max_iterations", stop_detail=None,
-                best_experiment=None, platform_budget=None,
+                best_experiment=None, platform_budget=None, requests=[],
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            kwargs["finish"](result)
+            return result
 
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", FakeOrchestrator)
-    monkeypatch.setattr(
-        Kapso, "_extract_experiment_logs", lambda self, orch: [], raising=True
-    )
     monkeypatch.chdir(tmp_path)
 
-    # serving disabled: no intro, no override
-    kapso = Kapso(config_path=config_path)
-    kapso.evolve(goal="test goal", output_path=str(tmp_path / "out1"))
-    off_context = captured["handler"].additional_context
-    assert "Knowledge bank" not in off_context
+    # nothing loaded: no intro, no override
+    kapso = Kapso(config=config_path)
+    kapso.build("test goal", output=str(tmp_path / "out1"))
+    off_context = captured["handler"].get_problem_context()
+    assert "Experience" not in off_context
     assert captured["kwargs"]["strategy_params_overrides"] is None
 
-    # serving enabled: intro + override + stamp
-    config = yaml.safe_load(Path(config_path).read_text())
-    config["learning"]["serving"]["enabled"] = True
-    Path(config_path).write_text(yaml.safe_dump(config))
-    kapso = Kapso(config_path=config_path)
-    solution = kapso.evolve(goal="test goal",
-                            output_path=str(tmp_path / "out2"))
-    on_context = captured["handler"].additional_context
-    assert "## Knowledge bank" in on_context
-    assert "bank_index()" in on_context
+    # `mine` loaded: intro + override + the pinned head on the solution
+    kapso = Kapso(config=config_path)
+    kapso.load_experience("mine")
+    solution = kapso.build("test goal", output=str(tmp_path / "out2"))
+    # the context is untouched (it is frozen at construction and never
+    # was a seam): the intro is staged for the prompts to read
+    assert captured["handler"].get_problem_context() == off_context
     override = captured["kwargs"]["strategy_params_overrides"]
-    assert "KAPSO_BANK_DIR" in override["bank_serving"]
-    assert solution.metadata["bank_head_served"] is not None
+    assert "KAPSO_BANKS" in override["bank_serving"]
+    intro_path = Path(override["experience_intro_path"])
+    assert intro_path == tmp_path / "out2" / ".kapso" / "serving" / "intro.md"
+    intro = intro_path.read_text()
+    assert "## Experience (measured before)" in intro
+    assert "1 card measured by you, under no harness" in intro
+    assert "bank_index()" in intro
+    # the solution carries the source at its pinned head and scope
+    assert [(s.reference, s.head, s.scope) for s in solution.experience] == [
+        ("mine", kapso.experience[0].head, "harness"),
+    ]
+    assert "Experience:" in solution.explain() and "measured by you" in solution.explain()
     # the serving record landed inside the campaign workspace
     record = tmp_path / "out2" / ".kapso" / "serving" / "serving-record.yaml"
     assert record.is_file()
@@ -385,34 +407,7 @@ def test_evolve_serving_staging_and_disabled_byte_identity(
     assert [json.loads(line)["goal"] for line in registry] == ["test goal"] * 2
 
 
-def test_learn_knowledge_flattens_research_output(tmp_path, monkeypatch):
-    # Regression (E2E 2026-08-24): research(mode="idea") returns a LIST of
-    # typed sources; passing it directly (the advertised contract) must
-    # reach the pipeline flattened — never as one 'list'-typed source.
-    config_path = facade_config(tmp_path)
-    kapso = Kapso(config_path=config_path)
-    captured = {}
-
-    class FakePipeline:
-        def __init__(self, **kwargs):
-            pass
-
-        def run(self, *sources, skip_merge=False, status=None):
-            captured["sources"] = sources
-            return SimpleNamespace(
-                sources_processed=len(sources), total_pages_extracted=1,
-                created=1, edited=0, errors=[],
-            )
-
-    monkeypatch.setattr("kapso.kapso.KnowledgePipeline", FakePipeline)
-    idea_a, idea_b = object(), object()
-    kapso.learn_knowledge([idea_a, idea_b], skip_merge=True)
-    assert captured["sources"] == (idea_a, idea_b)
-    with pytest.raises(ValueError, match="empty source lists"):
-        kapso.learn_knowledge([], skip_merge=True)
-
-
-def test_evolve_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
+def test_build_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch):
     # Regression (E2E review 2026-08-24, blocker 1): the injected intro
     # instructs sessions to call bank_index / bank_get_card /
     # bank_get_card_with_evidence. If the gate providing them did not
@@ -420,15 +415,13 @@ def test_evolve_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch)
     # must fail loud instead.
     config_path = facade_config(tmp_path)
     seed_bank_home(tmp_path, {"seed-card": card_text("seed-card")})
-    config = yaml.safe_load(Path(config_path).read_text())
-    config["learning"]["serving"]["enabled"] = True
-    Path(config_path).write_text(yaml.safe_dump(config))
 
     class GatelessOrchestrator:
         def __init__(self, handler, **kwargs):
             self.search_strategy = SimpleNamespace(
                 workspace=SimpleNamespace(workspace_dir=str(tmp_path / "ws")),
                 checkout_to_best_experiment_branch=lambda: "main",
+                get_deliverable_experiment=lambda: None,
                 get_deliverable_score=lambda: None,
                 get_experiment_history=lambda best_last=True: [],
                 iteration_evaluations=[],
@@ -440,66 +433,9 @@ def test_evolve_refuses_to_advertise_unmounted_bank_tools(tmp_path, monkeypatch)
 
     monkeypatch.setattr("kapso.kapso.OrchestratorAgent", GatelessOrchestrator)
     monkeypatch.chdir(tmp_path)
-    kapso = Kapso(config_path=config_path)
+    kapso = Kapso(config=config_path)
+    kapso.load_experience("mine")
     with pytest.raises(RuntimeError, match="'bank' gate is not mounted"):
-        kapso.evolve(goal="test goal", output_path=str(tmp_path / "out3"))
+        kapso.build("test goal", output=str(tmp_path / "out3"))
 
 
-def test_learn_knowledge_records_the_index_it_wrote(tmp_path, monkeypatch):
-    # Regression (E2E review 2026-08-24): kg_index provenance was None on
-    # every learn_knowledge -> evolve sequence because the facade never
-    # recorded the index the merge wrote.
-    config_path = facade_config(tmp_path)
-    kapso = Kapso(config_path=config_path)
-    wiki_dir = tmp_path / "wikis"
-    wiki_dir.mkdir()
-    (wiki_dir / ".index").write_text('{"page_count": 3}')
-
-    wiring = {}
-
-    class FakePipeline:
-        def __init__(self, **kwargs):
-            wiring.update(kwargs)
-
-        def run(self, *sources, skip_merge=False, status=None):
-            return SimpleNamespace(
-                sources_processed=1, total_pages_extracted=3,
-                created=3, edited=0, errors=[],
-            )
-
-    monkeypatch.setattr("kapso.kapso.KnowledgePipeline", FakePipeline)
-    monkeypatch.setattr(
-        "kapso.kapso.KnowledgeSearchFactory",
-        SimpleNamespace(create=lambda **kw: SimpleNamespace(
-            is_enabled=lambda: True), create_null=lambda: None),
-    )
-    # The preflight probes a real embeddings key and the knowledge stores'
-    # ports; it has its own suite (test_preflight), this test is about the
-    # index the merge records.
-    monkeypatch.setattr("kapso.kapso.run_preflight", lambda *a, **k: None)
-    kapso.learn_knowledge(object(), wiki_dir=str(wiki_dir))
-    # The merge builds a missing index through the facade, which owns the
-    # config that names the search backends.
-    assert wiring["index_builder"] == kapso.index_kg
-    assert kapso._kg_index_path == str(wiki_dir / ".index")
-    assert kapso.memory.knowledge_index == str(wiki_dir / ".index")
-
-
-def test_index_kg_rejects_a_call_without_a_save_path(tmp_path):
-    kapso = Kapso(config_path=facade_config(tmp_path))
-    with pytest.raises(ValueError, match="save_to is required"):
-        kapso.index_kg(wiki_dir=str(tmp_path))
-
-
-def test_index_kg_rejects_a_call_without_any_data(tmp_path):
-    kapso = Kapso(config_path=facade_config(tmp_path))
-    with pytest.raises(ValueError, match="Must provide either"):
-        kapso.index_kg(save_to=str(tmp_path / "test.index"))
-
-
-def test_missing_kg_index_file_raises_at_construction(tmp_path):
-    with pytest.raises(FileNotFoundError, match="Index file not found"):
-        Kapso(
-            config_path=facade_config(tmp_path),
-            kg_index=str(tmp_path / "missing.index"),
-        )

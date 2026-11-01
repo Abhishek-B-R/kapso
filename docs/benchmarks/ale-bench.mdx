@@ -14,6 +14,13 @@ ALE-Bench provides AtCoder Heuristic Contest problems for evaluating algorithmic
   />
 </Frame>
 
+The ratings are from Kapso runs by Leeroo under the problem's own time budget, each problem a
+single observation: the campaign scored by the official scorer on the public cases, the delivered
+candidate judged on the private cases, from which the benchmark's library estimates the rating;
+ALE Agent's per-problem ratings are the benchmark's published ones. No spread is reported, and no
+launch record or run date survives for these runs; the one observation this repository holds
+recorded is ahc008 at 1221. How the current runner evaluates a problem is under Usage below.
+
 ## Usage
 
 ```bash
@@ -30,7 +37,6 @@ PYTHONPATH=. python -m benchmarks.ale.runner -p ahc039
 PYTHONPATH=. python -m benchmarks.ale.runner \
     -p ahc039 \
     -i 30 \
-    -m ALE_GENERIC \
     -d codex
 ```
 
@@ -39,21 +45,27 @@ PYTHONPATH=. python -m benchmarks.ale.runner \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-p, --problem` | Problem ID (e.g., `ahc039`) | Required |
-| `-i, --iterations` | Max experiment iterations | 30 |
-| `-m, --mode` | Config mode: `ALE_GENERIC` or `MINIMAL` | `ALE_GENERIC` |
-| `-d, --coding-agent` | Coding agent | From config |
-| `--list` | List all problems | - |
-| `--lite` | List lite problems | - |
-| `--list-agents` | List coding agents | - |
+| `-i, --iterations` | `Budget.experiments` | the config's `budget.experiments` |
+| `--time-budget-hours` | `Budget.minutes`, in hours | the config's `budget.minutes` (unbounded) |
+| `-d, --coding-agent` | The host every role without a `cli` of its own runs on | `codex`, the override file's `host` |
+| `--harness` | A harness reference | the bundled `competitive-programming` |
+| `--experience` | Comma-separated experience sources to serve | none |
+| `--workspace` / `--resume` | The campaign directory / continue the campaign in it | a fresh directory |
+| `--final-eval-only` | No campaign: the final report (the private cases, the rank, the performance) on the solution the `--workspace` campaign already holds; refused without `--workspace` | - |
+| `--list` / `--lite` | List problems | - |
 
 ## Scored problems
 
-The reported result covers these ten problems; `--lite` lists the full 13-problem lite roster and `--list` every ALE-Bench problem:
+The reported result covers these ten problems; `--lite` lists them and `--list` every ALE-Bench problem:
 
 `ahc008`, `ahc011`, `ahc015`, `ahc016`, `ahc024`, `ahc025`, `ahc026`, `ahc027`, `ahc039`, `ahc046`
 
 <Note>
-Both modes run the `generic` search strategy, but the ALE handler supplies the official evaluation: solutions are scored by the ALE-Bench toolkit via `handler.run()` rather than agent-built evaluation.
+The runner launches `build()` with the bundled `competitive-programming` harness. The
+provided grader, registered by the evaluation maintainer, judges each candidate's `main.cpp`
+through the ALE-Bench Docker judge on the public cases: the score of record. The candidates
+run the same grader as their scorer; the private cases and the rating are computed once,
+after the campaign, on the delivered candidate.
 </Note>
 
 ## Output structure
@@ -82,43 +94,27 @@ flowchart LR
 
 The evaluation process works as follows:
 
-1. **Code Submission**: The `main.cpp` file is read from the experiment workspace
-2. **Docker Evaluation**: Code is sent to `ale_bench.public_eval()` which compiles and runs in an isolated Docker container
-3. **Test Execution**: Solution runs against all test cases with strict time limits
-4. **Validation**: Each test case must return `ACCEPTED` with a non-zero score
-5. **Score Stabilization**: If all tests pass, the solution runs **4 times in total** (3 further runs) and scores are averaged for stability
-6. **Final Ranking**: Private evaluation compares against original contest participants
+1. **Code Submission**: the `main.cpp` at the repository root of the candidate's branch
+2. **Docker Evaluation**: the provided grader sends it to `ale_bench`'s judge, which compiles and runs it in an isolated Docker container
+3. **Test Execution**: the solution runs against every public case with the problem's limits
+4. **Validation**: a case not `ACCEPTED`, or scored zero, fails the submission, which takes the floor score
+5. **Score Stabilization**: the full evaluation runs the judge **4 times** and averages the totals (the `benchmark.runs` key of `config.yaml`); the candidates' own scorer run writes the per-seed results file the harness's finish hook reads
+6. **Final Ranking**: the runner judges the delivered candidate once on the private cases and estimates the rank and the performance against the contest's standings
 
 ## Code requirements
 
 Generated C++ must:
-- Be time-aware (limit: time_limit - 100ms for I/O)
+- Be time-aware (the limit minus input, output and a margin)
 - Handle all input constraints
 - Use efficient algorithms and data structures
 - Include compiler optimization pragmas if helpful
 
-## Built-in domain knowledge
+## Domain knowledge
 
-The handler includes tips for common algorithms:
-
-<Accordion title="Simulated Annealing">
-- Design good state representation
-- Balance small and large moves
-- Avoid recomputation in legality checks
-- Keep regret mechanism for constrained problems
-</Accordion>
-
-<Accordion title="Beam / Random Search">
-- Balance diversity and quality in beams
-- Fast-stop bad solutions
-- Use strong heuristic scoring
-</Accordion>
-
-<Accordion title="Random Simulation">
-- Define strong heuristic scoring
-- Consider average and std of scores
-- Balance greedy vs long-horizon moves
-</Accordion>
+The bundled `competitive-programming` harness carries the discipline: the heuristic
+patterns (simulated annealing, beam and random search, random simulation, colony methods,
+exact methods), performance under a time limit, the scorer procedure and its finish hook,
+and the score auditor that names the category of cases a solution loses on.
 
 ## Related
 
@@ -131,6 +127,6 @@ The handler includes tips for common algorithms:
   </Card>
 </CardGroup>
 
-Related pages: [Installation](/docs/installation#optional-benchmarks) · [IOAI 2026](/docs/benchmarks/ioai-2026) · [IOAI 2026](/docs/benchmarks/ioai-2026)
+Related pages: [Installation](/docs/installation#optional-benchmarks) · [IOAI 2026](/docs/benchmarks/ioai-2026) · [Competitive programming](/docs/harnesses/bundled/competitive-programming)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

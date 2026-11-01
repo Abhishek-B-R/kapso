@@ -8,7 +8,7 @@ from kapso.execution.iteration_evaluator import (
     normalize_result,
     comparison_summary,
 )
-from kapso.execution.observability import EvolveStatus, OperationStatusView
+from kapso.execution.observability import BuildStatus, OperationStatusView
 
 
 def test_comparison_directions_missing_baseline_and_unspecified_direction():
@@ -62,7 +62,7 @@ def test_invalid_direction_is_rejected(direction):
 
 def test_status_without_baseline_has_no_external_comparison(tmp_path):
     path = tmp_path / "status.json"
-    EvolveStatus(path).done()
+    BuildStatus(path).done()
     assert "external" not in OperationStatusView(path).explain()
 
 

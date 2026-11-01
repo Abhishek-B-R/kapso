@@ -338,8 +338,9 @@ class KGIndexMetadata:
     Metadata stored in .index files.
     
     This dataclass represents the contents of an index file that tracks
-    what data was indexed and where it's stored. Users create this once
-    via index_kg() and load it on subsequent runs to skip re-indexing.
+    what data was indexed and where it's stored. An ingest
+    (`kapso experience add`) writes one once, and a build that loads the
+    index reads it instead of re-indexing.
     
     Attributes:
         version: Schema version for forward compatibility
@@ -804,10 +805,9 @@ class NullKnowledgeSearch(KnowledgeSearch):
         """A null backend is by definition not an enabled knowledge store.
 
         The base default (`enabled: True`) made the null object report
-        itself enabled, so every "is knowledge connected?" check —
-        evolve's is_kg_active, the facade's memory status, and the
-        learn_knowledge post-merge refresh — read a disconnected agent
-        as connected (found 2026-08-24 by the facade tests)."""
+        itself enabled, so every "is knowledge connected?" check (an
+        ingest's post-merge refresh among them) read a disconnected
+        agent as connected (found 2026-08-24 by the facade tests)."""
         return False
     
     def index(self, data: KGIndexInput) -> None:

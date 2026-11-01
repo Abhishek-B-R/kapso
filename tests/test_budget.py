@@ -18,6 +18,7 @@ from kapso.execution.budget import (
     CostEntry,
 )
 from kapso.execution.run_checkpoint import RunCheckpointStore
+from tests.harness_support import fake_config
 
 from tests.test_run_checkpoint import (
     _init_git_workspace,
@@ -36,14 +37,19 @@ def test_spec_rejects_invalid_values():
     with pytest.raises(ValueError, match="cost_budget_usd"):
         BudgetSpec(cost_budget_usd=float("nan"))
     with pytest.raises(ValueError, match="finalization_reserve_seconds"):
-        BudgetSpec(time_budget_seconds=600, finalization_reserve_seconds=600)
+        BudgetSpec(time_budget_seconds=600, finalization_reserve_seconds=-1)
+    # A set reserve is bounded by a quarter of the budget; none set is
+    # derived each round (the budget's end).
+    assert BudgetSpec(time_budget_seconds=600, finalization_reserve_seconds=600).bounded_reserve_seconds() == 150
+    assert BudgetSpec(time_budget_seconds=600).bounded_reserve_seconds() is None
+    assert BudgetSpec(finalization_reserve_seconds=90).bounded_reserve_seconds() == 90
 
 
 def test_spec_resolution_precedence_and_unknown_keys():
     block = {
-        "time_budget_minutes": 120,
-        "cost_budget_usd": 10.0,
-        "finalization_reserve_minutes": 5,
+        "minutes": 120,
+        "usd": 10.0,
+        "reserve_minutes": 5,
         "min_agent_timeout_seconds": 30,
     }
 
@@ -158,19 +164,15 @@ def test_budget_block_is_excluded_from_config_fingerprint(
     without_budget = _orchestrator(workspace_a)
 
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "budget": {"time_budget_minutes": 120},
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(budget={"minutes": 120}),
     )
     with_budget = _orchestrator(workspace_b)
 
     assert (
         with_budget.config_fingerprint == without_budget.config_fingerprint
     )
-    assert with_budget._config_budget == {"time_budget_minutes": 120}
+    assert with_budget._config_budget["minutes"] == 120
 
 
 def test_budget_exhausted_campaign_resumes_with_a_bigger_budget(
@@ -233,21 +235,22 @@ def test_reserve_gate_refuses_admission_and_stays_resumable(
     _init_git_workspace(workspace)
     _patch_orchestrator(monkeypatch)
 
-    # 2-minute budget with a 1.5-minute reserve: 30s of searchable time is
-    # below the 60s iteration floor, so no iteration may be admitted.
+    # A 1-minute budget: the set reserve is bounded to a quarter (15s),
+    # leaving 45s of searchable time, under the 60s iteration floor — no
+    # iteration may be admitted, and the refusal is named.
     result = _orchestrator(workspace).solve(
         experiment_max_iter=3,
-        time_budget_minutes=2,
+        time_budget_minutes=1,
         finalization_reserve_minutes=1.5,
     )
 
     assert result.stopped_reason == "budget_exhausted"
-    assert result.stop_detail == "finalization_reserve"
+    assert result.stop_detail == "attempt_would_not_fit"
     assert result.iterations_run == 0
 
     checkpoint = RunCheckpointStore(str(workspace)).load()
     assert checkpoint.status == "running"
-    assert checkpoint.last_stop == "finalization_reserve"
+    assert checkpoint.last_stop == "attempt_would_not_fit"
     resumed = _orchestrator(workspace, resume=True)
     assert resumed.completed_iterations == 0
 
@@ -269,7 +272,7 @@ def test_cost_exhaustion_reports_stop_detail(
     assert result.stop_detail == "cost_budget"
 
 
-def test_snapshot_clamps_agent_deadlines_with_a_floor():
+def test_snapshot_room_and_deadline_never_raised():
     budgeted = BudgetSnapshot(
         iteration_index=0,
         max_iterations=10,
@@ -278,36 +281,16 @@ def test_snapshot_clamps_agent_deadlines_with_a_floor():
         time_budget_seconds=3600,
         finalization_reserve_seconds=0.0,
     )
-    assert budgeted.clamp_timeout(600) == 120  # remaining bounds it
-    # Sequential phases discount intra-iteration drift: after an earlier
-    # phase burned 80s of the 120s remainder, only 40s is grantable —
-    # under the floor, so the floor holds; a smaller drift passes through.
-    assert budgeted.clamp_timeout(600, elapsed_since_snapshot=80) == 60
-    assert budgeted.clamp_timeout(600, elapsed_since_snapshot=30) == 90
+    assert budgeted.room() == 120 and budgeted.deadline(600, budgeted.room()) == 120
+    # Sequential phases discount intra-iteration drift; the deadline is
+    # the room, never raised to the floor (the predicate decides the launch).
+    assert budgeted.deadline(600, budgeted.room(elapsed_since_snapshot=80)) == 40
+    assert budgeted.deadline(600, budgeted.room(elapsed_since_snapshot=30)) == 90
+    assert budgeted.deadline(None, budgeted.room()) == 120
 
-    nearly_out = BudgetSnapshot(
-        iteration_index=0,
-        max_iterations=10,
-        elapsed_seconds=3595,
-        cost_usd=0.0,
-        time_budget_seconds=3600,
-    )
-    assert nearly_out.clamp_timeout(600) == 60  # the floor holds
-
-    unbudgeted = BudgetSnapshot(
-        iteration_index=0,
-        max_iterations=10,
-        elapsed_seconds=1e6,
-        cost_usd=0.0,
-    )
-    assert unbudgeted.clamp_timeout(600) == 600
-
-    # None-configured phases (no session deadline in config): the budget
-    # remainder is the only bound when a budget exists; with no budget the
-    # deadline stays None (unbounded).
-    assert budgeted.clamp_timeout(None) == 120
-    assert budgeted.clamp_timeout(None, elapsed_since_snapshot=80) == 60
-    assert unbudgeted.clamp_timeout(None) is None
+    unbudgeted = BudgetSnapshot(iteration_index=0, max_iterations=10, elapsed_seconds=1e6, cost_usd=0.0)
+    assert unbudgeted.room() is None
+    assert unbudgeted.deadline(600, None) == 600 and unbudgeted.deadline(None, None) is None
 
 
 def test_budget_status_block_renders_in_all_modes():
@@ -324,6 +307,9 @@ def test_budget_status_block_renders_in_all_modes():
         assert load_prompt(template_name).count("{{budget_status}}") == 1
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
+    strategy.experience_intro_path = None
+    strategy.hosted = None
     strategy.iteration_count = 4
 
     strategy.budget_snapshot = None
@@ -372,6 +358,7 @@ def test_clamped_timeout_helper_uses_the_snapshot():
     )
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.budget_snapshot = None
     strategy.budget_snapshot_monotonic = None
     assert strategy._clamped_timeout(600) == 600
@@ -390,3 +377,7 @@ def test_clamped_timeout_helper_uses_the_snapshot():
     # remainder, so implementation gets ~80s — never the stale 180.
     strategy.budget_snapshot_monotonic = time_module.monotonic() - 100.0
     assert strategy._clamped_timeout(600) == pytest.approx(80, abs=2)
+    # And never raised to the floor: 170s burned leaves 10s, which is the
+    # deadline a session would get (the launch predicate refuses it).
+    strategy.budget_snapshot_monotonic = time_module.monotonic() - 170.0
+    assert strategy._clamped_timeout(600) == pytest.approx(10, abs=2)

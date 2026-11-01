@@ -1,7 +1,7 @@
-"""Campaign pipeline contracts: queue integrity, gating, goal derivation,
-and the wall-clock budget threading. Hermetic — no LLMs, no downloads."""
+"""Campaign pipeline contracts: queue integrity, gating, the budget-bound
+invocation and the runtime file. Hermetic — no LLMs, no downloads."""
 
-import json
+import argparse
 from pathlib import Path
 
 import pytest
@@ -13,8 +13,9 @@ pytest.importorskip("relbench")
 
 from benchmarks.relbench.campaign import (CPU_LOCAL_QUEUE, CPU_SAFE_DATASETS,
                                           PROTOCOL_SENSITIVE_TASKS, ROI_QUEUE,
-                                          derive_goal, select_tasks)
-from benchmarks.relbench.runner import _write_runtime_config
+                                          ROLLING_VERIFIED, run_one, select_tasks)
+from benchmarks.common import write_runtime_config
+from benchmarks.relbench.runner import CONFIG_PATH
 
 
 def test_queue_integrity():
@@ -43,42 +44,26 @@ def test_selection_gates(tmp_path):
                           "rel-avito/ad-ctr"]
     assert PROTOCOL_SENSITIVE_TASKS == {"rel-f1/driver-position", "rel-f1/driver-dnf",
                                         "rel-f1/driver-top3"}
-    from benchmarks.relbench.campaign import ROLLING_VERIFIED
-
     # an unverified rolling task would be blocked: simulate by construction
     assert ROLLING_VERIFIED <= PROTOCOL_SENSITIVE_TASKS
 
 
-def test_derive_goal_explicit_only():
-    # Symbolic board targets were retired with data/sota.json +
-    # data/baselines.json; only explicit numeric targets remain.
-    explicit, desc = derive_goal("rel-f1/driver-position", "2.6")
-    assert explicit == 2.6 and "explicit" in desc
-    for retired in ("beat-best", "beat-kumo"):
-        with pytest.raises(ValueError, match="retired"):
-            derive_goal("rel-f1/driver-position", retired)
-
-
-def test_goal_none_omits_target(tmp_path, capsys):
-    import argparse
-
-    from benchmarks.relbench.campaign import run_one
-
-    args = argparse.Namespace(goal="none", iterations=100, mode="RELBENCH_GENERIC",
-                              hours_per_task=4.0, dry_run=True)
+def test_a_campaign_task_is_budget_bound(capsys):
+    """The runner is invoked with the wall-clock budget and nothing that
+    could stop it early: no target, no note; the stop vote is advisory in
+    the override file."""
+    args = argparse.Namespace(iterations=100, hours_per_task=4.0, dry_run=True)
     verdict = run_one("rel-f1/driver-position", args)
     out = capsys.readouterr().out
     assert verdict["status"] == "dry-run"
-    assert "--target-val" not in out and "budget-bound" in out
-    assert "--knowledge-file" in out  # no-stop note rides the knowledge channel
+    assert "--time-budget-hours 4.0" in out and "-i 100" in out and "budget-bound" in out
+    assert "--target-val" not in out and "--knowledge-file" not in out
 
 
-def test_time_budget_threading(tmp_path):
-    path = _write_runtime_config("RELBENCH_GENERIC", str(tmp_path), tmp_path,
-                                 time_budget_hours=7.5)
+def test_the_runtime_file_carries_the_shared_cache_over_the_override(tmp_path):
+    """The task's shared cache is a strategy parameter, so it lives in a
+    file; the budget is build()'s argument and the file leaves it alone."""
+    path = write_runtime_config(CONFIG_PATH, tmp_path / "shared", tmp_path)
     config = yaml.safe_load(Path(path).read_text())
-    assert config["modes"]["RELBENCH_GENERIC"]["budget"]["time_budget_minutes"] == 450.0
-    # no override -> config default untouched
-    path = _write_runtime_config("RELBENCH_GENERIC", str(tmp_path), tmp_path)
-    config = yaml.safe_load(Path(path).read_text())
-    assert config["modes"]["RELBENCH_GENERIC"]["budget"]["time_budget_minutes"] == 600
+    assert config["search_strategy"]["params"]["shared_cache_dir"] == str(tmp_path / "shared")
+    assert config["budget"]["minutes"] == 600 and config["benchmark"]["work_root"] == "tmp/relbench"

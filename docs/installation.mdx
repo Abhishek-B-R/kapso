@@ -4,7 +4,7 @@ description: "Install the Codex and Claude Code CLIs that Kapso's inference runs
 keywords: ["install Kapso", "kapso doctor", "Codex CLI", "Claude Code CLI", "leeroo-kapso", "AI agent setup"]
 ---
 
-Kapso sends every model call through a coding-agent CLI. Install those CLIs and log in **before** installing the Python package — on its own the package cannot reach a model, and `kapso evolve` will stop in seconds rather than fail deep inside a run.
+Kapso sends every model call through a coding-agent CLI. Install those CLIs and log in **before** installing the Python package — on its own the package cannot reach a model, and `kapso build` will stop in seconds rather than fail deep inside a run.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ Kapso sends every model call through a coding-agent CLI. Install those CLIs and 
 |----------|-----|------------|
 | Node.js 18 or newer | Both coding-agent CLIs are npm packages | `node` |
 | Codex CLI, logged in | Research, judging and utility calls | `codex authenticated` |
-| Claude Code CLI, logged in | Ideation and implementation in the default `GENERIC` mode | `claude authenticated` |
+| Claude Code CLI, logged in | Ideation and implementation, as the packaged default host | `claude authenticated` |
 | Python 3.10 or newer | The `leeroo-kapso` package | — |
 | An OpenAI API key (optional) | Embeddings, never generation: the knowledge graph, and semantic search over past experiments when `models.embedding` is set. A stock install needs neither | `OPENAI_API_KEY (embeddings: https://api.openai.com/v1)`, only when something will embed |
 | Git | Kapso commits every experiment to a branch | `git` |
@@ -34,7 +34,7 @@ Kapso sends every model call through a coding-agent CLI. Install those CLIs and 
   </Step>
 
   <Step title="Optional: an OpenAI key for embeddings">
-    Only the knowledge graph and semantic search over past experiments embed text, and generation never touches the OpenAI API. Nothing in a stock install needs the key. When you turn either on (a `kg_index`, `learn_knowledge`, or `models.embedding` in your config), put the key in a `.env` file in the directory you run Kapso from:
+    Only an ingested corpus and semantic search over past experiments embed text, and generation never touches the OpenAI API. Nothing in a stock install needs the key. When you turn either on (`kapso experience add --repo` or `--research`, a build that loads an index, or `models.embedding` in your config), put the key in a `.env` file in the directory you run Kapso from:
 
     ```bash
     echo 'OPENAI_API_KEY=sk-...' >> .env
@@ -76,11 +76,11 @@ Kapso sends every model call through a coding-agent CLI. Install those CLIs and 
 LEEROOPEDIA_API_KEY=kpsk_...
 ```
 
-`kapso doctor` confirms the gate is live. Without a key the campaign still runs; the launch banner says the gate is off and how to turn it on. What each node consulted, and the credits used, appear in `kapso watch --tree` and the campaign's final summary. See [MCP gates](/docs/evolve/mcp-gates) for what the agent is told about it.
+`kapso doctor` confirms the gate is live. Without a key the campaign still runs; the launch banner says the gate is off and how to turn it on. What each attempt consulted, and the credits used, appear in `kapso trace` and the campaign's final summary. See [MCP gates](/docs/evolve/mcp-gates) for what the agent is told about it.
 
 ## How do I check my setup?
 
-`kapso doctor` reports what **your config** requires, and names one fix for anything missing:
+`kapso doctor` reports what **your config** requires, and names one fix for anything missing (`--json` prints the same report as data for a script):
 
 ```bash
 kapso doctor
@@ -98,8 +98,8 @@ kapso doctor
   [OK ] OPENAI_API_KEY (embeddings: https://api.openai.com/v1)
   [OK ] deploy target docker
   [-- ] deploy target modal
-         needed by  only needed for deploy(strategy=DeployStrategy.MODAL)
-         fix        pip install modal && modal token new
+         needed by  only needed for kapso deploy --target modal
+         fix        pip install "leeroo-kapso[modal]" and authenticate with `modal token new`
 ====================================================================
 Required checks passed (9 checked). 1 optional item(s) marked [-- ] only limit features you may not need.
 ```
@@ -137,11 +137,11 @@ Required checks passed (3 checked).
 ```
 
 ```bash
-kapso doctor evolve
+kapso doctor build
 ```
 
 ```text
-kapso doctor evolve
+kapso doctor build
 ====================================================================
   [OK ] node
   [OK ] claude CLI
@@ -153,14 +153,14 @@ kapso doctor evolve
 Required checks passed (6 checked).
 ```
 
-The five verbs are `research`, `learn_knowledge`, `evolve`, `learn` and `deploy`. With no verb, `doctor` reports the union of all five.
+The four verbs are `build`, `learn`, `deploy` and `experience` (what `kapso experience add --repo` and `--research` need). With no verb, `doctor` reports the union of all four.
 
 ### How do I confirm my models are actually reachable?
 
 Add `--models` to fire a one-token live call per configured CLI and model pair. A revoked login, or a model your plan does not include, surfaces here in seconds instead of hours into a campaign. A usage cap on a model you can serve does not: a one-token probe passes until the cap is hit.
 
 ```bash
-kapso doctor evolve --models
+kapso doctor build --models
 ```
 
 <Note>
@@ -185,9 +185,9 @@ CLAUDE_CODE_OAUTH_TOKEN=...
 CODEX_API_KEY=...
 ```
 
-## Optional: Knowledge-graph backends
+## Optional: the stores an index needs
 
-`learn_knowledge()` and `kapso index_kg` store into a local Weaviate and Neo4j. Both run in Docker. From a source checkout:
+`kapso experience add --repo` and `--research` ingest a corpus into an index held in a local Weaviate and Neo4j; a build that loads the index searches them. Both run in Docker. From a source checkout:
 
 ```bash
 bash scripts/start_infra.sh
@@ -203,9 +203,9 @@ bash scripts/stop_infra.sh              # stop, keep the data
 bash scripts/stop_infra.sh --volumes    # stop and wipe the data
 ```
 
-The stack runs Weaviate 1.39. If your volumes were created by an older stack (Weaviate 1.27), note that Weaviate supports upgrading one minor version at a time. The index is rebuilt from your wiki pages, so the simplest path is to wipe it and re-index: `bash scripts/stop_infra.sh --volumes`, `bash scripts/start_infra.sh`, then run `kapso index_kg` again.
+The stack runs Weaviate 1.39. If your volumes were created by an older stack (Weaviate 1.27), note that Weaviate supports upgrading one minor version at a time. An index is rebuilt from its source, so the simplest path is to wipe the stores and ingest again: `bash scripts/stop_infra.sh --volumes`, `bash scripts/start_infra.sh`, then `kapso experience remove <name>` and `kapso experience add` again.
 
-`kapso doctor` reports both as `Weaviate (localhost:8080)` and `Neo4j (localhost:7687)` when your config enables knowledge search.
+`kapso doctor experience` reports both as `Weaviate (localhost:8080)` and `Neo4j (localhost:7687)`; a build needs them only when it loads an index. See [Add a source](/docs/experience/add).
 
 ## Optional: Benchmarks
 
@@ -289,16 +289,27 @@ The benchmark harnesses live in the source checkout under `benchmarks/` and each
   </Accordion>
 
   <Accordion title="A run fails partway through on a model error">
-    Probe the models directly with `kapso doctor evolve --models` — see [How do I confirm my models are actually reachable?](#how-do-i-confirm-my-models-are-actually-reachable)
+    Probe the models directly with `kapso doctor build --models` — see [How do I confirm my models are actually reachable?](#how-do-i-confirm-my-models-are-actually-reachable)
   </Accordion>
 </AccordionGroup>
 
 ## Set up through your coding agent
 
-Paste this into Claude Code, Codex or OpenCode and it walks the steps above with you, hands you the sign-in links, asks for the keys instead of hunting for them, and verifies with `kapso doctor`:
+With [the Kapso plugin](/docs/coding-agent-skills) installed, one command walks the steps above with you: it detects what the machine has, installs what is missing, hands you the sign-in links, asks for the keys instead of hunting for them, and verifies with `kapso doctor`:
+
+```bash
+claude plugin marketplace add Leeroo-AI/kapso && claude plugin install kapso@kapso   # Claude Code
+codex plugin marketplace add Leeroo-AI/kapso && codex plugin add kapso@kapso         # Codex
+```
 
 ```text
-I want to set up Kapso, the open-source software factory by Leeroo (PyPI package leeroo-kapso, docs at https://docs.leeroo.com), on this machine so you can run it from this session. Explain the commands you plan to run, then run them. Do nothing beyond these steps, and never print a key or token.
+/kapso:setup
+```
+
+In a session without the plugin (OpenCode, or an agent you cannot install it in), paste this instead; it is the same procedure as a prompt:
+
+```text
+I want to set up Kapso, the open-source experiment-campaign framework by Leeroo (PyPI package leeroo-kapso, docs at https://docs.leeroo.com), on this machine so you can run it from this session. Explain the commands you plan to run, then run them. Do nothing beyond these steps, and never print a key or token.
 
 1. Prerequisites. Check `node --version` (18 or newer), `python3 --version` (3.10 or newer) and `git --version`. Install whatever is missing the way this OS installs software; ask me before using sudo.
 
@@ -317,37 +328,37 @@ I want to set up Kapso, the open-source software factory by Leeroo (PyPI package
    pip show kapso        # the PyPI package named `kapso` is an unrelated tool that shadows the command; if present: pip uninstall -y kapso
    pip install leeroo-kapso
 
-6. Verify. Run `kapso doctor evolve`: every required row must read `[OK ]`; fix what it names and rerun. Then run `kapso doctor` and tell me what its `[-- ]` rows would enable; the Weaviate and Neo4j rows belong to the knowledge-graph features and need Docker, so leave them unless I ask. Finish with `kapso doctor evolve --models`, which spends a few tokens to confirm each configured model is reachable.
+6. Verify. Run `kapso doctor build`: every required row must read `[OK ]`; fix what it names and rerun. Then run `kapso doctor` and tell me what its `[-- ]` rows would enable; the Weaviate and Neo4j rows belong to the knowledge-graph features and need Docker, so leave them unless I ask. Finish with `kapso doctor build --models`, which spends a few tokens to confirm each configured model is reachable.
 
 7. The Kapso skill. Install the skill written for you, so you operate Kapso the way its docs say:
    git clone --depth 1 https://github.com/Leeroo-AI/kapso /tmp/kapso-src
-   Claude Code:  mkdir -p .claude/skills   && cp -r /tmp/kapso-src/skills/claude-code/kapso .claude/skills/kapso
-   Codex:        mkdir -p .agents/skills   && cp -r /tmp/kapso-src/skills/codex/kapso .agents/skills/kapso
-   OpenCode:     mkdir -p .opencode/skills && cp -r /tmp/kapso-src/skills/opencode/kapso .opencode/skills/kapso
+   Claude Code:  mkdir -p .claude/skills   && cp -r /tmp/kapso-src/plugin/skills/kapso .claude/skills/kapso
+   Codex:        mkdir -p .agents/skills   && cp -r /tmp/kapso-src/plugin/skills/kapso .agents/skills/kapso
+   OpenCode:     mkdir -p .opencode/skills && cp -r /tmp/kapso-src/plugin/skills/kapso .opencode/skills/kapso
    Then load it. Ask me whether to also connect the docs: `claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp` or `codex mcp add kapso-docs --url https://docs.leeroo.com/mcp`.
 
 8. Finish with a short overview of what you can now do, and do not start a campaign until I give you a goal:
-   - run a campaign toward a measurable goal, in the background: kapso evolve --goal "<metric and target>" --initial-repo . --eval-dir <judge dir> --output ../<campaign>
+   - run a build toward a measurable objective, in the background: kapso build --brief kapso-brief.md --repo . --evaluation <evaluation dir> --output ../<campaign> --detach
    - follow it: kapso watch ../<campaign> --follow; answer a pause (WAITING ON YOU): kapso inbox
-   - bank what it taught: Kapso().learn("../<campaign>"); ship the winner: kapso deploy --solution-path ../<campaign> --strategy local
+   - bank what it taught: Kapso().learn("../<campaign>"); ship the winner: kapso deploy ../<campaign> --target local
 ```
 
-The last step installs the [Kapso skill](/docs/coding-agent-skills), which has the agent run `kapso doctor` first, name the right package, and launch campaigns in the background with the handoff you need.
+The last step installs the operating skill, one of the six [the plugin](/docs/coding-agent-skills) carries, which has the agent run `kapso doctor` first, name the right package, and launch campaigns in the background with the handoff you need.
 
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/docs/quickstart">
-    Run your first campaign
+  <Card title="Your first build" icon="rocket" href="/docs/first-build">
+    The churn example, end to end
   </Card>
   <Card title="CLI reference" icon="terminal" href="/docs/reference/cli">
     Commands, modes and flags
   </Card>
-  <Card title="Kapso skill for coding agents" icon="wand-magic-sparkles" href="/docs/coding-agent-skills">
+  <Card title="The Kapso plugin" icon="wand-magic-sparkles" href="/docs/coding-agent-skills">
     Let your coding agent run Kapso correctly
   </Card>
 </CardGroup>
 
-Related pages: [Quickstart](/docs/quickstart) · [CLI reference](/docs/reference/cli) · [Kapso skill for coding agents](/docs/coding-agent-skills) · [What is Kapso](/docs)
+Related pages: [Your first build](/docs/first-build) · [CLI reference](/docs/reference/cli) · [The Kapso plugin](/docs/coding-agent-skills) · [What is Kapso](/docs)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

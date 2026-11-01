@@ -1,18 +1,18 @@
 ---
-title: "The Kapso Evolve system: how experiment campaigns run"
-sidebarTitle: "Overview"
-description: "Evolve turns a measurable goal into working software by designing candidate solutions, implementing each one, scoring it, then refining whatever worked best."
-keywords: ["Kapso Evolve", "experiment campaign", "tree search", "automated ML", "iterative experimentation"]
+title: "How a build runs: the engine, end to end"
+sidebarTitle: "The engine"
+description: "The engine turns a brief into working software by designing candidate solutions, implementing each one, scoring it, then refining whatever worked best."
+keywords: ["Kapso engine", "experiment campaign", "tree search", "automated ML", "iterative experimentation"]
 ---
 
-Evolve is the engine. Give it a goal it can score and it runs a campaign: propose a candidate, implement it on its own git branch, evaluate it, judge the result, and repeat with what it learned.
+The engine behind `build()`. Give it a brief it can score and it runs a campaign: propose a candidate, implement it on its own git branch, evaluate it, judge the result, and repeat with what it learned.
 
 ## How does a campaign work?
 
 ```mermaid
 flowchart TB
-    subgraph Evolve["Evolve System"]
-        G[Goal] --> O[Orchestrator]
+    subgraph Engine["The engine"]
+        G[Brief] --> O[Orchestrator]
         O --> SS[Search Strategy]
         SS --> CA[Coding Agent]
         CA --> AE[Agent Evaluation]
@@ -27,11 +27,11 @@ flowchart TB
 
 The system works by:
 
-1. **Receiving a goal**: What you want to build (include success criteria in the goal)
-2. **Initializing repo**: From `initial_repo`, workflow search, or empty
-3. **Gathering context**: From the knowledge graph and repo memory
+1. **Receiving a brief**: What you want to build, how it is measured, the target and the rules
+2. **Initializing the repository**: From `repo`, a workflow search, or empty
+3. **Gathering context**: From the experience the build loaded and repo memory
 4. **Generating solutions**: Via pluggable coding agents
-5. **Asking you when only you can help**: A session that needs a credential, access or a file only a person can provide records a request in the [inbox](/docs/evolve/inbox); the campaign pauses and your reply continues that same session
+5. **Asking you when only you can help**: A session that needs a credential, access or a file only a person can provide records a request in the [inbox](/docs/build/inbox); the campaign pauses and your reply continues that same session
 6. **Running evaluation**: Agent builds and runs evaluation in `kapso_evaluation/`
 7. **Generating feedback**: Feedback generator validates results and decides stop/continue
 
@@ -53,7 +53,7 @@ The system works by:
   <Card title="Repo Memory" icon="brain" href="/docs/evolve/repo-memory">
     Tracks code understanding with file-level evidence
   </Card>
-  <Card title="Inbox" icon="inbox" href="/docs/evolve/inbox">
+  <Card title="Inbox" icon="inbox" href="/docs/build/inbox">
     Where a session asks you for what only you can provide, and how your reply resumes it
   </Card>
 </CardGroup>
@@ -61,56 +61,60 @@ The system works by:
 ## How do I run one?
 
 ```python
-from kapso import Kapso, DeployStrategy
+from kapso import Kapso, Budget
 
 kapso = Kapso()
 
-# Build a solution - agent builds evaluation dynamically
-# Include success criteria in the goal
-solution = kapso.evolve(
-    goal="Build a random forest classifier for Iris with accuracy > 0.9",
-    max_iterations=10,
+# A build with no evaluator: the campaign builds one from the brief
+solution = kapso.build(
+    "Build a random forest classifier for Iris with accuracy > 0.9",
+    budget=Budget(experiments=10),
 )
 
-# With user-provided evaluation and data
-solution = kapso.evolve(
-    goal="Optimize model inference speed to < 10ms",
-    eval_dir="./my_evaluation/",   # Copied to kapso_evaluation/
-    data_dir="./my_data/",         # Copied to kapso_datasets/
-    initial_repo="https://github.com/org/starter",  # Or local path
+# With your evaluation and data, protected
+solution = kapso.build(
+    "Optimize model inference speed to < 10ms",
+    evaluation="./my_evaluation/",   # copied to kapso_evaluation/
+    data="./my_data/",               # copied to kapso_datasets/
+    repo="https://github.com/org/starter",   # or a local path
 )
 
 # Deploy and run
-deployed_program = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
+deployed_program = kapso.deploy(solution, target="local")
 result = deployed_program.run({"data_path": "./test.csv"})
 ```
 
 ## How do I start from an existing repo?
 
-When `evolve()` is called, the system initializes the workspace:
+When `build()` is called, the system initializes the workspace:
 
-| `initial_repo` Value | Behavior |
+| `repo` | Behavior |
 |---------------------|----------|
 | Local path | Use existing repository as starting point |
 | GitHub URL | Clone repository and use as starting point |
-| `None` (default) | Search for relevant workflow via Knowledge Graph. If found, clone workflow's repo. Otherwise, create empty repo. |
+| `None` (default) | Search for a relevant workflow in a loaded index. If found, clone its repository. Otherwise, start from an empty repository. |
 
-## Configuration modes
+## Configuration
 
-Two ship, both running the generic strategy:
+One configuration ships, the packaged `config.yaml`, and an override file of
+yours changes what you name in it. The gates off, for a quick experiment, is
+such a file:
 
-| Mode | Description | Best For |
-|------|-------------|----------|
-| `GENERIC` | The default: MCP gates, knowledge search, full feedback loop | General problem solving |
-| `MINIMAL` | The same loop with the knowledge machinery off | Quick experiments, simple problems |
+```yaml
+# minimal.yaml
+search_strategy:
+  params:
+    ideation:
+      gates: []
+    implementation:
+      gates: []
+```
 
 ```python
-# Use a specific mode
-solution = kapso.evolve(
-    goal="...",
-    mode="MINIMAL",
-)
+solution = Kapso(config="minimal.yaml").build("...")
 ```
+
+See [Configuration](/docs/reference/configuration).
 
 Each experiment runs on its own Git branch (`generic_exp_N`), so attempts stay isolated and every one can be checked out later — see [Experiment lifecycle](/docs/evolve/experiment-lifecycle).
 
@@ -122,10 +126,10 @@ After setup, the workspace looks like:
 workspace/
 ├── kapso_evaluation/     # Agent builds evaluation here
 │   └── evaluate.py       # Evaluation script
-├── kapso_datasets/       # Data files (from data_dir)
+├── kapso_datasets/       # Data files (from data)
 ├── .kapso/
 │   └── repo_memory.json  # Codebase understanding
-└── (solution code)       # From initial_repo or agent-built
+└── (solution code)       # From repo, or agent-built
 ```
 
 ## What does a campaign remember?
@@ -156,7 +160,7 @@ cost = orchestrator.get_cumulative_cost()
 print(f"Total cost: ${cost:.2f}")
 ```
 
-Budget limits can be set via `max_iterations` or time/cost budgets in configuration.
+Budget limits are set with `Budget(minutes, experiments, usd, reserve_minutes)` on the call or in the brief, or in configuration.
 
 ## Related
 

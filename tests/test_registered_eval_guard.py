@@ -10,6 +10,7 @@ import os
 import time
 
 import kapso.execution.search_strategies.generic.strategy as strategy_module
+from kapso.core.roles import SessionRole
 from kapso.execution.evaluation_archive_sandbox import write_selection_label
 from kapso.execution.evaluation_maintainer.maintainer import MANIFEST_MARKER
 from kapso.execution.search_strategies.generic import registered_evaluation
@@ -18,11 +19,12 @@ from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
 def make_stub(tmp_path, archive_glob):
     s = GenericSearch.__new__(GenericSearch)
+    s.harness = None
     s.registered_evaluation_command = (
         "python kapso_evaluation/kapso_eval.py --fidelity full"
     )
     s.registered_evaluation_archive_glob = archive_glob
-    s.implementation_timeout = 10
+    s.implementation_role = SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=10)
     s.budget_snapshot = None
     s.budget_snapshot_monotonic = None
     s._last_session_started_ts = time.time() - 3600
@@ -83,11 +85,10 @@ def test_a_lane_recovers_only_its_own_sessions_archive(tmp_path, monkeypatch):
     stub.__dict__.update(
         expansion_lane_env=None, workspace=None, llm=None,
         registered_evaluation_manifest=None, implementation_gates=[],
-        gate_failure_policy="skip", bank_serving=None, kg_index_path=None,
-        implementation_cli="claude_code", implementation_model="m",
-        implementation_fallback_model=None, implementation_web=False,
-        _claude_auth_settings={}, env_strip=[], env_defaults={},
-        session_effort=None, previous_errors=[], recent_error_count=3,
+        gate_failure_policy="skip", bank_serving=None, kg_index_path=None, hosted=None,
+        implementation_role=SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=None, web=False),
+        implementation_fallback_model=None, env_strip=[], env_defaults={},
+        previous_errors=[], recent_error_count=3,
         node_expansion_value=2,
     )
 

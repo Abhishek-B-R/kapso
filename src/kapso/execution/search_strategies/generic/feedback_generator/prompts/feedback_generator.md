@@ -19,10 +19,7 @@ leaves no trace in its captured output; the facts above are its only record.
 ## Solution Approach (Idea)
 {{idea}}
 
-## Design axes of the solution space
-{{design_axes}}
-
-## Code Changes Summary
+{{axis_frontier}}## Code Changes Summary
 {{code_changes_summary}}
 
 ## Commit Information
@@ -54,7 +51,7 @@ You can read this file in the workspace to see the full evaluation code.
 {{evaluation_result}}
 ```
 
-## Your Task
+{{verification}}{{domain_guidance}}## Your Task
 
 1. **Read the evaluation script** at `{{evaluation_script_path}}` to understand what it tests
 2. **Analyze the evaluation result** to determine if the goal was achieved
@@ -82,15 +79,8 @@ You can read this file in the workspace to see the full evaluation code.
    treat undeclared drift (not deliberate, stated revision) as a finding.
    Integrity is OUTSIDE this grading — fidelity gates, rule compliance, and
    the freeze-time confirmation are never to be traded for speed.
-7. **Report the axis frontier** — for each design axis above: what this
-   iteration moved on it, what headroom evidence the run produced (e.g.
-   feature-importance/ablation results for representation axes, data or
-   schedule ablations for training axes), and 1-2 named untried moves on
-   every axis you do not claim saturated. A saturation claim needs cited
-   measurement, not tenure — an axis untouched for many iterations with no
-   saturation evidence is a finding to call out.
-8. **Generate feedback** for the next iteration (if not stopping)
-9. **Optionally inspect code changes** - if the summary is unclear, use `git diff` to see details
+7. **Generate feedback** for the next iteration (if not stopping)
+8. **Optionally inspect code changes** - if the summary is unclear, use `git diff` to see details
 
 ## Required Output Format
 
@@ -112,9 +102,10 @@ You MUST respond with your results using these XML tags:
 - **evaluation_valid**: Set to `true` if the evaluation is fair and correctly tests the goal. Set to `false` if the evaluation is flawed, hardcoded, or doesn't actually test what it claims.
 - **score**: Extract the numeric score from the evaluation result. Look for values like "score: 0.85", "accuracy: 95%", etc. Convert percentages to decimals (95% → 0.95). Set to `null` if no score found.
 - **feedback**: If stopping, provide a success message. If not stopping, provide specific, actionable feedback on what to improve. If evaluation is invalid, explain what's wrong with it.
-- **cards_load_bearing**: If the problem context carried a "Knowledge bank
-  brief" (cards tagged `[card:<name>]`) or the session pulled cards via bank
-  tools, name the cards whose guidance the workspace evidence shows was
+- **cards_load_bearing**: If the session was served experience (its prompt
+  carried an "Experience (measured before)" section and it pulled cards via
+  the bank tools, citing them as `[card:<name>]`), name the cards whose
+  guidance the workspace evidence shows was
   load-bearing for THIS iteration's result — the spec cites it, the code
   implements its move, or the run measured its claim. Comma-separated names;
   `none` when no served card mattered (always `none` when no cards were

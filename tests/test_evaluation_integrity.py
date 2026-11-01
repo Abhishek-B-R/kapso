@@ -10,6 +10,7 @@ import git
 import pytest
 
 from kapso.environment.handlers.generic import GenericProblemHandler
+from kapso.execution.search_strategies.generic.registered_evaluation import evaluation_instructions
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.evaluation_integrity import (
     AGENT_GENERATED,
@@ -17,6 +18,7 @@ from kapso.execution.evaluation_integrity import (
     EvaluationIntegrityError,
     build_data_manifest,
     build_evaluation_manifest,
+    launch_evaluation_manifest,
     manifest_fingerprint,
     verify_evaluation_tree,
 )
@@ -86,6 +88,7 @@ class StubStrategy(SearchStrategy):
 
 def _provided_strategy(workspace: Path) -> GenericSearch:
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.workspace = MaterializingWorkspace(workspace)
     strategy.registered_evaluation_manifest = {}
     strategy.registered_data_manifest = {}
@@ -196,6 +199,27 @@ def test_runtime_outputs_are_allowed_but_evaluator_changes_are_rejected(
     assert "alternate" in injected.error
 
 
+def test_a_result_file_left_in_the_provided_suite_is_refused_at_launch(
+    tmp_path: Path,
+) -> None:
+    """A `result.json` an earlier run left at the suite's root would be
+    protected with the suite and changed by the first evaluation, so the
+    launch refuses it by name; one deeper in the tree is a fixture and
+    stays protected like any other file."""
+    suite = tmp_path / "suite"
+    _write_suite(suite)
+    assert launch_evaluation_manifest(suite) == build_evaluation_manifest(suite)
+
+    suite.joinpath("result.json").write_text('{"score": 1}\n')
+    with pytest.raises(EvaluationIntegrityError, match="left by an earlier run"):
+        launch_evaluation_manifest(suite)
+
+    suite.joinpath("result.json").unlink()
+    suite.joinpath("data").mkdir()
+    suite.joinpath("data", "result.json").write_text("{}\n")
+    assert "data/result.json" in launch_evaluation_manifest(suite)
+
+
 def test_candidate_tampering_clears_score_and_stop_state(
     tmp_path: Path,
 ) -> None:
@@ -242,6 +266,7 @@ def test_unchanged_candidate_and_agent_generated_evaluation_are_valid(
     assert node.evaluation_provenance == PROVIDED
 
     generated = GenericSearch.__new__(GenericSearch)
+    generated.harness = None
     generated.registered_evaluation_manifest = {}
     generated.registered_data_manifest = {}
     generated.evaluation_provenance = AGENT_GENERATED
@@ -269,6 +294,7 @@ def test_invalid_evaluations_cannot_win_strategy_or_history_selection(
     )
 
     generic = GenericSearch.__new__(GenericSearch)
+    generic.harness = None
     generic.node_history = [invalid, valid]
     generic.problem_handler = SimpleNamespace(maximize_scoring=True)
     assert generic.get_best_experiment() is valid
@@ -285,16 +311,19 @@ def test_invalid_evaluations_cannot_win_strategy_or_history_selection(
     assert persisted[0]["evaluation_provenance"] == PROVIDED
 
 
-def test_feedback_invalidity_cannot_stop_or_retain_a_score() -> None:
+def test_feedback_invalidity_cannot_stop_or_retain_a_score(tmp_path: Path) -> None:
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
+    strategy.workspace_dir = str(tmp_path)   # the judge's session record goes under it
     strategy.goal = "Improve support"
     strategy.budget_snapshot = None
     strategy.budget_snapshot_monotonic = None
     strategy.registered_evaluation_command = ""
     # Stub gotcha: _generate_feedback threads the design-axis brief.
-    strategy.design_axes = ("input representation — features",)
     strategy.feedback_generator = SimpleNamespace(
         configured_timeout_seconds=120.0,
+        agent_type="claude_code",
+        attach_harness=lambda staged: None,
         generate=lambda **kwargs: SimpleNamespace(
             feedback="evaluation is not valid",
             score=100.0,
@@ -302,6 +331,8 @@ def test_feedback_invalidity_cannot_stop_or_retain_a_score() -> None:
             evaluation_valid=False,
             duration_seconds=None,
             cost_usd=0.0,
+            cards_load_bearing=[],
+            unjudged="",
         ),
     )
     node = SearchNode(
@@ -342,6 +373,7 @@ def test_invalid_evaluation_is_stored_but_never_ranked_top(
 
 def test_integrity_state_round_trip_and_resume_mismatch() -> None:
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.evaluation_provenance = PROVIDED
     source.provided_evaluation_manifest = {"evaluate.py": "a" * 64}
     source.provided_evaluation_fingerprint = manifest_fingerprint(
@@ -350,6 +382,7 @@ def test_integrity_state_round_trip_and_resume_mismatch() -> None:
     state = source.dump_evaluation_integrity_state()
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.evaluation_provenance = PROVIDED
     restored.provided_evaluation_manifest = {"evaluate.py": "a" * 64}
     restored.provided_evaluation_fingerprint = manifest_fingerprint(
@@ -365,14 +398,16 @@ def test_integrity_state_round_trip_and_resume_mismatch() -> None:
 def test_provided_evaluation_prompt_warns_against_modification(
     tmp_path: Path,
 ) -> None:
+    """The problem text names where the suite lives; the contract (run it,
+    never edit it) is the implementation prompt's provided form."""
     suite = tmp_path / "suite"
     _write_suite(suite)
     handler = GenericProblemHandler("Improve support", eval_dir=str(suite))
 
-    context = handler.get_problem_context()
-
-    assert "Do not modify, delete, replace" in context
-    assert "result.json" in context
+    assert "provided in `kapso_evaluation/`" in handler.get_problem_context()
+    contract = evaluation_instructions(None, provided=True)
+    assert "Never modify, delete,\n   replace or add evaluator source files" in contract
+    assert "result.json" in contract
 
 
 def test_data_tampering_voids_the_score(tmp_path: Path) -> None:

@@ -183,9 +183,9 @@ class Researcher:
         prompt = self._build_research_prompt(query=query, mode=mode, top_k=top_k)
         
         # Fail loud: a research failure returned as empty findings poisons
-        # every downstream consumer silently (learn_knowledge ingested
-        # nothing and reported success; found live 2026-08-24 by the facade
-        # E2E). Genuine provider errors propagate to the caller.
+        # every downstream consumer silently (an ingest took nothing and
+        # reported success; found live 2026-08-24 by the facade E2E).
+        # Genuine provider errors propagate to the caller.
         raw_text = self._llm.llm_completion_with_web_search(
             messages=[{"role": "user", "content": prompt}],
             search_context_size=search_context_size,

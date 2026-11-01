@@ -1,14 +1,15 @@
 # Kapso Agent
 #
-# Long-running agents that optimize AI and Data systems, and learn from every experience.
+# Turn coding-agent output into verified outcomes, not review debt: plug in the harness for your domain, set the goal, every step traced.
 #
 # Usage:
-#     from src import Kapso, Source, DeployStrategy
-#     
+#     from kapso import Kapso
+#
 #     kapso = Kapso()
-#     kapso.learn_knowledge(Source.Repo("https://github.com/user/repo"), wiki_dir="data/wikis")
-#     solution = kapso.evolve(goal="Create a triage agent")
-#     software = solution.deploy()
+#     kapso.add_experience(repo="https://github.com/user/repo", name="user-repo")
+#     kapso.load_experience("user-repo")
+#     solution = kapso.build("Create a triage agent")
+#     software = kapso.deploy(solution, target="local")
 #     result = software.run({"symptoms": "headache"})
 #
 # CLI:
@@ -30,18 +31,23 @@ warnings.filterwarnings(
 # All public symbols are loaded lazily via __getattr__.
 #
 # Why lazy? The MCP server subprocess (gated_mcp.server) imports from this
-# package on every cold start. Eager imports of Source, SolutionResult, and
-# DeployStrategy pull in the full execution stack (gitpython, weaviate, etc.)
+# package on every cold start. Eager imports of Source, Solution, and
+# Software pull in the full execution stack (gitpython, weaviate, etc.)
 # and add ~8 seconds to that cold start. With lazy loading the MCP subprocess
 # boots in under 1 second and Claude Code's MCP connection check succeeds.
 _LAZY_IMPORTS = {
     "Kapso":            ("kapso.kapso",              "Kapso"),
     "Source":           ("kapso.knowledge_base.learners", "Source"),
-    "SolutionResult":   ("kapso.execution.solution", "SolutionResult"),
+    "Brief":            ("kapso.handles",            "Brief"),
+    "Budget":           ("kapso.handles",            "Budget"),
+    "Solution":         ("kapso.handles",            "Solution"),
+    "Launch":           ("kapso.handles",            "Launch"),
+    "EvaluatorRef":     ("kapso.handles",            "EvaluatorRef"),
+    "HarnessRef":       ("kapso.handles",            "HarnessRef"),
+    "ExperienceRef":    ("kapso.handles",            "ExperienceRef"),
+    "BriefError":       ("kapso.handles",            "BriefError"),
     "Software":         ("kapso.deployment",          "Software"),
-    "DeployStrategy":   ("kapso.deployment",          "DeployStrategy"),
-    "DeployConfig":     ("kapso.deployment",          "DeployConfig"),
-    "DeploymentFactory":("kapso.deployment",          "DeploymentFactory"),
+    "DeployError":      ("kapso.deployment",          "DeployError"),
     "RunCheckpointError": (
         "kapso.execution.run_checkpoint",
         "RunCheckpointError",
@@ -104,12 +110,17 @@ __all__ = [
     # Core API
     "Kapso",
     "Source",
-    "SolutionResult",
+    "Brief",
+    "Budget",
+    "Solution",
+    "Launch",
+    "EvaluatorRef",
+    "HarnessRef",
+    "ExperienceRef",
+    "BriefError",
     # Deployment
     "Software",
-    "DeployStrategy",
-    "DeployConfig",
-    "DeploymentFactory",
+    "DeployError",
     # Resume errors
     "RunCheckpointError",
     "RunCheckpointMissingError",
@@ -129,4 +140,4 @@ __all__ = [
 
 # Kept in lockstep with pyproject.toml's version — tests/test_version.py
 # fails the suite if the two ever drift (Rule 1: one release number).
-__version__ = "0.7.10"
+__version__ = "0.8.0"

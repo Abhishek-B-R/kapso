@@ -32,6 +32,7 @@ from kapso.execution.search_strategies.factory import SearchStrategyFactory
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.environment.handlers.generic import GenericProblemHandler
 from kapso.core.llm import LLMBackend
+from kapso.core.config import load_config
 
 
 class TestSetupKapsoDirectories:
@@ -66,7 +67,10 @@ class TestSetupKapsoDirectories:
         handler = GenericProblemHandler(
             problem_description="Test problem",
         )
-        coding_agent_config = CodingAgentFactory.build_config()
+        config = load_config()
+        coding_agent_config = CodingAgentFactory.build_config(
+            "claude_code", model=config["hosts"]["claude_code"]["model"],
+        )
         llm = LLMBackend()
         
         return SearchStrategyFactory.create(
@@ -74,6 +78,8 @@ class TestSetupKapsoDirectories:
             problem_handler=handler,
             llm=llm,
             coding_agent_config=coding_agent_config,
+            params=config["search_strategy"]["params"],
+            hosts=config["hosts"],
             workspace_dir=workspace_dir,
             eval_dir=eval_dir,
             data_dir=data_dir,
@@ -223,8 +229,8 @@ class TestSetupKapsoDirectories:
 
 
 
-class TestKapsoEvolveWithDirectories:
-    """Test Kapso.evolve() with eval_dir and data_dir parameters."""
+class TestKapsoBuildWithDirectories:
+    """Test Kapso.build() with evaluation and data parameters."""
     
     @classmethod
     def setup_class(cls):
@@ -243,16 +249,16 @@ class TestKapsoEvolveWithDirectories:
         shutil.rmtree(cls.eval_dir, ignore_errors=True)
         shutil.rmtree(cls.data_dir, ignore_errors=True)
     
-    def test_evolve_accepts_eval_dir_and_data_dir(self):
-        """Test that evolve() accepts the new parameters."""
+    def test_build_accepts_evaluation_and_data(self):
+        """Test that build() accepts the new parameters."""
         from kapso.kapso import Kapso
         import inspect
         
-        sig = inspect.signature(Kapso.evolve)
+        sig = inspect.signature(Kapso.build)
         params = list(sig.parameters.keys())
         
-        assert "eval_dir" in params, "evolve() should accept eval_dir"
-        assert "data_dir" in params, "evolve() should accept data_dir"
+        assert "evaluation" in params, "build() should accept evaluation"
+        assert "data" in params, "build() should accept data"
 
 
 if __name__ == "__main__":

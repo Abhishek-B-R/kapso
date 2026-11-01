@@ -1,242 +1,236 @@
 #!/usr/bin/env python3
-"""
-ALE-Bench Runner
+"""ALE-Bench runner: one problem, one campaign on the facade's build().
 
-Runs the Kapso Agent on AtCoder Heuristic Contest problems from ALE-Bench.
+    python -m benchmarks.ale.runner --problem <id> [-i N] [--workspace DIR] [--resume]
+        [--harness REF] [--experience REFS] [--coding-agent CLI]
+    python -m benchmarks.ale.runner --problem <id> --workspace DIR --final-eval-only
+    python -m benchmarks.ale.runner --list [--lite]
 
-Usage:
-    python -m benchmarks.ale.runner --problem <problem_id>
-    python -m benchmarks.ale.runner --problem ahc039
-    python -m benchmarks.ale.runner --problem ahc039 --developer-agent gemini
-    python -m benchmarks.ale.runner --list  # List available problems
-    
-Options:
-    --problem, -p           Problem ID to solve (e.g., ahc039)
-    --iterations, -i        Maximum iterations (default: 30)
-    --mode, -m              Config mode: ALE_GENERIC (default), MINIMAL
-    --coding-agent, -d      Coding agent: aider, gemini, claude_code, openhands
-    --list                  List all available problems
-    --lite                  List only lite benchmark problems
+The runner keeps the problem material and launches the engine: it loads the
+problem through the benchmark's own library, writes the task root (the
+public seeds) under the archive root (`benchmark.work_root` in config.yaml),
+stages the provided grader with the problem's settings beside it, writes the
+Brief from the problem's statement, seeds the baseline candidate, and runs
+build() with the bundled competitive-programming harness (or the one
+--harness names) and the experience --experience loads. After the campaign
+it judges the delivered candidate once on the private cases, estimates the
+rank and the performance in the contest's own units, and writes
+final_report.json.
 """
 
 import argparse
-import os
-import sys
+import json
+import shutil
+import tempfile
 import warnings
-import yaml
-from typing import Optional
+from pathlib import Path
+from typing import Dict
 
-# Suppress ResourceWarning from ale_bench library (unclosed image files)
+from dotenv import load_dotenv
+
+# The benchmark library leaks ResourceWarnings from its image handling.
 warnings.filterwarnings("ignore", category=ResourceWarning, module="ale_bench")
 warnings.filterwarnings("ignore", category=ResourceWarning, message="unclosed file")
 
-# Load environment variables first
-from dotenv import load_dotenv
+import ale_bench
+from ale_bench.data import ScoreType, load_problem
+
+from kapso.core.config import read_yaml
+from kapso.handles import Budget, Solution
+from kapso.kapso import Kapso
+
+from benchmarks.ale.context import build_brief
+from benchmarks.ale.problems import REPORTED_PROBLEMS
+from benchmarks.common import stage_evaluation, write_runtime_config
+
 load_dotenv()
 
-import ale_bench
-
-from kapso.execution.orchestrator import OrchestratorAgent
-from kapso.execution.coding_agents.factory import CodingAgentFactory
-from benchmarks.ale.handler import AleBench
-
-# Path to ALE-Bench specific configuration
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
-
-# Available coding agents
-AVAILABLE_AGENTS = CodingAgentFactory.list_available()
+BENCH_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = BENCH_DIR / "config.yaml"
+EVALUATION_SUITE = BENCH_DIR / "data" / "generic_eval"
+BUNDLED_HARNESS = "competitive-programming"
+FINAL_REPORT = "final_report.json"
+SOLUTION = "main.cpp"
+LANGUAGE = "cpp23"
+SEED_LIST = "seeds.txt"
 
 
-def list_problems(lite_only: bool = False) -> None:
-    """List available ALE-Bench problems."""
-    handler = AleBench()
-    
-    if lite_only:
-        problems = handler.get_lite_problems_list()
-        print(f"\n{'='*60}")
-        print(f"ALE-Bench Lite Problems ({len(problems)} total)")
-        print(f"{'='*60}")
-    else:
-        problems = ale_bench.list_problem_ids()
-        print(f"\n{'='*60}")
-        print(f"All ALE-Bench Problems ({len(problems)} total)")
-        print(f"{'='*60}")
-    
+def list_problems(lite_only: bool) -> None:
+    problems = REPORTED_PROBLEMS if lite_only else ale_bench.list_problem_ids()
+    title = "The ALE-Bench problems the reported result covers" if lite_only else "All ALE-Bench problems"
+    print(f"\n{'=' * 60}\n{title} ({len(problems)} total)\n{'=' * 60}")
     for problem_id in sorted(problems):
         print(f"  • {problem_id}")
     print()
 
 
-def list_agents() -> None:
-    """List available coding agents with detailed info from agents.yaml."""
-    CodingAgentFactory.print_agents_info()
-
-
-def solve_problem(
-    problem_id: str,
-    max_iterations: int = 30,
-    mode: Optional[str] = None,
-    coding_agent: Optional[str] = None,
-    use_kg: bool = False,
-) -> dict:
-    """
-    Solve a single ALE-Bench problem.
-    
-    Args:
-        problem_id: The AtCoder problem ID (e.g., ahc039)
-        max_iterations: Maximum experiment iterations
-        mode: Config mode (ALE_GENERIC (default), MINIMAL)
-        coding_agent: Coding agent to use (aider, gemini, claude_code, openhands)
-        use_kg: Whether to use the knowledge graph
-        
-    Returns:
-        Dictionary with cost and evaluation results
-    """
-    print(f"\n{'='*60}")
-    print(f"Solving: {problem_id}")
-    print(f"{'='*60}")
-    print(f"  Max iterations: {max_iterations}")
-    print(f"  Config mode: {mode or 'default (ALE_GENERIC)'}")
-    print(f"  Coding agent: {coding_agent or 'from config'}")
-    print(f"  Knowledge graph: {'enabled' if use_kg else 'disabled'}")
-    print()
-    
-    # Initialize handler and orchestrator
-    problem_handler = AleBench(problem_id)
-    orchestrator = OrchestratorAgent(
-        problem_handler,
-        config_path=CONFIG_PATH,
-        mode=mode,
-        coding_agent=coding_agent,
-        is_kg_active=use_kg,
+def baseline_program(example_output: str) -> str:
+    """A valid C++ program that prints the problem's example output whatever
+    the input: the maintainer's calibration needs a runnable candidate, and
+    the search a starting parent that takes the floor."""
+    body = example_output.rstrip("\n")
+    return (
+        "#include <iostream>\n"
+        "#include <string>\n"
+        "// The seeded baseline: it prints the example output whatever the input, and\n"
+        "// scores the floor. Replace me with a real solution.\n"
+        "int main() {\n"
+        "    std::string line;\n"
+        "    while (std::getline(std::cin, line)) {}\n"
+        f"    std::cout << R\"KAPSO({body})KAPSO\" << std::endl;\n"
+        "    return 0;\n"
+        "}\n"
     )
-    
-    # Run the solve loop
-    orchestrator.solve(experiment_max_iter=max_iterations)
 
-    # Checkout best solution and evaluate
-    orchestrator.search_strategy.checkout_to_best_experiment_branch()
-    cost = orchestrator.get_cumulative_cost()
-    
-    workspace = orchestrator.search_strategy.workspace.workspace_dir
-    
-    print(f"\nBest solution at: {workspace}")
-    print(f"Total cost: ${cost:.3f}")
-    
-    # Final evaluation
-    print("\n" + "="*60)
-    print("Final Evaluation")
-    print("="*60)
-    private_evaluation = problem_handler.final_evaluate(workspace)
-    
-    result = {
-        "problem_id": problem_id,
-        "cost": f"${cost:.3f}",
-        "solution_path": workspace,
-        "private_evaluation": private_evaluation,
+
+def write_task_root(work_dir: Path, public_seeds) -> Path:
+    """The task root the harness's hooks and skills read: the seed list."""
+    task_root = work_dir / "task_root"
+    task_root.mkdir(parents=True, exist_ok=True)
+    (task_root / SEED_LIST).write_text("".join(f"{seed}\n" for seed in public_seeds))
+    return task_root
+
+
+def seeded_baseline(example_output: str) -> str:
+    directory = tempfile.mkdtemp(prefix="ale_baseline_")
+    (Path(directory) / SOLUTION).write_text(baseline_program(example_output))
+    return directory
+
+
+def solution_summary(solution: Solution) -> Dict[str, object]:
+    return {
+        "campaign": str(solution.campaign),
+        "branch": solution.branch,
+        "commit": solution.commit,
+        "score": solution.score,
+        "stopped_reason": solution.stopped_reason,
+        "experiments": solution.experiments_total,
+        "cost_usd": solution.cost_usd,
+        "harness": solution.harness.name if solution.harness else None,
     }
-    
-    print(f"\nResults: {result}")
-    return result
 
 
-def main():
+def final_report(work_dir: Path, problem_id: str, num_workers: int, solution: Solution, standings) -> Dict[str, object]:
+    """The private cases once, on the delivered candidate's `main.cpp`, with
+    the rank and the performance the benchmark estimates against the
+    contest's standings (the loader's: a session refuses to hand them
+    out); or the no-candidate report."""
+    report: Dict[str, object] = {"problem_id": problem_id, "solution": solution_summary(solution)}
+    candidate = solution.campaign / SOLUTION
+    if solution.branch is None:
+        report["error"] = "no candidate delivered"
+    elif not candidate.is_file():
+        report["error"] = f"the delivered candidate has no {SOLUTION} at the repository root"
+    else:
+        session = ale_bench.start(problem_id=problem_id, lite_version=False, num_workers=num_workers,
+                                  run_visualization_server=False)
+        private_result, final_rank, final_performance = session.private_eval(
+            candidate.read_text(encoding="utf-8"), code_language=LANGUAGE,
+        )
+        contestants = len(standings.standings_scores)
+        report["private_evaluation"] = {
+            "private_score": private_result.overall_absolute_score,
+            "judge_result": private_result.overall_judge_result.value,
+            "final_rank": final_rank,
+            "contestants": contestants,
+            "rank_percentage": round(final_rank / contestants * 100, 2),
+            "final_performance": final_performance,
+        }
+    out = work_dir / FINAL_REPORT
+    out.write_text(json.dumps(report, indent=2, default=str) + "\n")
+    print(f"[ale] final report -> {out}")
+    return report
+
+
+def solve_problem(args) -> dict:
+    settings = read_yaml(str(CONFIG_PATH))["benchmark"]
+    work_dir = (Path(settings["work_root"]) / args.problem).resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\n{'=' * 60}\nSolving: {args.problem}\n{'=' * 60}")
+    print(f"  Archive root: {work_dir}")
+
+    problem, seeds, standings, _rank_map, _tool_dir = load_problem(args.problem, lite_version=False)
+    higher_is_better = problem.metadata.score_type == ScoreType.MAXIMIZE
+    floors = settings["floor_scores"]
+    floor_score = floors["higher_is_better"] if higher_is_better else floors["lower_is_better"]
+    runs = int(settings["runs"])
+    task_root = write_task_root(work_dir, seeds.public)
+    evaluation_dir = stage_evaluation(EVALUATION_SUITE, work_dir, {
+        "problem_id": args.problem,
+        "higher_is_better": higher_is_better,
+        "runs": runs,
+        "num_workers": int(settings["num_workers"]),
+        "floor_score": floor_score,
+    })
+    shared_cache_dir = work_dir / "shared_cache"
+    shared_cache_dir.mkdir(exist_ok=True)
+    brief = build_brief(problem, seeds.public, higher_is_better, runs, len(standings.standings_scores), shared_cache_dir)
+
+    if args.final_eval_only:
+        # The campaign ran already: the report on the solution the workspace holds.
+        solution = Solution.open(args.workspace)
+    else:
+        kapso = Kapso(config=str(write_runtime_config(CONFIG_PATH, shared_cache_dir, work_dir)))
+        kapso.load_harness(args.harness or BUNDLED_HARNESS)
+        for reference in (args.experience or "").split(","):
+            if reference.strip():
+                kapso.load_experience(reference.strip())
+        solution = kapso.build(
+            brief,
+            evaluation=str(evaluation_dir),
+            data=str(task_root),
+            repo=None if args.resume else seeded_baseline(problem.example_output),
+            output=args.workspace,
+            budget=Budget(
+                minutes=args.time_budget_hours * 60 if args.time_budget_hours is not None else None,
+                experiments=args.iterations,
+            ),
+            resume=args.resume,
+            coding_agent=args.coding_agent,
+        )
+
+    print("\n" + "=" * 60 + "\nFinal Evaluation (the private cases, once)\n" + "=" * 60)
+    report = final_report(work_dir, args.problem, int(settings["num_workers"]), solution, standings)
+    print(json.dumps(report, indent=2, default=str))
+    return report
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run Kapso Agent on ALE-Bench problems",
+        description="Run Kapso on an ALE-Bench problem",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
-    
-    parser.add_argument(
-        "-p", "--problem",
-        type=str,
-        help="Problem ID to solve (e.g., ahc039)"
-    )
-    parser.add_argument(
-        "-i", "--iterations",
-        type=int,
-        default=30,
-        help="Maximum experiment iterations (default: 30)"
-    )
-    parser.add_argument(
-        "-m", "--mode",
-        type=str,
-        default=None,
-        help="Configuration mode (default: ALE_GENERIC)"
-    )
-    parser.add_argument(
-        "-d", "--coding-agent",
-        type=str,
-        choices=AVAILABLE_AGENTS,
-        default=None,
-        help="Coding agent to use: aider, gemini, claude_code, openhands"
-    )
-    parser.add_argument(
-        "--list",
-        action="store_true",
-        help="List all available problems"
-    )
-    parser.add_argument(
-        "--lite",
-        action="store_true",
-        help="List only lite benchmark problems"
-    )
-    parser.add_argument(
-        "--list-agents",
-        action="store_true",
-        help="List available coding agents"
-    )
-    
+    parser.add_argument("-p", "--problem", type=str, help="Problem ID (e.g. ahc039)")
+    parser.add_argument("-i", "--iterations", type=int, default=None, help="Budget.experiments (the config's when absent)")
+    parser.add_argument("-d", "--coding-agent", type=str, default=None, help="The host every session runs on (the config's when absent)")
+    parser.add_argument("--workspace", type=str, default=None, help="The campaign directory (output=); needed to resume")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--final-eval-only", action="store_true",
+                        help="No campaign: the final report on the solution --workspace already holds")
+    parser.add_argument("--time-budget-hours", type=float, default=None, help="Budget.minutes, in hours")
+    parser.add_argument("--harness", type=str, default=None, help=f"A harness reference (default: the bundled {BUNDLED_HARNESS})")
+    parser.add_argument("--experience", type=str, default=None,
+                        help="Comma-separated sources to serve: mine, a bank path or git reference, an index name")
+    parser.add_argument("--list", action="store_true", help="List all problems")
+    parser.add_argument("--lite", action="store_true", help="List the problems the reported result covers")
     args = parser.parse_args()
-    
-    # Handle list commands
-    if args.list_agents:
-        list_agents()
-        return
-    
+
     if args.list or args.lite:
         list_problems(lite_only=args.lite)
         return
-    
-    # Require problem ID for solving
     if not args.problem:
-        parser.print_help()
-        print("\nError: --problem is required unless using --list or --lite")
-        sys.exit(1)
-    
-    # Verify problem exists
-    all_problems = ale_bench.list_problem_ids()
-    if args.problem not in all_problems:
-        print(f"\nError: Unknown problem '{args.problem}'")
-        print("Use --list to see available problems")
-        sys.exit(1)
-    
-    # Load config to get use_knowledge_graph
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            config_data = yaml.safe_load(f)
-        mode_name = args.mode or config_data.get('default_mode', 'ALE_GENERIC')
-        mode_config = config_data.get('modes', {}).get(mode_name, {})
-        use_knowledge_graph = mode_config.get('use_knowledge_graph', False)
-    except Exception as e:
-        print(f"Warning: Could not load config for KG setting: {e}")
-        use_knowledge_graph = False
-    
-    # Solve the problem
-    result = solve_problem(
-        problem_id=args.problem,
-        max_iterations=args.iterations,
-        mode=args.mode,
-        coding_agent=args.coding_agent,
-        use_kg=use_knowledge_graph,
-    )
-    
-    print("\n" + "="*60)
-    print("COMPLETED")
-    print("="*60)
-    print(f"Problem: {result['problem_id']}")
-    print(f"Cost: {result['cost']}")
-    print(f"Solution: {result['solution_path']}")
+        parser.error("--problem is required unless --list or --lite is given")
+    if args.final_eval_only and not args.workspace:
+        parser.error("--final-eval-only needs --workspace, the campaign directory the build wrote")
+    if args.problem not in ale_bench.list_problem_ids():
+        parser.error(f"unknown problem {args.problem!r}; --list prints the registry")
+
+    report = solve_problem(args)
+    print("\n" + "=" * 60 + "\nCOMPLETED\n" + "=" * 60)
+    print(f"Problem: {report['problem_id']}")
+    print(f"Private evaluation: {report.get('private_evaluation', report.get('error'))}")
+    print(f"Delivered: {report['solution']}")
 
 
 if __name__ == "__main__":

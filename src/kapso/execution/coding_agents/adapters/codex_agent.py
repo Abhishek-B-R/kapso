@@ -18,6 +18,7 @@
 
 import json
 import os
+import sys
 import re
 import shutil
 import signal
@@ -25,9 +26,12 @@ import subprocess
 import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from kapso.execution.inbox import new_requests_for_session
+from kapso.execution.coding_agents.session_record import record_run, start_run
+from kapso.execution.coding_agents.transcripts import CODEX_EVENT_HEAD, CODEX_HOST, events, stream_lines
 from kapso.execution.coding_agents.base import (
     CodingAgentConfig,
     CodingAgentInterface,
@@ -42,6 +46,10 @@ _THREAD_STARTED_PATTERN = re.compile(
     r'"type"\s*:\s*"thread\.started".*?"thread_id"\s*:\s*"([^"]+)"'
 )
 _DEFAULT_TIMEOUT_SECONDS = 3600.0
+# The sandbox a Codex session runs in when its role names none: every
+# engine session's, and the one source for the learning crews' raw worker
+# invocations (update_frame) — a copied literal there drifted once.
+DEFAULT_SANDBOX = "danger-full-access"
 _STREAM_TAIL_CHARS = 2000
 
 
@@ -64,9 +72,25 @@ def mcp_config_overrides(mcp_servers: Dict[str, Any]) -> List[str]:
             overrides += ["-c", f"mcp_servers.{name}.url={json.dumps(spec['url'])}"]
             overrides += ["-c", f"mcp_servers.{name}.tool_timeout_sec={spec['timeout'] // 1000}"]
             # Under a read-only sandbox codex refuses MCP calls that "require
-            # approval" (exec never prompts); a knowledge gate is read-only
-            # by nature, so its tools are pre-approved.
-            overrides += ["-c", f'mcp_servers.{name}.default_tools_approval_mode="auto"']
+            # approval" (exec never prompts), and `auto` does not pre-approve
+            # them (verified 2026-10-26 with the hosted gate: the call failed
+            # "requires approval, but approval policy is never"; `approve`
+            # ran it). A knowledge gate is read-only by nature, so its tools
+            # are pre-approved; a harness server says its own mode (approve).
+            # The key is written once.
+            mode = spec.get("approval_mode") or "approve"
+            overrides += ["-c", f"mcp_servers.{name}.default_tools_approval_mode={json.dumps(mode)}"]
+            # Headers: a literal goes as it is; a `${VAR}` reference is
+            # forwarded by name through env_http_headers (verified
+            # 2026-10-25: `headers` is not a codex key, these two are).
+            literal = {k: v for k, v in (spec.get("headers") or {}).items() if not _is_reference(v)}
+            referenced = {k: v[2:-1] for k, v in (spec.get("headers") or {}).items() if _is_reference(v)}
+            if literal:
+                body = ", ".join(f"{k} = {json.dumps(v)}" for k, v in literal.items())
+                overrides += ["-c", f"mcp_servers.{name}.http_headers={{{body}}}"]
+            if referenced:
+                body = ", ".join(f"{k} = {json.dumps(v)}" for k, v in referenced.items())
+                overrides += ["-c", f"mcp_servers.{name}.env_http_headers={{{body}}}"]
             continue
         overrides += ["-c", f"mcp_servers.{name}.command={json.dumps(spec['command'])}"]
         args = spec.get("args") or []
@@ -80,6 +104,50 @@ def mcp_config_overrides(mcp_servers: Dict[str, Any]) -> List[str]:
         if env:
             body = ", ".join(f"{k} = {json.dumps(v)}" for k, v in env.items())
             overrides += ["-c", f"mcp_servers.{name}.env={{{body}}}"]
+        # A harness server (kapso.harness.staging): the variables it
+        # references are forwarded by name (a stdio server does not inherit
+        # the parent environment on codex, verified 2026-10-24), and its
+        # tools are pre-approved, which the exec policy otherwise refuses
+        # under a read-only or workspace-write sandbox.
+        env_vars = spec.get("env_vars") or []
+        if env_vars:
+            overrides += [
+                "-c",
+                f"mcp_servers.{name}.env_vars=[{', '.join(json.dumps(v) for v in env_vars)}]",
+            ]
+        if spec.get("approval_mode"):
+            overrides += ["-c", f"mcp_servers.{name}.default_tools_approval_mode={json.dumps(spec['approval_mode'])}"]
+    return overrides
+
+
+def _is_reference(value: Any) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}", value))
+
+
+# The campaign verbs refused inside a campaign session, as an execpolicy
+# rule of the workspace's project layer (wp7-plugin.md): Codex has no
+# per-session switch for an installed plugin's skills, so the rule stands
+# where the skills would act. The layer is enforced for a trusted project,
+# which the exec command declares for the workspace alone.
+CAMPAIGN_RULES_FILE = Path(".codex") / "rules" / "kapso-campaign.rules"
+CAMPAIGN_RULES = "".join(
+    f'prefix_rule(pattern = ["kapso", "{verb}"], decision = "forbidden", '
+    'justification = "never inside a Kapso campaign session: a campaign does not launch, learn from or deploy a campaign")\n'
+    for verb in ("build", "learn", "deploy")
+)
+
+
+def agent_role_overrides(agents: Dict[str, Dict[str, str]]) -> List[str]:
+    """A harness's delegates as codex agent roles: `agents.<name>` with a
+    description and a config file whose developer instructions are the
+    delegate's prompt (verified 2026-10-24: the model spawns the role by
+    name and the sub-agent events carry it)."""
+    overrides: List[str] = []
+    for name, spec in agents.items():
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            raise ValueError(f"agent role name not TOML-bare-key safe: {name!r}")
+        overrides += ["-c", f"agents.{name}.description={json.dumps(spec['description'])}"]
+        overrides += ["-c", f"agents.{name}.config_file={json.dumps(spec['config_file'])}"]
     return overrides
 
 
@@ -88,15 +156,12 @@ def mcp_tool_calls(stream: str) -> List[Dict[str, Any]]:
     adapter's shape ({name: mcp__<server>__<tool>, input, result}): one
     per `item.completed` event whose item is an mcp_tool_call, the result
     being the text of the server's answer ("" when the call failed). Lines
-    that are not JSON events (merged stderr, warnings) are skipped; a line
-    shaped like an event that does not parse raises. Verified live
-    2026-10-02.
+    that are not JSON events (merged stderr, warnings) are skipped, as is
+    the line a kill cut; a line shaped like an event that does not parse
+    raises. Verified live 2026-10-02.
     """
     calls: List[Dict[str, Any]] = []
-    for line in stream.splitlines():
-        if not line.startswith('{"type":'):
-            continue
-        event = json.loads(line)
+    for event in events(stream_lines(stream), CODEX_EVENT_HEAD):
         if event["type"] != "item.completed":
             continue
         item = event["item"]
@@ -157,18 +222,25 @@ class CodexCodingAgent(CodingAgentInterface):
         super().__init__(config)
         spec = config.agent_specific or {}
         self._effort: Optional[str] = spec.get("effort")
-        # None is what a lane with no implementation_timeout and no time budget
+        # None is what a lane with no implementation timeout and no time budget
         # passes (the strategy clamps to "unbounded"); the adapter needs a
         # deadline, so that is the default one (live L2, 2026-09-04).
         configured_timeout = spec.get("timeout")
         self._timeout: float = (
             float(configured_timeout) if configured_timeout is not None else _DEFAULT_TIMEOUT_SECONDS
         )
-        self._sandbox: str = str(spec.get("sandbox", "danger-full-access"))
+        self._sandbox: str = str(spec.get("sandbox", DEFAULT_SANDBOX))
         self._web_search: bool = bool(spec.get("web_search", True))
         self._mcp_overrides: List[str] = mcp_config_overrides(
             spec.get("mcp_servers") or {}
         )
+        # A harness's staged files (kapso.harness.staging): the session's
+        # .codex/hooks.json runs only with the trust bypass; extra writable
+        # directories (a verification session writes its verdict outside
+        # its worktree); the delegates as agent roles.
+        self._hooks_trust_bypass: bool = bool(spec.get("hooks_trust_bypass", False))
+        self._add_dirs: List[str] = [str(d) for d in (spec.get("add_dirs") or [])]
+        self._agent_overrides: List[str] = agent_role_overrides(spec.get("agents") or {})
         self._streaming: bool = bool(spec.get("streaming", False))
         self._env_strip: List[str] = list(spec.get("env_strip", []))
         self._env_overrides: Dict[str, str] = {
@@ -178,6 +250,9 @@ class CodexCodingAgent(CodingAgentInterface):
             str(k): str(v) for k, v in (spec.get("env_defaults") or {}).items()
         }
         self._stream_artifact_path: Optional[str] = spec.get("stream_artifact_path")
+        # The session's record, when the session keeps one: every
+        # invocation appends its run entry there (session_record.py).
+        self._session_record_path: Optional[str] = spec.get("session_record_path")
         self._session_id: Optional[str] = spec.get("session_id")
         self._inbox_path: Optional[str] = spec.get("inbox_path")
         if self._inbox_path and not self._session_id:
@@ -199,6 +274,9 @@ class CodexCodingAgent(CodingAgentInterface):
 
     def initialize(self, workspace: str) -> None:
         self._workspace = workspace
+        rules = Path(workspace) / CAMPAIGN_RULES_FILE
+        rules.parent.mkdir(parents=True, exist_ok=True)
+        rules.write_text(CAMPAIGN_RULES, encoding="utf-8")
 
     def generate_code(
         self,
@@ -217,27 +295,32 @@ class CodexCodingAgent(CodingAgentInterface):
         cli_session_id: str,
         follow_up: str,
         timeout_seconds: Optional[float] = None,
+        reason: Optional[str] = None,
     ) -> CodingResult:
         """Continue a stored thread with one more user message (the inbox
-        continuation): `codex exec <options> resume <thread> -`, the
-        message on stdin. Exec options precede `resume` (verified on
-        codex-cli 0.144.1)."""
+        continuation, the judge's retry): `codex exec <options> resume
+        <thread> -`, the message on stdin. Exec options precede `resume`
+        (verified on codex-cli 0.144.1). ``reason`` is recorded on the run
+        entry (`retry_reason`)."""
         if not self._workspace:
             raise RuntimeError("CodexCodingAgent used before initialize()")
         timeout = float(timeout_seconds) if timeout_seconds is not None else self._timeout
         return self._run_session(
-            self.config.model, ["resume", cli_session_id, "-"], follow_up, timeout
+            self.config.model, ["resume", cli_session_id, "-"], follow_up, timeout, reason=reason,
         )
 
     def _exec_command(self, model: str, last_message_path: str) -> List[str]:
         """`codex [--search] exec <exec options>` — the shared head of a
-        fresh session and a resumed one."""
+        fresh session and a resumed one. With the web off, the native
+        search is disabled by its config key (omitting `--search` alone
+        leaves Codex's default cached search on)."""
         cmd = ["codex"]
         if self._web_search:
             cmd.append("--search")
         cmd.extend(
             [
                 "exec",
+                *([] if self._web_search else ["-c", 'web_search="disabled"']),
                 "--sandbox",
                 self._sandbox,
                 "--skip-git-repo-check",
@@ -252,10 +335,42 @@ class CodexCodingAgent(CodingAgentInterface):
         if self._effort:
             cmd.extend(["-c", f'model_reasoning_effort="{self._effort}"'])
         cmd.extend(self._mcp_overrides)
+        cmd.extend(self._agent_overrides)
+        # The person's own kapso-mcp (`codex mcp add kapso -- kapso-mcp`)
+        # off, and the workspace trusted so its rules file is enforced:
+        # no campaign tools inside a campaign. The server is defined whole
+        # on the command line: an `enabled` key alone makes a server with
+        # no transport, and Codex refuses the entire config for it
+        # (verified 2026-10-27: every Codex session of a campaign failed on
+        # a box whose config had no such server).
+        cmd.extend(["-c", 'mcp_servers.kapso.command="kapso-mcp"'])
+        cmd.extend(["-c", "mcp_servers.kapso.enabled=false"])
+        cmd.extend(["-c", f'projects.{json.dumps(self._workspace)}.trust_level="trusted"'])
+        if self._hooks_trust_bypass:
+            cmd.append("--dangerously-bypass-hook-trust")
+        for directory in self._add_dirs:
+            cmd.extend(["--add-dir", directory])
         cmd.append("--json")
         return cmd
 
     def _run_session(
+        self, model: str, tail: List[str], prompt: str, timeout: float, reason: Optional[str] = None,
+    ) -> CodingResult:
+        """One host invocation, recorded in the session's record whatever
+        way it ends (wp6-observability.md): the turn runs, and its run
+        entry is appended in a `finally`, with the exception in flight
+        when there is one, which then propagates."""
+        recorder = start_run(
+            CODEX_HOST, model, self._session_record_path, self._stream_artifact_path, reason=reason, deadline_seconds=timeout,
+        )
+        result: Optional[CodingResult] = None
+        try:
+            result = self._run_session_turn(model, tail, prompt, timeout)
+        finally:
+            record_run(recorder, result, sys.exc_info()[1])
+        return result
+
+    def _run_session_turn(
         self, model: str, tail: List[str], prompt: str, timeout: float
     ) -> CodingResult:
         last_fd, last_path = tempfile.mkstemp(prefix="codex_agent_", suffix=".last")
@@ -372,6 +487,7 @@ class CodexCodingAgent(CodingAgentInterface):
 
         reader.join(timeout=_DEADLINE_GRACE_SECONDS)
         stream_file.close()
+        process.stdout.close()
         with open(last_path, "r", encoding="utf-8", errors="replace") as fh:
             last_message = fh.read().strip()
         os.unlink(last_path)

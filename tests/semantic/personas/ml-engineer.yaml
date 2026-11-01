@@ -1,0 +1,16 @@
+name: ml-engineer
+role: machine-learning engineer at a lender; owns the churn model and its repository
+expertise: fluent in Python, scikit-learn and git; has never used Kapso or read its docs
+knows: >
+  the repository has a predict.py and an evaluation script somewhere; the
+  metric is AUC and the current model is about 0.80; the team wants it above
+  0.85 by Friday
+wants: a better model on a branch they can review and merge, without babysitting a tool
+patience: 2
+answers: >
+  short; often one word; corrects a single line of a proposal rather than
+  re-explaining; says "go" when a proposal is right; does not volunteer
+  information nobody asked for
+pushes_back_when: >
+  asked something the repository already says; asked the same thing twice;
+  a message is longer than a screen; a number arrives without where it came from

@@ -1,11 +1,11 @@
-"""`kapso report`: an evolve campaign rendered as shareable Markdown.
+"""`kapso report`: a campaign rendered as shareable Markdown.
 
 What must hold: the report reads only what the campaign wrote (checkpoint,
 status file, launch record, inbox, branches) and changes none of it; the
 leaderboard and the deliverable follow the campaign's own ranking,
-including minimize metrics and cost-aware selection; the lineage is the
-`kapso watch --tree` rows; a missing checkpoint or a corrupt state file
-raises.
+including minimize metrics and cost-aware selection; the lineage is drawn
+from the checkpoint's node history; a missing checkpoint or a corrupt
+state file raises.
 """
 
 import json
@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from kapso.cli import main
-from kapso.core.config import load_platform_defaults
+from kapso.core.config import load_config
 from kapso.execution.campaign_report import render_campaign_report
 from kapso.execution.inbox import (
     file_requests,
@@ -24,7 +24,7 @@ from kapso.execution.inbox import (
     record_reply,
     write_launch_record,
 )
-from kapso.execution.observability import EvolveStatus, OperationStatusView
+from kapso.execution.observability import BuildStatus
 from kapso.execution.run_checkpoint import (
     RunCheckpoint,
     RunCheckpointCorruptError,
@@ -79,10 +79,8 @@ def campaign(tmp_path: Path, nodes, *, status="done", maximize=True, cost_config
         },
         elapsed_seconds=1800.0, cost_config=cost_config, maximize_scoring=maximize,
     ))
-    write_launch_record(workspace, {
-        "max_iterations": 10, "time_budget_minutes": 60, "cost_budget": 5.0,
-    })
-    state = EvolveStatus(workspace / ".kapso" / "status.json")
+    write_launch_record(workspace, {"experiments": 10, "minutes": 60, "usd": 5.0})
+    state = BuildStatus(workspace / ".kapso" / "status.json")
     state.update(iteration=len(nodes))
     if status == "done":
         state.done(stopped_reason="budget_exhausted", stop_detail="finalization_reserve")
@@ -127,8 +125,12 @@ def test_finished_campaign_report_has_every_section(tmp_path):
     assert "| 1 | 1 | 0.9 | 0 | `generic_exp_1` | gradient boosting \\| tuned |" in report
     assert "| 2 | 0 | 0.4 | main | `generic_exp_0` | logistic regression |" in report
     assert "Top 2 of 2 scored candidates" in report
-    tree = OperationStatusView(workspace).campaign_tree()[2:]
-    assert "## Lineage\n\n```text\n" + "\n".join(tree) + "\n```" in report
+    assert (
+        "## Lineage\n\n```text\n"
+        "  ├─ generic_exp_0 (score=0.4, ok)\n"
+        "  │ └─ generic_exp_1 (score=0.9, ok)\n"
+        "  └─ generic_exp_2 (score=unscored, error)\n```"
+    ) in report
     assert "### Node 1: `generic_exp_1` against `generic_exp_0`" in report
     assert "generic_exp_1.py | 1 +" in report
     assert "generic_exp_0.py" not in report.split("### Node 1")[1].split("### Node 0")[0]
@@ -230,7 +232,7 @@ def test_missing_checkpoint_and_corrupt_state_raise(tmp_path):
 
     inbox_path(workspace).write_text("{not json\n")
     status_file.unlink()
-    EvolveStatus(status_file).update(iteration=3)
+    BuildStatus(status_file).update(iteration=3)
     with pytest.raises(json.JSONDecodeError):
         render_campaign_report(workspace, top=5)
 
@@ -251,7 +253,7 @@ def test_cli_writes_the_file_and_reads_top_from_config(tmp_path, monkeypatch, ca
 
     monkeypatch.setattr(sys, "argv", ["kapso", "report", str(workspace)])
     main()
-    default_size = load_platform_defaults()["report"]["leaderboard_size"]
+    default_size = load_config()["report"]["leaderboard_size"]
     assert len(leaderboard_nodes(capsys.readouterr().out)) == default_size
 
     output = tmp_path / "report.md"

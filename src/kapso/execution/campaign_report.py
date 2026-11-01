@@ -1,4 +1,4 @@
-"""`kapso report`: an evolve campaign as a shareable Markdown summary.
+"""`kapso report`: a campaign as a shareable Markdown summary.
 
 A pure reader over what the campaign already wrote: the run checkpoint,
 the status file, the launch record, the inbox and the experiment
@@ -18,7 +18,13 @@ from kapso.execution.inbox import (
     load_requests,
     read_launch_record,
 )
-from kapso.execution.observability import OperationStatusView, platform_cost_summary
+from kapso.execution.iteration_evaluator import comparison_summary
+from kapso.execution.observability import (
+    OperationStatusView,
+    credits_summary,
+    knowledge_summary,
+    platform_cost_summary,
+)
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import (
@@ -54,7 +60,7 @@ def render_campaign_report(campaign: str | Path, *, top: int) -> str:
         _summary(campaign, checkpoint, status, nodes),
         _deliverable(deliverable, evaluator_id),
         _leaderboard(leaders, len(ranked), checkpoint.cost_config),
-        _lineage(status),
+        _lineage(history),
         _changes(campaign, leaders),
         _human_input(load_requests(inbox_path(campaign))),
         _outcomes(nodes, len(ranked)),
@@ -89,18 +95,18 @@ def _summary(
         f"- **State:** {state}",
         f"- **As of:** {status.data['heartbeat_at']}",
         "- **Iterations:** "
-        + _against(str(checkpoint.completed_iterations), launch.get("max_iterations")),
+        + _against(str(checkpoint.completed_iterations), launch.get("experiments")),
         "- **Elapsed:** "
         + _against(
             f"{checkpoint.elapsed_seconds / 60:.1f}",
-            launch.get("time_budget_minutes"),
+            launch.get("minutes"),
         )
         + " min",
         "- **Model spend:** "
         + _against(
             f"${checkpoint.cumulative_cost:.2f}",
-            None if launch.get("cost_budget") is None
-            else f"${float(launch['cost_budget']):.2f}",
+            None if launch.get("usd") is None
+            else f"${float(launch['usd']):.2f}",
         ),
     ])
     cost_config = checkpoint.cost_config
@@ -172,13 +178,90 @@ def _leaderboard(
     ])
 
 
-def _lineage(status: OperationStatusView) -> str:
-    # The same rows `kapso watch --tree` draws, without the screen's blank
-    # line and "campaign tree:" heading.
-    tree = status.campaign_tree()[2:]
-    if not tree:
+def _lineage(history: Sequence[Dict[str, Any]]) -> str:
+    rows = lineage_rows(history)
+    if not rows:
         return "## Lineage\n\nNo candidates yet."
-    return "## Lineage\n\n```text\n" + "\n".join(tree) + "\n```"
+    return "## Lineage\n\n```text\n" + "\n".join(rows) + "\n```"
+
+
+def lineage_rows(history: Sequence[Dict[str, Any]]) -> List[str]:
+    """The campaign's lineage as rows: every node under its parent with its
+    branch, score, outcome, cost, knowledge and external comparison, from
+    the checkpoint's node history; the credits line last. An inconsistent
+    history (a duplicate id, a missing parent, a cycle) raises."""
+    nodes: Dict[int, Dict[str, Any]] = {}
+    for node in history:
+        if not isinstance(node, dict):
+            raise ValueError("the checkpoint contains an invalid node")
+        node_id = node.get("node_id")
+        if isinstance(node_id, bool) or not isinstance(node_id, int) or node_id < 0:
+            raise ValueError("the checkpoint's node IDs must be non-negative integers")
+        if node_id in nodes:
+            raise ValueError("the checkpoint contains duplicate node IDs")
+        parent_node_id = node.get("parent_node_id")
+        if parent_node_id is not None and (
+            isinstance(parent_node_id, bool) or not isinstance(parent_node_id, int) or parent_node_id < 0
+        ):
+            raise ValueError("the checkpoint contains an invalid parent node ID")
+        nodes[node_id] = node
+    children: Dict[int, List[int]] = {node_id: [] for node_id in nodes}
+    roots: List[int] = []
+    for node_id, node in nodes.items():
+        parent_node_id = node.get("parent_node_id")
+        if parent_node_id is None:
+            roots.append(node_id)
+        elif parent_node_id not in nodes:
+            raise ValueError(f"the checkpoint's node {node_id} has a missing parent")
+        else:
+            children[parent_node_id].append(node_id)
+    for child_ids in children.values():
+        child_ids.sort()
+    roots.sort()
+    rows: List[str] = []
+    visited: set = set()
+
+    def render(node_id: int, prefix: str, is_last: bool) -> None:
+        if node_id in visited:
+            raise ValueError("the checkpoint contains a cycle")
+        visited.add(node_id)
+        node = nodes[node_id]
+        branch_name = node.get("branch_name") or f"node-{node_id}"
+        score = node.get("score")
+        score_text = "unscored" if score is None else f"{score:.6g}"
+        outcome = "error" if node.get("had_error") else "ok"
+        if node.get("suspended"):
+            outcome = "waiting"
+        if node.get("cost_refusal"):
+            outcome = "refused"
+        # A measured cost supersedes the estimate; a refused node carries
+        # its estimate, so the row shows what it would have cost.
+        cost = node.get("measured_cost") or node.get("estimated_cost")
+        knowledge = knowledge_summary(node.get("phase_telemetry") or {})
+        comparison = comparison_summary(node.get("external_evaluation_metadata") or {})
+        connector = "└─" if is_last else "├─"
+        rows.append(
+            f"{prefix}{connector} {branch_name} (score={score_text}, {outcome})"
+            + (f" cost: {float(cost['amount'])}" if cost else "")
+            + (f" knowledge: {knowledge}" if knowledge else "")
+            + (f" external: {comparison}" if comparison else "")
+        )
+        child_prefix = prefix + ("  " if is_last else "│ ")
+        for index, child_id in enumerate(children[node_id]):
+            render(child_id, child_prefix, index == len(children[node_id]) - 1)
+
+    for index, root_id in enumerate(roots):
+        render(root_id, "  ", index == len(roots) - 1)
+    if len(visited) != len(nodes):
+        raise ValueError("the checkpoint contains an unreachable node")
+    credits = credits_summary({
+        f"{node_id}:{phase}": values
+        for node_id, node in nodes.items()
+        for phase, values in (node.get("phase_telemetry") or {}).items()
+    })
+    if credits:
+        rows.append(f"  credits: {credits}")
+    return rows
 
 
 def _changes(campaign: Path, leaders: Sequence[SearchNode]) -> str:

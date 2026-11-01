@@ -23,7 +23,11 @@ report formats, limits) must reach the statement — quoted in the statement's
    archives there and delete the zips. A rules-acceptance error (403) means
    the account has not joined the competition on kaggle.com — stop and report
    exactly that; do not guess at another competition.
-2. Write `kaggle.json` in the task directory: `{"competition": "<slug>"}`.
+2. Write `kaggle.json` in the task directory:
+   `{"competition": "<slug>", "higher_is_better": true|false}`, the direction
+   of the evaluation metric read from the competition's evaluation page (a
+   log loss or an error is lower-is-better; an accuracy, an AUC or an F1 is
+   higher-is-better).
 
 The dataset directory is then your **authoritative** source for the data
 layout and the exact submission format: inspect the real files — list the
@@ -79,8 +83,9 @@ into the statement as binding. So:
 - **Submission quota: the task's own stated limit is the authority.** Check the
   competition's pages (Overview — including any Starter Prompt — and Rules) for
   a task-specific submission limit; if one is stated, the statement quotes that
-  number as the binding quota. Only when the pages genuinely state none does the
-  default apply: state 50 per task (never invent a number).
+  number as the binding quota. Only when the pages genuinely state none does
+  RULES.md's own default apply, when it states one; when neither states a
+  quota, write that the quota is unstated (never invent a number).
 - **Kernel run-time cap: the task's own stated limit is the authority.** Check
   the same pages for a per-kernel-run time cap (e.g. "cap every kernel run at
   N seconds", a mandatory push timeout value). If one is stated, quote it in

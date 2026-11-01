@@ -9,8 +9,9 @@ import os
 import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
+from kapso.execution.budget import ATTEMPT_WOULD_NOT_FIT, FINISHING_CUT
 from kapso.execution.cost_estimator import normalize_cost_config
 
 
@@ -76,15 +77,26 @@ class RunCheckpoint:
     # schemas are not migrated (Rule 7).
     cost_config: Dict[str, Any] = field(default_factory=normalize_cost_config)
     maximize_scoring: bool = True
+    # v4: the harness identity a build ran with (name, version, hash,
+    # source), so a resume refuses a changed harness by name, and the
+    # harness setup session's record (done, the prepared resources) so a
+    # crash after it does not repeat it. Both None without a harness.
+    harness: Optional[Dict[str, str]] = None
+    harness_setup: Optional[Dict[str, Any]] = None
+    # v5: what the campaign is served (the experience package's records:
+    # reference, kind, resolved, head, provenance, scope per source), so a
+    # resume re-pins each source at the recorded head and scope. Empty
+    # when nothing is loaded.
+    experience: List[Dict[str, Any]] = field(default_factory=list)
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 6
     VALID_STATUSES = {"running", "completed"}
     # waiting_for_user: the campaign paused for a reply in the inbox
     # (docs/research/evolve-hub-design.md v4); a resume continues the
     # session that asked once the reply is in.
     VALID_LAST_STOPS = {
-        "time_budget", "cost_budget", "finalization_reserve", "waiting_for_user",
-        "cost_budget_exhausted",
+        "time_budget", "cost_budget", ATTEMPT_WOULD_NOT_FIT, FINISHING_CUT,
+        "waiting_for_user", "cost_budget_exhausted",
     }
 
     @classmethod
@@ -104,6 +116,9 @@ class RunCheckpoint:
         last_stop: Optional[str] = None,
         cost_config: Optional[Dict[str, Any]] = None,
         maximize_scoring: bool = True,
+        harness: Optional[Dict[str, str]] = None,
+        harness_setup: Optional[Dict[str, Any]] = None,
+        experience: Optional[List[Dict[str, Any]]] = None,
     ) -> "RunCheckpoint":
         checkpoint = cls(
             schema_version=cls.SCHEMA_VERSION,
@@ -121,6 +136,9 @@ class RunCheckpoint:
             last_stop=last_stop,
             cost_config=normalize_cost_config(cost_config),
             maximize_scoring=maximize_scoring,
+            harness=dict(harness) if harness is not None else None,
+            harness_setup=dict(harness_setup) if harness_setup is not None else None,
+            experience=[dict(source) for source in experience or []],
         )
         checkpoint.validate_structure()
         return checkpoint
@@ -159,6 +177,9 @@ class RunCheckpoint:
             "last_stop",
             "cost_config",
             "maximize_scoring",
+            "harness",
+            "harness_setup",
+            "experience",
         }
         missing = sorted(required - set(data))
         if missing:
@@ -173,6 +194,16 @@ class RunCheckpoint:
     def validate_structure(self) -> None:
         if not isinstance(self.cost_config, dict):
             raise RunCheckpointCorruptError("Run checkpoint cost_config must be an object")
+        if self.harness is not None and (
+            not isinstance(self.harness, dict)
+            or set(self.harness) != {"name", "version", "hash", "source"}
+            or not all(isinstance(value, str) for value in self.harness.values())
+        ):
+            raise RunCheckpointCorruptError(
+                "Run checkpoint harness must be null or {name, version, hash, source}"
+            )
+        if self.harness_setup is not None and not isinstance(self.harness_setup, dict):
+            raise RunCheckpointCorruptError("Run checkpoint harness_setup must be null or an object")
         if not isinstance(self.maximize_scoring, bool):
             raise RunCheckpointCorruptError(
                 "Run checkpoint maximize_scoring must be a boolean"

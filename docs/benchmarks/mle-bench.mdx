@@ -18,6 +18,14 @@ MLE-Bench is a benchmark for evaluating ML engineering agents on Kaggle competit
 These results were submitted as an [official submission to MLE-Bench](https://github.com/openai/mle-bench/pull/107).
 </Note>
 
+The medal rates are those of the official submission, whose [pull request](https://github.com/openai/mle-bench/pull/107)
+carries the competition set and the per-competition reports: three independent runs by Leeroo,
+submitted on 2025-12-07, with Gemini-3-Pro-Preview as the primary model and GPT-5 and GPT-5-mini on
+a subset of modules, twenty-four hours per competition on one H100 with 24 vCPUs and 150 GB of RAM,
+each run graded once on the competition's private answers by the benchmark's grader; the rates are
+computed as the submission's footnote says, with incomplete seeds padded as failing scores. The
+comparison systems' rates are their own entries in the benchmark's results table.
+
 ## Usage
 
 ```bash
@@ -34,7 +42,6 @@ PYTHONPATH=. python -m benchmarks.mle.runner -c tabular-playground-series-dec-20
 PYTHONPATH=. python -m benchmarks.mle.runner \
     -c tabular-playground-series-dec-2021 \
     -i 20 \
-    -m MLE_GENERIC \
     -d codex
 ```
 
@@ -43,69 +50,71 @@ PYTHONPATH=. python -m benchmarks.mle.runner \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-c, --competition` | Competition ID | Required |
-| `-i, --iterations` | Max experiment iterations | 20 |
-| `-m, --mode` | Config mode | `MLE_GENERIC` |
-| `-d, --coding-agent` | Coding agent | From config |
-| `--no-kg` | Disable knowledge graph | Enabled |
-| `--list` | List all competitions | - |
-| `--lite` | List lite competitions | - |
-| `--list-agents` | List coding agents | - |
+| `-i, --iterations` | `Budget.experiments` | the config's `budget.experiments` |
+| `--time-budget-hours` | `Budget.minutes`, in hours | the config's `budget.minutes` (unbounded) |
+| `-d, --coding-agent` | The host every role without a `cli` of its own runs on | `codex`, the override file's `host` |
+| `--harness` | A harness reference | the bundled `predictive-modelling` |
+| `--experience` | Comma-separated experience sources to serve | none |
+| `--workspace` / `--resume` | The campaign directory / continue the campaign in it | a fresh directory |
+| `--list` / `--lite` | List competitions | - |
 
-## Configuration modes
+## Configuration
+
+`benchmarks/mle/config.yaml` is an override file over the packaged config
+(`kapso doctor --show-config --config benchmarks/mle/config.yaml` prints what
+a run uses): ideation on Claude Code with the packaged model, implementation
+and the judge on the Codex CLI, the inbox off, and the runner's own settings
+under `benchmark:`, which the engine never reads.
+
+```yaml
+inbox:
+  enabled: false
+search_strategy:
+  params:
+    host: codex
+    ideation:
+      cli: claude_code
+      gates: [research, experiment_history, repo_memory, bank]
+    implementation:
+      gates: [research, repo_memory, bank]
+      timeout: 14400
+    judge:
+      timeout: 900
+evaluation_maintainer:
+  enabled: true
+benchmark:
+  work_root: tmp/mle
+  timeouts: {full: 28800, debug: 1200}
+  floor_scores: {higher_is_better: 0.0, lower_is_better: 1000000000.0}
+  forbidden_packages: [torchaudio, mmcv, openmem, faiss, pcdet]
+```
 
 <Note>
-Both modes run the `generic` search strategy, but the MLE handler supplies the official evaluation: solutions are scored by `mlebench` grading rather than agent-built evaluation.
+The runner launches `build()` with the bundled `predictive-modelling` harness. The provided
+grader, registered by the evaluation maintainer, runs each candidate's `main.py` (the debug
+mode as the gate, then the full mode), validates `final_submission.csv` with the
+competition's own validator and reads the held-out score the program reports: the score of
+record. The official grade on the private answers is computed once, after the campaign, on
+the delivered candidate.
 </Note>
 
-<Tabs>
-  <Tab title="MLE_GENERIC">
-    The campaign standard. Ideation on Claude, implementation sessions on the Codex CLI.
-    ```yaml
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        implementation_model: "gpt-5.6-sol"
-        implementation_cli: "codex"
-    knowledge_search:
-      enabled: false
-    ```
-  </Tab>
-  <Tab title="MINIMAL">
-    Quick smoke testing, everything on Claude Code.
-    ```yaml
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        implementation_model: "claude-opus-5"
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-    ```
-  </Tab>
-</Tabs>
+## Evaluation
 
-## Stages
-
-The handler automatically adjusts strategy based on budget progress:
-
-| Stage | Budget | Behavior |
-|-------|--------|----------|
-| **MINI TRAINING** | 0-20% | Sample training data (for datasets >30GB) |
-| **FULL TRAINING** | 20-80% | Train on complete dataset |
-| **FINAL ENSEMBLING** | 80-100% | Ensemble best models from history |
+1. The candidate holds back a stratified ten percent of the training data, trains nothing
+   on it, and prints its score under the competition's metric in `<score>` tags.
+2. `python main.py --debug` runs the whole pipeline on a small sample within the debug cap;
+   `python main.py` rewrites every prediction within the full cap; both write
+   `final_submission.csv` at the repository root, in the sample submission's format.
+3. After the campaign the runner grades the delivered candidate's file on the private
+   answers and writes `final_report.json` under `tmp/mle/<competition>/`.
 
 ## Output structure
 
-The agent generates:
-
 ```text
-experiment_workspace/{uuid}/
+<workspace>/
 ├── main.py                    # Entry point
-├── output_data_{branch}/
-│   ├── final_submission.csv   # Kaggle submission file
-│   └── checkpoints/           # Model checkpoints
+├── final_submission.csv       # Kaggle submission file, committed with the candidate
+├── kapso_evaluation/          # The provided grader and its task.json
 └── sessions/                  # Experiment branches
 ```
 
@@ -113,10 +122,10 @@ experiment_workspace/{uuid}/
 
 Generated code must:
 - Support `--debug` flag for fast testing
-- Write `final_submission.csv` in the output directory
+- Write `final_submission.csv` at the repository root
 - Print progress and metrics
 - Handle GPU efficiently (batch size, device selection)
-- Use early stopping and learning rate scheduling
+- Report the held-out score in `<score>` tags
 
 ## Competition types
 
@@ -127,24 +136,17 @@ Generated code must:
 | Text | `spooky-author-identification`, `jigsaw-toxic-*` |
 | Audio | `mlsp-2013-birds` |
 
-## Environment variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CUDA_DEVICE` | `0` | GPU device ID |
-| `MLE_SEED` | `1` | Random seed |
-
 ## Related
 
 <CardGroup cols={2}>
   <Card title="Installation" icon="download" href="/docs/installation#optional-benchmarks">
     Installing the harness
   </Card>
-  <Card title="CLI reference" icon="terminal" href="/docs/reference/cli#kapso-evolve">
+  <Card title="CLI reference" icon="terminal" href="/docs/reference/cli#kapso-build">
     Running a campaign
   </Card>
 </CardGroup>
 
-Related pages: [Installation](/docs/installation#optional-benchmarks) · [CLI reference](/docs/reference/cli#kapso-evolve) · [IOAI 2026](/docs/benchmarks/ioai-2026)
+Related pages: [Installation](/docs/installation#optional-benchmarks) · [CLI reference](/docs/reference/cli#kapso-build) · [IOAI 2026](/docs/benchmarks/ioai-2026)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

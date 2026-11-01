@@ -23,8 +23,6 @@
 #      adapter_class: "YourAgentCodingAgent"
 #      adapter_module: "kapso.execution.coding_agents.adapters.your_agent_agent"
 #      supports_native_git: false
-#      default_model: "your-model"
-#      default_debug_model: "your-debug-model"
 #      env_vars:
 #        - "YOUR_API_KEY"
 #      install_command: "pip install your-package"

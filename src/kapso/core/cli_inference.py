@@ -12,48 +12,17 @@
 # inner LLMBackend (embeddings are explicitly out of scope of the
 # conversion). Callers select a role with one `role=` kwarg; the role's
 # spec (cli, model, effort, sandbox, web_search, timeout) comes from the
-# `inference:` block resolved by resolve_inference_config(): the packaged
-# config is the base layer (Rule 1 — one canonical home for the defaults),
-# and an `inference:` block in the user's own --config/config_path file
-# deep-merges over it, so overriding one key never forfeits the rest.
+# effective config's `inference:` block (kapso.core.config.load_config:
+# the packaged defaults with the override file over them).
 
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from kapso.core.config import deep_merge, load_config
 from kapso.core.llm import LLMBackend
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
-
-# The packaged platform config carries the default inference block (Rule 1).
-_PACKAGED_CONFIG_PATH = str(Path(__file__).parent.parent / "config.yaml")
-
-
-def resolve_inference_config(
-    config_path: Optional[str] = None,
-) -> Dict[str, Any]:
-    """The `inference:` block a run should use.
-
-    The packaged platform config is the base layer; when `config_path` names
-    a user config file with its own `inference:` block, that block
-    deep-merges on top (nested dicts key-by-key, scalars replace). A user
-    file without an `inference:` block — or no `config_path` at all — gets
-    the packaged block unchanged: that is the documented default, not an
-    error.
-    """
-    inference = load_config(_PACKAGED_CONFIG_PATH)["inference"]
-    if config_path is None or str(config_path) == _PACKAGED_CONFIG_PATH:
-        return inference
-    user_block = load_config(str(config_path)).get("inference")
-    if user_block is None:
-        return inference
-    if not isinstance(user_block, dict):
-        raise ValueError(
-            f"`inference:` in {config_path} must be a mapping, "
-            f"got {type(user_block).__name__}"
-        )
-    return deep_merge(inference, user_block)
 
 
 class CliInference:
@@ -77,12 +46,18 @@ class CliInference:
     ):
         # An explicit `inference` dict wins; otherwise resolve from the
         # config file (user overrides deep-merged over the packaged block).
-        self._inference = inference or resolve_inference_config(config_path)
+        self._inference = inference or load_config(config_path)["inference"]
         if "default" not in self._inference:
             raise ValueError("inference config has no 'default' role spec")
         self._backend = LLMBackend(models=models, retry_policy=retry_policy)
         self._agent_factory = agent_factory or CodingAgentFactory
         self._cli_cost = 0.0
+        # The engine's own sessions are recorded with the campaign's: the
+        # orchestrator sets this once the workspace exists (the staging's
+        # `engine_session_record` over the campaign's records directory),
+        # and it gives each session the record keys its adapter writes
+        # into. None records nothing (an inference with no campaign).
+        self.record_session: Optional[Callable[[Optional[str], str, Path], Dict[str, str]]] = None
 
     # ------------------------------------------------------------ roles
 
@@ -123,15 +98,20 @@ class CliInference:
             agent_specific.setdefault(
                 "auth_mode", spec.get("auth_mode", "oauth")
             )
-        agent = self._agent_factory.create(
-            CodingAgentConfig(
-                agent_type=spec["cli"],
-                model=spec["model"],
-                debug_model=spec["model"],
-                agent_specific=agent_specific,
-            )
-        )
+            # The engine's own session mounts only the servers it is given
+            # (none), never the person's own.
+            agent_specific.setdefault("strict_mcp_config", True)
         with tempfile.TemporaryDirectory(prefix="kapso-inference-") as scratch:
+            if self.record_session is not None:
+                agent_specific.update(self.record_session(role, spec["cli"], Path(scratch)))
+            agent = self._agent_factory.create(
+                CodingAgentConfig(
+                    agent_type=spec["cli"],
+                    model=spec["model"],
+                    debug_model=spec["model"],
+                    agent_specific=agent_specific,
+                )
+            )
             try:
                 agent.initialize(scratch)
                 result = agent.generate_code(

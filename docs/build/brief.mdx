@@ -1,0 +1,121 @@
+---
+title: "The objective and the brief: what a Kapso build takes"
+sidebarTitle: "The brief"
+description: "A build takes a brief: the objective, how it is measured, the baseline, the target, the rules and the budget, in one file the judge reads whole. How to write one, and what each line does."
+keywords: ["kapso brief", "kapso-brief.md", "objective", "success criteria", "measurable goal", "kapso build"]
+---
+
+A build takes a brief. The brief says what to build, how success is
+measured, where you start, where you want to end, what must never happen,
+and how much to spend. The judge reads it whole: every experiment is scored
+against it, and the campaign stops when the objective reads as met.
+
+```text examples/churn-first-build/kapso-brief.md
+Objective    Raise the churn model's out-of-sample ROC AUC above 0.85
+             without changing the prediction contract: predict.py keeps
+             writing id,churn_probability for every holdout id.
+Measured by  kapso_evaluation/evaluate.py, ROC AUC on the held-out rows
+Baseline     0.797 (the shipped logistic regression, bootstrap SE 0.010)
+Target       0.85
+Rules
+  - the evaluator is never modified
+  - no fitting on the holdout rows: their labels sit under the protected `kapso_evaluation/private/`, the evaluator's alone
+Budget       minutes=45 experiments=3
+```
+
+```bash
+kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+```
+
+```python
+from kapso import Kapso, Brief
+
+solution = Kapso().build(
+    Brief.read("kapso-brief.md"),
+    evaluation="evaluation", data="data", repo="repo", output="build",
+)
+```
+
+## What each line does
+
+| Line | What it is for | Required |
+|---|---|---|
+| `Objective` | What to build, in as many lines as it takes. A number in it is what the judge checks | yes |
+| `Measured by` | The evaluator (`kapso_evaluation/evaluate.py` when you pass one), or the protocol a campaign-built evaluator must follow: data, split, seed, metric | no |
+| `Baseline` | Where the starting code stands, measured before launch when an evaluator exists; `unknown` otherwise | no |
+| `Target` | The number that ends the campaign. Given, or proposed with headroom and said so | no |
+| `Rules` | Invariants the judge enforces on every candidate: the evaluator untouched, no fitting on the hold-out, no rows dropped, data read-only | no |
+| `Budget` | `minutes`, `experiments`, `usd` (model spend), `reserve_minutes` (escrowed for the final checkout and evaluation) | no |
+| `Harness` | The [harness](/docs/harnesses) the build loads: a bundled name, a directory read from where the build runs, or a git reference. `--harness` wins over it | no |
+| `Experience` | The [experience](/docs/experience) the build is served: `mine`, `mine:all`, `leeroopedia`, a bank path or git reference, an index name, as `- ` items or one comma-separated line. `--experience` and `load_experience()` win over it | no |
+
+A line starts with its name; indented lines continue it, and a blank line
+between two lines of the same field is a paragraph break. `Rules` and
+`Experience` take `- ` items. `Budget` takes `name=value` tokens. An
+unknown or repeated name, a missing objective, or a line that belongs to
+no field is refused with its line number, never guessed at. The full
+grammar is in the [brief format reference](/docs/reference/brief-format).
+
+## A sentence is a brief too
+
+`kapso build --goal "..."` and `build("...")` take a sentence and make a
+brief with only an objective. Use it for a quick run; use the file when
+the task has a measurement, a baseline or rules, which is most tasks worth
+an hour of experiments.
+
+## Three cases, by what you have
+
+- **An evaluator.** Run it once for the baseline, put the metric and the
+  target in the brief, pass the evaluator with `--evaluation`. It is
+  protected: a candidate that edits it is rejected and unscored.
+- **A success criterion, no evaluator.** Write the protocol under
+  `Measured by`: the data, the split, the seed, the metric and how it is
+  printed. The campaign's first node builds the evaluator from it, the judge
+  checks it is fair, and from then on it is protected like one you wrote.
+  See [Evaluation](/docs/build/evaluation).
+- **Nothing yet.** Write the objective and the best measurement you can
+  name, and `Target` as `maximise within budget`. The campaign measures
+  first; the first result replaces `unknown` in `Baseline`.
+
+## Rules, not methods
+
+Rules go in the brief; methods do not. The judge holds every candidate to a
+rule for the whole campaign, so "the evaluator is never modified" and "no
+fitting on the hold-out" belong there. "Use gradient boosting" would be
+frozen the same way, and the point of a campaign is to find out whether
+something else does better.
+
+## Targets with headroom
+
+A target the data cannot reach ends in `max_iterations`, not in a result.
+When you know the ceiling, leave room below it; when you do not, say in the
+brief that the target is proposed, and read the first measurement before
+raising it.
+
+## What the judge sees
+
+The whole brief, rendered as the text above, becomes the campaign's goal:
+the judge scores every candidate against it and decides when to stop, and
+the checkpoint fingerprints those exact bytes so a resume continues the
+same brief. Nothing is clipped on the way, whatever its length.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" icon="scale-balanced" href="/docs/build/evaluation">
+    Provided, proposed and versioned evaluators
+  </Card>
+  <Card title="Run and watch" icon="play" href="/docs/build/run-and-watch">
+    Launch the build and follow it
+  </Card>
+  <Card title="Brief format" icon="file-lines" href="/docs/reference/brief-format">
+    The grammar, line by line
+  </Card>
+  <Card title="Your first build" icon="rocket" href="/docs/first-build">
+    The churn example, end to end
+  </Card>
+</CardGroup>
+
+Related pages: [Evaluation](/docs/build/evaluation) · [Run and watch](/docs/build/run-and-watch) · [Brief format](/docs/reference/brief-format) · [Your first build](/docs/first-build)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

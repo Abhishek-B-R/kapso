@@ -67,6 +67,13 @@ class EvaluationIntegrityReport:
 RUNTIME_JUNK_DIRS = {"__pycache__"}
 RUNTIME_JUNK_SUFFIXES = {".pyc"}
 
+# The evaluator's own output (docs/build/evaluation: the suite writes
+# `kapso_evaluation/result.json`). A copy left in the provided directory by
+# an earlier run would be protected as part of the suite, and the first
+# evaluation would change it, rejecting every candidate (the WP3 proof run,
+# 2026-10-25); the launch refuses it instead.
+RESULT_FILE = "result.json"
+
 
 def build_evaluation_manifest(directory: str | Path) -> Dict[str, str]:
     """Hash every regular non-junk file in a provided evaluation directory."""
@@ -107,6 +114,22 @@ def build_evaluation_manifest(directory: str | Path) -> Dict[str, str]:
             f"Provided evaluation directory contains no files: {root}"
         )
     return manifest
+
+
+def launch_evaluation_manifest(directory: str | Path) -> Dict[str, str]:
+    """The manifest a campaign launches with: the provided directory
+    hashed as `build_evaluation_manifest` does, after refusing a
+    `result.json` left at its root by an earlier run of the evaluator."""
+    root = Path(directory).expanduser()
+    leftover = root / RESULT_FILE
+    if leftover.is_file():
+        raise EvaluationIntegrityError(
+            f"{leftover} is the evaluator's own output, left by an earlier "
+            "run; it would be protected as part of the suite and the first "
+            "evaluation would change it, rejecting every candidate. Remove "
+            "it and launch again."
+        )
+    return build_evaluation_manifest(root)
 
 
 def manifest_fingerprint(manifest: Mapping[str, str]) -> str:

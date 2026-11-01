@@ -1,0 +1,19 @@
+{
+ "practice": [
+  "ioai-2026-ai-models-track-practice-task-1-timed-deps-12"
+ ],
+ "mirrors": [
+  "aicc-round-0-brain-tumor",
+  "audio-demixing-aicc-round-2",
+  "autocorrect-aicc-round-1-2",
+  "classifier-classifier-aicc-round-6",
+  "deceptive-points-aicc-round-0",
+  "essay-gap-aicc-round-2",
+  "face-matching-aicc-round-2",
+  "latent-model-classification-aicc-round-0",
+  "mortys-time-paradox-aicc-round-3",
+  "neoai-2025-cuties-segmentation",
+  "radar-ioai-2025",
+  "restroom-ioai-2025"
+ ]
+}

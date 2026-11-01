@@ -20,7 +20,7 @@ from typing import (
     Tuple,
 )
 
-from kapso.core.config import PLATFORM_CONFIG_PATH, load_config
+from kapso.core.config import load_config
 from kapso.core.prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 # The hosted servers the registry points sessions at. Their addresses are
 # config, not code (Rule 1): the packaged config's `gates:` block is the
 # one source.
-_HOSTED_GATES: Dict[str, Dict[str, str]] = load_config(
-    str(PLATFORM_CONFIG_PATH)
-)["gates"]
+_HOSTED_GATES: Dict[str, Dict[str, str]] = load_config()["gates"]
+# The one hosted gate, the experience source `leeroopedia`.
+HOSTED_GATE = "leeroopedia"
 
 
 @dataclass
@@ -70,6 +70,9 @@ class GateDefinition:
     # set — but preflight must not report them as missing user setup: they
     # are not the user's to provide.
     injected_env: List[str] = field(default_factory=list)
+    # Served to a host session by `kapso-mcp` alone: get_mcp_config refuses
+    # it for a campaign session (a campaign never launches a campaign).
+    host_only: bool = False
 
 
 _GATE_PROMPTS = "execution/search_strategies/generic/prompts/gates"
@@ -222,18 +225,18 @@ GATES: Dict[str, GateDefinition] = {
         tools=["bank_index", "bank_get_card", "bank_get_card_with_evidence"],
         default_params={},
         required_env=[
-            "KAPSO_BANK_DIR",
-            "KAPSO_BANK_HEAD",
+            "KAPSO_BANKS",
             "KAPSO_SERVING_PULL_LOG",
-            "KAPSO_TASK_FAMILY",
+            "KAPSO_TASK_HARNESS",
             "KAPSO_PROBE_BUDGET",
+            "KAPSO_SESSION",
         ],
         injected_env=[
-            "KAPSO_BANK_DIR",
-            "KAPSO_BANK_HEAD",
+            "KAPSO_BANKS",
             "KAPSO_SERVING_PULL_LOG",
-            "KAPSO_TASK_FAMILY",
+            "KAPSO_TASK_HARNESS",
             "KAPSO_PROBE_BUDGET",
+            "KAPSO_SESSION",
         ],
     ),
     # The campaign inbox (docs/research/evolve-hub-design.md v4): one
@@ -244,6 +247,15 @@ GATES: Dict[str, GateDefinition] = {
         default_params={},
         required_env=["KAPSO_INBOX_PATH", "KAPSO_SESSION_ID", "KAPSO_NODE_ID"],
         injected_env=["KAPSO_INBOX_PATH", "KAPSO_SESSION_ID", "KAPSO_NODE_ID"],
+    ),
+    # The campaign verbs as a host session's tools (wp7-plugin.md): a
+    # launch detached, a status read, a stop. Host-only; the server's
+    # working directory and config path reach the gate as its params,
+    # never through the environment.
+    "campaign": GateDefinition(
+        tools=["kapso_build_start", "kapso_status", "kapso_stop"],
+        default_params={},
+        host_only=True,
     ),
     # Leeroopedia's hosted MCP server: sessions connect over HTTP with the
     # user's key — nothing runs locally, nothing to install.
@@ -488,12 +500,22 @@ def get_mcp_config(
     gate_failure_policy: str = "warn",
     bank_serving: Optional[Dict[str, str]] = None,
     inbox: Optional[Dict[str, str]] = None,
+    hosted: Optional[Dict[str, Any]] = None,
+    session: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], List[str]]:
     """
     Get MCP server config and allowed tools for the given gates.
-    
+
     Args:
         gates: List of gate names (e.g., ["idea", "research", "experiment_history"])
+        session: The label of the session this config serves (its record's
+                name under `.kapso/sessions`), stamped on every pull event
+                the bank gate writes so a read is attributed to the session
+                that made it; the ideation phase's members share one.
+        hosted: The hosted gate as a campaign loaded it: `url` (the key's
+                placeholder in it) and `tool_timeout_seconds`, from the
+                config the source was loaded with. None mounts the
+                packaged config's address.
         server_name: MCP server name (default: "gated-knowledge")
         project_root: Project root path (defaults to the Kapso checkout root)
         kg_index_path: Path to .index file. Required if "kg", "idea", or "code" 
@@ -510,10 +532,9 @@ def get_mcp_config(
         include_base_tools: Include Read, Write, Bash in allowed_tools (default True)
         gate_failure_policy: Missing-capability policy: skip, warn, or error.
         bank_serving: Campaign parameters for the "bank" gate, keyed by its
-                      KAPSO_* env names (KAPSO_BANK_DIR, KAPSO_BANK_HEAD,
-                      KAPSO_SERVING_PULL_LOG, KAPSO_TASK_FAMILY,
-                      KAPSO_PROBE_BUDGET, optional KAPSO_TASK_DATASET).
-                      Required for the gate to resolve.
+                      KAPSO_* env names (KAPSO_BANKS, KAPSO_SERVING_PULL_LOG,
+                      KAPSO_TASK_HARNESS, KAPSO_PROBE_BUDGET). Required for
+                      the gate to resolve.
         inbox: Campaign parameters for the "inbox" gate, keyed by its KAPSO_*
                env names (KAPSO_INBOX_PATH, KAPSO_SESSION_ID, KAPSO_NODE_ID).
                Required for the gate to resolve.
@@ -539,6 +560,7 @@ def get_mcp_config(
         "REPO_MEMORY_ROOT": repo_root,
         **(bank_serving or {}),
         **(inbox or {}),
+        "KAPSO_SESSION": session,
     }
     effective_env.update(
         {key: str(value) for key, value in explicit_env.items() if value}
@@ -549,6 +571,12 @@ def get_mcp_config(
         policy=gate_failure_policy,
         env=effective_env,
     )
+    host_only = [name for name in resolution.requested_gates if GATES[name].host_only]
+    if host_only:
+        raise ValueError(
+            f"host-only gate(s) {', '.join(host_only)}: kapso-mcp serves them to a host session; "
+            "a campaign session never gets them"
+        )
     enabled_gates = list(resolution.enabled_gates)
 
     # Resolve project root
@@ -587,9 +615,7 @@ def get_mcp_config(
         ]
     if "repo_memory" in internal_gates and effective_env.get("REPO_MEMORY_ROOT"):
         mcp_env["REPO_MEMORY_ROOT"] = effective_env["REPO_MEMORY_ROOT"]
-    if "bank" in internal_gates and effective_env.get("KAPSO_TASK_DATASET"):
-        mcp_env["KAPSO_TASK_DATASET"] = effective_env["KAPSO_TASK_DATASET"]
-    
+
     # Build MCP servers config (gated-knowledge for internal gates)
     mcp_servers: Dict[str, Any] = {}
     if internal_gates:
@@ -603,16 +629,21 @@ def get_mcp_config(
     # Hosted servers: the URL template is filled from the gate's required
     # env and handed to the CLI as a streamable-HTTP server. The per-call
     # timeout is Claude Code's per-server `timeout` (milliseconds); the
-    # Codex adapter translates it to its own key.
+    # Codex adapter translates it to its own key. The address and timeout
+    # are the loaded source's (`hosted`, from the config the session was
+    # launched with) when a campaign serves the gate, the packaged
+    # config's otherwise.
     for gate_name in enabled_gates:
         gate_def = GATES[gate_name]
         if gate_def.url:
+            url = hosted["url"] if hosted and gate_name == HOSTED_GATE else gate_def.url
+            timeout_seconds = hosted["tool_timeout_seconds"] if hosted and gate_name == HOSTED_GATE else gate_def.tool_timeout_seconds
             mcp_servers[gate_def.server_name] = {
                 "type": "http",
-                "url": gate_def.url.format(
+                "url": url.format(
                     **{key: effective_env[key] for key in gate_def.required_env}
                 ),
-                "timeout": gate_def.tool_timeout_seconds * 1000,
+                "timeout": int(timeout_seconds) * 1000,
             }
     
     # Get allowed tools

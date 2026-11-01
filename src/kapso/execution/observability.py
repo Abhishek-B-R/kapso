@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
+from kapso.execution.inbox import list_registered_campaigns, read_launch_receipt
 from kapso.execution.iteration_evaluator import comparison_summary
 
 # Structural constant, not a knob: how many consecutive heartbeats may be
@@ -28,7 +29,7 @@ STALL_MISSED_HEARTBEATS = 3
 # The recent ring's size — a human glance, not a log (design §1).
 RECENT_RING_SIZE = 10
 
-_TERMINAL_STATES = ("done", "failed")
+TERMINAL_STATES = ("done", "failed")
 
 
 def knowledge_summary(phase_telemetry: Mapping[str, Mapping[str, float]]) -> str:
@@ -100,6 +101,99 @@ def platform_cost_summary(platform_budget: Mapping[str, Any]) -> str:
     return text
 
 
+def pid_alive(pid: Optional[int]) -> Optional[bool]:
+    """Whether a process exists: None where the kernel exposes no /proc
+    to ask, or with no pid to ask about."""
+    proc = Path("/proc")
+    if pid is None or not proc.is_dir():
+        return None
+    return (proc / str(pid)).exists()
+
+
+def source_line(source: Mapping[str, Any]) -> str:
+    """One source as the status file records it (reference, kind, head,
+    provenance, scope), the way the launch banner names it."""
+    reference, kind, provenance = source["reference"], source["kind"], source["provenance"]
+    head = (source.get("head") or "")[:12]
+    if kind == "bank":
+        every = ", every scope" if source.get("scope") == "all" else ""
+        return f"{reference} at {head}, {provenance}{every}"
+    if kind == "index":
+        return f"{reference} (index {head}), {provenance}"
+    return f"{reference} (hosted), {provenance}"
+
+
+def campaign_listing(registry_path, status_dir, *, everything: bool = False) -> list:
+    """What `kapso watch` lists with no path: the campaigns the registry
+    knows and the learn and experience operations under the status
+    directory, one entry each, the registry's newest first; those alive
+    (the view's own verdict, `starting` included and a machine without
+    /proc judged by the heartbeat) or waiting on the person, unless
+    `everything`. A registered campaign with no status yet is `starting`
+    on its launch receipt while the pid lives, `stopped` once it is gone."""
+    entries = []
+    for registered in list_registered_campaigns(registry_path):
+        campaign = Path(registered["path"])
+        located = OperationStatusView.locate(campaign)
+        if located is not None:
+            entries.append(_listing_entry(OperationStatusView(located), str(campaign)))
+            continue
+        receipt = read_launch_receipt(campaign)
+        if receipt is None:
+            continue
+        alive = pid_alive(receipt["pid"])
+        entries.append({
+            "path": str(campaign), "operation": "build",
+            "state": "starting" if alive is not False else "stopped",
+            "phase": None, "heartbeat_age_seconds": None, "best": None,
+            "stopped_reason": None, "alive": alive,
+        })
+    root = Path(status_dir).expanduser()
+    if root.is_dir():
+        for file in sorted(root.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True):
+            entries.append(_listing_entry(OperationStatusView(file), str(file)))
+    if everything:
+        return entries
+    return [
+        entry for entry in entries
+        if entry["alive"] is not False
+        or (entry["state"] == "done" and entry["stopped_reason"] == "waiting_for_user")
+    ]
+
+
+def _listing_entry(view: "OperationStatusView", path: str) -> Dict[str, Any]:
+    return {
+        "path": path,
+        "operation": view.operation,
+        "state": view.state,
+        "phase": view.phase,
+        "heartbeat_age_seconds": round(view.heartbeat_age_seconds, 1),
+        "best": view.best,
+        "stopped_reason": view.data.get("stopped_reason"),
+        "alive": view.alive,
+    }
+
+
+def render_listing(entries: list) -> str:
+    """One line per entry: the state (WAITING for a campaign waiting on the
+    person), the operation, the phase, the heartbeat's age, the best score
+    and the path."""
+    lines = []
+    for entry in entries:
+        waiting = entry["state"] == "done" and entry["stopped_reason"] == "waiting_for_user"
+        # A writer gone or silent past its beats is dead, whatever the
+        # file's own word; the single-campaign screen says the same.
+        dead = entry["alive"] is False and entry["state"] in ("running", "starting")
+        state = "WAITING" if waiting else "DEAD" if dead else entry["state"].upper()
+        age = f"{entry['heartbeat_age_seconds']:.0f}s ago" if entry["heartbeat_age_seconds"] is not None else "-"
+        best = entry["best"].get("score") if isinstance(entry["best"], dict) else None
+        lines.append(
+            f"{state:<9} {entry['operation']:<10} {entry['phase'] or '-':<15} {age:>10}  "
+            f"best {best if best is not None else '-':<8} {entry['path']}"
+        )
+    return "\n".join(lines)
+
+
 def _progress_bar(fraction: float) -> str:
     filled = int(round(20 * min(1.0, fraction)))
     return "▓" * filled + "░" * (20 - filled)
@@ -113,6 +207,31 @@ def _parse_at(stamp: str) -> datetime:
     return datetime.fromisoformat(stamp)
 
 
+def mark_failed(path, error: BaseException | str, **fields: Any) -> bool:
+    """Publish a failure on a status file whose writer is gone: the
+    strategy constructor or the orchestrator's setup raised after the
+    status was born, and the object that owned the file went with the
+    exception; or a person ended the run (`kapso build --stop`, a string
+    with `stopped_reason`). The file is rewritten as the writer would
+    have written it (`failed`, the error, `finished_at`, the fields);
+    nothing is written when there is no file or it is terminal already.
+    Returns whether it wrote."""
+    file = Path(path)
+    if not file.is_file():
+        return False
+    data = json.loads(file.read_text(encoding="utf-8"))
+    if data["state"] in TERMINAL_STATES:
+        return False
+    data["state"] = "failed"
+    data["finished_at"] = _utcnow()
+    data["error"] = f"{type(error).__name__}: {error}" if isinstance(error, BaseException) else str(error)
+    data.update(fields)
+    temporary = file.with_name(f".{file.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(temporary, file)
+    return True
+
+
 class OperationStatus(ABC):
     """Mechanics shared by every long-running operation.
 
@@ -124,7 +243,8 @@ class OperationStatus(ABC):
       legal values come from the subclass's PHASES;
     - ``heartbeat_at`` refreshed on every write, plus an OPTIONAL daemon
       thread for operations with no natural per-minute update site
-      (evolve reuses its checkpoint-heartbeat daemon instead);
+      (a build runs it through setup and, once the loop starts, its
+      checkpoint-heartbeat daemon beats the file as well);
     - ``recent``: a 10-line human ring inside the file;
     - an optional ``on_status`` hook, invoked synchronously with the SAME
       dict the file carries after every write and heartbeat. Hook
@@ -141,11 +261,17 @@ class OperationStatus(ABC):
         heartbeat_seconds: Optional[float] = None,
         daemon: bool = False,
         on_status: Optional[Callable[[Dict[str, Any]], None]] = None,
+        phase: Optional[str] = None,
         **payload: Any,
     ):
         if not self.OPERATION or not self.PHASES:
             raise ValueError(
                 "OperationStatus subclasses must define OPERATION and PHASES"
+            )
+        if phase is not None and phase not in self.PHASES:
+            raise ValueError(
+                f"unknown {self.OPERATION} phase {phase!r}: "
+                f"expected one of {list(self.PHASES)}"
             )
         self.path = Path(path).expanduser()
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,8 +287,10 @@ class OperationStatus(ABC):
             "pid": os.getpid(),
             "started_at": now,
             "heartbeat_at": now,
-            "phase": None,
-            "phase_started_at": None,
+            # A phase at birth keeps the state `starting`: the operation
+            # is preparing (a build seeds its workspace), not yet running.
+            "phase": phase,
+            "phase_started_at": now if phase is not None else None,
             "recent": [],
             **payload,
         }
@@ -183,6 +311,21 @@ class OperationStatus(ABC):
             )
             self._thread.start()
 
+    @property
+    def terminal(self) -> bool:
+        """Done or failed: this status accepts no further update. A new
+        slice of the same operation opens a fresh one."""
+        return self._data["state"] in TERMINAL_STATES
+
+    def observe(
+        self, on_status: Optional[Callable[[Dict[str, Any]], None]]
+    ) -> None:
+        """Attach (or replace) the hook after construction. A build's status
+        is born at workspace setup, before solve() knows its caller's
+        hook; the hook then sees every write from the first iteration on."""
+        with self._lock:
+            self._on_status = on_status
+
     # ------------------------------------------------------------ writes
 
     def _write(self) -> None:
@@ -200,7 +343,7 @@ class OperationStatus(ABC):
             self._on_status(dict(self._data))
 
     def _assert_live(self) -> None:
-        if self._data["state"] in _TERMINAL_STATES:
+        if self._data["state"] in TERMINAL_STATES:
             raise RuntimeError(
                 f"{self.OPERATION} status is already "
                 f"{self._data['state']!r} — updates after a terminal state "
@@ -247,7 +390,7 @@ class OperationStatus(ABC):
         — the daemon may race the final write, and a heartbeat after done
         is noise, not a wiring bug."""
         with self._lock:
-            if self._data["state"] in _TERMINAL_STATES:
+            if self._data["state"] in TERMINAL_STATES:
                 return
             self._data.update(fields)
             self._write()
@@ -284,16 +427,27 @@ class OperationStatus(ABC):
         self._stop.set()
 
 
-class EvolveStatus(OperationStatus):
-    OPERATION = "evolve"
+class BuildStatus(OperationStatus):
+    OPERATION = "build"
+    # `setup` is the strategy constructor's phase: the workspace is seeded
+    # and repo memory bootstrapped (one inference session, minutes) before
+    # the first iteration. The file exists from that moment, so a watcher
+    # sees the campaign from its first seconds.
+    # `harness_setup` is the harness's own setup session (a domain statement
+    # and prepared resources), once per campaign before the first
+    # iteration; `verification` is the harness's per-attempt check between
+    # the evaluation and the judge. Both exist only with a harness.
     PHASES = (
-        "lens_planning", "ideation", "implementation", "evaluation",
-        "feedback",
+        "setup", "harness_setup", "lens_planning", "ideation", "implementation",
+        "evaluation", "verification", "feedback",
     )
     # payload: budget{elapsed_min,total_min}, best{score,node},
-    #          last{score,node}, iteration, active_stream,
-    #          platform_budget{used,budget,unit,refused} (only when cost
-    #          is enabled)
+    #          last{score,node}, iteration, stopped_reason, stop_detail,
+    #          requests (waiting_for_user), platform_budget{used,budget,
+    #          unit,refused} (only when cost is enabled), harness{name,
+    #          version,hash,source} (null without one), harness_setup
+    #          {prepared} once the harness setup session ran. Documented in
+    #          docs/reference/cli.mdx under `kapso watch` — keep in step.
 
 
 class LessonStatus(OperationStatus):
@@ -304,7 +458,7 @@ class LessonStatus(OperationStatus):
 
 
 class KnowledgeStatus(OperationStatus):
-    OPERATION = "learn_knowledge"
+    OPERATION = "experience"
     PHASES = ("ingest", "merge")
     # payload: sources{done,total}, current_source, pages_extracted
 
@@ -328,14 +482,15 @@ class OperationStatusView:
         )
 
     @staticmethod
-    def resolve(path: str | Path) -> Path:
-        """A workspace (-> .kapso/status.json), a status file, or a
-        directory of status files (-> newest by mtime).
+    def locate(path: str | Path) -> Optional[Path]:
+        """Where `path`'s status file is, or None when there is none yet:
+        a workspace (-> .kapso/status.json), a status file, or a directory
+        of status files (-> newest by mtime).
 
-        A workspace whose status file is not there yet raises instead of
-        falling through to some other JSON beside it: a seeded project
-        carries files like result.json, and the status file appears only
-        after the seed copy and the repo-memory bootstrap."""
+        A workspace whose status file is not there yet is None rather than
+        some other JSON beside it: a seeded project carries files like
+        result.json, and the status file appears only once the strategy
+        has seeded the workspace."""
         p = Path(path).expanduser()
         if p.is_file():
             return p
@@ -343,20 +498,31 @@ class OperationStatusView:
         if workspace_status.is_file():
             return workspace_status
         if (p / ".kapso").is_dir():
-            raise FileNotFoundError(
-                f"{p} is a campaign workspace with no status file yet: it is "
-                "still seeding and bootstrapping repo memory, or it died "
-                "before its first heartbeat"
-            )
+            return None
         if p.is_dir():
             candidates = sorted(
                 p.glob("*.json"), key=lambda f: f.stat().st_mtime
             )
             if candidates:
                 return candidates[-1]
+        return None
+
+    @staticmethod
+    def resolve(path: str | Path) -> Path:
+        """locate(), raising when there is no status file yet."""
+        located = OperationStatusView.locate(path)
+        if located is not None:
+            return located
+        p = Path(path).expanduser()
+        if (p / ".kapso").is_dir():
+            raise FileNotFoundError(
+                f"{p} is a campaign workspace with no status file yet: it is "
+                "still seeding its workspace, or it died before its first "
+                "heartbeat"
+            )
         raise FileNotFoundError(
             f"no status file at {p} (looked for the file itself, "
-            f"{workspace_status}, and *.json inside it)"
+            f"{p / '.kapso' / 'status.json'}, and *.json inside it)"
         )
 
     # ------------------------------------------------------------ fields
@@ -404,15 +570,11 @@ class OperationStatusView:
         cannot record its own writer's death, so a fresh heartbeat proves
         nothing once the process is gone. None where the kernel exposes no
         /proc to ask; the heartbeat is then the only signal."""
-        pid = self.data.get("pid")
-        proc = Path("/proc")
-        if pid is None or not proc.is_dir():
-            return None
-        return (proc / str(pid)).exists()
+        return pid_alive(self.data.get("pid"))
 
     @property
     def dead(self) -> bool:
-        return self.process_alive is False and self.state not in _TERMINAL_STATES
+        return self.process_alive is False and self.state not in TERMINAL_STATES
 
     @property
     def alive(self) -> Optional[bool]:
@@ -420,7 +582,7 @@ class OperationStatusView:
         when the writer is gone (DEAD), the heartbeat is stale (STALLED) or
         the state is terminal; None when the file records no heartbeat
         cadence to judge staleness against."""
-        if self.state in _TERMINAL_STATES or self.dead:
+        if self.state in TERMINAL_STATES or self.dead:
             return False
         interval = self.data.get("heartbeat_seconds")
         if not interval:
@@ -431,11 +593,11 @@ class OperationStatusView:
 
     @property
     def stalled(self) -> bool:
-        return self.alive is False and self.state not in _TERMINAL_STATES
+        return self.alive is False and self.state not in TERMINAL_STATES
 
     # ---------------------------------------------------------- renderer
 
-    def explain(self, *, tree: bool = False) -> str:
+    def explain(self) -> str:
         """The watch screen as a string — the CLI shows this verbatim."""
         d = self.data
         age = self.heartbeat_age_seconds
@@ -445,6 +607,13 @@ class OperationStatusView:
         elif self.stalled:
             head += "   ⚠ STALLED?"
         lines = [head + f"      pid {d.get('pid')}"]
+        # The campaign's identity from the first second: the harness and
+        # the sources it is served (wp6-observability.md, change 7).
+        if d.get("harness"):
+            harness = d["harness"]
+            lines.append(f"harness: {harness['name']} {harness['version']} ({harness['hash'][:12]})")
+        for source in d.get("experience") or []:
+            lines.append(f"served: {source_line(source)}")
         if self.phase:
             elapsed = self.phase_elapsed_min
             lines.append(
@@ -457,8 +626,6 @@ class OperationStatusView:
         if self.recent:
             lines.append("recent:")
             lines.extend(f"  {line}" for line in self.recent)
-        if tree:
-            lines.extend(self.campaign_tree())
         title = f" {self.operation} {self.path} "
         width = max(
             [len(line) for line in lines] + [len(title)]
@@ -468,101 +635,10 @@ class OperationStatusView:
         bordered.append("└" + "─" * width + "┘")
         return "\n".join(bordered)
 
-    def campaign_tree(self) -> list:
-        if self.operation != "evolve":
-            return ["", "campaign tree is only available for evolve"]
-        checkpoint_path = self.path.parent / "run_state.json"
-        if not checkpoint_path.exists():
-            return ["", "no checkpoint yet"]
-        checkpoint = json.loads(checkpoint_path.read_text())
-        strategy_state = checkpoint.get("strategy_state")
-        if not isinstance(strategy_state, dict):
-            raise ValueError("evolve checkpoint is missing strategy state")
-        node_history = strategy_state.get("node_history")
-        if not isinstance(node_history, list):
-            raise ValueError("evolve checkpoint is missing node history")
-        nodes = {}
-        for node in node_history:
-            if not isinstance(node, dict):
-                raise ValueError("evolve checkpoint contains an invalid node")
-            node_id = node.get("node_id")
-            if isinstance(node_id, bool) or not isinstance(node_id, int) or node_id < 0:
-                raise ValueError("evolve checkpoint node IDs must be non-negative integers")
-            if node_id in nodes:
-                raise ValueError("evolve checkpoint contains duplicate node IDs")
-            parent_node_id = node.get("parent_node_id")
-            if parent_node_id is not None and (
-                isinstance(parent_node_id, bool)
-                or not isinstance(parent_node_id, int)
-                or parent_node_id < 0
-            ):
-                raise ValueError("evolve checkpoint contains an invalid parent node ID")
-            nodes[node_id] = node
-        children = {node_id: [] for node_id in nodes}
-        roots = []
-        for node_id, node in nodes.items():
-            parent_node_id = node.get("parent_node_id")
-            if parent_node_id is None:
-                roots.append(node_id)
-            elif parent_node_id not in nodes:
-                raise ValueError(f"evolve checkpoint node {node_id} has a missing parent")
-            else:
-                children[parent_node_id].append(node_id)
-        for child_ids in children.values():
-            child_ids.sort()
-        roots.sort()
-        tree_lines = ["", "campaign tree:"]
-        visited = set()
-
-        def render(node_id: int, prefix: str, is_last: bool) -> None:
-            if node_id in visited:
-                raise ValueError("evolve checkpoint contains a cycle")
-            visited.add(node_id)
-            node = nodes[node_id]
-            branch_name = node.get("branch_name") or f"node-{node_id}"
-            score = node.get("score")
-            score_text = "unscored" if score is None else f"{score:.6g}"
-            outcome = "error" if node.get("had_error") else "ok"
-            if node.get("suspended"):
-                outcome = "waiting"
-            if node.get("cost_refusal"):
-                outcome = "refused"
-            # Measured cost supersedes the estimate; a refused node
-            # carries its estimate, so the row shows what it would cost.
-            cost = node.get("measured_cost") or node.get("estimated_cost")
-            knowledge = knowledge_summary(node.get("phase_telemetry") or {})
-            connector = "└─" if is_last else "├─"
-            comparison = comparison_summary(
-                node.get("external_evaluation_metadata") or {}
-            )
-            tree_lines.append(
-                f"{prefix}{connector} {branch_name} "
-                f"(score={score_text}, {outcome})"
-                + (f" cost: {float(cost['amount'])}" if cost else "")
-                + (f" knowledge: {knowledge}" if knowledge else "")
-                + (f" external: {comparison}" if comparison else "")
-            )
-            child_prefix = prefix + ("  " if is_last else "│ ")
-            for index, child_id in enumerate(children[node_id]):
-                render(child_id, child_prefix, index == len(children[node_id]) - 1)
-
-        for index, root_id in enumerate(roots):
-            render(root_id, "  ", index == len(roots) - 1)
-        if len(visited) != len(nodes):
-            raise ValueError("evolve checkpoint contains an unreachable node")
-        credits = credits_summary({
-            f"{node_id}:{phase}": values
-            for node_id, node in nodes.items()
-            for phase, values in (node.get("phase_telemetry") or {}).items()
-        })
-        if credits:
-            tree_lines.append(f"  credits: {credits}")
-        return tree_lines
-
     def _operation_block(self) -> list:
         d = self.data
         lines = []
-        if self.operation == "evolve":
+        if self.operation == "build":
             budget = d.get("budget") or {}
             if budget.get("total_min"):
                 elapsed = float(budget.get("elapsed_min") or 0.0)
@@ -630,7 +706,7 @@ class OperationStatusView:
                 if d.get("repair_round"):
                     head_line += f"      repair round {d['repair_round']}"
                 lines.append(head_line)
-        elif self.operation == "learn_knowledge":
+        elif self.operation == "experience":
             sources = d.get("sources") or {}
             if sources:
                 lines.append(

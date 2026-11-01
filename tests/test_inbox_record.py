@@ -25,6 +25,7 @@ from kapso.execution.inbox import (
     LAUNCH_SCHEMA_VERSION,
     all_answered,
     awaiting_resume,
+    continue_answered,
     file_requests,
     inbox_path,
     launch_mismatches,
@@ -233,12 +234,23 @@ def test_inbox_path_is_absolute_whatever_the_workspace_argument(tmp_path, monkey
     assert inbox_path("campaign").is_absolute()
 
 
+def test_a_credential_shaped_reply_is_refused_by_the_record_itself(tmp_path):
+    """The guard holds for every caller, not only the CLI's --yes check."""
+    path = tmp_path / "inbox.jsonl"
+    file_requests(path, node=1, session="s", entries=[ENTRY])
+    token = "sk-abcdefghijklmnopqrstuvwxyz0123"
+    with pytest.raises(ValueError, match="looks like a credential"):
+        record_reply(path, 1, f"added {token}")
+    assert load_requests(path)[1].open
+    assert record_reply(path, 1, token, allow_secret=True).reply == token
+
+
 def test_launch_record_round_trip_and_missing_default(tmp_path):
     assert read_launch_record(tmp_path) is None
-    write_launch_record(tmp_path, {"output_path": str(tmp_path), "max_iterations": 4})
+    write_launch_record(tmp_path, {"output_path": str(tmp_path), "experiments": 4})
     record = read_launch_record(tmp_path)
     assert record["schema_version"] == LAUNCH_SCHEMA_VERSION
-    assert record["max_iterations"] == 4
+    assert record["experiments"] == 4
     Path(tmp_path, ".kapso", "launch.json").write_text('{"schema_version": 99}')
     with pytest.raises(ValueError, match="launch record"):
         read_launch_record(tmp_path)
@@ -279,36 +291,58 @@ def test_registry_lists_a_relaunched_campaign_once(tmp_path):
 
 
 def test_resume_arguments_fill_only_what_the_caller_left_unset():
-    """`kapso evolve --output <dir> --resume` with nothing else must run
+    """`kapso build --output <dir> --resume` with nothing else must run
     with the launch's arguments; an explicit value (a bigger budget) wins."""
-    record = {
-        "mode": "MINIMAL", "eval_dir": "eval", "max_iterations": 3,
-        "time_budget_minutes": 60.0, "additional_context": "", "context": None,
-    }
+    record = {"host": "codex", "eval_dir": "eval", "experiments": 3, "minutes": 60.0, "usd": None}
     merged = resume_arguments(record, {
-        "mode": None, "eval_dir": None, "max_iterations": None,
-        "time_budget_minutes": 90.0, "additional_context": "", "context": None,
+        "host": None, "eval_dir": None, "experiments": None, "minutes": 90.0, "usd": None,
     })
-    assert merged["mode"] == "MINIMAL" and merged["eval_dir"] == "eval"
-    assert merged["max_iterations"] == 3
-    assert merged["time_budget_minutes"] == 90.0
-    assert merged["additional_context"] == "" and merged["context"] is None
+    assert merged["host"] == "codex" and merged["eval_dir"] == "eval"
+    assert merged["experiments"] == 3
+    assert merged["minutes"] == 90.0
+    assert merged["usd"] is None
 
 
 def test_launch_mismatches_name_fingerprinted_changes_and_ignore_respelled_paths(tmp_path):
-    """The checkpoint refuses a changed eval-dir or mode with a bare
+    """The checkpoint refuses a changed eval-dir or host with a bare
     fingerprint mismatch; the record can say which setting changed. A
     respelled path to the same directory is not a change."""
     (tmp_path / "eval").mkdir()
     record = {
-        "mode": "MINIMAL", "coding_agent": None, "eval_dir": str(tmp_path / "eval"),
-        "kg_index": None, "config_path": "/x/config.yaml", "time_budget_minutes": 60.0,
+        "host": None, "eval_dir": str(tmp_path / "eval"),
+        "config_path": "/x/config.yaml", "minutes": 60.0,
     }
-    respelled = {**record, "eval_dir": str(tmp_path / "sub" / ".." / "eval"), "time_budget_minutes": 120.0}
+    respelled = {**record, "eval_dir": str(tmp_path / "sub" / ".." / "eval"), "minutes": 120.0}
     assert launch_mismatches(record, respelled) == {}
 
-    changed = {**record, "eval_dir": None, "mode": "GENERIC"}
+    changed = {**record, "eval_dir": None, "host": "codex"}
     assert launch_mismatches(record, changed) == {
-        "mode": ("MINIMAL", "GENERIC"),
+        "host": (None, "codex"),
         "eval_dir": (record["eval_dir"], None),
     }
+    # The loaded experience is identity by reference and scope: a bank
+    # that moved since the launch (another head) is not a change, a
+    # different list or scope is, by name.
+    mine = {"reference": "mine", "kind": "bank", "resolved": "/b", "head": "aaa", "provenance": "measured by you", "scope": "harness"}
+    served = {**record, "experience": [mine]}
+    assert launch_mismatches(served, {**served, "experience": [{**mine, "head": "bbb"}]}) == {}
+    lifted = [{**mine, "scope": "all"}]
+    assert launch_mismatches(served, {**served, "experience": lifted}) == {"experience": ([mine], lifted)}
+    assert launch_mismatches(served, {**served, "experience": []}) == {"experience": ([mine], [])}
+
+
+def test_a_restarted_session_continues_the_answered_requests_of_its_node(tmp_path):
+    # The harness setup session (node -1) is run again with the replies rather than
+    # resumed: its answered requests are recorded continued by the session that
+    # carries them, once; an open one stays open, another node's are not its own.
+    path = inbox_path(tmp_path)
+    file_requests(path, node=-1, session="setup-1", entries=[ENTRY, DATA_ENTRY])
+    file_requests(path, node=0, session="s-0", entries=[{**ENTRY, "key": "env:OTHER"}])
+    record_reply(path, 1, "the key is in .env now")
+    record_reply(path, 3, "the other key is in .env now")
+    assert continue_answered(path, node=-1, session="setup-2") == [1]
+    requests = load_requests(path)
+    assert (requests[1].state, requests[2].state, requests[3].state) == ("continued", "open", "answered")
+    last = json.loads(path.read_text().splitlines()[-1])
+    assert {key: last[key] for key in ("event", "id", "node", "session")} == {"event": "continued", "id": 1, "node": -1, "session": "setup-2"}
+    assert continue_answered(path, node=-1, session="setup-3") == [], "recorded once; a third run has nothing to continue"

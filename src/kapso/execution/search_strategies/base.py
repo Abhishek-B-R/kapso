@@ -10,20 +10,24 @@
 
 import os
 import shutil
+import sys
 import time
 import uuid
 import logging
 import math
 from abc import ABC, abstractmethod
 from dataclasses import MISSING, dataclass, field, fields
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
 
 from kapso.execution.types import ContextData
 from kapso.execution.cost_estimator import validate_cost_refusal, validate_cost_value
 from kapso.execution.experiment_workspace.experiment_workspace import ExperimentWorkspace
+from kapso.execution.observability import BuildStatus
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.environment.handlers.base import ProblemHandler
 from kapso.execution.memories.repo_memory import RepoMemoryManager
+from kapso.harness.staging import engine_session_record
 from kapso.execution.memories.repo_memory.builders import UPDATE_PAYLOAD_MAX_CHARS
 from kapso.execution.fidelity import (
     FIDELITIES,
@@ -62,6 +66,9 @@ class SearchNode:
     """
     node_id: int
     parent_node_id: Optional[int] = None
+    # The iteration that made this node (several nodes share one under
+    # node expansion): what joins the iteration's ideation session to it.
+    iteration: int = 0
     
     # Step 1: Solution generation
     solution: str = ""
@@ -83,6 +90,22 @@ class SearchNode:
     evaluation_valid: bool = True
     evaluation_provenance: str = AGENT_GENERATED
     evaluation_integrity_error: str = ""
+    # The harness's verification of this attempt (kapso.harness.verdict):
+    # {"verdict": valid | void | unverified, "summary", "findings"}, its
+    # own state beside the judge's validity; None when no harness
+    # verification ran.
+    verification: Optional[Dict[str, Any]] = None
+    # Why the judge did not read this attempt: empty when judged, else
+    # the budget's reason (the budget's end, wp4-config.md). An unjudged
+    # attempt keeps its score, is not a parent and is never delivered.
+    unjudged: str = ""
+    # The branch's head when the attempt was evaluated; None for an
+    # attempt never evaluated (suspended, rejected before evaluation).
+    commit: Optional[str] = None
+    # The served cards the judge found load-bearing for this result (the
+    # citation contract's attribution, kept on the node so the trajectory
+    # carries it); empty when none or when nothing was served.
+    cards_load_bearing: List[str] = field(default_factory=list)
 
     # Platform execution cost in the campaign's unit, distinct from model USD.
     estimated_cost: Optional[Dict[str, Any]] = None
@@ -448,6 +471,23 @@ class SearchStrategyConfig:
     feedback_generator: Optional["FeedbackGenerator"] = None
     # Goal string for feedback generation
     goal: str = ""
+    # The campaign status file's heartbeat cadence (the orchestrator's
+    # budget.checkpoint_heartbeat_seconds). None, as a strategy built
+    # outside the orchestrator gets, records no cadence: a watcher then
+    # judges liveness by the pid alone.
+    status_heartbeat_seconds: Optional[float] = None
+    # The loaded harness (kapso.harness.Harness), threaded from the
+    # orchestrator to every session the strategy constructs; None is
+    # today's generic behaviour. Typed loosely so this module does not
+    # import the harness package.
+    harness: Optional[Any] = None
+    # What the campaign is served, as plain records (reference, kind,
+    # resolved, head, provenance, scope), written into the status file
+    # from the first second; empty when nothing is loaded.
+    experience: List[Dict[str, Any]] = field(default_factory=list)
+    # The config's hosts table (`hosts.<cli>: {model, …}`), over which the
+    # strategy's roles resolve their sessions (kapso.core.roles).
+    hosts: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
 
 class SearchStrategy(ABC):
@@ -492,6 +532,12 @@ class SearchStrategy(ABC):
         # burned since the snapshot was taken.
         self.budget_snapshot: Optional["BudgetSnapshot"] = None
         self.budget_snapshot_monotonic: Optional[float] = None
+        # The budget's end: the last completed round's wall time (what the
+        # next admission must cover; restored with the state) and the
+        # reason a finishing session of this round was not launched or
+        # was cut, None when none was.
+        self.last_round_seconds: Optional[float] = None
+        self.finishing_cut: Optional[str] = None
         # The executive's granted workload profile for this iteration.
         self.fidelity_decision: Optional["FidelityDecision"] = None
         self.evaluation_provenance = (
@@ -561,14 +607,48 @@ class SearchStrategy(ABC):
             ),
             llm_backend=self.llm,
         )
+        # The engine's own inference sessions (the repo-memory bootstrap
+        # below, the updates after each experiment, the commit messages)
+        # are recorded with the campaign's, under engine/<role>/<n>, from
+        # the workspace's first second: wired here, before the first one.
+        records = Path(self.workspace_dir) / ".kapso" / "sessions"
+        self.llm.record_session = lambda role, host, session_dir: engine_session_record(records, role, host, session_dir)
 
-        # Setup kapso directories (eval_dir -> kapso_evaluation/, data_dir -> kapso_datasets/)
-        if not import_from_checkpoint:
-            self._setup_kapso_directories(config.eval_dir, config.data_dir)
+        # Observability (design §1): the status file is born the moment the
+        # workspace exists — phase `setup`, state `starting` — so a watcher
+        # sees the campaign from its first seconds instead of after the
+        # repo-memory bootstrap below (one inference session, minutes). It
+        # beats on its own daemon through setup; solve() attaches the
+        # budget view and the caller's hook when the loop starts.
+        self.operation_status = BuildStatus(
+            os.path.join(self.workspace_dir, ".kapso", "status.json"),
+            heartbeat_seconds=config.status_heartbeat_seconds,
+            daemon=config.status_heartbeat_seconds is not None,
+            phase="setup",
+            # The harness identity, structured, from the first second; a
+            # watcher renders it in the header (WP6).
+            harness=config.harness.ref_dict() if config.harness is not None else None,
+            experience=list(config.experience),
+        )
+        # The loaded harness, staged into every session this strategy
+        # constructs (None: today's generic behaviour).
+        self.harness = config.harness
 
-        # Ensure baseline RepoMemory exists in the workspace repo.
-        if not import_from_checkpoint:
-            self._initialize_repo_memory()
+        # The status is born: from here on a failure of the strategy's own
+        # setup is published as the campaign's, the exception propagating
+        # (wp6-observability.md, change 6).
+        try:
+            # Setup kapso directories (eval_dir -> kapso_evaluation/, data_dir -> kapso_datasets/)
+            if not import_from_checkpoint:
+                self._setup_kapso_directories(config.eval_dir, config.data_dir)
+
+            # Ensure baseline RepoMemory exists in the workspace repo.
+            if not import_from_checkpoint:
+                self._initialize_repo_memory()
+        finally:
+            in_flight = sys.exc_info()[1]
+            if in_flight is not None and not self.operation_status.terminal:
+                self.operation_status.failed(in_flight)
 
     # =========================================================================
     # Directory Setup
@@ -583,6 +663,7 @@ class SearchStrategy(ABC):
                     llm=self.llm,
                     initial_repo=self.workspace.initial_repo,
                     max_retries=self.repo_memory_max_retries,
+                    max_payload_chars=self.repo_memory_update_payload_max_chars,
                 )
             else:
                 RepoMemoryManager.ensure_exists_in_worktree(
@@ -695,6 +776,14 @@ class SearchStrategy(ABC):
     def observe_fidelity(self, decision: "FidelityDecision") -> None:
         """Store the executive's granted profile for this iteration."""
         self.fidelity_decision = decision
+
+    def continues_an_answered_node(self) -> bool:
+        """Whether the next run() continues a node suspended on a request
+        the person has since answered, rather than starting a round. The
+        orchestrator admits such a continuation regardless of the
+        attempt-fit rule: the attempt is already under way and the person
+        answered. A strategy without an inbox never continues one."""
+        return False
 
     def _status_phase(self, phase: str) -> None:
         """Record the live phase on the campaign status file when the

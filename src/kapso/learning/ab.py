@@ -5,7 +5,7 @@
 # irrelevant", measured), and the promotion gate semantics: with
 # `required: false` a not-run A/B is recorded as not-run, never as passed;
 # when required, a within-noise result BLOCKS (noise is never rounded to a
-# win). Arm execution is ordinary evolve runs differing only in the served
+# win). Arm execution is ordinary build runs differing only in the served
 # bank ref — launching them is an operator go/no-go at the time; this module
 # judges their results.
 

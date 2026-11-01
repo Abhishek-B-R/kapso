@@ -1,11 +1,11 @@
 ---
 title: "What happens inside one Kapso experiment, step by step"
 sidebarTitle: "Execution flow"
-description: "Follow a single call to evolve() from goal to solution: candidate generation, implementation on a branch, evaluation, judged feedback, and the decision to stop."
+description: "Follow a single call to build() from brief to solution: candidate generation, implementation on a branch, evaluation, judged feedback, and the decision to stop."
 keywords: ["execution flow", "evolve loop", "experiment steps", "budget tracking", "Kapso internals"]
 ---
 
-One call to `evolve()` runs a loop: gather context, propose a candidate, implement it on a branch, evaluate it, judge the result, and either continue or stop. This page follows a single pass through it.
+One call to `build()` runs a loop: gather context, propose a candidate, implement it on a branch, evaluate it, judge the result, and either continue or stop. This page follows a single pass through it.
 
 ```mermaid
 flowchart LR
@@ -13,7 +13,7 @@ flowchart LR
     B --> C[CodingAgent]
     C --> D[Agent Evaluation]
     D --> E[FeedbackGenerator]
-    E -->|Stop| G[SolutionResult]
+    E -->|Stop| G[Solution]
     E -->|Continue| F[Next Iteration]
     F --> B
 ```
@@ -22,14 +22,16 @@ flowchart LR
 
 ### Step 1: Initialize components
 
-When `evolve()` is called, **Kapso** creates the execution stack:
+When `build()` is called, **Kapso** creates the execution stack:
 
 ```python
-solution = kapso.evolve(
-    goal="Build a classifier with 95% accuracy",
-    eval_dir="./evaluation/",  # Optional: user-provided evaluation
-    data_dir="./data/",        # Optional: user-provided data
-    max_iterations=10,
+from kapso import Budget
+
+solution = kapso.build(
+    "Build a classifier with 95% accuracy",
+    evaluation="./evaluation/",   # optional: your evaluator, protected
+    data="./data/",               # optional: your data
+    budget=Budget(experiments=10),
 )
 ```
 
@@ -102,7 +104,7 @@ The coding agent is responsible for:
 3. Running the evaluation
 4. Ending its response with the XML result tags
 
-When the caller supplies `eval_dir`, step 2 changes: the agent must run the
+When the caller passes an evaluation directory, step 2 changes: the agent must run the
 provided evaluation without changing its source. Kapso fingerprints the suite
 and verifies the finalized candidate ref before accepting its score. See
 [Evaluation Integrity](/docs/evolve/evaluation-integrity).
@@ -111,7 +113,7 @@ A session can also stop instead of finishing. When the session needs
 something only a person can provide, the session calls the
 `request_from_user` tool; the session ends, the node is suspended, the
 campaign pauses with `stopped_reason: waiting_for_user`, and the judge
-never sees the node. Your reply through the [inbox](/docs/evolve/inbox)
+never sees the node. Your reply through the [inbox](/docs/build/inbox)
 continues the same session at this step, with the reply as its next input.
 
 Each experiment gets its own **Git branch** via `ExperimentWorkspace`:
@@ -176,23 +178,15 @@ When the loop ends, **Kapso** returns the best solution:
 # Checkout to best solution branch
 best_branch = orchestrator.search_strategy.checkout_to_best_experiment_branch()
 
-# Create result
-solution = SolutionResult(
-    goal=goal,
-    code_path=workspace_path,
-    experiment_logs=experiment_logs,
-    final_feedback=final_feedback,  # FeedbackResult from last iteration
-    metadata={
-        "cost": f"${cost:.3f}",
-        "iterations": iteration_count,
-        "cumulative_iterations": cumulative_iteration_count,
-        "best_branch": best_branch,
-    }
-)
+# The result: the brief, the delivered branch and commit, the score under the
+# registered evaluator, the stop reason and the cost — written to
+# .kapso/solution.json so Solution.open() reads it from any process
+solution = Solution(brief=brief, campaign=workspace_path, branch=best_branch, ...)
+solution.save()
 
 # Check if goal was achieved
-if solution.succeeded:
-    print(f"Goal achieved with score: {solution.final_score}")
+if solution.goal_achieved:
+    print(f"Goal achieved with score: {solution.score}")
 ```
 
 ---

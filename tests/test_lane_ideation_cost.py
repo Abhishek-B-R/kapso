@@ -18,7 +18,10 @@ import kapso.execution.orchestrator as orchestrator_module
 from kapso.execution.observability import knowledge_summary
 from kapso.execution.orchestrator import OrchestratorAgent
 from kapso.execution.run_checkpoint import RunCheckpointStore
+from kapso.execution.cost_estimator import normalize_cost_config
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+
+from harness_support import fake_config
 
 LANES = 4
 IDEATION_USD = 0.1
@@ -41,9 +44,6 @@ class FakeProblemHandler:
 
     def get_problem_context(self) -> str:
         return "the problem"
-
-    def deliverable_ready_reserve_seconds(self):
-        return None
 
 
 class FakeKnowledgeSearch:
@@ -71,20 +71,20 @@ class Campaign:
         monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
         monkeypatch.setattr(
             orchestrator_module,
-            "load_mode_config",
-            lambda config_path, mode: {
-                "search_strategy": {"type": "generic", "params": {}}
-            },
+            "load_config",
+            lambda *args, **kwargs: fake_config(
+                search_strategy={"type": "generic", "params": {}}
+            ),
         )
         monkeypatch.setattr(
             OrchestratorAgent,
             "_create_feedback_generator",
-            lambda agent, coding_agent=None: object(),
+            lambda agent: object(),
         )
         monkeypatch.setattr(
             OrchestratorAgent,
             "_create_search_strategy",
-            lambda agent, coding_agent, workspace_dir, start_from_checkpoint: (
+            lambda agent, workspace_dir, start_from_checkpoint: (
                 self._strategy()
             ),
         )
@@ -110,9 +110,14 @@ class Campaign:
             expansion_lane_env=None,
             iteration_count=0,
             workspace_dir=str(self.workspace),
+            last_round_seconds=None,
+            finishing_cut=None,
+            harness=None,
+            cost_config=normalize_cost_config(),
             workspace=SimpleNamespace(
                 workspace_dir=str(self.workspace),
                 get_cumulative_cost=lambda: 0.0,
+                repo=self.repo,
             ),
             inbox_settings={"enabled": False},
         )

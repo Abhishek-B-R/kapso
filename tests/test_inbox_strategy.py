@@ -53,6 +53,7 @@ class Harness:
         self.ask_again_on_continue = False
 
         strategy = GenericSearch.__new__(GenericSearch)
+        strategy.harness = None
         strategy.parent_policy = "best"
         strategy.registered_evaluator_id = ""
         strategy.fidelity_decision = None
@@ -68,6 +69,7 @@ class Harness:
         strategy._generate_solution = self._generate_solution
         strategy._implement = self._implement
         strategy._get_code_diff = lambda branch_name, parent_branch: "diff"
+        strategy._attempt_commit = lambda branch_name: "c" * 40
         strategy._extract_agent_result = lambda output: {}
         strategy.enforce_evaluation_integrity = lambda node: True
         strategy._generate_feedback = self._generate_feedback

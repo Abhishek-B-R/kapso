@@ -2,12 +2,16 @@ name: Tests
 
 # The unit suite runs on the pull request, before main sees the change. It
 # needs no service, key or coding-agent login: tests/live and tests/manual
-# do, and stay out; tests/deployment_examples are scripts, not tests.
+# do, and stay out.
 on:
   pull_request:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/tests.yml'
   push:
@@ -15,6 +19,10 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      - 'plugin/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'scripts/**'
       - 'pyproject.toml'
       - '.github/workflows/tests.yml'
 
@@ -53,7 +61,7 @@ jobs:
         with:
           node-version: '22'
       - name: Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.310
 
       - name: Unit tests
         env:
@@ -61,6 +69,6 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ci-placeholder-not-a-token
         run: >
           python -m pytest tests -q
-          --ignore=tests/live --ignore=tests/manual --ignore=tests/deployment_examples
+          --ignore=tests/live --ignore=tests/manual
           --deselect tests/test_repo_memory.py::test_render_summary_and_toc_produces_usable_prompt
           --deselect tests/test_repo_memory_latest_commit_semantics.py::test_repo_memory_update_runs_after_final_commit

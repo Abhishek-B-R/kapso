@@ -1,0 +1,10 @@
+rules file: /tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp7/codex-proof/work/rules-probe/sessions/probe/.codex/rules/kapso-campaign.rules
+
+final message:
+Rejected: `/bin/bash -lc 'kapso build --help'` rejected: never inside a Kapso campaign session: a campaign does not launch, learn from or deploy a campaign
+
+stderr:
+Reading additional input from stdin...
+2026-10-27T07:30:18.926661Z ERROR codex_core::session::session: failed to load skill /home/ubuntu/.codex/skills/yc/using-the-yc-cli/SKILL.md: missing field `description`
+2026-10-27T07:30:24.156402Z ERROR codex_core::tools::router: error=exec_command failed: CreateProcess { message: "Rejected(\"`/bin/bash -lc 'kapso build --help'` rejected: never inside a Kapso campaign session: a campaign does not launch, learn from or deploy a campaign\")" }
+

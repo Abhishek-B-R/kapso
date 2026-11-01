@@ -199,6 +199,7 @@ def test_generic_strategy_returns_verified_best_branch(tmp_path: Path) -> None:
     workspace.switch_branch("main")
 
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.workspace = workspace
     strategy.registered_evaluator_id = ""
     strategy.node_history = [

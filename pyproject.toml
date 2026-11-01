@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leeroo-kapso"
-version = "0.7.10"
-description = "Long-running agents that optimize AI and Data systems, and learn from every experience"
+version = "0.8.0"
+description = "Turn coding-agent output into verified outcomes, not review debt: plug in the harness for your domain, set the goal, every step traced"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -56,8 +56,8 @@ dependencies = [
     # Google Vertex AI embeddings (kg_graph_search embedding_provider "vertex"):
     # Application Default Credentials + an authorized HTTP session.
     "google-auth[requests]>=2.0",
-    # deploy(): the Docker and BentoCloud runners call their endpoints with it
-    # (it arrived only transitively before, through google-auth).
+    # HTTP from the engine's own code (the handles, the inbox, the
+    # embeddings; it arrived only transitively before, through google-auth).
     "requests>=2.28",
 ]
 
@@ -78,12 +78,10 @@ mle = [
 ale = [
     # ale-bench installed separately (requires docker setup)
 ]
-# deploy() targets. The adapter session installs what the *solution* needs;
-# these are what Kapso's own runners need to drive each target.
-deploy = [
-    # DockerRunner recreates and removes containers through the SDK
-    "docker>=7.0",
-]
+# deploy() targets: what the engine's own scripts for each cloud target
+# need in its interpreter (the docker target drives the docker CLI and
+# needs no package; the deployment session installs what the *solution*
+# needs).
 modal = [
     "modal>=1.0",
 ]
@@ -106,6 +104,11 @@ dev = [
 
 [project.scripts]
 kapso = "kapso.cli:main"
+# The MCP server for a host session (the engineer's own coding-agent
+# session): `claude mcp add kapso -- kapso-mcp`. A console script so the
+# host runs it on the interpreter Kapso is installed in, never a bare
+# `python` from PATH.
+kapso-mcp = "kapso.gated_mcp.host_session:main"
 expert-mle = "benchmarks.mle.runner:main"
 expert-ale = "benchmarks.ale.runner:main"
 expert-relbench = "benchmarks.relbench.runner:main"
@@ -133,3 +136,9 @@ namespaces = true
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.json", "*.yaml", "*.yml", "*.md"]
+# The bundled harnesses: whole directories (pages, skills, servers, hooks),
+# not only the extensions above; the engine's own hooks, script beside
+# each hook.json.
+"kapso.harness" = ["bundled/**/*", "engine_hooks/**/*"]
+# The bundled deployment targets: each a skill with its scripts.
+"kapso.deployment" = ["targets/**/*"]

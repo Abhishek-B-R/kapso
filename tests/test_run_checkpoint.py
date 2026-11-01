@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Optional
 import git
 import pytest
 
+from kapso.core.config import load_config
+from tests.harness_support import fake_config
 import kapso.execution.run_checkpoint as checkpoint_module
 from kapso.execution.inbox import write_launch_record
 from kapso.execution.orchestrator import OrchestratorAgent, SolveResult
@@ -20,6 +22,7 @@ from kapso.execution.run_checkpoint import (
 from kapso.execution.fidelity import EvaluationAttempt
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from kapso.handles import Brief, Budget
 from kapso.kapso import Kapso
 
 
@@ -65,13 +68,8 @@ class FakeLLM:
 
 
 class FakeProblemHandler:
-    honor_agent_stop = True
-
     def get_problem_context(self) -> str:
         return "Solve the support problem"
-
-    def deliverable_ready_reserve_seconds(self):
-        return None
 
 
 class FakeKnowledgeSearch:
@@ -92,6 +90,8 @@ class FakeStrategy:
     def __init__(self, workspace_dir: str, stop_next: bool = False):
         self.workspace_dir = workspace_dir
         self.workspace = FakeWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.node_history: List[SearchNode] = []
         self.contexts: List[str] = []
         self.stop_next = stop_next
@@ -108,6 +108,15 @@ class FakeStrategy:
         self.bridge_calls: List[Dict[str, Any]] = []
         self.bridge_result = True
         self.refreshed_classes: List[Any] = []
+        self.budget_snapshot = None
+
+    def _room(self, *, finishing: bool = False, obligations_seconds: float = 0.0):
+        if self.budget_snapshot is None:
+            return None
+        return self.budget_snapshot.room(obligations_seconds, finishing=finishing)
+
+    def continues_an_answered_node(self) -> bool:
+        return False   # the fake has no inbox; a test that needs a continuation patches this
 
     def run(self, context: str, budget_progress: float = 0.0) -> SearchNode:
         node_id = len(self.node_history)
@@ -219,21 +228,13 @@ def _patch_orchestrator(
 
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}}
-        },
-    )
-    monkeypatch.setattr(
         OrchestratorAgent,
         "_create_feedback_generator",
-        lambda self, coding_agent=None: object(),
+        lambda self: object(),
     )
 
     def create_strategy(
         self: OrchestratorAgent,
-        coding_agent: Optional[str],
         workspace_dir: Optional[str],
         start_from_checkpoint: bool,
     ) -> FakeStrategy:
@@ -391,6 +392,7 @@ def test_failed_atomic_replace_preserves_previous_checkpoint(
 
 def test_generic_strategy_state_round_trip() -> None:
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.node_history = [
         SearchNode(
             node_id=0,
@@ -403,13 +405,17 @@ def test_generic_strategy_state_round_trip() -> None:
     source.previous_errors = ["old error"]
     source.scores_evaluator_id = ""
     source.evaluator_transition = None
+    source.last_round_seconds = 812.5
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.load_state(source.dump_state())
 
     assert restored.node_history[0].branch_name == "generic_exp_0"
     assert restored.iteration_count == 1
     assert restored.previous_errors == ["old error"]
+    # The last round's duration: a resume admits its next round from it.
+    assert restored.last_round_seconds == 812.5
 
     # A VALIDATE short-circuit consumes an iteration without minting a
     # node, so iteration_count may legitimately exceed node_history —
@@ -486,14 +492,14 @@ def test_advisory_stop_runs_to_the_budget_when_handler_says_so(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Open-ended maximization (competitions): a judge's stop vote is advisory
-    # — the radar rehearsal ended 25 min early on one. The handler contract
-    # honor_agent_stop=False keeps the campaign running to its budget.
+    # — the radar rehearsal ended 25 min early on one. The config key
+    # honor_agent_stop=false keeps the campaign running to its budget.
     workspace = tmp_path / "workspace"
     _init_git_workspace(workspace)
     _patch_orchestrator(monkeypatch, stop_next=True)
 
     orchestrator = _orchestrator(workspace)
-    orchestrator.problem_handler.honor_agent_stop = False
+    orchestrator.strategy_params["honor_agent_stop"] = False
     result = orchestrator.solve(experiment_max_iter=2)
     checkpoint = RunCheckpointStore(str(workspace)).load()
 
@@ -542,7 +548,7 @@ def test_solve_writes_the_observability_status_file(
     status = json_module.loads(
         (workspace / ".kapso" / "status.json").read_text()
     )
-    assert status["operation"] == "evolve"
+    assert status["operation"] == "build"
     assert status["state"] == "done"
     assert status["stopped_reason"] == "goal_achieved"
     assert status["iteration"] == 1
@@ -640,7 +646,7 @@ def test_v2_checkpoint_is_rejected_without_migration(tmp_path: Path) -> None:
     # campaign reads "start a fresh campaign", never "missing cost_config".
     with pytest.raises(
         RunCheckpointIncompatibleError,
-        match=r"expected 3\. .*not migrated",
+        match=r"expected 6\. .*not migrated",
     ):
         store.load()
 
@@ -659,7 +665,7 @@ def test_public_resume_workspace_validation_is_strict(tmp_path: Path) -> None:
     Kapso._validate_resume_workspace(str(workspace))
 
 
-def test_public_evolve_forwards_resume_and_reports_cumulative_iterations(
+def test_public_build_forwards_resume_and_reports_cumulative_iterations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -675,6 +681,9 @@ def test_public_evolve_forwards_resume_and_reports_cumulative_iterations(
 
         def get_experiment_history(self) -> List[SearchNode]:
             return []
+
+        def get_deliverable_experiment(self):
+            return None
 
         def get_deliverable_score(self):
             return None
@@ -697,9 +706,10 @@ def test_public_evolve_forwards_resume_and_reports_cumulative_iterations(
             cost_budget=None,
             finalization_reserve_minutes=None,
             on_status=None,
+            finish=None,
         ) -> SolveResult:
             assert experiment_max_iter == 1
-            return SolveResult(
+            result = SolveResult(
                 best_experiment=None,
                 final_feedback=None,
                 stopped_reason="max_iterations",
@@ -707,6 +717,10 @@ def test_public_evolve_forwards_resume_and_reports_cumulative_iterations(
                 total_cost=2.0,
                 cumulative_iterations=4,
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
+            return result
 
     monkeypatch.setattr(
         kapso_module,
@@ -717,29 +731,30 @@ def test_public_evolve_forwards_resume_and_reports_cumulative_iterations(
     kapso = Kapso.__new__(Kapso)
     kapso.config_path = None
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    # Mirror __init__-set attributes the evolve path reads (stub gotcha).
-    kapso._config = {}
+    # Mirror __init__-set attributes the build path reads (stub gotcha).
+    kapso._config = fake_config(inbox={"registry": str(Path(workspace).with_name("registry.jsonl"))})
     kapso._bank_home = None
-    kapso._kg_index_path = None
-    result = kapso.evolve(
-        goal="Improve support",
-        output_path=str(workspace),
-        max_iterations=1,
+    kapso._harness = None
+    kapso._harness_settings = load_config()["harness"]
+    kapso._experience = []
+    result = kapso.build(
+        "Improve support",
+        output=str(workspace),
+        budget=Budget(experiments=1),
         resume=True,
     )
 
     assert captured["resume"] is True
     assert captured["initial_repo"] is None
-    assert result.metadata["iterations"] == 1
-    assert result.metadata["cumulative_iterations"] == 4
-    assert result.metadata["resumed"] is True
+    assert result.experiments == 1
+    assert result.experiments_total == 4
 
 
 def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_record(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`kapso evolve --output <dir> --resume` with nothing else: the goal
+    """`kapso build --output <dir> --resume` with nothing else: the goal
     comes from the checkpoint and every launch argument from the launch
     record, so nothing is retyped; and a changed fingerprinted setting is
     refused by name, not as a bare fingerprint mismatch."""
@@ -748,18 +763,16 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     workspace = tmp_path / "workspace"
     _init_git_workspace(workspace)
     RunCheckpointStore(str(workspace)).save(
-        _checkpoint(goal="Raise accuracy above 0.85")
+        _checkpoint(goal=Brief(objective="Raise accuracy above 0.85").render())
     )
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
     (eval_dir / "evaluate.py").write_text("print('accuracy: 0.9')\n")
     write_launch_record(workspace, {
-        "config_path": None, "kg_index": None, "mode": "MINIMAL",
-        "coding_agent": None, "output_path": str(workspace),
-        "max_iterations": 3, "time_budget_minutes": 60.0, "cost_budget": None,
-        "finalization_reserve_minutes": None, "eval_dir": str(eval_dir),
-        "data_dir": None, "additional_context": "", "context": None,
-        "serving_scope": None, "resumable_from_inbox": True, "dotenv_path": "",
+        "config_path": None, "host": None, "output_path": str(workspace),
+        "experiments": 3, "minutes": 60.0, "usd": None, "reserve_minutes": None,
+        "eval_dir": str(eval_dir), "data_dir": None,
+        "resumable_from_inbox": True, "dotenv_path": "",
     })
     captured: Dict[str, Any] = {}
 
@@ -769,6 +782,9 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
 
         def get_experiment_history(self) -> List[SearchNode]:
             return []
+
+        def get_deliverable_experiment(self):
+            return None
 
         def get_deliverable_score(self):
             return None
@@ -791,10 +807,11 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
             cost_budget=None,
             finalization_reserve_minutes=None,
             on_status=None,
+            finish=None,
         ) -> SolveResult:
             captured["experiment_max_iter"] = experiment_max_iter
             captured["time_budget_minutes"] = time_budget_minutes
-            return SolveResult(
+            result = SolveResult(
                 best_experiment=None,
                 final_feedback=None,
                 stopped_reason="max_iterations",
@@ -802,6 +819,10 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
                 total_cost=0.0,
                 cumulative_iterations=2,
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
+            return result
 
     monkeypatch.setattr(kapso_module, "OrchestratorAgent", RecordFakeOrchestrator)
     kapso = Kapso.__new__(Kapso)
@@ -809,18 +830,45 @@ def test_public_resume_takes_goal_and_flags_from_the_checkpoint_and_launch_recor
     # own packaged path must compare equal (a resume from another install).
     kapso.config_path = kapso_module.DEFAULT_CONFIG_PATH
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    kapso._config = {}
+    kapso._config = fake_config(inbox={"registry": str(tmp_path / "registry.jsonl")})
     kapso._bank_home = None
-    kapso._kg_index_path = None
+    kapso._harness = None
+    kapso._harness_settings = load_config()["harness"]
+    kapso._experience = []
 
-    kapso.evolve(output_path=str(workspace), resume=True)
-    assert captured["goal"] == "Raise accuracy above 0.85"
-    assert captured["mode"] == "MINIMAL"
+    kapso.build(output=str(workspace), resume=True)
+    assert captured["goal"] == Brief(objective="Raise accuracy above 0.85").render()
     assert captured["eval_dir"] == str(eval_dir)
     assert captured["experiment_max_iter"] == 3
     assert captured["time_budget_minutes"] == 60.0
 
     with pytest.raises(
-        RunCheckpointIncompatibleError, match="mode was 'MINIMAL', now 'GENERIC'"
+        RunCheckpointIncompatibleError, match="host was None, now 'codex'"
     ):
-        kapso.evolve(output_path=str(workspace), resume=True, mode="GENERIC")
+        kapso.build(output=str(workspace), resume=True, coding_agent="codex")
+
+
+def test_the_fingerprint_is_the_builds_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The checkpoint fingerprints the blocks a build reads (hosts, the
+    strategy with its host, inference, retry, models, inbox, the
+    maintainer): a benchmark runner's own key or the budget does not
+    change a campaign's identity, the host a role runs on does."""
+    import kapso.execution.orchestrator as orchestrator_module
+
+    _patch_orchestrator(monkeypatch)
+
+    def fingerprint(name, **blocks):
+        monkeypatch.setattr(
+            orchestrator_module, "load_config", lambda config_path=None: fake_config(**blocks),
+        )
+        workspace = tmp_path / name
+        _init_git_workspace(workspace)
+        return _orchestrator(workspace).config_fingerprint
+
+    base = fingerprint("base")
+    assert fingerprint("runner", benchmark={"run_defaults": {"lanes": 4}}) == base
+    assert fingerprint("budget", budget={"minutes": 5, "experiments": 2}) == base
+    assert fingerprint("host", search_strategy={"params": {"host": "codex"}}) != base
+    assert fingerprint("model", hosts={"codex": {"model": "gpt-other"}}) != base

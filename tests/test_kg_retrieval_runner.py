@@ -16,6 +16,7 @@ from benchmarks.kg_retrieval.runner import (
     evaluate,
     load_layers,
 )
+from kapso.core.config import ConfigError
 from kapso.knowledge_base.search.base import KGResultItem
 from kapso.knowledge_base.search.kg_graph_search import KGGraphSearch
 
@@ -148,16 +149,20 @@ def test_the_eval_refuses_the_shipped_stores():
 def test_a_local_config_overrides_only_what_it_names(tmp_path):
     base = tmp_path / "base.yaml"
     base.write_text(
-        "retrieval_eval:\n  top_k: 10\n  search: {collection: Eval, port: 1}\n"
+        "benchmark:\n  top_k: 10\n  search: {collection: Eval, port: 1}\n"
     )
     local = tmp_path / "local.yaml"
     local.write_text(
-        "retrieval_eval:\n  search: {port: 2, embedding_model: bge-m3}\n"
+        "benchmark:\n  search: {port: 2, embedding_model: bge-m3}\n"
         "inference: {roles: {kg_rerank: {model: m}}}\n"
     )
 
     merged = load_layers([str(base), str(local)])
 
     search = {"collection": "Eval", "port": 2, "embedding_model": "bge-m3"}
-    assert merged["retrieval_eval"] == {"top_k": 10, "search": search}
+    assert merged["benchmark"] == {"top_k": 10, "search": search}
     assert merged["inference"]["roles"]["kg_rerank"]["model"] == "m"
+    # Each file is a kapso override: a key the engine does not know is refused.
+    local.write_text("retrieval_eval: {top_k: 5}\n")
+    with pytest.raises(ConfigError, match="unknown key"):
+        load_layers([str(base), str(local)])

@@ -1,14 +1,14 @@
 ---
 title: "Kapso Python API: the Kapso class, method by method"
 sidebarTitle: "Python API"
-description: "Every public method on the Kapso class, with its full signature, arguments, return type and a working example, plus the shape of every object it hands back."
-keywords: ["Kapso Python API", "Kapso class", "evolve", "learn_knowledge", "SolutionResult", "Python SDK"]
+description: "Every public method on the Kapso class, with its full signature, arguments, return type and a working example, plus the handles it takes and hands back: Brief, Budget and Solution."
+keywords: ["Kapso Python API", "Kapso class", "build", "Brief", "Budget", "Solution", "load_experience", "Python SDK"]
 ---
 
 Everything public is importable from the top-level `kapso` package.
 
 ```python
-from kapso import Kapso, Source, DeployStrategy
+from kapso import Kapso, Brief, Budget, Solution, Source, Software
 
 kapso = Kapso()
 ```
@@ -17,153 +17,286 @@ kapso = Kapso()
 
 ```python
 Kapso(
-    config_path: str | None = None,
-    kg_index: str | None = None,
+    config: str | None = None,
     bank: str | None = None,
 )
 ```
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `config_path` | Path to a config file | the packaged `config.yaml` |
-| `kg_index` | Path to an existing `.index` file. Without one, knowledge search is off | `None` |
-| `bank` | Lesson-bank home directory. Overrides `learning.bank.local_path` | from config |
+| `config` | Path to a config file: the engine's knobs, nothing else. Nothing starts here | the packaged `config.yaml` |
+| `bank` | Your bank's home directory, where `learn()` writes and `mine` is served from. Overrides `learning.bank.local_path` | from config |
 
 ## Methods at a glance
 
 | Method | Returns | What it does |
 |--------|---------|--------------|
-| [`evolve()`](#evolve) | `SolutionResult` | Run an experiment campaign against a goal |
-| [`research()`](#research) | `ResearchFindings` | Deep web research on an objective |
-| [`learn()`](#learn) | `LessonResult` | Mine one finished campaign into the lesson bank |
-| [`learn_knowledge()`](#learn-knowledge) | `PipelineResult` | Fold outside sources into the knowledge graph |
+| [`load_harness()`](#load-harness) | `Harness` | Load the domain layer the verbs run with |
+| [`harness`](#load-harness) | `Harness \| None` | The loaded harness |
+| [`load_experience()`](#load-experience) | `ExperienceSource` | Load a source a build is served: your bank, the hosted gate, a bank you read, an index |
+| [`experience`](#load-experience) | `list[ExperienceSource]` | The loaded sources, in load order |
+| [`add_experience()`](#add-experience) | `str` | Make a source that must exist before it is loaded: your bank, the hosted gate's key check, a corpus ingested into an index |
+| [`update_experience()`](#update-experience-and-remove-experience) | `None` | Pull your bank from its remote and re-fetch the banks you read at moving references |
+| [`remove_experience()`](#update-experience-and-remove-experience) | `None` | Delete a bank you read or an index, with its backend namespace |
+| [`share_experience()`](#load-experience) | `None` | Attach a git remote to your bank and push it |
+| [`build()`](#build) | `Solution` (a `Launch` with `detach=True`) | Run an experiment campaign that meets a brief |
+| [`learn()`](#learn) | `LessonResult` (a `Launch` with `detach=True`) | Mine one finished campaign into the lesson bank |
 | [`deploy()`](#deploy) | `Software` | Turn a solution into running software |
-| [`index_kg()`](#index-kg) | `str` | Index a corpus and write a `.index` file |
-| [`memory`](#memory) | `MemoryStatus` | What this agent knows right now |
+| [`memory`](#memory) | `MemoryStatus` | Your own bank right now |
 | [`Kapso.status()`](#status) | `OperationStatusView` | Read any operation's status file |
+| [`Kapso.trace()`](#trace) | `TraceView` | Read a campaign's record after the fact |
 | [`close()`](#close) | `None` | Release knowledge-search network clients |
 
-## evolve
+## load_harness
 
-Runs the experiment campaign: design a candidate, implement it, score it, refine.
+Loads a [harness](/docs/harnesses): the domain's pages, skills, tool
+servers, delegates and hooks, staged into every session of the verbs that
+follow.
 
 ```python
-evolve(
-    goal: str | None = None,
-    context: list | None = None,
-    output_path: str | None = None,
-    initial_repo: str | None = None,
-    max_iterations: int | None = None,
-    time_budget_minutes: float | None = None,
-    cost_budget: float | None = None,
-    finalization_reserve_minutes: float | None = None,
+load_harness(ref: str) -> Harness
+```
+
+| Argument | What it does |
+|----------|--------------|
+| `ref` | A bundled name (`predictive-modelling`), a directory (`./harnesses/trading`, read from the working directory), or a git reference (`git+https://github.com/acme/harnesses@v3#trading`, `acme/harnesses@v3#trading`) |
+
+```python
+harness = kapso.load_harness("../harnesses/trading")
+harness.name, harness.version, harness.hash, harness.source   # the identity every record carries
+harness.missing                                               # what this machine lacks, [] when nothing
+kapso.harness                                                 # the same object, or None
+```
+
+It resolves the reference, fetching a git one into the store, runs `check` and raises `HarnessError` on a failure, hashes the directory, and reads what this machine lacks into `missing` without raising. A second call replaces the first: one object, one harness. Nothing starts here. The forms, the checks and the handle are in the [harness reference](/docs/reference/harness).
+
+`build()` uses the loaded harness over the brief's `Harness` line, and refuses before any session while a need of the build's modules is unmet. `deploy()` and `learn()` take the harness from the solution's record when none is loaded; a loaded one of the same name is used instead, another version included; another name is refused.
+
+## load_experience
+
+Loads a source a build is served, what was measured before: your own
+bank (the one `learn()` writes), the hosted Leeroopedia gate, a bank you
+read, or a corpus ingested under a name. See [Experience](/docs/experience).
+
+```python
+load_experience(ref: str) -> ExperienceSource
+share_experience(url: str) -> None
+```
+
+| Argument | What it does |
+|----------|--------------|
+| `ref` | `mine` (your bank, the cards whose scope covers the loaded harness) or `mine:all` (every card you measured); `leeroopedia` (the hosted gate, its key in `.env`); a bank home by path (`./bank.git`, which must exist); a bank repository by git reference (`acme/kapso-bank`, `acme/kapso-bank@v2`, `git+https://…@main`); or the name of an ingested index (`org-x`). A bank you read, the hosted gate and an index serve everything they hold |
+
+```python
+source = kapso.load_experience("mine")
+source.kind, source.resolved, source.head, source.provenance   # "bank", "/home/me/.kapso/bank.git", "3f9c…", "measured by you"
+kapso.experience                                               # the loaded sources, in load order
+kapso.share_experience("https://github.com/acme/kapso-bank.git")
+```
+
+Loading resolves the reference, confirms the source exists and is readable (a bank's format, the hosted gate's key, an index's record), pins it as it is on disk (a bank at its head, an index at its id; loading never pulls), prints one line and appends it to the object's sources; a reference loaded again replaces its entry. Loading never ingests and never creates: a source that does not exist is refused with the `kapso experience add` line that makes it. `build()` serves the loaded sources, which win over the brief's `Experience` line as the loaded harness wins over its `Harness` line; with nothing loaded, a fresh build loads the brief's items, and a resume takes the launch's list at its pins. `share_experience` attaches a git remote to your bank and pushes it, creating the bank first when there is none; `learn()` pushes there from then on, and the intro says the cards are measured by you and your team.
+
+## add_experience
+
+Makes a source that must exist before it can be loaded, and returns its reference.
+
+```python
+add_experience(ref: str | None = None, *, repo: str | None = None, research: str | None = None, name: str | None = None) -> str
+```
+
+| Argument | What it does |
+|----------|--------------|
+| `ref` | `mine` creates your bank, empty (a first `learn()` does too); `leeroopedia` checks the hosted gate's key is present |
+| `repo` | A repository URL to ingest into a new index named `name` |
+| `research` | A question to research on the web; the findings are ingested into a new index named `name` |
+| `name` | The index's name: letters, digits and dashes; `mine` and `leeroopedia` are reserved |
+
+Exactly one of `ref`, `repo` and `research` is given. Ingesting runs the knowledge pipeline into the experience home (`experience.indexes` in the config): the pages under `<name>/wiki/`, the index's own namespace in the graph stores, and `index.json`, the record that pins the index at its id and names what it was made from. An index is never written again after this: a name that exists is refused (remove it first). The stores and the embeddings key are checked before any work (`kapso doctor experience`); the operation writes a status file you can `kapso watch`.
+
+```python
+kapso.add_experience(repo="https://github.com/org/x", name="org-x")
+kapso.add_experience(research="QLoRA memory optimizations", name="qlora")
+kapso.load_experience("org-x")        # a build then mounts the search gates over it
+```
+
+## update_experience and remove_experience
+
+Loading never touches the network beyond a first fetch; these two do the rest.
+
+```python
+update_experience(ref: str | None = None) -> None
+remove_experience(ref: str) -> None
+```
+
+`update_experience` is the network step: `mine` takes its remote's main (fast-forward; a history that does not is an error in git's words), a bank you read at a branch or `HEAD` is fetched again, a tag or a commit never moves; with no `ref` every bank on this machine is updated. A running campaign keeps the pin it launched with. An index is what `add_experience` made: remove it and add it again. `remove_experience` deletes what `load` fetched or `add` made — a bank you read by git reference (its clone and record), or an index by name (its backend namespace, its pages and its record) — and refuses the rest: your bank is yours, the hosted gate is a key in `.env`, a bank by path is read in place.
+
+```python
+kapso.update_experience()                      # every bank
+kapso.update_experience("acme/kapso-bank")     # one
+kapso.remove_experience("org-x")
+```
+
+## build
+
+Runs the experiment campaign: propose a candidate, implement it on its own
+branch, measure it, keep the best, repeat until the objective is met or the
+budget is spent.
+
+```python
+build(
+    brief: str | Brief | None = None,
+    *,
+    evaluation: str | None = None,
+    data: str | None = None,
+    repo: str | None = None,
+    output: str | None = None,
+    budget: Budget | None = None,
     resume: bool = False,
+    on_status = None,
     iteration_evaluator: IterationEvaluator | None = None,
     iteration_evaluator_failure_policy: str = "record",
-    mode: str | None = None,
     coding_agent: str | None = None,
-    eval_dir: str | None = None,
-    data_dir: str | None = None,
-    additional_context: str = "",
-    serving_scope: dict | None = None,
-    on_status = None,
-) -> SolutionResult
+    detach: bool = False,
+) -> Solution | Launch
 ```
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `goal` | The objective. State it so it can be scored. Required unless resuming, when it comes from the checkpoint | `None` |
-| `context` | Extra context passed to the campaign, such as research findings | `None` |
-| `output_path` | Where the solution repository is written | `None` |
-| `initial_repo` | Start from an existing repository, path or GitHub URL | `None` |
-| `max_iterations` | Maximum experiments; a resume keeps the launch's cap | `10` |
-| `time_budget_minutes` | Wall-clock budget, durable across resumes | `None` |
-| `cost_budget` | Best-effort spend budget in USD | `None` |
-| `finalization_reserve_minutes` | Wall clock escrowed for final checkout and evaluation | `None` |
-| `resume` | Continue a compatible checkpoint in `output_path`. Every argument left out comes from the launch record; a passed mode, coding agent, `eval_dir`, config or index that differs is refused by name | `False` |
-| `iteration_evaluator` | Score candidates with your own evaluator | `None` |
-| `iteration_evaluator_failure_policy` | What to do when your evaluator raises | `"record"` |
-| `mode` | Config mode, `GENERIC` or `MINIMAL` | from config |
-| `coding_agent` | Override the agent that writes code | from config |
-| `eval_dir` | Evaluation files directory | `None` |
-| `data_dir` | Data files directory | `None` |
-| `additional_context` | Free text appended to the campaign context | `""` |
-| `serving_scope` | Restrict which banked lessons are served | `None` |
-| `on_status` | Callback fired on each status heartbeat | `None` |
+| `brief` | A sentence, or a `Brief`. A sentence becomes a brief with only an objective. The whole brief reaches the engine, never clipped. Left out only on a resume, which takes it from the checkpoint | `None` |
+| `evaluation` | Directory holding your evaluator; copied to `kapso_evaluation/` and protected | `None` |
+| `data` | Directory holding your data; copied to `kapso_datasets/` | `None` |
+| `repo` | The starting repository: a local path (copied, never modified) or a GitHub URL (cloned). `None` starts empty, or from a workflow the knowledge graph knows | `None` |
+| `output` | The campaign directory, the solution's `trace`. Empty for a fresh build; the campaign itself for a resume | a temporary directory |
+| `budget` | What the build may spend. Its set fields win over the brief's `Budget` line; on a resume the launch record fills what is still unset; the config's defaults fill the rest | `None` |
+| `resume` | Continue the campaign in `output` from its checkpoint. The host, evaluation, config and experience must match the launch's; a difference is refused by name | `False` |
+| `on_status` | Callback fired after every status write and heartbeat | `None` |
+| `iteration_evaluator` | Score every finalized candidate with your own evaluator, in an isolated worktree | `None` |
+| `iteration_evaluator_failure_policy` | `record` stores your evaluator's error on the candidate; `raise` stops the run | `"record"` |
+| `coding_agent` | The host every role without a `cli` of its own runs on, with that host's model: an entry of the config's `hosts` table. Recorded and fingerprinted, so a resume runs on the launch's host | `search_strategy.params.host` |
+| `detach` | Launch the campaign in a session of its own and return a [`Launch`](#launch) at once: `kapso build --detach` from Python. Needs `output`; takes no in-process callback; the harness and experience loaded on this instance go with it | `False` |
 
 ```python
-solution = kapso.evolve(
-    goal="Build a random forest classifier for Iris with accuracy > 0.9",
-    max_iterations=10,
-    output_path="./iris_solution",
+solution = kapso.build(
+    Brief.read("kapso-brief.md"),
+    evaluation="evaluation", data="data", repo=".",
+    output="../churn-build", budget=Budget(minutes=60),
 )
 print(solution.explain())
 ```
 
-### SolutionResult
+`build()` blocks for the whole campaign and writes the solution to
+`<output>/.kapso/solution.json` when it returns, so
+[`Solution.open`](#solution) reads it from any process. To leave it running,
+pass `detach=True`: the campaign starts in a session of its own and a
+[`Launch`](#launch) comes back at once, the same launch as `kapso build
+--detach`.
+
+```python
+launch = kapso.build(Brief.read("kapso-brief.md"), repo=".", output="../churn-build", detach=True)
+print(launch.pid, launch.log)      # follow it: kapso watch ../churn-build --follow
+```
+
+### Launch
+
+What `build(detach=True)` and `learn(detach=True)` hand back at once.
+
+| Field | What it is |
+|---|---|
+| `pid` | The session's process id |
+| `log` | The log the session writes, beside the campaign (`<output>.log`, `<campaign>.learn.log`) |
+| `status` | What to follow: a build's `<output>/.kapso/status.json`, a learn's status directory (`kapso watch <status> --follow`) |
+
+The work goes on after your process ends; `Solution.open(output)` reads a
+build's result once it has one.
+
+### Brief
+
+The brief as an object; the same grammar as the `kapso-brief.md` file. See
+the [brief format](/docs/reference/brief-format).
+
+```python
+@dataclass
+class Brief:
+    objective: str
+    measured_by: str | None = None
+    baseline: str | None = None
+    target: str | None = None
+    rules: list[str] = []
+    budget: Budget | None = None
+    harness: str | None = None
+    experience: list[str] = []
+
+Brief.read(path) -> Brief        # parse the file; an unknown or repeated field, a missing
+                                 # objective or stray text raises BriefError with the line
+Brief.parse(text) -> Brief
+brief.render() -> str            # the file's text, deterministic: what the engine receives
+brief.write(path) -> Path
+```
+
+### Budget
+
+```python
+@dataclass
+class Budget:
+    minutes: float | None = None           # wall clock, durable across resumes
+    experiments: int | None = None         # experiments this call may run
+    usd: float | None = None               # model spend, USD
+    reserve_minutes: float | None = None   # kept out of the search for finishing the last attempt and delivering
+```
+
+Every field optional; a field left `None` keeps the brief's, the launch's
+or the config's value. Values are validated: positive and finite, an
+integer count, a reserve smaller than the minutes.
+
+### Solution
+
+What a build delivered and the account of how. Returned by `build()` and
+read back by `Solution.open(path)`.
 
 | Attribute | Type | What it holds |
 |-----------|------|---------------|
-| `goal` | `str` | The goal you gave it |
-| `code_path` | `str` | Directory holding the winning code |
-| `experiment_logs` | `list[str]` | One summary per experiment |
-| `final_feedback` | `FeedbackResult` | The last feedback, including the stop decision |
-| `metadata` | `dict` | Cost, iteration count, final evaluation, `stopped_reason` |
-| `requests` | `list[dict]` | What the campaign is waiting on you for, when `stopped_reason` is `"waiting_for_user"`; empty otherwise |
-| `final_score` | `float \| None` | Score of the delivered solution |
-| `succeeded` | `bool` | Whether the goal was met |
-| `explain()` | `str` | All of the above as readable text |
+| `brief` | `Brief` | The brief the build ran |
+| `campaign` | `Path` | The campaign directory, checked out at the delivered branch, with the record under `.kapso/` |
+| `branch` | `str \| None` | The delivered candidate's branch; `None` when no candidate succeeded |
+| `commit` | `str \| None` | Its commit at delivery |
+| `base_commit` | `str` | The seed commit, `diff()`'s base |
+| `score` | `float \| None` | The delivered candidate's measurement under the registered evaluator |
+| `goal_achieved` | `bool` | The judge's verdict that the objective was met |
+| `stopped_reason` | `str` | `goal_achieved`, `max_iterations`, `budget_exhausted`, `waiting_for_user` |
+| `stop_detail` | `str \| None` | Why a budget stop happened: `time_budget`, `cost_budget`, `attempt_would_not_fit` or `finishing_cut`; see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends) |
+| `experiments`, `experiments_total` | `int` | Experiments this call, and across every resume |
+| `cost_usd` | `float` | Model spend |
+| `requests` | `list[dict]` | What you must answer when `stopped_reason` is `waiting_for_user`; empty otherwise |
+| `feedback` | `str \| None` | The last judgment, in full |
+| `evaluator` | `EvaluatorRef \| None` | `version`, `evaluator_id`, `provenance` of the evaluator the score was measured under; `None` when none was registered |
+| `harness` | `HarnessRef \| None` | `name`, `version`, `hash`, `source` of the harness the build ran with; `None` without one |
+| `verification` | `dict \| None` | The harness's verdict on the delivered candidate: `verdict`, `summary`, `findings`; `None` when no verification ran |
+| `experience` | `list[ExperienceRef]` | What the build was served, in load order: each source's `reference`, `kind` (`bank`, `hosted`, `index`), `resolved` location, pinned `head`, `provenance` and `scope`; empty when nothing was loaded |
+| `rejected_candidates` | `int` | Candidates rejected: the judge found the evaluation invalid, the evaluator was touched, or the harness voided the attempt |
+| `callback_metrics`, `callback_primary_metric` | `dict`, `str \| None` | Your own `iteration_evaluator`'s numbers for the delivered candidate |
+| `session_failures` | `list[dict]` | The sessions' runs that ended `error`, `timeout` or `refused`, each `{label, module, host, exit, error}`; `explain()` prints them as `Sessions failed:` after the experiments line |
+
+```python
+Solution.open(path) -> Solution   # the record a build wrote in that directory;
+                                  # raises before the build has returned, naming kapso watch
+solution.explain() -> str         # the summary block
+solution.diff() -> str            # git diff from the seed to the delivered commit; "" when none
+```
 
 ### inbox and reply
 
-A campaign pauses when a session needs something only you can provide; see [the inbox](/docs/evolve/inbox). Two static methods act on a paused campaign directory.
+A campaign pauses when a session needs something only you can provide; see
+[the inbox](/docs/build/inbox). Four methods act on a paused campaign
+directory.
 
 ```python
 Kapso.inbox(campaign: str) -> list[Request]
 Kapso.awaiting_resume(campaign: str) -> list[Request]
 Kapso.inbox_ideas(campaign: str) -> dict[int, str]
-Kapso.reply(campaign: str, request_id: int, note: str = "") -> SolutionResult | None
+Kapso.reply(campaign: str, request_id: int, note: str = "", *, allow_secret: bool = False) -> Solution | None
 ```
 
-`inbox` returns the open requests, oldest first, each with `id`, `key`, `hit`, `tried`, `fix` and `next_steps`. `awaiting_resume` returns the answered requests a resume has not delivered, because the last one failed or was killed, and is empty while a live process holds the campaign. `inbox_ideas` returns one line per node of the campaign, the idea a request was made for, keyed by node id; `kapso inbox` prints it as the `for` row. `reply` records the note and, once every request of the node that asked is answered, resumes the campaign in this process and returns its result. It returns `None` when another request of that node is still open, or when the campaign was started with an `iteration_evaluator`: the callback lives in your script, so call `evolve()` again there with `resume=True`. It raises while a live process holds the campaign. A resume that fails raises with the answer kept: call `reply` again to retry, with a note to replace the answer or an empty one to keep it.
-
-## research
-
-```python
-research(
-    objective: str,
-    *,
-    mode: ResearchMode | list[ResearchMode] = ["idea", "implementation"],
-    depth: ResearchDepth = "deep",
-) -> ResearchFindings
-```
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `objective` | What to research | required |
-| `mode` | `"idea"`, `"implementation"` or `"study"`, or a list of them | `["idea", "implementation"]` |
-| `depth` | `"light"` or `"deep"` | `"deep"` |
-
-`mode` and `depth` are keyword-only.
-
-```python
-findings = kapso.research(
-    "QLoRA fine-tuning memory optimizations",
-    mode=["idea", "implementation"],
-    depth="deep",
-)
-```
-
-### ResearchFindings
-
-| Attribute | Type | What it holds |
-|-----------|------|---------------|
-| `query` | `str` | The objective you gave it |
-| `ideas` | `list[Source.Idea]` | Approaches found |
-| `implementations` | `list[Source.Implementation]` | Implementation references, with code |
-| `report` | `Source.ResearchReport \| None` | Present when `mode` included `"study"` |
-| `to_string()` | `str` | Findings as text, ready to pass as `evolve(context=[...])` |
-| `to_dict()` | `dict` | The same as plain data |
+`inbox` returns the open requests, oldest first, each with `id`, `key`, `hit`, `tried`, `fix` and `next_steps`. `awaiting_resume` returns the answered requests a resume has not delivered, because the last one failed or was killed, and is empty while a live process holds the campaign. `inbox_ideas` returns one line per node of the campaign, the idea a request was made for, keyed by node id; `kapso inbox` prints it as the `for` row. `reply` records the note and, once every request of the node that asked is answered, resumes the campaign in this process and returns its result. It returns `None` when another request of that node is still open, or when the campaign was started with an `iteration_evaluator`: the callback lives in your script, so call `build()` again there with `resume=True`. It raises while a live process holds the campaign, and raises on a note shaped like a credential unless `allow_secret=True`: replies are plain text handed to the coder, so a value belongs in the `.env` the request's `fix` names. A resume that fails raises with the answer kept: call `reply` again to retry, with a note to replace the answer or an empty one to keep it.
 
 ## learn
 
@@ -171,29 +304,33 @@ Learns from one finished campaign: import it, mine it, grade the bank against it
 
 ```python
 learn(
-    source: SolutionResult | str,
+    source: Solution | str,
     *,
     trajectory_id: str | None = None,
     learner_version: str | None = None,
     exam: bool = True,
     push: bool | None = None,
     on_status = None,
-) -> LessonResult
+    detach: bool = False,
+) -> LessonResult | Launch
 ```
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `source` | A `SolutionResult`, a path to a campaign directory, or a trajectory id already in the store | required |
-| `trajectory_id` | Store id when importing a directory | derived from the goal or directory name |
+| `source` | A `Solution` (its `trace` is read directly), a path to a campaign directory, or a trajectory id already in the store | required |
+| `trajectory_id` | Store id when importing a directory | derived from the objective or directory name |
 | `learner_version` | Update-crew version | `learning.update_crew.default_version` |
 | `exam` | Run the hindcast exam against the pinned pre-lesson bank head first. `False` is for development replays only | `True` |
 | `push` | Push the bank commit to the bank's `origin` remote | auto: pushes when the bank has an `origin` remote |
 | `on_status` | Callback fired on each status heartbeat | `None` |
+| `detach` | Run the learn in a session of its own and return a [`Launch`](#launch) at once: `kapso learn <campaign> --detach` from Python. The campaign form only: no trajectory id, learner version, exam, push or callback | `False` |
 
 ```python
 lesson = kapso.learn(solution)
 print(lesson.explain())
 ```
+
+On a campaign built with a harness, the learning module is staged into the mining and update crews' sessions, the update crew's codex workers included (the pages in each prompt; the skills, servers, delegates and hooks beside each session, in its host's format), and the trajectory manifest records the build's harness and, when it differs, the one the lesson ran with.
 
 ### LessonResult
 
@@ -208,126 +345,52 @@ print(lesson.explain())
 | `admitted` | `bool` | Whether the lesson was admitted to the bank |
 | `explain()` | `str` | The above as readable text |
 
-## learn_knowledge
-
-Folds outside sources into the knowledge graph. This is the other memory: `learn()` mines your own campaigns, `learn_knowledge()` imports other people's work.
-
-```python
-learn_knowledge(
-    *sources: Source.Repo | Source.Solution | Source.Idea
-            | Source.Implementation | Source.ResearchReport | ResearchFindings,
-    wiki_dir: str = "data/wikis",
-    skip_merge: bool = False,
-    kg_index: str | None = None,
-    github_org: str | None = None,
-    is_private: bool | None = None,
-    on_status = None,
-) -> PipelineResult
-```
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `*sources` | One or more sources. A `ResearchFindings` can be passed directly | required |
-| `wiki_dir` | Where extracted wiki pages are written | `"data/wikis"` |
-| `skip_merge` | Extract pages without merging them into the graph | `False` |
-| `kg_index` | Index to merge into | from the constructor |
-| `github_org` | Organisation to publish the extracted workflows' repositories to; passing it turns publishing on for this call (`learner.ingestor.publish_workflows` otherwise) | `None` |
-| `is_private` | Whether those repositories are private; passing it turns publishing on too | from config |
-
-A run that stops keeps its clone and finished phases under `<wiki_dir>/_staging/<repo>/<branch>`; calling `learn_knowledge()` again with the same source continues from the first unfinished phase.
-
-```python
-kapso.learn_knowledge(
-    Source.Repo("https://github.com/huggingface/trl"),
-    findings,
-    wiki_dir="data/wikis",
-)
-```
-
-### Source variants
-
-| Variant | Takes |
-|---------|-------|
-| `Source.Repo(url, branch=None)` | A repository URL; its default branch unless `branch` names one |
-| `Source.Solution(obj)` | A `SolutionResult` |
-| `Source.Idea(query, source, content)` | A research idea |
-| `Source.Implementation(query, source, content)` | An implementation reference |
-| `Source.ResearchReport(...)` | A study-mode research report |
-
-### PipelineResult
-
-| Attribute | Type | What it holds |
-|-----------|------|---------------|
-| `sources_processed` | `int` | How many sources were read |
-| `total_pages_extracted` | `int` | Wiki pages produced |
-| `extracted_pages` | `list[WikiPage]` | The pages themselves |
-| `merge_result` | `MergeResult \| None` | What the merge changed |
-| `errors` | `list[str]` | Anything that failed |
-| `created` / `edited` | `int` | Counts of pages the merge created and edited |
-| `success` | `bool` | No errors, or pages were still extracted despite them |
-
 ## deploy
 
 ```python
 deploy(
-    solution: SolutionResult,
-    strategy: DeployStrategy = DeployStrategy.AUTO,
-    env_vars: dict[str, str] | None = None,
+    solution: Solution,
+    target: str | None = None,
+    env: dict[str, str] | None = None,
+    options: dict[str, str] | None = None,
     coding_agent: str | None = None,
-    model: str | None = None,
 ) -> Software
 ```
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `solution` | The result to deploy | required |
-| `strategy` | `AUTO`, `LOCAL`, `DOCKER`, `MODAL`, `BENTOML` or `LANGGRAPH` | `AUTO` |
-| `env_vars` | Environment variables for the deployed software | `None` |
-| `coding_agent` | Agent behind the selector and adapter sessions | from config (`deployment.coding_agent`) |
-| `model` | The model that agent is asked for | from config (`deployment.model`) |
+| `solution` | The `Solution` from `build()`, or `Solution.open(path)`; its campaign checked out at the delivered candidate, tracked files unchanged | required |
+| `target` | `auto` (the session chooses), a bundled target (`local`, `docker`, `modal`, `bentoml`, `langgraph`) or a target the build's harness ships | from config (`deployment.target`) |
+| `env` | Variables the software needs at runtime: written to `.env` in the deployment's workspace, named (never valued) in the prompt, set on every runtime the engine manages | `None` |
+| `options` | Options for the target's workflow, exported to its scripts as `KAPSO_OPTION_<NAME>` | `None` |
+| `coding_agent` | The host the deployment session runs on | from config (`deployment.cli`, else the build's host) |
 
 ```python
-deployed = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
-result = deployed.run({"data_path": "./test.csv"})
-deployed.stop()
+software = kapso.deploy(solution, target="docker", env={"API_KEY": "..."})
+result = software.run({"tenure_months": 3, "plan": "basic"})   # software.proof["inputs"] is the example
+software.stop()
+Software.open("../churn-build", software.number).start()      # the same deployment, from any process
 ```
 
-`AUTO` picks a strategy for you. See [Deployment strategies](/docs/deployment/strategies).
+A `DeployError` names what refused the deployment (no such target, a dirty campaign, a result the engine could not accept, a session that failed) and the record's path. On a solution built with a harness, the session carries its deployment module (the page, the skills, servers and hooks) beside the target's skill. See [Deploy](/docs/deploy/targets).
 
-## index_kg
+### Software
 
-Indexes a corpus and returns the path of the `.index` file it wrote.
-
-```python
-index_kg(
-    wiki_dir: str | None = None,
-    data_path: str | None = None,
-    save_to: str = None,
-    search_type: str | None = None,
-    force: bool = False,
-) -> str
-```
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `wiki_dir` | Wiki directory to index | `None` |
-| `data_path` | JSON data file to index, as an alternative to `wiki_dir` | `None` |
-| `save_to` | Where to write the `.index` file | required in practice |
-| `search_type` | `kg_graph_search` or `kg_llm_navigation` | from config |
-| `force` | Clear existing data before indexing | `False` |
-
-```python
-index_path = kapso.index_kg(
-    wiki_dir="data/wikis",
-    save_to="data/indexes/finetuning.index",
-)
-
-kapso = Kapso(kg_index=index_path)
-```
+| Member | What it does |
+|--------|--------------|
+| `run(inputs)`, `software(inputs)` | One call, by the deployment's run kind: `{"status": "success", "output": …}` or `{"status": "error", "error": …}`; refused while the deployment is not running |
+| `run_batch(inputs_list)` | `run` over each, in order |
+| `stop()`, `start()` | The target's stop and start scripts (a function's worker ended or started); the state written to the record; each returns the lines it noted, which `logs()` repeats |
+| `is_healthy()` | Running by the record and answering its health check (a function: its worker answers a ping) |
+| `close()` | This handle's worker ended, the deployment left running |
+| `logs()` | The engine's lines, the target's logs script, a function's worker log |
+| `number`, `state`, `target`, `endpoint`, `workspace`, `record`, `proof`, `observed` | The record's facts; `proof` is the call the session proved, what `run()` takes, `observed` what the engine's own call of it answered; `target` is `None` when a session under `auto` chose none |
+| `Software.open(campaign, number=None, config=None)` | The campaign's deployment of that number, or its highest, whatever its state |
+| `with kapso.deploy(...) as software:` | `stop()` on exit |
 
 ## memory
 
-A property, not a method. Reports what this agent knows across both stores.
+A property, not a method. Reports your own bank right now; what a build is served is `kapso.experience`.
 
 ```python
 status = kapso.memory
@@ -336,9 +399,9 @@ print(status.explain())
 
 | Attribute | Type | What it holds |
 |-----------|------|---------------|
-| `knowledge_index` | `str \| None` | The loaded `.index`, if any |
-| `knowledge_enabled` | `bool` | Whether knowledge search is on |
+| `bank_path` | `str \| None` | Your bank's home |
 | `bank_head` | `str \| None` | Current lesson-bank commit |
+| `bank_active_cards` | `int \| None` | Cards in the bank |
 | `store_trajectories` | `int \| None` | Trajectories in the store |
 | `explain()` | `str` | The above as readable text |
 
@@ -357,15 +420,34 @@ print(view.explain())
 
 `path` accepts a workspace, a status file, or a directory of status files. `view.explain()` renders the same screen as [`kapso watch`](/docs/reference/cli#kapso-watch).
 
+## trace
+
+A static method, a pure reader: the campaign's record after the fact, what [`kapso trace`](/docs/reference/cli#kapso-trace) prints.
+
+```python
+Kapso.trace(path: str) -> TraceView
+```
+
+```python
+view = Kapso.trace("./campaign")
+print(view.explain())                       # the text, every section
+view.data                                   # the JSON, the keys pinned on Read the record
+view.attempts                               # one entry per node: sessions, runs, evaluation, verification, judge, cards
+view.delivered                              # the delivered candidate; None when none succeeded
+print(view.narrow("generic_exp_1").explain())   # one attempt with its evidence in full
+```
+
+`TraceView(data)` renders the text again from the data alone. A campaign still running renders `partial` with the reason; a directory with no `.kapso/` inside raises `FileNotFoundError` by name; `narrow` raises `ValueError` naming the attempts when no attempt ran on the branch. See [Read the record](/docs/build/trace).
+
 ## close
 
-Releases the knowledge-search network clients: Weaviate, Neo4j and embeddings.
+Releases the index search's network clients: Weaviate, Neo4j and embeddings, connected when a build loads an index.
 
 ```python
 kapso.close()
 ```
 
-Idempotent, and registered at construction to run on exit, so scripts finish without unclosed-socket warnings. Calling it early is safe; `index_kg()` and `learn_knowledge()` reconnect.
+Idempotent, and registered at construction to run on exit, so scripts finish without unclosed-socket warnings. Calling it early is safe; the next build that loads an index reconnects.
 
 ## Related
 
@@ -373,11 +455,14 @@ Idempotent, and registered at construction to run on exit, so scripts finish wit
   <Card title="CLI" icon="terminal" href="/docs/reference/cli">
     The same operations from the command line
   </Card>
+  <Card title="Brief format" icon="file-lines" href="/docs/reference/brief-format">
+    The grammar of kapso-brief.md
+  </Card>
   <Card title="Configuration" icon="gear" href="/docs/reference/configuration">
     Every key in config.yaml
   </Card>
 </CardGroup>
 
-Related pages: [CLI](/docs/reference/cli) · [Configuration](/docs/reference/configuration) · [CLI](/docs/reference/cli)
+Related pages: [CLI](/docs/reference/cli) · [Brief format](/docs/reference/brief-format) · [Configuration](/docs/reference/configuration)
 
 Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

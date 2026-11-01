@@ -474,13 +474,14 @@ GeneratedAt: {doc.get('generated_at')}
         llm: LLMLike,
         initial_repo: Optional[str] = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        max_payload_chars: int = UPDATE_PAYLOAD_MAX_CHARS,
     ) -> None:
         """
         Build baseline RepoMemory for an existing repository (seeded workspace).
-        
+
         This runs once at the start so ideation can be grounded in the repo's
         actual architecture/algorithms with evidence links.
-        
+
         Raises:
             ValueError: If configuration is invalid or structured-response
                 repair is exhausted.
@@ -496,6 +497,7 @@ GeneratedAt: {doc.get('generated_at')}
             repo_root=repo_root,
             repo_map=doc["repo_map"],
             max_retries=max_retries,
+            max_payload_chars=max_payload_chars,
         )
         # Note: With line-number-based evidence, validation is no longer needed.
         # The model is trusted as-is.
@@ -609,6 +611,7 @@ GeneratedAt: {doc.get('generated_at')}
                 repo_root=repo_root,
                 repo_map=doc["repo_map"],
                 max_retries=max_retries,
+                max_payload_chars=max_payload_chars,
             )
         else:
             updated_model = infer_repo_model_update(

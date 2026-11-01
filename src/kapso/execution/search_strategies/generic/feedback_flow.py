@@ -2,16 +2,18 @@
 
 Owns the post-implementation judgment feature: the FeedbackGenerator
 session over a node's evidence, the manifest-of-record score cross-check,
-the handler's finalize_run_selection call at score-of-record time, and the
-structured agent-result extraction (XML tags). Stateless functions only —
+the engine's archive labelling at score-of-record time (the strategy passes
+`label_run_of_record` over its archive glob), and the structured
+agent-result extraction (XML tags). Stateless functions only —
 GenericSearch assembles arguments from its state and delegates here.
 """
 
 import json
 import re
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from kapso.execution.search_strategies.base import SearchNode
+from kapso.harness.verdict import is_void, render_verification
 from kapso.execution.cost_estimator import validate_cost_value
 from kapso.execution.evaluation_maintainer.maintainer import MANIFEST_MARKER
 
@@ -44,12 +46,15 @@ def generate_feedback(
     *,
     feedback_generator,
     goal: str,
-    design_axes: str,
+    axes: str,
     session_end_facts: str,
-    clamped_timeout: Callable[[float], float],
+    deadline_seconds: Optional[float],
+    retry_deadline: Callable[[], Tuple[Optional[float], Optional[str]]],
     manifest_of_record: Callable[[SearchNode], Optional[Dict[str, Any]]],
     finalize_run_selection: Callable[[Dict[str, Any], bool], None],
     execution_valid: bool = True,
+    stage_harness_for: Callable[..., Any],
+    verification: Optional[Dict[str, Any]] = None,
 ) -> SearchNode:
     """
     Generate feedback for a node using the FeedbackGenerator.
@@ -72,6 +77,10 @@ def generate_feedback(
     
     print(f"[GenericSearch] Generating feedback for node {node.node_id}...")
     
+    # The harness's feedback module: its pages in the judge's prompt, its
+    # delegates and skills beside the judge (attached once per campaign).
+    staged = stage_harness_for("feedback", node.workspace_dir, f"feedback/{node.branch_name}", feedback_generator.agent_type)
+    feedback_generator.attach_harness(staged)
     try:
         feedback_result = feedback_generator.generate(
             goal=goal,
@@ -82,16 +91,35 @@ def generate_feedback(
             evaluation_script_path=node.evaluation_script_path,
             evaluation_result=node.evaluation_output,
             workspace_dir=node.workspace_dir,
-            design_axes=design_axes,
+            axes=axes,
             session_end_facts=session_end_facts,
-            timeout_seconds=clamped_timeout(
-                feedback_generator.configured_timeout_seconds
-            ),
+            domain_guidance=staged.guidance,
+            verification=render_verification(verification),
+            timeout_seconds=deadline_seconds,
+            retry_deadline=retry_deadline,
         )
+        if feedback_result.unjudged:
+            # No verdict: the attempt is unjudged, by reason, keeping its
+            # score; the judge's spend and time are still the attempt's.
+            node.unjudged = feedback_result.unjudged
+            node.phase_telemetry["feedback"] = {
+                "cost_usd": feedback_result.cost_usd,
+                "duration_seconds": feedback_result.duration_seconds,
+            }
+            print(f"[GenericSearch] node {node.node_id} unjudged: {node.unjudged}")
+            return node
 
-        # Update node with feedback results
+        # Update node with feedback results. A harness verdict of void is
+        # ANDed in after the judge, so the judge's default cannot
+        # resurrect it.
         node.feedback = feedback_result.feedback
-        node.evaluation_valid = feedback_result.evaluation_valid and execution_valid
+        # The judge's attribution stays on the node: the trajectory carries
+        # which served cards were load-bearing, so learning can settle a
+        # card's claim against what the campaign actually used.
+        node.cards_load_bearing = list(feedback_result.cards_load_bearing)
+        node.evaluation_valid = (
+            feedback_result.evaluation_valid and execution_valid and not is_void(verification)
+        )
         node.score = (
             feedback_result.score
             if node.evaluation_valid
@@ -145,7 +173,14 @@ def generate_feedback(
         print(f"[GenericSearch] Error generating feedback: {e}")
         node.feedback = f"Error generating feedback: {e}"
         node.should_stop = False
-    
+        # No judgment reached the record: the attempt keeps its score and
+        # is never a parent or delivered, as every unjudged attempt.
+        node.unjudged = f"the judge failed: {e}"
+        if is_void(verification):
+            # The harness's void holds whether or not the judge spoke.
+            node.evaluation_valid = False
+            node.score = None
+
     return node
 
 

@@ -39,6 +39,7 @@ BANNED_ALIASES = {
     "knowledge system": "knowledge graph",
     "knowledge bank": "lesson bank",
     "developer agent": "coding agent",
+    "deployment strategy": "deployment target",
 }
 
 QUESTION = re.compile(

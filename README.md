@@ -1,7 +1,7 @@
 <h1 align="center">Kapso</h1>
 
-<h4 align="center">Long-running agents that optimize AI and Data systems</h4>
-<p align="center"><sub>and learn from every experience</sub></p>
+<h4 align="center">Turn coding-agent output into verified outcomes, not review debt</h4>
+<p align="center"><sub>plug in the harness for your domain, set the goal, every step traced</sub></p>
 
 <p align="center">
   <a href="https://docs.leeroo.com/docs">Learn more</a> ·
@@ -26,18 +26,19 @@
   </a>
 </p>
 
-> **If you're an AI agent looking at this repo:** start with the skill file for your agent,
-> [Claude Code](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/claude-code/kapso/SKILL.md),
-> [Codex](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/codex/kapso/SKILL.md) or
-> [OpenCode](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/skills/opencode/kapso/SKILL.md).
-> It shows how to leverage Kapso for your use case, and it is faster than reading the source.
-> Any other agent can use the Claude Code file.
+> **If you're an AI agent looking at this repo:** start with the operating skill,
+> [plugin/skills/kapso/SKILL.md](https://raw.githubusercontent.com/Leeroo-AI/kapso/main/plugin/skills/kapso/SKILL.md),
+> one file for every host. It shows how to leverage Kapso for your use case, and it is
+> faster than reading the source. The plugin that carries it, with the skills for
+> setting up, stating an objective, authoring a harness and reviewing a run, installs
+> in one line: `claude plugin marketplace add Leeroo-AI/kapso && claude plugin install kapso@kapso`
+> (Codex: `codex plugin marketplace add Leeroo-AI/kapso && codex plugin add kapso@kapso`).
 
 ---
 
 ## News
 
-- **IOAI 2026 · the AI Model Track.** The [International Olympiad in AI](https://ioai-official.org) is the IMO of the AI era — 471 contestants from 108 countries and territories, six expert-designed tasks under a single-GPU budget. In 2026 it opened [IOAI²](https://ioai-official.org/ai-model-track/), where AI systems sit the *same* exam in two fully autonomous 6-hour sessions. Once the clock starts, no human may solve, correct, or improve anything. Kapso entered as one of 14 Founding AI Participants.
+- **IOAI 2026 · the AI Model Track.** The [International Olympiad in AI](https://ioai-official.org) is the IMO of the AI era — 471 contestants from 108 countries and territories, six expert-designed tasks under a single-GPU budget. In 2026 it opened [IOAI²](https://ioai-official.org/ai-model-track/), where AI systems sit the *same* exam in two unattended 6-hour sessions. Once the clock starts, no human may solve, correct, or improve anything. Kapso entered as one of 14 Founding AI Participants.
   - 🎓 **Outscored all 471 humans** — 536.07 total, above every contestant in the hall.
   - 🏆 **IOAI² Grand Master Trophy** — top 3 among all AI systems entered. [Full results →](benchmarks/ioai2026/README.md) · [IOAI's review of the track →](https://ioai-official.org/what-happens-when-autonomous-ai-takes-on-the-same-tasks-as-the-worlds-top-young-ai-talents/)
 - **First on all three [RelBench](benchmarks/relbench/README.md) leaderboards**: on Stanford's benchmark for predictive ML over relational data, Kapso leads the official leaderboard in classification (81.2 AUROC over 12 tasks, against 79.3 for [KumoRFM-v2](https://docs.nvidia.com/sdgm/rfm/overview) and 79.0 for Stanford STAR's RT-J), regression (0.2476 NMAE over 9 tasks, against 0.2711 for RT-J and 0.2847 for KumoRFM-v2, 8.7% less error) and recommendations (18.4 MAP over 10 tasks, against 9.3 for ID-GNN, the best other entry). Every number is an entry on the [official RelBench leaderboard](https://star-project.stanford.edu/relbench/leaderboard/).
@@ -57,9 +58,11 @@
 
 ## What is KAPSO?
 
-Kapso is a team of long-running agents that optimize AI and Data systems. State an objective and it runs a campaign: it designs candidate solutions, has coding agents implement them, measures how far each one is from the objective, and keeps refining the closest until the objective is met. The result ships to your infrastructure.
+Coding agents burn tokens and hand back diffs you have to review. Kapso runs them differently. You plug in a harness for your domain and set a goal; it works the goal until it is met or the budget is spent, measuring every attempt with an evaluation the agents cannot touch and keeping every step on record. What comes back is a verified outcome: the branch that met the goal, or the best the budget reached, with the evaluation that measured it, ready to deploy as running software.
 
-Kapso learns from every experience. When a campaign ends, it studies its own work: which ideas closed the distance to the objective, which did not, and under what conditions. Each finding is kept as a lesson with the evidence that earned it, and a lesson stays trusted only as long as it keeps holding up. Kapso also reads outside your walls, repositories and papers, and folds what it finds into the same knowledge hub. Every new campaign begins from that hub, so it starts with what earlier work already established, about the problem and about your systems.
+A harness teaches Kapso one kind of work: how to propose, build, measure and, where the domain needs it, deploy there, and the tools it needs. Two ship with Kapso, predictive modelling and competitive programming; the examples carry a trading harness, and you write your own for anything with an evaluation.
+
+It learns from experience, and the lessons carry their receipts: one rule per card, the condition it applies under, the measured effect from each run that tested it, a reliability score with its rationale.
 
 Kapso is an open-source Python framework by [Leeroo](https://leeroo.com), published on PyPI as [`leeroo-kapso`](https://pypi.org/project/leeroo-kapso/).
 
@@ -67,14 +70,25 @@ Kapso is an open-source Python framework by [Leeroo](https://leeroo.com), publis
 
 | Pillar | Method | Description |
 |--------|--------|-------------|
-| [**Evolve**](https://docs.leeroo.com/docs/evolve/overview) | `.evolve()` | Run iterative experiments to build software for a goal. Uses tree search, coding agents, and KG context to generate and refine solutions. |
-| **Learn** | [`.learn()`](https://docs.leeroo.com/docs/learning/overview) / [`.learn_knowledge()`](https://docs.leeroo.com/docs/knowledge/overview) | Two memories: `learn()` mines your own finished campaigns into evidence-priced knowledge cards (experience); `learn_knowledge()` ingests repositories and research into the Knowledge Graph (imported knowledge). |
-| [**Research**](https://docs.leeroo.com/docs/research/overview) | `.research()` | Run deep web research to gather ideas and implementation references. Returns structured findings you can feed into the knowledge base or use as context for evolving solutions. |
-| [**Deploy**](https://docs.leeroo.com/docs/deployment/overview) | `.deploy()` | Turn a solution into running software. Supports local execution, Docker containers, or cloud platforms like Modal. |
+| [**Build**](https://docs.leeroo.com/docs/build/brief) | `.build()` | Run an experiment campaign that meets a brief: candidates implemented on their own branches, measured, the best kept and refined. |
+| [**Learn**](https://docs.leeroo.com/docs/learn/what-learn-produces) | `.learn()` | Mine a finished campaign into your bank: evidence-priced lesson cards, each with its reliability and the measurements that earned it. |
+| [**Experience**](https://docs.leeroo.com/docs/experience) | `.load_experience()` / `.add_experience()` | What a build is served: your bank, the hosted Leeroopedia gate, a bank your team shares, or a corpus ingested from a repository or a researched question. A build is served exactly what it loads. |
+| [**Deploy**](https://docs.leeroo.com/docs/deploy/targets) | `.deploy()` | Turn a solution into running software. Supports local execution, Docker containers, or cloud platforms like Modal. |
 
 ## 🚀 Quickstart
 
 ### Installation
+
+**0. In a coding agent?** Install the Kapso plugin and let it walk the
+steps below with you:
+
+```bash
+claude plugin marketplace add Leeroo-AI/kapso && claude plugin install kapso@kapso   # Claude Code
+codex plugin marketplace add Leeroo-AI/kapso && codex plugin add kapso@kapso         # Codex
+```
+
+Then `/kapso:setup` installs and verifies, and `/kapso:build <what you want>`
+launches the first campaign (on Codex: `$kapso-setup`, `$kapso-build <what you want>`). See [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills).
 
 **1. Prerequisites.** Kapso runs its inference through coding-agent CLIs
 (there is no direct-API fallback), so you need Node.js and both agent
@@ -85,7 +99,7 @@ CLIs logged in before anything works:
 npm install -g @openai/codex            # research, judging, utilities
 codex login
 
-npm install -g @anthropic-ai/claude-code  # ideation + implementation (default mode)
+npm install -g @anthropic-ai/claude-code  # ideation + implementation (the default host)
 claude auth login
 ```
 
@@ -130,11 +144,11 @@ setup is never asked for `claude`. Narrow it to one verb to see just that
 verb's requirements:
 
 ```bash
-kapso doctor evolve            # or research / learn_knowledge / learn / deploy
+kapso doctor build             # or learn / deploy / experience
 ```
 
 Those are the same checks the verb itself runs before it does any work —
-`kapso.evolve(...)` fails in seconds on a missing CLI rather than deep
+`kapso.build(...)` fails in seconds on a missing CLI rather than deep
 inside a session. Items marked `[-- ]` are optional; they limit features
 you may not need (docker, Weaviate, Neo4j, the deploy targets).
 
@@ -142,8 +156,9 @@ you may not need (docker, Weaviate, Neo4j, the deploy targets).
 [setup prompt](https://docs.leeroo.com/docs/installation#set-up-through-your-coding-agent)
 into Claude Code, Codex or OpenCode.
 
-**Knowledge-graph backends (optional)** — `learn_knowledge()` and
-`kg_index` store into local Weaviate + Neo4j. From a source checkout:
+**The stores an index needs (optional)** — `kapso experience add --repo`
+and `--research` ingest a corpus into local Weaviate + Neo4j. From a
+source checkout:
 
 ```bash
 bash scripts/start_infra.sh   # starts both via docker
@@ -167,23 +182,23 @@ Python <3.13); the default claude/codex agents need no extras.
 The core loop needs nothing beyond the prerequisites above:
 
 ```python
-from kapso import Kapso
+from kapso import Kapso, Budget
 
 kapso = Kapso()   # no knowledge graph needed to start
 
-# Evolve: build a solution through experimentation. The campaign prints
+# Build: a solution through experimentation. The campaign prints
 # `status: <path>` at launch — watch it live from another terminal with
 #     kapso watch ./campaign
 # If a session needs something only you can provide (an API key, a file),
 # the campaign pauses and `kapso inbox reply` resumes it:
-#     https://docs.leeroo.com/docs/evolve/inbox
+#     https://docs.leeroo.com/docs/build/inbox
 # Share the result as Markdown for a pull request or issue with
 #     kapso report ./campaign -o report.md
-solution = kapso.evolve(
-    goal="Optimize the model in train.py; target accuracy > 0.80 on evaluate.py",
-    initial_repo="./my_project",         # or omit to start from scratch
-    output_path="./campaign",
-    time_budget_minutes=120,
+solution = kapso.build(
+    "Optimize the model in train.py; target accuracy > 0.80 on evaluate.py",
+    repo="./my_project",                 # or omit to start from scratch
+    output="./campaign",
+    budget=Budget(minutes=120),
 )
 print(solution.explain())
 
@@ -191,54 +206,46 @@ print(solution.explain())
 # lessons, and bank evidence-priced knowledge cards. The bank (a local
 # git repo) is created automatically on first use — lessons stay on your
 # machine until you share them:
-#     kapso bank connect <git-url>   # or: kapso bank create org/name
+#     kapso experience share <git-url>
 # after which every learn() pushes the bank there.
 lesson = kapso.learn(solution)
 print(lesson.explain())
 
-# Evolve again — with `learning.serving.enabled: true` in your config,
-# the next campaign is served the cards it just earned.
-solution2 = kapso.evolve(goal="...", output_path="./campaign2")
+# Build again, served the cards it just earned: a build is served exactly
+# the experience it loads.
+kapso.load_experience("mine")
+solution2 = kapso.build("...", output="./campaign2")
 ```
 
-With the knowledge-graph backends running, you can also import outside
-knowledge and serve it to campaigns:
+With the stores running, you can also ingest outside knowledge into an
+index and serve it the same way:
 
 ```python
-from kapso import Kapso, Source
+from kapso import Kapso
 
 kapso = Kapso()
 
-# Research the web, then ingest findings + a repository into the KG
-findings = kapso.research(
-    "RLHF and DPO fine-tuning for legal contract analysis",
-    mode=["idea", "implementation"],
-)
-kapso.learn_knowledge(
-    Source.Repo("https://github.com/huggingface/trl"),
-    findings.ideas,
-    findings.implementations,
-    wiki_dir="data/wikis",
-)
+# Once: a repository, or the web researched for a question, into an index
+kapso.add_experience(repo="https://github.com/huggingface/trl", name="trl")
+kapso.add_experience(research="RLHF and DPO fine-tuning for legal contract analysis", name="dpo-legal")
 
-# Campaigns on this Kapso now consult the knowledge graph automatically
-solution = kapso.evolve(goal="Fine-tune Llama-3.1-8B for clause risk classification")
+# Every build that loads the index searches it; Leeroopedia rides on its key
+kapso.load_experience("trl")
+kapso.load_experience("leeroopedia")
+solution = kapso.build("Fine-tune Llama-3.1-8B for clause risk classification")
 ```
 
-A note on budgeting: `depth="light"` bounds the *research* stage only.
-`learn_knowledge()` extracts everything the material supports — a small
-findings set can still become dozens of linked wiki pages and an
-hours-long ingest. Ingest time scales with extractable substance, not
-with the depth flag; pass fewer sources when you want a faster ingest.
+A note on budgeting: an ingest extracts everything the material supports.
+A single question can become dozens of linked pages and an hours-long
+ingest; ingest time scales with extractable substance, so add the
+sources you will search, not every source you have.
 
 And to turn a solution into running software:
 
 ```python
-from kapso import DeployStrategy
-
-deployed = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
-result = deployed.run({"input": "data"})
-deployed.stop()
+software = kapso.deploy(solution, target="local")   # or docker, modal, bentoml, langgraph, auto
+result = software.run(software.proof["inputs"])     # the call the deployment proved
+software.stop()
 ```
 
 ### How do I bound a campaign?
@@ -249,7 +256,7 @@ For platform costs, enable [cost-aware selection](https://docs.leeroo.com/docs/e
 ### Choosing models
 
 Every model Kapso uses is named in one config file. The packaged default
-runs evolve sessions on `claude-opus-5`, the learning crews on
+runs build sessions on `claude-opus-5`, the learning crews on
 `claude-fable-5`, and codex roles on `gpt-5.6-sol` — but model access is
 subscription-dependent (a plan can cap one model while serving another).
 To run on different models, copy the packaged config, edit, and point
@@ -266,12 +273,12 @@ config = yaml.safe_load(Path(DEFAULT_CONFIG_PATH).read_text())
 crews = yaml.safe_dump(config).replace("claude-fable-5", "claude-opus-5")
 Path("kapso-config.yaml").write_text(crews)
 
-kapso = Kapso(config_path="kapso-config.yaml")
+kapso = Kapso(config="kapso-config.yaml")
 ```
 
 Text-only inference roles can opt in to `openai_compatible` Chat Completions.
 Set the model and endpoint in your config; credentials stay in the environment.
-Load the config with `Kapso(config_path=...)` or `kapso evolve --config ...`.
+Load the config with `Kapso(config=...)` or `kapso build --config ...`.
 Coding and web research still require agents with the corresponding tools.
 See the [configuration example and limits](https://docs.leeroo.com/docs/evolve/coding-agents#openai-compatible-api).
 
@@ -301,17 +308,23 @@ Model swaps change *pacing* too: the crew `timeout_minutes` caps in the
 config were calibrated on the default models, and a swapped model that
 reasons longer may need them raised.
 
-For detailed integration steps, see the [Quickstart](https://docs.leeroo.com/docs/quickstart) and [Installation](https://docs.leeroo.com/docs/installation) guides.
+For detailed integration steps, see the [Quickstart](https://docs.leeroo.com/docs/first-build) and [Installation](https://docs.leeroo.com/docs/installation) guides.
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| [**CUDA Optimization**](examples/cuda_optimization/README.md) | Optimize CUDA kernels for GPU performance |
-| [**PyTorch Optimization**](examples/pytorch_optimization/README.md) | Cut wall-clock and memory — fuse ops, kill sync points and host-device chatter, saturate the GPU without changing numerics |
-| [**ML Model Development**](examples/ml_model_development/README.md) | End-to-end delivery of prediction models — data prep, features, training, and validation evolved into a deployable artifact |
-| [**Harness Optimization**](examples/prompt_engineering/README.md) | Evolve the harness around a model — prompts, decoding, parsing, and scoring tuned against a measurable target |
-| [**Agent Optimization**](examples/agentic_scaffold/README.md) | Agents improving agents — workflows, tools, and prompts evolved until the metric climbs |
+Every example is a task: a brief, a starting repository, the data or how to get it, and a driver of at most twelve lines; [examples/README.md](examples/README.md) has the minutes, the one command and whether a result is recorded.
+
+| Example | What it shows |
+|---------|---------------|
+| [**churn-first-build**](examples/churn-first-build/README.md) | Your first build: an evaluator present, a baseline, a target, the record |
+| [**fraud-no-evaluator**](examples/fraud-no-evaluator/README.md) | No evaluator: the campaign's first node builds one from the brief's protocol and every candidate is measured against it |
+| [**pipeline-dbt**](examples/pipeline-dbt/README.md) | A dbt pipeline on DuckDB whose exports carry defects: the data contract made to hold |
+| [**trading**](examples/trading/README.md) | A harness on the build: a setup session, pages and hooks in every session, verification per attempt |
+| [**full-loop**](examples/full-loop/README.md) | Build, the review, learn, build again served the lesson, deploy: a Kaggle tabular model end to end |
+| [**prompt-harness**](examples/prompt-harness/README.md) | The prompt as the thing under test, scored on AIME problems |
+| [**agent-scaffold**](examples/agent-scaffold/README.md) | A vision-language extractor, scored against ground-truth tables |
+| [**torch-performance**](examples/torch-performance/README.md) | A faster module on CUDA under a numerical tolerance |
+| [**gpu-kernels**](examples/gpu-kernels/README.md) | Multi-head attention on CUDA: flash attention or Triton |
 
 ## Supported Benchmarks
 
@@ -332,21 +345,26 @@ Each benchmark also has a documentation page covering how to run it, its CLI opt
 
 - **Full Documentation**: [docs.leeroo.com](https://docs.leeroo.com/docs)
   - [Installation](https://docs.leeroo.com/docs/installation) — the coding-agent CLIs, the package, and `kapso doctor`
-  - [Quickstart](https://docs.leeroo.com/docs/quickstart) — your first campaign
+  - [Quickstart](https://docs.leeroo.com/docs/first-build) — your first campaign
   - [CLI reference](https://docs.leeroo.com/docs/reference/cli) — every command, flag and default
   - [Python API](https://docs.leeroo.com/docs/reference/kapso-api) — every public method on `Kapso`
   - [Configuration](https://docs.leeroo.com/docs/reference/configuration) — every key in `config.yaml`
-  - [Trajectory learning](https://docs.leeroo.com/docs/learning/overview) — the lesson bank, grading and serving
+  - [What learn produces](https://docs.leeroo.com/docs/learn/what-learn-produces) — the lesson bank, its cards with their receipts, and [development mode](https://docs.leeroo.com/docs/learn/development-mode)
   - [Evolve](https://docs.leeroo.com/docs/evolve/overview) — how a campaign runs, and [what happens inside one experiment](https://docs.leeroo.com/docs/evolve/execution-flow)
-  - [Knowledge graph](https://docs.leeroo.com/docs/knowledge/overview) — repositories and papers turned into searchable knowledge
-  - [Deployment](https://docs.leeroo.com/docs/deployment/overview) — local, Docker, Modal and the other strategies
-  - [Kapso skill for coding agents](https://docs.leeroo.com/docs/coding-agent-skills) — launch and resume campaigns from Claude Code, Codex or OpenCode
-- **From your coding agent**: the docs run an MCP server at `https://docs.leeroo.com/mcp`, and every page is served as Markdown — see [llms.txt](https://docs.leeroo.com/llms.txt) and [Docs in your coding agent](https://docs.leeroo.com/docs/agent-access).
+  - [Experience](https://docs.leeroo.com/docs/experience) — your bank, Leeroopedia, repositories and papers turned into searchable knowledge
+  - [Deploy](https://docs.leeroo.com/docs/deploy/targets) — local, Docker, Modal and the other targets
+  - [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills) — the commands, the skills and the MCP server for Claude Code, Codex and Cursor
+- **From your coding agent**: the docs run an MCP server at `https://docs.leeroo.com/mcp`, and every page is served as Markdown — see [llms.txt](https://docs.leeroo.com/llms.txt) and [Kapso in your coding agent](https://docs.leeroo.com/docs/coding-agent-skills).
   ```bash
   claude mcp add --transport http kapso-docs https://docs.leeroo.com/mcp   # Claude Code
   codex mcp add kapso-docs --url https://docs.leeroo.com/mcp              # Codex CLI
   ```
-- **Let your coding agent run Kapso**: one `SKILL.md` per agent for Claude Code, Codex and OpenCode lives in [`skills/`](https://github.com/Leeroo-AI/kapso/tree/main/skills) — copy the folder for your agent into the project; see [Kapso skill for coding agents](https://docs.leeroo.com/docs/coding-agent-skills).
+- **Let your coding agent run Kapso**: the plugin under [`plugin/`](https://github.com/Leeroo-AI/kapso/tree/main/plugin) carries ten commands, six skills and the MCP server, one install line per host (step 0 above); OpenCode loads the skills as a folder (`ln -s <clone>/plugin/skills .opencode/skills`). See [The Kapso plugin](https://docs.leeroo.com/docs/coding-agent-skills).
+- **Give your coding agent Kapso's knowledge tools**: `kapso-mcp`, installed with the package, serves web research, the repository's memory, the campaign's experiment history and the lesson bank to the session you work in — see [MCP gates](https://docs.leeroo.com/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).
+  ```bash
+  claude mcp add kapso -- kapso-mcp   # Claude Code
+  codex mcp add kapso -- kapso-mcp    # Codex CLI; then `startup_timeout_sec = 60` under [mcp_servers.kapso] in ~/.codex/config.toml (Codex's ten seconds are short on a busy machine)
+  ```
 - **Community**: [Discord](https://discord.gg/hqVbPNNEZM)
 - **Website**: [leeroo.com](https://leeroo.com)
 

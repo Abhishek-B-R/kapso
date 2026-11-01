@@ -5,7 +5,7 @@ Turns the organizer's starter prompt (or a competition URL, for tasks that
 publish none) into the run root the runner consumes:
     <root>/task/starter_prompt.txt   the launch input, verbatim
     <root>/task/dataset/             competition data + statement.md
-    <root>/task/kaggle.json          {"competition": <slug>}
+    <root>/task/kaggle.json          {"competition": <slug>, "higher_is_better": true|false}
 
 The brief is OPAQUE to this code: no slug parsing here. One `codex exec`
 session receives it verbatim, identifies the competition it names, downloads
@@ -77,13 +77,16 @@ def validate_root(task_dir: str) -> str:
     if not os.path.isfile(kaggle_json):
         sys.exit(f"{kaggle_json} missing after preflight")
     with open(kaggle_json) as f:
-        slug = json.load(f).get("competition", "")
+        meta = json.load(f)
+    slug = meta.get("competition", "")
     if not slug:
         sys.exit(f"{kaggle_json} carries no competition slug")
+    if not isinstance(meta.get("higher_is_better"), bool):
+        sys.exit(f"{kaggle_json} carries no boolean higher_is_better: the metric's direction, from the evaluation page")
     return slug
 
 
-def run_preflight(task_brief: str, root: str, mode: str = "KAGGLE") -> str:
+def run_preflight(task_brief: str, root: str, rules_source: str = RULES_PATH) -> str:
     root = os.path.abspath(root)
     task_dir = os.path.join(root, "task")
     dataset_dir = os.path.join(task_dir, "dataset")
@@ -103,13 +106,16 @@ def run_preflight(task_brief: str, root: str, mode: str = "KAGGLE") -> str:
     with open(os.path.join(task_dir, "starter_prompt.txt"), "w",
               encoding="utf-8") as f:
         f.write(task_brief)
-    # Staged here as well as by the runner: the authoring agent is told these
-    # rules override the competition pages, so it has to be able to read them.
+    # The task's binding rules, pinned under the task: the authoring agent is
+    # told they override the competition pages, so it has to be able to read
+    # them, and the runner stages this copy into every contest root.
+    if not os.path.isfile(rules_source):
+        sys.exit(f"no rules file at {rules_source}")
     rules_path = os.path.join(task_dir, "RULES.md")
-    shutil.copy2(RULES_PATH, rules_path)
+    shutil.copy2(rules_source, rules_path)
 
     with open(CONFIG_PATH) as f:
-        preflight_cfg = yaml.safe_load(f)["modes"][mode]["preflight"]
+        preflight_cfg = yaml.safe_load(f)["benchmark"]["preflight"]
 
     cli = preflight_cfg["cli"]
     if cli not in ("codex", "claude_code"):
@@ -163,9 +169,11 @@ def main():
                              "verbatim, or a competition URL")
     parser.add_argument("--root", required=True,
                         help="Run root to create (consumed by runner.py --root)")
-    parser.add_argument("--mode", default="KAGGLE")
+    parser.add_argument("--rules", default=RULES_PATH,
+                        help="The task's binding rules, a markdown file pinned under the task "
+                             "(default: the IOAI AI Models Track rules beside this script)")
     args = parser.parse_args()
-    run_preflight(args.task, args.root, args.mode)
+    run_preflight(args.task, args.root, args.rules)
 
 
 if __name__ == "__main__":

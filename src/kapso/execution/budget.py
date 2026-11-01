@@ -1,4 +1,4 @@
-"""Typed budget contracts for evolve campaigns.
+"""Typed budget contracts for build campaigns.
 
 Three pieces, per the budget-aware experimentation design:
 
@@ -19,23 +19,55 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
+from kapso.core.config import load_config
+
 
 _BUDGET_BLOCK_KEYS = {
-    "time_budget_minutes",
-    "cost_budget_usd",
-    "finalization_reserve_minutes",
+    # The experiment cap is the facade's (a solve() argument), the three
+    # budgets below the handle's words (docs/plans/redesign/wp4-config.md).
+    "experiments",
+    "minutes",
+    "usd",
+    "reserve_minutes",
     "min_iteration_seconds",
-    # Admission floor once the handler reports a confirmed deliverable
-    # (insurance already paid): late, short iterations become admissible.
-    "min_iteration_seconds_insured",
     "min_agent_timeout_seconds",
+    "judge_reserve_seconds",
     # Durable-clock heartbeat interval (consumed by the orchestrator, not
     # BudgetSpec): keeps elapsed_seconds and the spend fresh between boundary
     # checkpoints.
     "checkpoint_heartbeat_seconds",
+    # How long `kapso build --stop` waits after SIGTERM before SIGKILL
+    # (consumed by the verb, not BudgetSpec).
+    "stop_grace_seconds",
+    "stop_poll_seconds",
     # Validated separately by FidelitySpec.resolve.
     "fidelity",
 }
+
+
+# The budget's end (docs/plans/redesign/wp4-config.md). A set reserve is
+# bounded by this fraction of the budget — structural, so a short budget
+# keeps its search; the delivery's protected slice without a fidelity
+# measurement is the final checkout and the records, in seconds; and the
+# two stop details a budget's end records beside time and cost.
+RESERVE_FRACTION_BOUND = 0.25
+# The packaged budget block: the one home of the floors' defaults.
+PACKAGED_BUDGET = load_config()["budget"]
+DELIVERY_SECONDS = 30.0
+ATTEMPT_WOULD_NOT_FIT = "attempt_would_not_fit"
+FINISHING_CUT = "finishing_cut"
+
+
+def admission_refusal(
+    remaining_seconds: float, needed_seconds: float, last_round_seconds: Optional[float],
+) -> str:
+    """The prose of an admission refusal, for the log, the status file's
+    note and the trace."""
+    if last_round_seconds is not None and last_round_seconds >= needed_seconds:
+        why = f"the last took {last_round_seconds / 60:.1f} min"
+    else:
+        why = f"the floor is {needed_seconds / 60:.1f} min"
+    return f"the remaining {max(remaining_seconds, 0.0) / 60:.1f} min would not cover an attempt ({why})"
 
 
 def _require_finite_non_negative(name: str, value: float) -> float:
@@ -55,16 +87,22 @@ class BudgetSpec:
 
     time_budget_seconds: Optional[float] = None
     cost_budget_usd: Optional[float] = None
-    finalization_reserve_seconds: float = 0.0
-    # Enforcement floors. Provisional values: below adapter startup plus one
-    # tool round-trip an agent call cannot do useful work; revisit once
-    # phase_telemetry provides measured call-duration distributions.
-    min_iteration_seconds: float = 60.0
-    # Insured floor: applied instead of min_iteration_seconds while the
-    # problem handler reports a confirmed deliverable on disk. None keeps
-    # the single floor for every state.
-    min_iteration_seconds_insured: Optional[float] = None
-    min_agent_timeout_seconds: float = 60.0
+    # The reserve kept out of the search for finishing. None derives it
+    # each round from the obligations (the harness's verification minutes,
+    # the judge's observed duration, the delivery's slice); a set value is
+    # bounded by RESERVE_FRACTION_BOUND of the budget.
+    finalization_reserve_seconds: Optional[float] = None
+    # Enforcement floors, the packaged config's (`budget.min_iteration_seconds`,
+    # `budget.min_agent_timeout_seconds`): below adapter startup plus one
+    # tool round-trip an agent call cannot do useful work. A live campaign
+    # resolves them from its own config; the defaults serve direct
+    # construction.
+    min_iteration_seconds: float = PACKAGED_BUDGET["min_iteration_seconds"]
+    min_agent_timeout_seconds: float = PACKAGED_BUDGET["min_agent_timeout_seconds"]
+    # What the judge is kept before one has been observed in this campaign
+    # (`budget.judge_reserve_seconds`): the reserve a round keeps for it and
+    # the obligation the finishing stages before it leave standing.
+    judge_reserve_seconds: float = PACKAGED_BUDGET["judge_reserve_seconds"]
 
     def __post_init__(self) -> None:
         if self.time_budget_seconds is not None:
@@ -75,28 +113,19 @@ class BudgetSpec:
             _require_finite_non_negative(
                 "cost_budget_usd", self.cost_budget_usd
             )
-        _require_finite_non_negative(
-            "finalization_reserve_seconds", self.finalization_reserve_seconds
-        )
+        if self.finalization_reserve_seconds is not None:
+            _require_finite_non_negative(
+                "finalization_reserve_seconds", self.finalization_reserve_seconds
+            )
         _require_finite_non_negative(
             "min_iteration_seconds", self.min_iteration_seconds
         )
-        if self.min_iteration_seconds_insured is not None:
-            _require_finite_non_negative(
-                "min_iteration_seconds_insured",
-                self.min_iteration_seconds_insured,
-            )
         _require_finite_non_negative(
             "min_agent_timeout_seconds", self.min_agent_timeout_seconds
         )
-        if (
-            self.time_budget_seconds is not None
-            and self.finalization_reserve_seconds >= self.time_budget_seconds
-        ):
-            raise ValueError(
-                "finalization_reserve_seconds must be smaller than "
-                "time_budget_seconds"
-            )
+        _require_finite_non_negative(
+            "judge_reserve_seconds", self.judge_reserve_seconds
+        )
 
     @property
     def is_unbudgeted(self) -> bool:
@@ -123,25 +152,21 @@ class BudgetSpec:
             )
 
         if time_budget_minutes is None:
-            time_budget_minutes = block.get("time_budget_minutes")
+            time_budget_minutes = block.get("minutes")
         if cost_budget is None:
-            cost_budget = block.get("cost_budget_usd")
+            cost_budget = block.get("usd")
         if finalization_reserve_minutes is None:
-            finalization_reserve_minutes = block.get(
-                "finalization_reserve_minutes"
-            )
+            finalization_reserve_minutes = block.get("reserve_minutes")
 
         kwargs: Dict[str, Any] = {}
         if "min_iteration_seconds" in block:
             kwargs["min_iteration_seconds"] = block["min_iteration_seconds"]
-        if "min_iteration_seconds_insured" in block:
-            kwargs["min_iteration_seconds_insured"] = block[
-                "min_iteration_seconds_insured"
-            ]
         if "min_agent_timeout_seconds" in block:
             kwargs["min_agent_timeout_seconds"] = block[
                 "min_agent_timeout_seconds"
             ]
+        if "judge_reserve_seconds" in block:
+            kwargs["judge_reserve_seconds"] = block["judge_reserve_seconds"]
 
         return cls(
             time_budget_seconds=(
@@ -155,16 +180,26 @@ class BudgetSpec:
             finalization_reserve_seconds=(
                 float(finalization_reserve_minutes) * 60.0
                 if finalization_reserve_minutes is not None
-                else 0.0
+                else None
             ),
             **kwargs,
         )
 
-    def effective_min_iteration_seconds(self, insured: bool) -> float:
-        """The admission floor for the current deliverable state."""
-        if insured and self.min_iteration_seconds_insured is not None:
-            return self.min_iteration_seconds_insured
-        return self.min_iteration_seconds
+    def bounded_reserve_seconds(self) -> Optional[float]:
+        """The set reserve, bounded by a quarter of the time budget; None
+        when the reserve is derived from the obligations each round."""
+        if self.finalization_reserve_seconds is None:
+            return None
+        return self.bound_reserve(self.finalization_reserve_seconds)
+
+    def bound_reserve(self, seconds: float) -> float:
+        """A reserve, set or derived, bounded by a quarter of the time
+        budget: a short budget keeps its search (a verifying harness's
+        minutes alone can exceed a short budget; the finishing sessions
+        then take what their rooms leave)."""
+        if self.time_budget_seconds is None:
+            return seconds
+        return min(seconds, RESERVE_FRACTION_BOUND * self.time_budget_seconds)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -172,8 +207,8 @@ class BudgetSpec:
             "cost_budget_usd": self.cost_budget_usd,
             "finalization_reserve_seconds": self.finalization_reserve_seconds,
             "min_iteration_seconds": self.min_iteration_seconds,
-            "min_iteration_seconds_insured": self.min_iteration_seconds_insured,
             "min_agent_timeout_seconds": self.min_agent_timeout_seconds,
+            "judge_reserve_seconds": self.judge_reserve_seconds,
         }
 
 
@@ -274,32 +309,47 @@ class BudgetSnapshot:
     time_budget_seconds: Optional[float] = None
     cost_budget_usd: Optional[float] = None
     finalization_reserve_seconds: float = 0.0
-    # Sourced from BudgetSpec at construction; the default only serves
-    # direct construction in tests.
-    min_agent_timeout_seconds: float = 60.0
+    # Sourced from BudgetSpec at construction; the default (the packaged
+    # config's) only serves direct construction in tests.
+    min_agent_timeout_seconds: float = PACKAGED_BUDGET["min_agent_timeout_seconds"]
+    judge_reserve_seconds: float = PACKAGED_BUDGET["judge_reserve_seconds"]
+    # The delivery's protected slice this round: the fidelity measurement
+    # when a maintainer measures the delivered artifact, the checkout else.
+    delivery_seconds: float = DELIVERY_SECONDS
 
-    def clamp_timeout(
+    def room(
         self,
-        configured_seconds: Optional[float],
+        obligations_seconds: float = 0.0,
+        *,
+        finishing: bool = False,
         elapsed_since_snapshot: float = 0.0,
     ) -> Optional[float]:
-        """Bound an agent deadline by the budget remaining outside reserve.
+        """The time a session launched now may take; None when the campaign
+        has no time budget. A search session's room is the searchable
+        remainder, the budget less the reserve; a finishing session's is
+        the whole remainder less the obligations that follow it. The time
+        burned since the snapshot is discounted, so sequential phases do
+        not each clamp against the iteration-start remainder."""
+        if self.time_budget_seconds is None:
+            return None
+        base = (
+            self.remaining_seconds - obligations_seconds if finishing
+            else self.remaining_after_reserve
+        )
+        return base - elapsed_since_snapshot
 
-        ``elapsed_since_snapshot`` discounts time burned after this snapshot
-        was taken — sequential phases inside one iteration must not each
-        clamp against the iteration-start remainder, or the second phase
-        overshoots by the first phase's whole runtime.
-
-        Enforcement floor: below min_agent_timeout_seconds an agent call
-        cannot do useful work, so the clamp never goes lower.
-        """
-        remaining = self.remaining_after_reserve
-        if remaining is None:
+    def deadline(
+        self, configured_seconds: Optional[float], room: Optional[float],
+    ) -> Optional[float]:
+        """A session's deadline: the smaller of its configured timeout and
+        its room, never raised to the floor — a session with less room than
+        `min_agent_timeout_seconds` is not launched at all. None when both
+        are unbounded."""
+        if room is None:
             return configured_seconds
-        bound = remaining - elapsed_since_snapshot
-        if configured_seconds is not None:
-            bound = min(configured_seconds, bound)
-        return max(self.min_agent_timeout_seconds, bound)
+        if configured_seconds is None:
+            return room
+        return min(configured_seconds, room)
 
     @property
     def remaining_seconds(self) -> Optional[float]:

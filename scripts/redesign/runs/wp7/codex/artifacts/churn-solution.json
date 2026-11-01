@@ -1,0 +1,56 @@
+{
+  "schema_version": 5,
+  "brief": {
+    "objective": "Raise the churn model's out-of-sample ROC AUC above 0.85\nwithout changing the prediction contract: predict.py keeps\nwriting id,churn_probability for every holdout id.",
+    "measured_by": "kapso_evaluation/evaluate.py, ROC AUC on the held-out rows",
+    "baseline": "0.7974 (full evaluator rerun; shipped bootstrap SE 0.0101)",
+    "target": "0.85",
+    "rules": [
+      "the evaluator is never modified",
+      "no fitting on the holdout rows; the labels are not in the workspace"
+    ],
+    "budget": {
+      "minutes": 60.0,
+      "experiments": 3,
+      "usd": null,
+      "reserve_minutes": null
+    },
+    "harness": null,
+    "experience": []
+  },
+  "branch": null,
+  "commit": null,
+  "base_commit": "6c236112edc9d2d6b1965d90714e6b10233c09d2",
+  "score": null,
+  "goal_achieved": false,
+  "stopped_reason": "budget_exhausted",
+  "stop_detail": "finishing_cut",
+  "experiments": 1,
+  "experiments_total": 1,
+  "cost_usd": 3.2486155,
+  "requests": [],
+  "feedback": null,
+  "evaluator": null,
+  "harness": null,
+  "experience": [],
+  "verification": null,
+  "rejected_candidates": 0,
+  "callback_metrics": {},
+  "callback_primary_metric": null,
+  "session_failures": [
+    {
+      "label": "engine/repo_memory/2",
+      "module": "engine",
+      "host": "codex",
+      "exit": "error",
+      "error": "Codex CLI exited with code 1: Reading prompt from stdin...\n2026-10-27T04:15:25.564154Z ERROR codex_core::session::session: failed to load skill /home/ubuntu/.codex/skills/yc/using-the-yc-cli/SKILL.md: missing field `description`\n{\"type\":\"thread.started\",\"thread_id\":\"01a17b91-f4b7-78b0-8b08-c267eacdb5e3\"}\nError: turn/start: turn/start failed: Input exceeds the maximum length of 1048576 characters. (code -32602), data: {\"input_error_code\":\"input_too_large\",\"max_chars\":1048576,\"actual_chars\":1401838}\n"
+    },
+    {
+      "label": "generic_exp_0",
+      "module": "implementation",
+      "host": "claude_code",
+      "exit": "timeout",
+      "error": "Claude Code CLI exceeded its 1176.5385779312346s deadline and was terminated"
+    }
+  ]
+}

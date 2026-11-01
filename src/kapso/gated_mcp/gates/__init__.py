@@ -9,6 +9,7 @@ from kapso.gated_mcp.gates.experiment_history_gate import ExperimentHistoryGate
 from kapso.gated_mcp.gates.repo_memory_gate import RepoMemoryGate
 from kapso.gated_mcp.gates.bank_gate import BankGate
 from kapso.gated_mcp.gates.inbox_gate import InboxGate
+from kapso.gated_mcp.gates.campaign_gate import CampaignGate
 
 __all__ = [
     "ToolGate",
@@ -21,4 +22,5 @@ __all__ = [
     "RepoMemoryGate",
     "BankGate",
     "InboxGate",
+    "CampaignGate",
 ]

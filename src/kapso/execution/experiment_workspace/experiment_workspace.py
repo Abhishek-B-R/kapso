@@ -87,7 +87,10 @@ class ExperimentWorkspace:
             llm_backend: Shared configured backend for utility completions
         """
         
-        self.workspace_dir = workspace_dir
+        # Absolute: session clones commit their run data by this path from
+        # their own working directory, and a relative one is "outside
+        # repository" there.
+        self.workspace_dir = os.path.abspath(workspace_dir)
         os.makedirs(self.workspace_dir, exist_ok=True)
         self.initial_repo = os.path.abspath(initial_repo) if initial_repo else None
         self.is_seeded = self.initial_repo is not None
@@ -142,24 +145,6 @@ class ExperimentWorkspace:
         # Sessions contain nested git clones and should never appear as "untracked noise"
         # in the workspace repo status.
         self._ensure_workspace_gitignore()
-
-    @classmethod
-    def with_default_config(
-        cls,
-        workspace_dir: Optional[str] = None,
-        initial_repo: Optional[str] = None,
-    ) -> 'ExperimentWorkspace':
-        """
-        Create ExperimentWorkspace with default coding agent from agents.yaml.
-        
-        Returns:
-            ExperimentWorkspace configured with default agent
-        """
-        config = CodingAgentFactory.build_config()
-        # Keep this helper usable in standalone scripts.
-        # If workspace_dir is not provided, create a unique temp path.
-        workspace_dir = workspace_dir or os.path.join("tmp", "experiment_workspace", str(uuid.uuid4()))
-        return cls(coding_agent_config=config, workspace_dir=workspace_dir, initial_repo=initial_repo)
 
     def get_current_branch(self) -> str:
         """Get the current active branch name."""
@@ -360,10 +345,16 @@ class ExperimentWorkspace:
             "!changes.log",
             ".kapso/run_state.json",
             ".kapso/.run_state.*.tmp",
+            # The status file (observability) exists from workspace setup
+            # on; campaign state like the checkpoint, never branch content.
+            ".kapso/status.json",
+            ".kapso/.status.*.tmp",
             # The inbox record and the launch record (design v4) are
             # campaign state like the checkpoint, never branch content.
             ".kapso/inbox.jsonl",
             ".kapso/launch.json",
+            # The solution record build() writes when it returns.
+            ".kapso/solution.json",
             # Campaign shared cache holds large reusable artifacts (tables,
             # embeddings); they must never enter experiment branches.
             ".kapso/shared_cache/",
@@ -372,6 +363,16 @@ class ExperimentWorkspace:
             # Leeroopedia token); sessions used to commit it into experiment
             # branches.
             ".claude_mcp/",
+            # A harness's staged files (kapso.harness.staging): the skills,
+            # hooks and delegates each host discovers in its own directory,
+            # the task statement copied into every session, and the link to
+            # the campaign's prepared resources (no trailing slash: a symlink
+            # and a file must match too). Never branch content.
+            ".claude/",
+            ".agents/",
+            ".codex/",
+            "kapso_task.md",
+            "prepared",
             # Seeded repos may arrive with bytecode; once tracked it goes
             # stale on re-import and blocks every later branch checkout.
             "__pycache__/",
@@ -383,7 +384,10 @@ class ExperimentWorkspace:
             with open(gitignore_path, "r") as f:
                 existing = f.read()
 
-        to_add = [line for line in required_lines if line not in existing]
+        # Whole lines: a seed whose ignore file mentions `.claude/` in a
+        # comment or ignores `data/prepared/` has not ignored these.
+        present = {line.strip() for line in existing.splitlines()}
+        to_add = [line for line in required_lines if line not in present]
         if not to_add:
             return
 
@@ -484,27 +488,3 @@ class ExperimentWorkspace:
             Total cost in dollars
         """
         return self.previous_sessions_cost
-
-
-if __name__ == "__main__":
-    # Test with default agent from agents.yaml
-    print("Testing ExperimentWorkspace with default config...")
-    
-    workspace = ExperimentWorkspace.with_default_config()
-    print(f"Workspace: {workspace.workspace_dir}")
-    print(f"Agent type: {workspace.coding_agent_config.agent_type}")
-    
-    session = workspace.create_experiment_session("test_branch")
-    result = session.generate_code("implement a main.py file that prints 'Hello World'")
-    
-    print(f"Success: {result['success']}")
-    print(f"Code: {result['code'][:200]}..." if result['code'] else "No code")
-    if result['error']:
-        print(f"Error: {result['error']}")
-    
-    workspace.finalize_session(session)
-    print(f"Cumulative cost: ${workspace.get_cumulative_cost():.4f}")
-    
-    # Cleanup
-    workspace.cleanup()
-    print("Done!")

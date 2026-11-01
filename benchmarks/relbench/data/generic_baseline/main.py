@@ -1,30 +1,37 @@
-"""Baseline candidate seeded into generic-search workspaces.
+"""Baseline candidate seeded into every RelBench campaign.
 
 Purpose: (1) give the evaluation maintainer's registration-time calibration a
-runnable candidate, (2) give parent_policy=best a legitimate starting parent.
-Writes shape-correct, family-appropriate trivial predictions for both splits.
+runnable candidate, (2) give the search a legitimate starting parent. Writes
+shape-correct, family-appropriate trivial predictions for both splits.
 Replace me with a real solution.
 """
 
+import json
 import os
 import sys
 from pathlib import Path
 
 import numpy as np
-
 from relbench.base import RecommendationTask, TaskType
-from relbench.tasks import get_task
+from relbench.datasets import dataset_registry
+from relbench.tasks import task_registry
+
+TASK_FILE = Path("kapso_evaluation") / "task.json"
 
 
 def main() -> None:
-    dataset_name = os.environ["RELBENCH_DATASET"]
-    task_name = os.environ["RELBENCH_TASK"]
-    task = get_task(dataset_name, task_name, download=False)
-    # Rolling-harness snapshots (per-tick caches) ship an EMPTY val table; the
-    # per-invocation contract is test predictions for THIS tick, no val file.
-    val_path = (Path(os.environ["RELBENCH_CACHE_DIR"])
-                / dataset_name / "tasks" / task_name / "val.parquet")
-    n_val = len(task.get_table("val")) if val_path.exists() else 0
+    settings = json.loads(TASK_FILE.read_text(encoding="utf-8"))
+    dataset_name, task_name = settings["dataset"], settings["task"]
+    # The copy this run is bound to: the evaluation sets it (a tick's
+    # snapshot under the rolling regime).
+    cache = Path(os.environ["RELBENCH_CACHE_DIR"])
+    dataset_cls, dataset_args, dataset_kwargs = dataset_registry[dataset_name]
+    dataset = dataset_cls(*dataset_args, **{**dataset_kwargs, "cache_dir": str(cache / dataset_name)})
+    task_cls, task_args, task_kwargs = task_registry[dataset_name][task_name]
+    task = task_cls(dataset, *task_args, **{**task_kwargs, "cache_dir": str(cache / dataset_name / "tasks" / task_name)})
+    # A rolling tick's snapshot ships an EMPTY val table; the per-invocation
+    # contract is test predictions for THIS tick, no val file.
+    n_val = len(task.get_table("val"))
     rolling = n_val == 0
     n_test = len(task.get_table("test"))
 

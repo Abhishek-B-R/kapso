@@ -32,7 +32,7 @@ from inbox_live_support import (
     init_events,
     nodes,
     result_events,
-    run_evolve,
+    run_build,
     run_reply,
     run_resume,
     run_sum,
@@ -57,9 +57,9 @@ def _transcript(cli: str, session_id: str) -> Path:
 def _paused(root: Path, cli: str):
     """Launch the campaign and check the pause. Returns (campaign, node, request)."""
     campaign = root / "campaign"
-    evolve = run_evolve(root, log=root / "evolve.log")
-    assert evolve.returncode == 0, evolve.stdout[-3000:]
-    assert "WAITING ON YOU" in evolve.stdout or "stopped_reason=waiting_for_user" in evolve.stdout
+    build = run_build(root, log=root / "build.log")
+    assert build.returncode == 0, build.stdout[-3000:]
+    assert "WAITING ON YOU" in build.stdout or "stopped_reason=waiting_for_user" in build.stdout
 
     requests = list(load_requests(inbox_path(campaign)).values())
     assert len(requests) == 1, [r.key for r in requests]
@@ -174,9 +174,9 @@ def test_two_needs_two_replies(tmp_path, cli):
     root = tmp_path / "two"
     key = build_fixture(root, cli, variant="two_needs")["key"]
     campaign = root / "campaign"
-    evolve = run_evolve(root, log=root / "evolve.log")
-    assert evolve.returncode == 0, evolve.stdout[-3000:]
-    assert "WAITING ON YOU" in evolve.stdout or "stopped_reason=waiting_for_user" in evolve.stdout
+    build = run_build(root, log=root / "build.log")
+    assert build.returncode == 0, build.stdout[-3000:]
+    assert "WAITING ON YOU" in build.stdout or "stopped_reason=waiting_for_user" in build.stdout
     requests = sorted(load_requests(inbox_path(campaign)).values(), key=lambda r: r.id)
     assert len(requests) == 2 and all(r.open for r in requests), [r.key for r in requests]
     assert len({r.session for r in requests}) == 1, "the two needs were not one call"

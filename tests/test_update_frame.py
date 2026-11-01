@@ -205,7 +205,7 @@ def test_clean_run_commits_tags_and_reports(tmp_path):
     # Regression: the full pipeline — seeded worksheet, honest fake run,
     # validation green, one commit tagged lr_<id> pushed to the home, report
     # assembled with the health block.
-    frame, config, batch, _ = make_frame(tmp_path, [good_lead])
+    frame, config, batch, lead = make_frame(tmp_path, [good_lead])
     run_dir = frame.run_update(
         batch, config["learning"]["update_crew"]["run_root"], "crew_v1"
     )
@@ -215,6 +215,7 @@ def test_clean_run_commits_tags_and_reports(tmp_path):
     assert frontmatter["batch"] == [TRAJECTORY_ID]
     assert frontmatter["health"]["cards"]["active"] == 1
     assert frontmatter["bank"]["before"] != frontmatter["bank"]["after"]
+    assert lead.cleaned_up   # the session's own staging went with it
     tags = subprocess.run(
         ["git", "-C", config["learning"]["bank"]["local_path"], "tag"],
         check=True, capture_output=True, text=True,
@@ -229,6 +230,38 @@ def test_clean_run_commits_tags_and_reports(tmp_path):
     assert TRAJECTORY_ID in show
     # derived edges rebuilt
     assert (run_dir / "bank" / "index" / "edges.yaml").is_file()
+
+
+def test_a_lesson_that_admits_nothing_moves_nothing(tmp_path):
+    # Regression: a crew that changes no card, sighting or quarantine
+    # entry used to commit the rebuilt log alone, so the bank's head moved
+    # and the lesson read as admitted. Now there is no commit, no tag and
+    # no push; the report records the head before and after as one.
+    def passing_lead(workspace):
+        good_lead(workspace)
+        run_dir = Path(workspace)
+        # take back the evidence append and the sighting: the bank is as it was
+        subprocess.run(
+            ["git", "-C", str(run_dir / "bank"), "checkout", "--", "insights/a-card.md", "sightings.md"], check=True,
+        )
+        journal = run_dir / "work" / "journal.md"
+        journal.write_text(journal.read_text().replace(
+            "→ ATTACH** (fast-path) — lifted the AGREED settlement onto a-card; "
+            "delta copied, never recomputed.",
+            "→ PASS** — the settlement repeats what the card already says; "
+            "rebuttal: a copied delta would be a second count of one measurement.",
+        ))
+        return "nothing to admit"
+
+    frame, config, batch, lead = make_frame(tmp_path, [passing_lead])
+    home = config["learning"]["bank"]["local_path"]
+    before = subprocess.run(["git", "-C", home, "rev-parse", "main"], check=True, capture_output=True, text=True).stdout
+    run_dir = frame.run_update(batch, config["learning"]["update_crew"]["run_root"], "crew_v1")
+    after = subprocess.run(["git", "-C", home, "rev-parse", "main"], check=True, capture_output=True, text=True).stdout
+    assert after == before and lead.cleaned_up
+    assert subprocess.run(["git", "-C", home, "tag"], check=True, capture_output=True, text=True).stdout == ""
+    frontmatter = yaml.safe_load((run_dir / "report.md").read_text().split("---")[1])
+    assert frontmatter["bank"]["before"] == frontmatter["bank"]["after"]
 
 
 def test_rewrite_rows_capped_and_priority_ordered(tmp_path):

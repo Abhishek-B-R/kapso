@@ -20,6 +20,7 @@ import pytest
 from kapso.execution.inbox import file_requests, inbox_path, load_requests, record_reply
 from kapso.execution.observability import OperationStatusView
 from kapso.execution.orchestrator import OrchestratorAgent
+from tests.harness_support import fake_config
 from kapso.execution.run_checkpoint import RunCheckpointStore
 from kapso.execution.search_strategies.base import SearchNode
 
@@ -57,13 +58,8 @@ class FakeLLM:
 
 
 class FakeProblemHandler:
-    honor_agent_stop = True
-
     def get_problem_context(self) -> str:
         return "Solve the support problem"
-
-    def deliverable_ready_reserve_seconds(self):
-        return None
 
 
 class FakeKnowledgeSearch:
@@ -86,12 +82,17 @@ class InboxFakeStrategy:
     def __init__(self, workspace_dir: str):
         self.workspace_dir = workspace_dir
         self.workspace = FakeWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.node_history: List[SearchNode] = []
         self.runs = 0
         self.inbox = inbox_path(workspace_dir)
         self.scores_evaluator_id = ""
         self.evaluator_transition = None
         self.registered_evaluator_id = ""
+
+    def continues_an_answered_node(self) -> bool:
+        return False   # the fake has no inbox continuation; the orchestrator's admission asks every strategy
 
     def run(self, context: str, budget_progress: float = 0.0) -> SearchNode:
         self.runs += 1
@@ -158,16 +159,15 @@ def patched(monkeypatch, tmp_path):
 
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}},
-            "inbox": {"enabled": True, "stop_grace_seconds": 1, "registry": str(tmp_path / "registry.jsonl")},
-        },
+        orchestrator_module, "load_config",
+        lambda config_path=None: fake_config(
+            inbox={"enabled": True, "stop_grace_seconds": 1, "registry": str(tmp_path / "registry.jsonl")},
+        ),
     )
-    monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self, coding_agent=None: object())
+    monkeypatch.setattr(OrchestratorAgent, "_create_feedback_generator", lambda self: object())
     strategies: List[InboxFakeStrategy] = []
 
-    def create_strategy(self, coding_agent, workspace_dir, start_from_checkpoint):
+    def create_strategy(self, workspace_dir, start_from_checkpoint):
         strategy = InboxFakeStrategy(workspace_dir)
         strategies.append(strategy)
         return strategy
@@ -211,7 +211,7 @@ def test_a_session_that_asks_pauses_the_campaign(patched, capsys):
     assert len(done_payloads) == 1 and done_payloads[0]["requests"][0]["id"] == 1
 
     out = capsys.readouterr().out
-    assert "kapso evolve — waiting on you" in out
+    assert "kapso build — waiting on you" in out
     assert "#1  env:OPENAI_API_KEY" in out and "reply with   kapso inbox reply" in out
     assert "tried  OPENAI_KEY unset too" in out
 

@@ -13,10 +13,8 @@ from kapso.execution.coding_agents.adapters.oss_claude_code_agent import (
     FIRST_PARTY_ENV_VARS,
     OssClaudeCodeCodingAgent,
 )
-from kapso.execution.search_strategies.generic.ideation import (
-    ENSEMBLE_MEMBER_CLIS,
-    normalize_ensemble_member,
-)
+from kapso.core.roles import check_hosts, resolve_members
+from strategy_support import generic_params, packaged_hosts
 
 GLM_MODEL = "accounts/fireworks/models/glm-5p2"
 BASE_URL = "https://api.fireworks.ai/inference"
@@ -88,29 +86,24 @@ def test_env_strip_and_defaults_still_apply(monkeypatch):
     assert env["BASH_DEFAULT_TIMEOUT_MS"] == "900000"
 
 
-def test_ensemble_accepts_oss_member_and_requires_wiring():
-    assert "oss_claude_code" in ENSEMBLE_MEMBER_CLIS
-    member = normalize_ensemble_member(
-        {
-            "cli": "oss_claude_code",
-            "model": GLM_MODEL,
-            "effort": "max",
-            "base_url": BASE_URL,
-            "auth_token_env": "FIREWORKS_API_KEY",
-        },
-        role="ideation_ensemble[2]",
-    )
-    assert member["base_url"] == BASE_URL
-    with pytest.raises(ValueError, match="auth_token_env|base_url"):
-        normalize_ensemble_member(
-            {"cli": "oss_claude_code", "model": GLM_MODEL},
-            role="ideation_ensemble[2]",
-        )
+def test_an_oss_member_takes_its_endpoint_from_its_host_entry():
+    """The endpoint wiring is the OSS host's (hosts.oss_claude_code), not a
+    member's: a member names the host and inherits its settings."""
+    from kapso.core.agent_manifest import load_agent_manifest
+
+    hosts = {**packaged_hosts(), "oss_claude_code": {
+        "model": GLM_MODEL, "base_url": BASE_URL, "auth_token_env": "FIREWORKS_API_KEY",
+    }}
+    check_hosts(hosts, load_agent_manifest()["agents"])
+    (member,) = resolve_members(hosts, generic_params(), [{"cli": "oss_claude_code", "effort": "max"}])
+    assert member.model == GLM_MODEL and member.effort == "max"
+    assert member.settings == {"base_url": BASE_URL, "auth_token_env": "FIREWORKS_API_KEY"}
 
 
-def test_endpoint_wiring_rejected_on_first_party_members():
-    with pytest.raises(ValueError, match="only valid for"):
-        normalize_ensemble_member(
-            {"cli": "claude_code", "model": "claude-fable-5", "base_url": BASE_URL},
-            role="ideation_ensemble[1]",
-        )
+def test_endpoint_wiring_rejected_on_first_party_hosts_and_members():
+    from kapso.core.agent_manifest import load_agent_manifest
+
+    with pytest.raises(ValueError, match="hosts.claude_code: unknown key base_url"):
+        check_hosts({**packaged_hosts(), "claude_code": {"model": "claude-fable-5", "base_url": BASE_URL}}, load_agent_manifest()["agents"])
+    with pytest.raises(ValueError, match=r"ensemble\[0\]: unknown key base_url"):
+        resolve_members(packaged_hosts(), generic_params(), [{"cli": "claude_code", "base_url": BASE_URL}])

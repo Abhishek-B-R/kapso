@@ -1,0 +1,77 @@
+{
+  "module": "verification",
+  "host": "codex",
+  "harness": {
+    "name": "trading",
+    "version": "0.1.0",
+    "hash": "8fbc403632afe85c95fd15470afbe12b1f324026cb62a1a1bbb9aea6b06984ae",
+    "source": "/tmp/claude-1000/-home-ubuntu-kapso--claude-worktrees-kapso-plugin/5b2d9ebf-e9fa-4e9a-859e-c54e838342de/scratchpad/wp4/devbox/examples/harnesses/trading"
+  },
+  "session_dir": "/tmp/kapso_candidate_wpmof1ky",
+  "pages": [
+    "guardrails.md",
+    "verification.md"
+  ],
+  "skills": [
+    "backtesting",
+    "lookahead-scan"
+  ],
+  "mcp_servers": [],
+  "agents": [
+    "lookahead-auditor"
+  ],
+  "hooks": [
+    "protect-harness",
+    "session-brief",
+    "deny-web-fetch",
+    "protect-prepared"
+  ],
+  "prepared": [
+    "market-data"
+  ],
+  "stream": "/campaign/.kapso/sessions/verification/generic_exp_0/stream.jsonl",
+  "runs": [
+    {
+      "started": "2026-10-26T14:29:34+00:00",
+      "ended": "2026-10-26T14:31:34+00:00",
+      "duration_seconds": 120.028,
+      "model": "gpt-5.6-sol",
+      "cli_session_id": "01a1789d-e027-7421-92e8-369ff0440345",
+      "exit": "success",
+      "error": null,
+      "retry_reason": null,
+      "cost_usd": null,
+      "cost_cumulative": null,
+      "turns": 1,
+      "usage": {
+        "input_tokens": 496391,
+        "cached_input_tokens": 434944,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5551,
+        "reasoning_output_tokens": 2222
+      },
+      "tools": {
+        "command_execution": 19,
+        "file_change": 1
+      },
+      "gates": {},
+      "hooks": null,
+      "delegates": [
+        {
+          "name": "wait",
+          "receivers": [],
+          "status": "completed",
+          "prompt": null
+        }
+      ],
+      "host_errors": [
+        "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation.",
+        "`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."
+      ],
+      "files_changed": [
+        "/campaign/.kapso/verification/generic_exp_0/verdict.json"
+      ],
+      "last_message": "void \u2014 The strategy passed look-ahead, leakage, contract, and metric-consistency checks, but the attempt added `kapso_evaluation/eval_profile.md` inside the explicitly protected evaluation directory."
+    }
+  ]
+}

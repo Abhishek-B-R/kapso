@@ -10,6 +10,7 @@ a clean finish into a kill.
 from types import SimpleNamespace
 
 import kapso.execution.search_strategies.generic.strategy as strategy_module
+from kapso.core.roles import SessionRole
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
 
 
@@ -19,7 +20,7 @@ ENDINGS = {
 }
 
 
-def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch):
+def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch, tmp_path):
     judged = {}
 
     def fake_run_implementation(**kwargs):
@@ -28,34 +29,40 @@ def test_each_lane_is_judged_on_its_own_session_ending(monkeypatch):
 
     class Judge:
         configured_timeout_seconds = 60
+        agent_type = "claude_code"
+
+        def attach_harness(self, staged):
+            """No harness here: nothing to attach."""
 
         def generate(self, **kwargs):
             judged[kwargs["head_branch"]] = kwargs["session_end_facts"]
             return SimpleNamespace(
                 feedback="ok", evaluation_valid=True, score=1.0, stop=False,
-                duration_seconds=None, cost_usd=0.0,
+                duration_seconds=None, cost_usd=0.0, cards_load_bearing=[], unjudged="",
             )
 
     monkeypatch.setattr(strategy_module, "run_implementation", fake_run_implementation)
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.iteration_count = 1
+    strategy.harness = None
     strategy.__dict__.update(
         node_expansion_value=2, expansion_lane_env=None, node_history=[],
-        workspace=None, workspace_dir="", llm=None,
+        budget_snapshot=None, budget_snapshot_monotonic=None, finishing_cut=None,
+        workspace=None, workspace_dir=str(tmp_path), llm=None,
         registered_evaluation_manifest=None, registered_evaluation_command=None,
         registered_evaluator_id=None, implementation_gates=[],
-        gate_failure_policy="skip", bank_serving=None, kg_index_path=None,
-        implementation_cli="claude_code", implementation_model="m",
-        implementation_fallback_model=None, implementation_web=False,
-        _claude_auth_settings={}, env_strip=[], env_defaults={},
-        session_effort=None, implementation_timeout=600,
+        gate_failure_policy="skip", bank_serving=None, kg_index_path=None, hosted=None,
+        implementation_role=SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=600, web=False),
+        implementation_fallback_model=None, env_strip=[], env_defaults={},
         previous_errors=[], recent_error_count=3, feedback_generator=Judge(),
-        goal="the goal", design_axes=(),
+        goal="the goal",
         problem_handler=SimpleNamespace(maximize_scoring=True),
         _session_end_facts={},
     )
     monkeypatch.setattr(strategy, "_status_phase", lambda phase: None)
     monkeypatch.setattr(strategy, "_clamped_timeout", lambda seconds: seconds)
     monkeypatch.setattr(strategy, "_get_code_diff", lambda branch, parent: "diff")
+    monkeypatch.setattr(strategy, "_attempt_commit", lambda branch_name: "c" * 40)
     monkeypatch.setattr(strategy, "_ensure_technical_difficulties", lambda node: None)
     monkeypatch.setattr(strategy, "enforce_evaluation_integrity", lambda node: True)
 

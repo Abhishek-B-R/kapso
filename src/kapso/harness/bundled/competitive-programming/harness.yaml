@@ -1,0 +1,20 @@
+schema_version: 1
+name: competitive-programming
+version: 0.3.2
+description: Timed contests scored by an official scorer on a seed list or by a leaderboard, heuristic optimisation and machine-learning olympiad tasks alike, with the time limit as the budget, ship-early-then-improve under a submission quota, and the scorer or the board as the only score.
+
+modules:
+  setup:
+    skills: [scorer-cli, contest-preflight, kaggle-cli, hf-model-fetch]
+  ideation:
+    skills: [heuristic-patterns, task-type-playbooks, olympiad-playbook, contest-economics]
+  implementation:
+    skills: [heuristic-patterns, cpp-performance, scorer-cli, kaggle-cli, contest-economics, olympiad-playbook, task-type-playbooks, tabular-modeling, cv-protocol, ensembling, eda-discipline]
+    agents: [score-auditor, submission-auditor]
+    hooks: [require-scorer-run, deny-shell-submit, require-insurance]
+  verification:
+    skills: [scorer-cli, kaggle-cli, cv-protocol]
+    agents: [score-auditor, submission-auditor]
+  feedback:
+    skills: [heuristic-patterns, contest-economics, ensembling]
+  learning: {}

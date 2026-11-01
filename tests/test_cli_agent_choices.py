@@ -4,8 +4,8 @@ import sys
 
 import pytest
 
-import kapso.cli as cli
-from kapso.cli import AVAILABLE_AGENTS
+from kapso.cli import main
+from kapso.cli.common import AVAILABLE_AGENTS
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 
@@ -25,13 +25,13 @@ def test_cli_agent_choices_match_factory_registry():
 @pytest.mark.parametrize(
     "args",
     [
-        ["evolve", "--goal", "test", "-a", "openai_compatible"],
+        ["build", "--goal", "test", "-a", "openai_compatible"],
         ["deploy", "--coding-agent", "openai_compatible"],
     ],
 )
 def test_cli_rejects_inference_adapter(monkeypatch, capsys, args):
     monkeypatch.setattr(sys, "argv", ["kapso", *args])
     with pytest.raises(SystemExit) as error:
-        cli.main()
+        main()
     assert error.value.code == 2
     assert "invalid choice: 'openai_compatible'" in capsys.readouterr().err

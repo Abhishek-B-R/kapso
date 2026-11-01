@@ -15,12 +15,14 @@ from typing import Any, Dict, List
 
 import pytest
 
-import kapso.cli as cli_module
-from kapso.cli import _print_evolve_summary, main
+from kapso.cli import main
+from kapso.cli.common import _print_build_summary
+from kapso.cli.inbox import _campaign_goal, cmd_inbox
 from kapso.execution.inbox import file_requests, inbox_path, record_reply, register_campaign
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore, config_fingerprint
 from kapso.execution.search_strategies.base import SearchNode
-from kapso.execution.solution import SolutionResult
+from kapso.handles import Brief
+from tests.handles_support import make_solution
 from kapso.kapso import Kapso
 
 ENTRY = {
@@ -42,7 +44,7 @@ def _paused_campaign(root: Path, name: str = "campaign", *, requests: int = 1) -
         suspended=True, request_ids=list(range(1, requests + 1)), cli_session_id="cli-1",
     )
     RunCheckpointStore(str(workspace)).save(RunCheckpoint.create(
-        strategy_type="generic", goal="Improve support\nmore detail",
+        strategy_type="generic", goal=Brief(objective="Improve support\nmore detail").render(),
         config_fingerprint=config_fingerprint({"m": 1}), status="running", completed_iterations=2,
         cumulative_cost=1.0, current_feedback=None, strategy_state={"node_history": [node.to_dict()]},
         last_stop="waiting_for_user",
@@ -55,11 +57,27 @@ def _run(monkeypatch, *argv: str) -> None:
     main()
 
 
+def test_the_goal_line_reads_a_brief_or_a_plain_goal(tmp_path):
+    """A campaign launched through build() holds the rendered brief; one a
+    benchmark runner launched holds its plain goal. Both list."""
+    built = _paused_campaign(tmp_path, "built")
+    assert _campaign_goal(built) == "Improve support"
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    RunCheckpointStore(str(plain)).save(RunCheckpoint.create(
+        strategy_type="generic", goal="Predict churn on rel-f1\nwith the official split",
+        config_fingerprint=config_fingerprint({"m": 1}), status="running", completed_iterations=0,
+        cumulative_cost=0.0, current_feedback=None, strategy_state={"node_history": []},
+    ))
+    assert _campaign_goal(plain) == "Predict churn on rel-f1"
+    assert _campaign_goal(tmp_path / "nowhere") == ""
+
+
 def _capture_reply(monkeypatch, result=None) -> List[Any]:
     calls: List[Any] = []
 
-    def reply(cls, campaign, request_id, note=""):
-        calls.append((campaign, request_id, note))
+    def reply(cls, campaign, request_id, note="", *, allow_secret=False):
+        calls.append((campaign, request_id, note, allow_secret))
         return result
 
     monkeypatch.setattr(Kapso, "reply", classmethod(reply))
@@ -93,10 +111,7 @@ def test_inbox_names_a_campaign_from_elsewhere(tmp_path, monkeypatch, capsys):
 def test_inbox_from_elsewhere_reads_the_registry(tmp_path, monkeypatch, capsys):
     registry = tmp_path / "registry.jsonl"
     config = tmp_path / "config.yaml"
-    config.write_text(
-        "default_mode: GENERIC\nmodes:\n  GENERIC:\n    inbox:\n"
-        f"      registry: {registry}\n"
-    )
+    config.write_text(f"inbox:\n  registry: {registry}\n")
     monkeypatch.chdir(tmp_path)
     _run(monkeypatch, "inbox", "--config", str(config))
     assert capsys.readouterr().out.strip() == "Nothing waiting on you."
@@ -124,7 +139,7 @@ def test_suggested_reply_works_where_it_was_printed(tmp_path, monkeypatch, capsy
     command = shlex.split(hint.split("reply with", 1)[1].replace("…", "added the key"))
     assert command[:3] == ["kapso", "inbox", "reply"]
     _run(monkeypatch, *command[1:])
-    assert calls == [(str(workspace.resolve()), 1, "added the key")]
+    assert calls == [(str(workspace.resolve()), 1, "added the key", False)]
 
 
 def test_reply_resolves_the_campaign_and_the_id(tmp_path, monkeypatch, capsys):
@@ -139,9 +154,9 @@ def test_reply_resolves_the_campaign_and_the_id(tmp_path, monkeypatch, capsys):
 
     resolved = str(workspace.resolve())
     assert calls == [
-        (resolved, 1, "added the key"),
-        (resolved, 1, "added the key"),
-        (resolved, 1, ""),
+        (resolved, 1, "added the key", False),
+        (resolved, 1, "added the key", False),
+        (resolved, 1, "", False),
     ]
     assert capsys.readouterr().out == ""
 
@@ -152,10 +167,10 @@ def test_reply_needs_the_id_when_several_are_open(tmp_path, monkeypatch, capsys)
     monkeypatch.chdir(workspace)
     with pytest.raises(SystemExit):
         _run(monkeypatch, "inbox", "reply", "done")
-    assert "which request?" in capsys.readouterr().out and calls == []
+    assert "which request?" in capsys.readouterr().err and calls == []
 
     _run(monkeypatch, "inbox", "reply", "2", "done")
-    assert calls == [(str(workspace.resolve()), 2, "done")]
+    assert calls == [(str(workspace.resolve()), 2, "done", False)]
 
 
 def _failed_resume(root: Path, name: str = "campaign", *, requests: int = 1) -> Path:
@@ -180,9 +195,10 @@ def test_the_global_inbox_lists_a_campaign_awaiting_a_resume(tmp_path, monkeypat
     workspace = _failed_resume(tmp_path)
     registry = tmp_path / "registry.jsonl"
     register_campaign(registry, workspace, "Improve support")
+    config = tmp_path / "config.yaml"
+    config.write_text(f"inbox:\n  registry: {registry}\n")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(cli_module, "load_mode_config", lambda *args: {"inbox": {"registry": str(registry)}})
-    _run(monkeypatch, "inbox")
+    _run(monkeypatch, "inbox", "--config", str(config))
     assert f"retry with   kapso inbox reply {shlex.quote(str(workspace.resolve()))}" in capsys.readouterr().out
 
 
@@ -191,13 +207,13 @@ def test_a_retry_needs_no_id(tmp_path, monkeypatch, capsys):
     calls = _capture_reply(monkeypatch)
     monkeypatch.chdir(workspace)
     _run(monkeypatch, "inbox", "reply")
-    assert calls[-1][1:] == (1, "")
+    assert calls[-1][1:3] == (1, "")
     # A note has to go on one request of the two.
     with pytest.raises(SystemExit):
         _run(monkeypatch, "inbox", "reply", "use staging")
-    assert "which request?" in capsys.readouterr().out
+    assert "which request?" in capsys.readouterr().err
     _run(monkeypatch, "inbox", "reply", "2", "use staging")
-    assert calls[-1][1:] == (2, "use staging")
+    assert calls[-1][1:3] == (2, "use staging")
 
 
 def test_reply_outside_a_campaign_must_name_it(tmp_path, monkeypatch, capsys):
@@ -205,7 +221,7 @@ def test_reply_outside_a_campaign_must_name_it(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit):
         _run(monkeypatch, "inbox", "reply", "1", "done")
-    assert "not inside a campaign" in capsys.readouterr().out and calls == []
+    assert "not inside a campaign" in capsys.readouterr().err and calls == []
 
 
 def test_reply_refuses_a_credential_without_yes(tmp_path, monkeypatch, capsys):
@@ -218,28 +234,25 @@ def test_reply_refuses_a_credential_without_yes(tmp_path, monkeypatch, capsys):
     assert "looks like a credential" in capsys.readouterr().out and calls == []
 
     _run(monkeypatch, "inbox", "reply", "1", token, "--yes")
-    assert calls == [(str(workspace.resolve()), 1, token)]
-
-
-def _solution(workspace: Path, metadata: Dict[str, Any]) -> SolutionResult:
-    return SolutionResult(goal="Improve support", code_path=str(workspace), metadata=metadata)
+    assert calls == [(str(workspace.resolve()), 1, token, True)]
 
 
 def test_reply_prints_the_campaign_summary(tmp_path, monkeypatch, capsys):
     workspace = _paused_campaign(tmp_path)
     monkeypatch.chdir(workspace)
-    _capture_reply(monkeypatch, _solution(workspace, {"stopped_reason": "max_iterations", "cost": 2.5}))
+    _capture_reply(monkeypatch, make_solution(workspace, "Improve support", stopped_reason="max_iterations", cost_usd=2.5))
     _run(monkeypatch, "inbox", "reply", "1", "added the key")
     out = capsys.readouterr().out
-    assert "COMPLETED" in out and "Stopped reason: max_iterations" in out and "Cost: 2.5" in out
+    assert "COMPLETED" in out and "Stopped:         max_iterations" in out and "Cost:            $2.500" in out
 
 
 def test_the_summary_says_waiting_on_you_when_the_campaign_asked_again(tmp_path, capsys):
     workspace = tmp_path / "campaign"
     request = {"id": 2, "key": "env:OPENAI_API_KEY"}
-    _print_evolve_summary(_solution(workspace, {
-        "stopped_reason": "waiting_for_user", "requests": [request, {**request, "id": 3}],
-    }))
+    _print_build_summary(make_solution(
+        workspace, "Improve support",
+        stopped_reason="waiting_for_user", requests=[request, {**request, "id": 3}],
+    ))
     out = capsys.readouterr().out
     assert "WAITING ON YOU" in out and "COMPLETED" not in out
     assert f'Reply with:  kapso inbox reply 2 "…"   (inside {workspace})' in out
@@ -252,4 +265,4 @@ def test_inbox_help_shows_both_forms(monkeypatch, capsys):
     assert stop.value.code == 0
     out = capsys.readouterr().out
     assert "reply [CAMPAIGN] [ID] [NOTE]" in out and "kapso inbox reply 1" in out
-    assert cli_module.cmd_inbox.__doc__
+    assert cmd_inbox.__doc__

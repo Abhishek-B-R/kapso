@@ -1,0 +1,16 @@
+The learn is running on `../churn-campaign` (pid 27412). Doctor passed every required check first.
+
+**The campaign it's learning from:** the build finished with one attempt scored at 0.847. It stopped with about 21 minutes of its 60-minute budget left, because that attempt had taken 36 minutes and another wouldn't fit. The campaign's record names no harness, and the launch accepted it without one.
+
+**Follow it** (it takes an hour or more and uses both the `claude` and `codex` CLIs):
+```bash
+kapso watch learning/status --follow --config kapso-config.yaml
+```
+The log is at `/home/ubuntu/proof/work/churn-campaign.learn.log`. The cards go into your bank at `~/.kapso/bank.git`, which is created on first use.
+
+**Once it has banked its cards**, one edit would serve them to every later session of this project. Add this to `kapso-config.yaml`:
+```yaml
+experience:
+  session_sources: [mine:all]
+```
+Right now this session has the bank tools turned off, because no bank is loaded. This edit only affects sessions. A build gets the cards only if its brief's `Experience` line or `--experience` names them, e.g. `--experience mine`. Want me to make the edit when the learn finishes?

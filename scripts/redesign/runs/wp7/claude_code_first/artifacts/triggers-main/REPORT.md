@@ -1,0 +1,43 @@
+Claude Code 2.1.311: 90 of 101 cases at the threshold; mean score 0.92; $26.50; 1248s
+
+| skill | kind | cases | perfect | below |
+|---|---|---|---|---|
+| build | confusion | 4 | 4 | - |
+| build | explicit | 2 | 2 | - |
+| build | implicit | 10 | 9 | build-i02 |
+| build | none | 4 | 4 | - |
+| harness | confusion | 4 | 4 | - |
+| harness | explicit | 2 | 2 | - |
+| harness | implicit | 10 | 9 | harness-i10 |
+| harness | none | 4 | 4 | - |
+| kapso | confusion | 4 | 4 | - |
+| kapso | explicit | 4 | 4 | - |
+| kapso | implicit | 9 | 3 | kapso-i01, kapso-i02, kapso-i03, kapso-i04, kapso-i06, kapso-i09 |
+| kapso | none | 4 | 4 | - |
+| review | confusion | 4 | 2 | review-c01, review-c02 |
+| review | explicit | 2 | 2 | - |
+| review | implicit | 10 | 10 | - |
+| review | none | 4 | 4 | - |
+| setup | confusion | 4 | 3 | setup-c01 |
+| setup | explicit | 2 | 2 | - |
+| setup | implicit | 10 | 10 | - |
+| setup | none | 4 | 4 | - |
+
+Run errors:
+- build-c01: exit 1: Reached maximum number of turns (6)
+- harness-c02: exit 1: Reached maximum number of turns (6)
+- harness-i03: exit 1: Reached maximum number of turns (6)
+- kapso-c02: exit 1: Reached maximum number of turns (6)
+- kapso-c02: exit 1: Reached maximum number of turns (6)
+- kapso-e02: exit 1: Reached maximum number of turns (6)
+- kapso-i02: exit 1: Reached maximum number of turns (6)
+- kapso-i03: exit 1: Reached maximum number of turns (6)
+- review-c02: exit 1: Reached maximum number of turns (6)
+- review-e02: exit 1: Reached maximum number of turns (6)
+- review-i01: exit 1: Reached maximum number of turns (6)
+- review-i02: exit 1: Reached maximum number of turns (6)
+- review-i02: exit 1: Reached maximum number of turns (6)
+- review-i04: exit 1: Reached maximum number of turns (6)
+- review-i06: exit 1: Reached maximum number of turns (6)
+- review-i08: exit 1: Reached maximum number of turns (6)
+- setup-c04: exit 1: Reached maximum number of turns (6)

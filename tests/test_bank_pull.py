@@ -7,23 +7,28 @@
 
 import json
 
+import pytest
+
 from kapso.gated_mcp.presets import resolve_gates
 from kapso.learning.bank import Bank
 from kapso.learning.retriever import (
     append_pull_event,
+    exposure_ladder,
     render_cards,
     render_index,
+    render_sources_cards,
+    render_sources_index,
 )
 from tests.test_bank_retriever import build_bank, card_text
 
-TASK = {"family": "entity_binary_classification", "dataset": "rel-hm"}
+TASK = {"harness": "trading"}
 
 
 def make_pull_bank(tmp_path):
     root = build_bank(tmp_path, {
         "strong-card": card_text("strong-card", score=0.8),
         "weak-card": card_text("weak-card", score=0.4),
-        "avito-card": card_text("avito-card", scope=["dataset:rel-avito"]),
+        "avito-card": card_text("avito-card", scope=["harness:other"]),
         "retired-state-card": card_text("retired-state-card", state="retired"),
         "decoy-card": card_text("decoy-card", score=0.9),
         "tension-a": card_text("tension-a", contradicts=("tension-b",)),
@@ -33,13 +38,16 @@ def make_pull_bank(tmp_path):
     return Bank(str(root))
 
 
-def test_index_is_the_whole_bank_no_filtering(tmp_path):
+def test_index_lists_the_whole_bank_at_every_scope_and_filters_for_mine(tmp_path):
     bank = make_pull_bank(tmp_path)
     result = render_index(bank, TASK)
     names = [row["card"] for row in result["listed"]]
-    # no scope filtering: the out-of-scope card is LISTED (2026-08-23
-    # amendment — scope is displayed information, never a gate)
+    # every scope (a bank you read, `mine:all`): the out-of-scope card is
+    # LISTED; your own bank at its default scope leaves it out
     assert "avito-card" in names
+    assert "avito-card" not in [
+        row["card"] for row in render_index(bank, TASK, scope="harness")["listed"]
+    ]
     # quarantine alone stays frame-side
     assert "retired-state-card" not in names
     assert "decoy-card" not in names
@@ -81,17 +89,138 @@ def test_pull_events_append_as_jsonl(tmp_path):
     assert all("ts" in row for row in rows)
 
 
+def test_the_exposure_ladder_is_read_back_per_source(tmp_path):
+    # The learning side credits a usage claim to the source a card was
+    # served from: the ladder is {card: {source: highest level}}, and a
+    # malformed log line raises — the log is evidence, not a hint.
+    log = tmp_path / "serving-pull.jsonl"
+    append_pull_event(str(log), {"tool": "bank_index", "listed": [
+        {"card": "a-card", "source": "mine", "exposure": "indexed"},
+        {"card": "a-card", "source": "acme/kapso-bank", "exposure": "indexed"},
+        {"card": "b-card", "source": "mine", "exposure": "indexed"},
+    ]})
+    append_pull_event(str(log), {"tool": "bank_get_card", "served": [
+        {"card": "a-card", "source": "acme/kapso-bank", "exposure": "read"},
+    ]})
+    append_pull_event(str(log), {"tool": "bank_get_card_with_evidence", "served": [
+        {"card": "a-card", "source": "acme/kapso-bank", "exposure": "evidence-read"},
+        {"card": "b-card", "source": "mine", "exposure": "read"},
+    ]})
+    append_pull_event(str(log), {"tool": "bank_get_card", "served": [
+        {"card": "b-card", "source": "mine", "exposure": "read"},   # a lower rung never lowers the ladder
+    ]})
+    assert exposure_ladder(log) == {
+        "a-card": {"mine": "indexed", "acme/kapso-bank": "evidence-read"},
+        "b-card": {"mine": "read"},
+    }
+    with open(log, "a") as handle:
+        handle.write("not json\n")
+    with pytest.raises(json.JSONDecodeError):
+        exposure_ladder(log)
+
+
 def test_bank_gate_resolves_only_with_campaign_env():
     resolution = resolve_gates(["bank"], policy="skip", env={})
     assert resolution.enabled_gates == ()
     missing = resolution.diagnostics[0].missing_env
-    assert "KAPSO_BANK_DIR" in missing and "KAPSO_SERVING_PULL_LOG" in missing
-    assert "KAPSO_PROBE_BUDGET" in missing
+    assert "KAPSO_BANKS" in missing and "KAPSO_SERVING_PULL_LOG" in missing
+    assert "KAPSO_TASK_HARNESS" in missing and "KAPSO_PROBE_BUDGET" in missing
+    assert "KAPSO_SESSION" in missing
     resolution = resolve_gates(["bank"], policy="skip", env={
-        "KAPSO_BANK_DIR": "/tmp/bank",
-        "KAPSO_BANK_HEAD": "abc",
+        "KAPSO_BANKS": "[]",
         "KAPSO_SERVING_PULL_LOG": "/tmp/pull.jsonl",
-        "KAPSO_TASK_FAMILY": "entity_binary_classification",
+        "KAPSO_TASK_HARNESS": "none",
         "KAPSO_PROBE_BUDGET": "1",
+        "KAPSO_SESSION": "generic_exp_0",
     })
     assert resolution.enabled_gates == ("bank",)
+
+
+# ------------------------------------------------------ several banks
+
+
+def make_two_banks(tmp_path):
+    """Two loaded banks sharing one card name, the first with a decoy."""
+    first_root = build_bank(tmp_path / "first", {
+        "shared-card": card_text("shared-card", score=0.8),
+        "only-first": card_text("only-first"),
+        "decoy-card": card_text("decoy-card", score=0.9),
+    })
+    (first_root / ".decoys.yaml").write_text("- decoy-card\n")
+    second_root = build_bank(tmp_path / "second", {
+        "shared-card": card_text("shared-card", score=0.5),
+        "only-second": card_text("only-second"),
+    })
+    return [
+        ({"reference": "mine", "head": "aaa", "dir": str(first_root),
+          "provenance": "measured by you", "scope": "harness"}, Bank(str(first_root))),
+        ({"reference": "acme/kapso-bank", "head": "bbb", "dir": str(second_root),
+          "provenance": "measured by others", "scope": "all"}, Bank(str(second_root))),
+    ]
+
+
+def test_sources_index_groups_by_source_and_one_bank_reads_plain(tmp_path):
+    banks = make_two_banks(tmp_path)
+    result = render_sources_index(banks, TASK)
+    text = result["text"]
+    assert text.index("# mine (measured by you)") < text.index("# acme/kapso-bank (measured by others)")
+    rows = [(row["card"], row["source"]) for row in result["listed"]]
+    assert ("shared-card", "mine") in rows and ("shared-card", "acme/kapso-bank") in rows
+    assert ("only-second", "acme/kapso-bank") in rows
+    # quarantine stays each bank's own
+    assert ("decoy-card", "mine") not in rows
+    assert result["listed_count"] == len(rows) == 4
+    # one bank reads as the plain index: no source heading
+    alone = render_sources_index(banks[:1], TASK)
+    assert alone["text"] == render_index(banks[0][1], TASK)["text"]
+    assert [row["source"] for row in alone["listed"]] == ["mine", "mine"]
+
+
+def test_an_unqualified_read_goes_to_the_bank_that_can_serve_the_name(tmp_path):
+    # Regression: with two banks holding one name, a plain read goes to
+    # the first bank that can SERVE it — not the first that holds a copy
+    # the scope filters out or the quarantine hides — so what the index
+    # advertises, a plain read opens. When no bank can, the first
+    # holder's refusal says why.
+    first_root = build_bank(tmp_path / "first", {
+        "shared-card": card_text("shared-card", scope=["harness:lending"]),
+        "hidden-card": card_text("hidden-card"),
+        "lending-only": card_text("lending-only", scope=["harness:lending"]),
+    })
+    (first_root / ".decoys.yaml").write_text("- hidden-card\n")
+    second_root = build_bank(tmp_path / "second", {
+        "shared-card": card_text("shared-card"),
+        "hidden-card": card_text("hidden-card"),
+    })
+    banks = [
+        ({"reference": "mine", "head": "aaa", "dir": str(first_root), "provenance": "measured by you", "scope": "harness"}, Bank(str(first_root))),
+        ({"reference": "acme/kapso-bank", "head": "bbb", "dir": str(second_root), "provenance": "measured by others", "scope": "all"}, Bank(str(second_root))),
+    ]
+    served = render_sources_cards(banks, TASK, ["shared-card", "hidden-card"], False, {})
+    assert [(row["card"], row["source"]) for row in served["served"]] == [
+        ("shared-card", "acme/kapso-bank"), ("hidden-card", "acme/kapso-bank"),
+    ]
+    assert served["refused"] == []
+    refused = render_sources_cards(banks, TASK, ["lending-only"], False, {})
+    assert refused["served"] == []
+    assert refused["refused"][0]["card"] == "lending-only" and "out of scope under harness:trading" in refused["refused"][0]["reason"]
+
+
+def test_sources_cards_read_from_the_holder_or_the_named_source(tmp_path):
+    banks = make_two_banks(tmp_path)
+    # a name held by both reads from the first loaded bank unless a source is named
+    first = render_sources_cards(banks, TASK, ["shared-card", "only-second"], False, {})
+    assert [(row["card"], row["source"]) for row in first["served"]] == [
+        ("shared-card", "mine"), ("only-second", "acme/kapso-bank"),
+    ]
+    named = render_sources_cards(banks, TASK, ["shared-card"], False, {}, source="acme/kapso-bank")
+    assert [(row["card"], row["source"]) for row in named["served"]] == [("shared-card", "acme/kapso-bank")]
+    # quarantine and unknown names refuse as one bank does; a source
+    # nobody loaded refuses everything by name
+    refused = render_sources_cards(banks, TASK, ["decoy-card", "no-such-card"], False, {})
+    assert {r["card"]: r["reason"] for r in refused["refused"]} == {
+        "decoy-card": "no such card", "no-such-card": "no such card",
+    }
+    nobody = render_sources_cards(banks, TASK, ["shared-card"], False, {}, source="ghost")
+    assert nobody["served"] == []
+    assert nobody["refused"] == [{"card": "shared-card", "reason": "no loaded source named ghost"}]

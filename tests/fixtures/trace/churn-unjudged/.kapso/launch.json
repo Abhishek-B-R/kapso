@@ -1,0 +1,34 @@
+{
+  "brief": {
+    "baseline": "0.797 (the shipped logistic regression, bootstrap SE 0.010)",
+    "budget": {
+      "experiments": 3,
+      "minutes": 45.0,
+      "reserve_minutes": null,
+      "usd": null
+    },
+    "experience": [],
+    "harness": null,
+    "measured_by": "kapso_evaluation/evaluate.py, ROC AUC on the held-out rows",
+    "objective": "Raise the churn model's out-of-sample ROC AUC above 0.85\nwithout changing the prediction contract: predict.py keeps\nwriting id,churn_probability for every holdout id.",
+    "rules": [
+      "the evaluator is never modified",
+      "no fitting on the holdout rows; the labels are not in the workspace"
+    ],
+    "target": "0.85"
+  },
+  "config_path": null,
+  "data_dir": "/home/ubuntu/fixture/examples/churn-first-build/data",
+  "dotenv_path": "",
+  "eval_dir": "/home/ubuntu/fixture/examples/churn-first-build/evaluation",
+  "experience": [],
+  "experiments": 3,
+  "harness": null,
+  "host": null,
+  "minutes": 12.0,
+  "output_path": "/campaign",
+  "reserve_minutes": null,
+  "resumable_from_inbox": true,
+  "schema_version": 2,
+  "usd": null
+}

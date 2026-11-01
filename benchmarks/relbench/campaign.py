@@ -1,20 +1,19 @@
 """RelBench campaign pipeline — pass tasks one by one into Kapso.
 
-You specify only: hour limit per task, goal, and hardware. Everything else
-(queue order, per-task bars, tier timeouts, regime gates, recording) is derived
-from the repo's own data files.
+You specify only: hour limit per task and hardware. Everything else (queue
+order, per-task caps, regime gates, recording) is derived from the repo's own
+data files.
 
     PYTHONPATH=src:. python -m benchmarks.relbench.campaign \
-        --hours-per-task 10 --goal beat-best --hardware gpu [--dry-run]
+        --hours-per-task 10 --hardware gpu [--dry-run]
 
 Per task: select (queue ∩ hardware ∩ not-done ∩ not regime-gated) → run the
-runner with the time budget threaded into the mode config → print the goal
-verdict. Git commits stay with the operator. Symbolic goal targets and the
-scorecard were retired with the campaign's reference data (claims/ and the
-sota/baseline snapshots live in GCS + git history).
+runner with the time budget → print the verdict. A campaign is budget-bound:
+there is no score target and no early stop (the judge's stop vote is advisory
+in the benchmark's override file); the runner's final report is the verdict.
+Git commits stay with the operator.
 
-The ROI/CPU queues live here as data (single
-source — the old scripts/run_relbench_campaign.sh regex parsing is gone).
+The ROI/CPU queues live here as data.
 """
 
 from __future__ import annotations
@@ -29,24 +28,13 @@ from pathlib import Path
 
 import yaml
 
-from kapso.core.config import load_config
+from kapso.core.config import load_config, read_yaml
 from kapso.kapso import DEFAULT_CONFIG_PATH
 from kapso.learning.harvest import harvest_campaign
 from kapso.learning.trajectory_store import TrajectoryStore
 
-NO_STOP_NOTE = """# Budget-bound campaign — do not stop early
-
-This campaign has a wall-clock budget and NO score target. There is no
-validation value at which stopping is correct: published bars are context,
-not finish lines. Never conclude "good enough", "target reached", or
-"diminishing returns" — every remaining minute goes to attempting further
-improvement (new features, new mechanisms, better selection), and the only
-legitimate stop is the clock. Feedback verdicts must set stop=False while
-budget remains.
-"""
-
 BENCH_DIR = Path(__file__).parent
-DATA_DIR = BENCH_DIR / "data"
+CONFIG_PATH = BENCH_DIR / "config.yaml"
 REPO_ROOT = BENCH_DIR.parents[1]
 
 # ROI-sorted flat queue: expected claim value x win probability / compute cost.
@@ -108,21 +96,12 @@ PROTOCOL_SENSITIVE_TASKS = {
 ROLLING_VERIFIED = set(PROTOCOL_SENSITIVE_TASKS)
 
 
-def derive_goal(task_id: str, goal_spec: str) -> tuple:
-    """Return (target_in_val_units, description).
-
-    Only explicit numeric targets remain: the symbolic beat-best/beat-kumo
-    specs were retired with data/sota.json + data/baselines.json (the board
-    snapshots live in git history; run archives in GCS)."""
-    if goal_spec in ("beat-best", "beat-kumo"):
-        raise ValueError(
-            f"{task_id}: goal spec {goal_spec!r} was retired with the "
-            "sota/baseline snapshots — pass an explicit value in raw val units"
-        )
-    return float(goal_spec), f"explicit {goal_spec}"
+def work_root() -> Path:
+    """The runner's archive root, from its override file's `benchmark:` block."""
+    return REPO_ROOT / read_yaml(str(CONFIG_PATH))["benchmark"]["work_root"]
 
 
-def select_tasks(queue: list, hardware: str, work_root: Path,
+def select_tasks(queue: list, hardware: str, root: Path,
                  allow_sensitive: bool, explicit: list | None) -> list:
     blocked = PROTOCOL_SENSITIVE_TASKS - ROLLING_VERIFIED
     chosen = []
@@ -136,7 +115,7 @@ def select_tasks(queue: list, hardware: str, work_root: Path,
             print(f"  skip {task_id}: ⚠ rolling harness not yet verified for this task "
                   f"(EVALUATION_PROTOCOL.md); pass --allow-regime-sensitive to override")
             continue
-        if (work_root / f"{ds}--{task}" / "final_report.json").exists():
+        if (root / f"{ds}--{task}" / "final_report.json").exists():
             print(f"  skip {task_id}: already done (final_report.json exists)")
             continue
         chosen.append(task_id)
@@ -150,13 +129,13 @@ def _harvest_trajectory(ds: str, task: str, lane, workspace: str, log_path: Path
     §3.4): work dir minus the shared cache (model caches are not evidence),
     the campaign log, the workspace .kapso artifacts, and the living
     documents copied to the bundle root per the strict-contract layout. A
-    contract violation raises after the verdict/scorecard have landed — loud,
-    and the campaign result itself is untouched.
+    contract violation raises after the verdict has landed — loud, and the
+    campaign result itself is untouched.
     """
     config = load_config(DEFAULT_CONFIG_PATH)
     if not config["learning"]["harvest"]["enabled"]:
         return "harvest-disabled"
-    work_dir = REPO_ROOT / "tmp" / "relbench" / f"{ds}--{task}"
+    work_dir = work_root() / f"{ds}--{task}"
     shared_cache = work_dir / "shared_cache"
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     trajectory_id = f"{ds}--{task}/{stamp}_{lane or 'local'}"
@@ -168,17 +147,17 @@ def _harvest_trajectory(ds: str, task: str, lane, workspace: str, log_path: Path
     for optional in ("table_information.md", "artifacts.json"):
         if (shared_cache / optional).is_file():
             living[optional] = str(shared_cache / optional)
-    # Serving stamp (§5.3): the retriever wrote the record at launch; the
-    # harvest carries its head into the manifest and the campaign meta —
-    # sessions never stamp anything.
-    bank_head = None
+    # Serving stamp (§5.3): the launcher wrote the record with the sources
+    # it served; the harvest carries them into the manifest and the
+    # campaign meta — sessions never stamp anything.
+    experience = None
     serving_record = work_dir / ".kapso" / "serving" / "serving-record.yaml"
     if serving_record.is_file():
-        bank_head = yaml.safe_load(serving_record.read_text())["bank_head"]
+        experience = yaml.safe_load(serving_record.read_text())["sources"]
         meta_path = work_dir / "campaign_meta.json"
         if meta_path.is_file():
             meta = json.loads(meta_path.read_text())
-            meta["bank_head"] = bank_head
+            meta["experience"] = experience
             meta_path.write_text(json.dumps(meta, indent=1))
     return harvest_campaign(
         TrajectoryStore.from_config(config),
@@ -189,60 +168,46 @@ def _harvest_trajectory(ds: str, task: str, lane, workspace: str, log_path: Path
         living_documents=living,
         work_dir_exclude=("shared_cache",),
         kapso_commit=kapso_commit,
-        bank_head=bank_head,
+        experience=experience,
     )
 
 
 def run_one(task_id: str, args) -> dict:
     ds, task = task_id.split("/")
-    extra_args = []
-    if args.goal == "none":
-        # Budget-bound: no early stop — the search uses the full hour budget
-        # and keeps its best. The verdict still reports vs best-known. The
-        # note rides the knowledge-file channel (the proven stop-rule path)
-        # so the feedback generator never volunteers a stop of its own.
-        target, target_desc = None, "budget-bound (no early stop)"
-        note_path = REPO_ROOT / "tmp" / "campaign_no_stop_note.md"
-        note_path.parent.mkdir(exist_ok=True)
-        note_path.write_text(NO_STOP_NOTE)
-        extra_args = ["--knowledge-file", str(note_path)]
-    else:
-        target, target_desc = derive_goal(task_id, args.goal)
-        extra_args = ["--target-val", str(target)]
     workspace = f"tmp/search_strategy_workspace/{uuid.uuid4()}"
     log_path = REPO_ROOT / "tmp" / f"campaign_{ds}--{task}.log"
     cmd = [
         sys.executable, "-m", "benchmarks.relbench.runner",
-        "-s", ds, "-t", task, "-i", str(args.iterations), "-m", args.mode,
+        "-s", ds, "-t", task, "-i", str(args.iterations),
         "--workspace", workspace,
         "--time-budget-hours", str(args.hours_per_task),
-    ] + extra_args
-    shown = "—" if target is None else f"{target:.6g}"
+    ]
     print(f"\n{'=' * 70}\nCAMPAIGN TASK: {task_id}\n"
-          f"  target-val {shown} ({target_desc}) | {args.hours_per_task}h | log {log_path}\n{'=' * 70}")
+          f"  budget-bound | {args.hours_per_task}h | log {log_path}\n{'=' * 70}")
     if args.dry_run:
         print(f"  DRY RUN: {' '.join(cmd)}")
         return {"task": task_id, "status": "dry-run"}
     # Record what actually runs (surfaces in RESULTS.md HW/Cap columns); the
     # trace-archive URI is added post-hoc by the harvest step as
     # artifact_archive.json in the same directory.
-    meta_path = REPO_ROOT / "tmp" / "relbench" / f"{ds}--{task}" / "campaign_meta.json"
-    meta_path.parent.mkdir(parents=True, exist_ok=True)
-    meta_path.write_text(json.dumps({
+    task_root = work_root() / f"{ds}--{task}"
+    task_root.mkdir(parents=True, exist_ok=True)
+    (task_root / "campaign_meta.json").write_text(json.dumps({
         "hardware": args.hardware_desc or args.hardware,
         "cap_hours": args.hours_per_task,
         "lane": args.lane,
-        "goal": args.goal,
         "workspace": workspace,
     }, indent=1))
     with open(log_path, "w") as log:
         proc = subprocess.run(cmd, cwd=REPO_ROOT, stdout=log, stderr=subprocess.STDOUT)
-    report_path = REPO_ROOT / "tmp" / "relbench" / f"{ds}--{task}" / "final_report.json"
+    report_path = task_root / "final_report.json"
     verdict = {"task": task_id, "exit": proc.returncode, "status": "failed"}
     if report_path.exists():
         report = json.loads(report_path.read_text())
-        verdict.update({"status": "done", "val": report.get("val_metrics"),
-                        "test": report.get("test_metrics"), "target": target})
+        verdict.update({
+            "status": "no-candidate" if report.get("error") else "done",
+            "val": report.get("val_metrics"), "test": report.get("test_metrics"),
+        })
     if verdict["status"] == "done":
         verdict["trajectory_id"] = _harvest_trajectory(ds, task, args.lane, workspace, log_path)
     print(f"  VERDICT: {json.dumps(verdict, default=str)}")
@@ -253,14 +218,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--hours-per-task", type=float, required=True)
-    parser.add_argument("--goal", type=str, default="none",
-                        help="none (budget-bound, no early stop) | explicit value in raw val units")
     parser.add_argument("--hardware", type=str, choices=["cpu", "gpu"], required=True)
     parser.add_argument("--tasks", type=str, default=None,
                         help="comma-separated task ids; default = ROI queue")
     parser.add_argument("--limit", type=int, default=None, help="max tasks this invocation")
     parser.add_argument("--iterations", type=int, default=100)
-    parser.add_argument("--mode", type=str, default="RELBENCH_GENERIC")
     parser.add_argument("--allow-regime-sensitive", action="store_true")
     parser.add_argument("--lane", type=str, default=None,
                         help="label for this campaign lane (e.g. lane-a); recorded in campaign_meta")
@@ -269,14 +231,12 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    work_root = REPO_ROOT / "tmp" / "relbench"
     explicit = args.tasks.split(",") if args.tasks else None
     queue = ROI_QUEUE if args.hardware == "gpu" else CPU_LOCAL_QUEUE
-    tasks = select_tasks(queue, args.hardware, work_root, args.allow_regime_sensitive, explicit)
+    tasks = select_tasks(queue, args.hardware, work_root(), args.allow_regime_sensitive, explicit)
     if args.limit:
         tasks = tasks[: args.limit]
-    print(f"\nCampaign: {len(tasks)} task(s) | {args.hours_per_task}h each | "
-          f"goal={args.goal} | hardware={args.hardware}")
+    print(f"\nCampaign: {len(tasks)} task(s) | {args.hours_per_task}h each | hardware={args.hardware}")
 
     results = [run_one(task_id, args) for task_id in tasks]
     print(f"\n{'=' * 70}\nCAMPAIGN SUMMARY\n{'=' * 70}")

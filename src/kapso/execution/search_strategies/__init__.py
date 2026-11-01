@@ -9,7 +9,7 @@
 # 1. Create a new file in this directory (e.g., my_strategy.py)
 # 2. Subclass SearchStrategy from base.py
 # 3. Use @register_strategy("my_name") decorator
-# 4. Add configuration presets in strategies.yaml
+# 4. Set its parameters in config.yaml under search_strategy.params
 # 5. Configure in benchmark config.yaml:
 #    search_strategy:
 #      type: "my_name"

@@ -1,0 +1,76 @@
+---
+title: "Share a bank, read another team's"
+sidebarTitle: "Share a bank"
+description: "Attach a git remote to your bank so every lesson is pushed and your team's are pulled; read a bank another team shares by path or git reference, pinned at its head; update what moved and remove what you no longer read."
+keywords: ["kapso experience share", "share_experience", "team bank", "bank git reference", "kapso experience update", "measured by others"]
+---
+
+A bank is a git repository, so sharing one is git: your bank gets a remote, and a bank another team shares is read at a reference. Credentials stay with `git`; Kapso never handles them.
+
+## Share yours
+
+```bash
+gh repo create acme/kapso-bank --private
+kapso experience share https://github.com/acme/kapso-bank.git
+```
+
+```text
+your bank /home/me/.kapso/bank.git shares to https://github.com/acme/kapso-bank.git
+```
+
+`share` attaches the URL as the bank's `origin` and pushes `main` with its tags, plain, never forced: a remote holding unrelated history is refused in git's words, and so is one your credentials cannot reach, before anything is touched. A bank that does not exist yet is created first. From then on every [`learn()`](/docs/learn/what-learn-produces) pushes its lesson commit there, `kapso experience update` pulls the remote's `main` (fast-forward; a history that does not is an error), and the intro a campaign reads says the cards are *measured by you and your team*. The repository is yours to create, with `gh` or in the browser; `kapso experience list` shows where your bank shares to.
+
+```python
+kapso.share_experience("https://github.com/acme/kapso-bank.git")
+```
+
+## Read another team's
+
+A bank you do not write is loaded by where it is:
+
+```bash
+kapso build --experience acme/kapso-bank ...                   # GitHub shorthand, main
+kapso build --experience acme/kapso-bank@v2 ...                # a tag, a branch or a commit
+kapso build --experience git+https://github.com/acme/kapso-bank@main ...
+kapso build --experience ./team/bank.git ...                   # a bank home on disk, read in place
+```
+
+A git reference is cloned once into `experience.banks` (`~/.kapso/experience/banks/<slug>@<rev>/`, with a fetch record beside the clone) and read from there after; a path is read where it is. Either way the bank is pinned at its head for the campaign, its cards are served under every scope, and the intro calls them *measured by others*. Your own bank keeps its scope rule; `mine:all` lifts it.
+
+When two sources hold a card of one name, the sessions see both with their source, a plain `bank_get_card(cards)` opens it from the first loaded bank that can serve it under its scope, `bank_get_card(cards, source=)` opens the one asked for, the pull log names the source of every row served, and a lesson that cites the card is credited to the source it was opened from; a copy only listed was never read, and a name opened from two sources is reported as an ambiguity rather than credited to either.
+
+## Update and remove
+
+```bash
+kapso experience update                      # mine from its remote, every bank you read at a moving reference
+kapso experience update acme/kapso-bank      # one
+kapso experience remove acme/kapso-bank      # the clone and its record
+```
+
+```text
+mine: now at 9a4e7c1b2d3f (was 3f9c1a2b7d4e)
+acme/kapso-bank@v2: at 8b1e0c9d4f2a: a tag or a commit never moves
+```
+
+Loading never pulls, so `update` is the one network step: `mine` takes its remote's `main`, a bank read at a branch or `HEAD` is fetched again, a tag or a commit is what it is. A campaign that is running keeps the pins it launched with, and a bare resume re-pins the launch's heads, so nothing moves under a build. `remove` deletes what loading fetched; your bank is yours to delete by hand, the hosted gate is a key in `.env`, and a bank by path is read in place, so none of the three is the store's to remove.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Use experience on a build" icon="play" href="/docs/experience/use">
+    Load what you share or read; what the sessions see
+  </Card>
+  <Card title="The lesson bank" icon="database" href="/docs/learn/development-mode">
+    The repository's layout and invariants; what is on a card is under What learn produces
+  </Card>
+  <Card title="Add a source" icon="plus" href="/docs/experience/add">
+    Your bank, the hosted gate, an index
+  </Card>
+  <Card title="Experience reference" icon="book" href="/docs/reference/experience">
+    The reference grammar and the store's records
+  </Card>
+</CardGroup>
+
+Related pages: [What experience is](/docs/experience) · [Use experience on a build](/docs/experience/use) · [Add a source](/docs/experience/add) · [The lesson bank](/docs/learn/what-learn-produces) · [Experience reference](/docs/reference/experience)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

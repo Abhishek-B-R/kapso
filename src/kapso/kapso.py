@@ -1,34 +1,38 @@
 # Kapso Agent - Main Entry Point
 #
-# The primary user-facing API for the Kapso Agent system.
-# Provides a clean interface for the "Brain to Binary" workflow:
-#   Kapso.index_kg() -> Kapso.evolve() -> Kapso.deploy() -> Software.run()
+# The primary user-facing API for the Kapso Agent system: the verbs
+# build, deploy and learn on one object.
+#   Kapso.build() -> Kapso.deploy() -> Software.run(); Kapso.learn()
 #
 # Usage:
-#     from kapso.kapso import Kapso, Source, DeployStrategy
-#     
-#     # One-time setup: Index knowledge graph
-#     kapso = Kapso(config_path="./config.yaml")
-#     kapso.index_kg(wiki_dir="data/wikis/ml_knowledge", save_to="data/indexes/ml.index")
-#     
-#     # Normal usage: Load existing index
-#     kapso = Kapso(config_path="./config.yaml", kg_index="data/indexes/ml.index")
-#     solution = kapso.evolve(goal="Create a triage agent")
-#     software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
+#     from kapso import Kapso, Brief, Budget, Solution
+#
+#     kapso = Kapso(config="./kapso-config.yaml")     # engine knobs only
+#     solution = kapso.build(
+#         Brief.read("kapso-brief.md"),
+#         evaluation="./evaluation", data="./data", repo=".",
+#         output="../churn-build", budget=Budget(minutes=480),
+#     )
+#     software = kapso.deploy(solution, target="local")
 #     result = software.run({"input": "data"})
+#     Solution.open("../churn-build")                  # the same solution, from any process
 
 import atexit
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
+
+import git
 
 import yaml
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Load environment variables from .env file (if present)
 from dotenv import find_dotenv, load_dotenv
@@ -39,6 +43,7 @@ load_dotenv(find_dotenv(usecwd=True))
 
 from kapso.execution.coding_agents.factory import CodingAgentFactory
 from kapso.execution.observability import (
+    mark_failed,
     KnowledgeStatus,
     LessonStatus,
     OperationStatusView,
@@ -46,20 +51,57 @@ from kapso.execution.observability import (
     knowledge_summary,
     platform_cost_summary,
 )
+from kapso.execution.trace import TraceView, failed_runs, read_trace
 from kapso.execution.orchestrator import OrchestratorAgent
-from kapso.execution.solution import SolutionResult
+from kapso.execution.evaluation_maintainer.registry import EvaluationRegistry
 from kapso.execution.iteration_evaluator import IterationEvaluator
-from kapso.execution.evaluation_integrity import build_evaluation_manifest
+from kapso.handles import EXPERIENCE_RECORD_FIELDS, Brief, Budget, EvaluatorRef, ExperienceRef, Launch, Solution
+from kapso.execution.evaluation_integrity import launch_evaluation_manifest
 from kapso.environment.handlers.generic import GenericProblemHandler
-from kapso.knowledge_base.search import KnowledgeSearchFactory, KGIndexInput
-from kapso.knowledge_base.search.base import KGIndexMetadata
-from kapso.knowledge_base.learners import Source, KnowledgePipeline
-from kapso.knowledge_base.learners.defaults import learner_defaults
-from kapso.core.cli_inference import resolve_inference_config
-from kapso.researcher import Researcher, ResearchDepth, ResearchMode
-from kapso.knowledge_base.types import ResearchFindings
-from kapso.core.config import load_config, load_deployment_defaults, load_mode_config
+from kapso.knowledge_base.search import KnowledgeSearchFactory
+from kapso.knowledge_base.search.workflow_search import WorkflowRepoSearch
+from kapso.core.agent_manifest import load_agent_manifest
+from kapso.core.config import PACKAGED_CONFIG_PATH, is_packaged, load_config
+from kapso.core.roles import validate_config
+from kapso.experience.sources import experience_settings
+from kapso.experience import (
+    HOSTED,
+    MINE,
+    ExperienceError,
+    ExperienceSource,
+    ExperienceStore,
+    bank_head,
+    has_origin,
+    probe_hosted_gate,
+    parse_experience_reference,
+    pull_home,
+    recorded_reference,
+    resolve_source,
+)
+from kapso.experience.ingest import (
+    check_name,
+    ingest,
+    repository_source,
+    research_sources,
+    search_for,
+)
+from kapso.harness import (
+    BUILD_MODULES,
+    DEPLOY_MODULES,
+    LEARN_MODULES,
+    Harness,
+    HarnessError,
+    advisory_lines,
+    load_harness,
+    reload_harness,
+    resume_refusal,
+    unmet_message,
+)
+from kapso.harness import BUNDLED_ROOT
+from kapso.harness.staging import host_for
 from kapso.execution.inbox import (
+    beside,
+    launch_receipt_path,
     Request,
     idea_line,
     inbox_path,
@@ -73,6 +115,7 @@ from kapso.execution.inbox import (
     resume_lock,
     write_launch_record,
 )
+from kapso.execution.launch import detach as launch_detached
 from kapso.execution.run_checkpoint import (
     RunCheckpointIncompatibleError,
     RunCheckpointStore,
@@ -83,34 +126,16 @@ from kapso.learning.lesson_result import LessonResult, MemoryStatus
 from kapso.learning.mining import MiningFrame
 from kapso.learning.serving_launch import (
     plan_campaign_serving,
-    stage_campaign_serving,
+    stage_serving,
+    task_coordinates,
 )
 from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
-from kapso.learning.bank_remote import bank_origin
+from kapso.learning.bank_remote import bank_origin, connect_bank
 from kapso.learning.update_frame import UpdateFrame, init_bank
 
-from kapso.deployment import (
-    Software,
-    DeployConfig,
-    DeployStrategy,
-    DeploymentFactory,
-)
-
-
-# =============================================================================
-# EXCEPTIONS
-# =============================================================================
-
-class KGIndexError(Exception):
-    """
-    Raised when KG index file is invalid or backend data is missing.
-    
-    This typically happens when:
-    - The .index file exists but the backend (Weaviate/Neo4j) was wiped
-    - The .index file is corrupted or has invalid format
-    - The backend is not accessible
-    """
-    pass
+from kapso.deployment import DeployError, Software
+from kapso.deployment.session import run_deployment
+from kapso.deployment.targets import AUTO, resolve_target
 
 
 # =============================================================================
@@ -118,102 +143,201 @@ class KGIndexError(Exception):
 # =============================================================================
 
 # Path to default configuration
-DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
-# Experiments per campaign when the caller names no cap. One source for the
-# facade default and the CLI's help text.
-DEFAULT_MAX_ITERATIONS = 10
+DEFAULT_CONFIG_PATH = str(PACKAGED_CONFIG_PATH)
 
 
-def _memory_overrides(
-    serving_plan: Optional[Dict[str, Any]],
-    kg_index_path: Optional[str],
-) -> Optional[Dict[str, Any]]:
-    """Per-campaign strategy params carrying BOTH memory stores.
+def _source_is_reachable(source: str) -> bool:
+    """A recorded harness source that can be loaded again from here: a git
+    form (a URL, `git+`, shorthand or scp-like with `@` or `#`), a
+    directory, or a bundled name."""
+    if "://" in source or source.startswith("git+") or "@" in source or "#" in source:
+        return True
+    return Path(source).expanduser().is_dir() or (BUNDLED_ROOT / source).is_dir()
 
-    The strategy mounts the gates that follow from these: a staged bank
-    pulls in the `bank` gate, a staged knowledge index pulls in the
-    wiki-search gates. Neither is an independent config choice — the
+
+def _same_reference(line: str, harness: Harness) -> bool:
+    """Whether the brief's Harness line names the loaded harness: the same
+    directory once resolved from the working directory, or the same
+    reference as written."""
+    candidate = Path(line).expanduser()
+    directory = candidate if candidate.is_absolute() else Path.cwd() / candidate
+    if directory.is_dir():
+        return directory.resolve() == Path(harness.path).resolve()
+    return line in (harness.source, harness.reference.raw)
+
+
+def _absolute(path: Optional[str]) -> Optional[str]:
+    """A launch argument as the launch record keeps it: resolved against
+    the launch directory, so a resume or an inbox reply run from any other
+    directory (a host session's, say) finds the same files."""
+    return None if path is None else str(Path(path).expanduser().resolve())
+
+
+def _git_rev(workspace: Path, ref: str) -> str:
+    """The commit a ref names in the campaign workspace."""
+    return subprocess.run(
+        ["git", "-C", str(workspace), "rev-parse", ref],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
+def _memory_overrides(serving_plan: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Per-campaign strategy params carrying what the loaded sources
+    mount: a staged bank pulls in the `bank` gate, an index the
+    wiki-search gates over its record, the hosted source the
+    `leeroopedia` server. None is an independent config choice — the
     injected intro tells sessions those tools exist (E2E review
     2026-08-24: they did not).
     """
-    overrides: Dict[str, Any] = {}
-    if serving_plan:
+    if not serving_plan:
+        return None
+    overrides: Dict[str, Any] = {
+        # The intro's path, read by the engine when it builds the
+        # ideation and implementation prompts: staged after construction,
+        # so a seeded workspace is still empty here.
+        "experience_intro_path": serving_plan["intro_path"],
+    }
+    if serving_plan["bank_serving"]:
         overrides["bank_serving"] = serving_plan["bank_serving"]
-    if kg_index_path:
-        overrides["kg_index_path"] = kg_index_path
-    return overrides or None
+    if serving_plan["hosted"]:
+        overrides["hosted"] = serving_plan["hosted"]
+    if serving_plan["kg_index_path"]:
+        overrides["kg_index_path"] = serving_plan["kg_index_path"]
+    return overrides
+
+def _deliver(orchestrator, solve_result, *, brief: Brief, harness: Optional[Harness], experience) -> Solution:
+    """The delivery, run inside the orchestrator's protected region: the
+    strategy checks the workspace out at the delivered candidate's branch
+    (None when nothing succeeded), the registry head says which evaluator
+    measured it, and the record is written."""
+    strategy = orchestrator.search_strategy
+    campaign = Path(strategy.workspace.workspace_dir).resolve()
+    best_branch = strategy.checkout_to_best_experiment_branch()
+    head = EvaluationRegistry(str(campaign)).head()
+    # The judge's words on the delivered candidate; with nothing
+    # delivered, the last judgment says why (the third proof run
+    # delivered node 0 and reported node 1's failed judgment).
+    delivered = strategy.get_deliverable_experiment()
+    feedback = (
+        delivered.feedback if delivered is not None
+        else solve_result.final_feedback.feedback
+        if solve_result.final_feedback else None
+    )
+    solution = Solution(
+        brief=brief,
+        campaign=campaign,
+        branch=best_branch,
+        commit=_git_rev(campaign, "HEAD") if best_branch else None,
+        base_commit=_git_rev(campaign, "main"),
+        score=strategy.get_deliverable_score(),
+        goal_achieved=bool(
+            solve_result.final_feedback and solve_result.final_feedback.stop
+        ),
+        stopped_reason=solve_result.stopped_reason,
+        stop_detail=solve_result.stop_detail,
+        experiments=solve_result.iterations_run,
+        experiments_total=solve_result.cumulative_iterations,
+        cost_usd=float(solve_result.total_cost),
+        # The inbox: what the person must answer when the campaign
+        # paused for them (empty otherwise).
+        requests=list(solve_result.requests),
+        feedback=feedback,
+        evaluator=(
+            EvaluatorRef(
+                version=head.version,
+                evaluator_id=head.evaluator_id,
+                provenance=head.provenance,
+            )
+            if head else None
+        ),
+        harness=harness.ref() if harness is not None else None,
+        # What the campaign was served (wp3-experience.md): the loaded
+        # sources, each at its pinned head and scope.
+        experience=[source.ref() for source in experience],
+        verification=delivered.verification if delivered is not None else None,
+        rejected_candidates=sum(
+            not node.evaluation_valid
+            for node in strategy.get_experiment_history()
+        ),
+        callback_metrics=dict(
+            getattr(solve_result.best_experiment, "metrics", {}) or {}
+        ),
+        callback_primary_metric=getattr(
+            solve_result.best_experiment, "primary_metric", None
+        ),
+        # The sessions' runs that ended error, timeout or refused, from
+        # their records (every adapter's `finally` has run by now).
+        session_failures=failed_runs(campaign),
+    )
+    solution.save()
+    return solution
+
 
 class Kapso:
     """
     The main Kapso Agent class.
 
-    A Kapso is an intelligent agent with ONE memory and TWO stores
-    (learn-api-design.md §8):
-    - knowledge  — what others know, imported via learn_knowledge()
-      (repos, research outputs) into the knowledge graph;
-    - experience — what the agent measured by doing, earned via learn()
-      (its own campaigns) into the evidence-priced bank.
-    evolve() consults BOTH automatically, through separate surfaces
-    (KG search gates vs bank serving), and every SolutionResult stamps
-    the exact memory it drew on.
+    A Kapso is an intelligent agent whose memory is the experience it is
+    served (docs/plans/redesign/wp3-experience.md): what it measured by
+    doing, earned via learn() into its own bank; what others measured, a
+    bank you read; what others reported, the hosted gate or a corpus
+    ingested into an index with add_experience(). build() serves exactly
+    what is loaded, and every Solution records it.
 
     The closed loop:
-        kapso = Kapso(kg_index="data/indexes/ml.index")
-        kapso.learn_knowledge(Source.Repo(url), kapso.research(question))
-        solution = kapso.evolve(goal=..., time_budget_minutes=240)
+        kapso = Kapso()
+        kapso.add_experience(repo=url, name="org-x")      # once; then load it
+        kapso.load_experience("org-x")
+        solution = kapso.build(brief, budget=Budget(minutes=240))
         lesson   = kapso.learn(solution)     # import -> mine -> exam -> lesson
-        print(kapso.memory.explain())        # one status view of both stores
-        solution2 = kapso.evolve(goal=...)   # smarter on both axes
+        kapso.load_experience("mine")
+        solution2 = kapso.build(brief)       # served what the first campaign taught
 
     Deployment:
         software = kapso.deploy(solution)
         result = software.run({"ticker": "AAPL"})
 
-    Advanced usage with evaluation and data directories:
-        solution = kapso.evolve(
-            goal="Build a classifier with 95% accuracy",
-            eval_dir="./evaluation/",
-            data_dir="./datasets/",
-            initial_repo="https://github.com/owner/starter-repo",
+    With an evaluation, data and a starting repository:
+        solution = kapso.build(
+            "Build a classifier with 95% accuracy",
+            evaluation="./evaluation/",
+            data="./datasets/",
+            repo="https://github.com/owner/starter-repo",
         )
     """
-    
-    # Mapping from Source type to Learner type
-    _SOURCE_TO_LEARNER = {
-        Source.Repo: "repo",
-        Source.Solution: "experiment",
-    }
-    
+
     def __init__(
         self,
-        config_path: Optional[str] = None,
-        kg_index: Optional[str] = None,
+        config: Optional[str] = None,
         bank: Optional[str] = None,
     ):
         """
-        Initialize a Kapso agent.
+        Initialize a Kapso agent. Nothing starts here.
 
         Args:
-            config_path: Path to configuration file (uses default if not provided)
-            kg_index: Path to existing .index file to load knowledge graph from.
-                      If provided, connects to the indexed knowledge graph.
-                      If not provided, knowledge search is disabled.
-            bank: Experience-store (knowledge bank) home directory. Overrides
-                  the config default (learning.bank.local_path). The bank is
-                  where learn() writes evidence-priced cards and where
-                  evolve() serves them from when serving is enabled.
+            config: Path to the configuration file, the engine's knobs
+                    (the packaged config.yaml when not given)
+            bank: Your bank's home directory, where learn() writes and
+                  `mine` is served from. Overrides the config default
+                  (learning.bank.local_path).
         """
-        self.config_path = config_path or DEFAULT_CONFIG_PATH
-        self._config = load_config(self.config_path)
+        # The override file (None: the packaged defaults alone) and the
+        # effective config, the one every verb reads its blocks from.
+        self.config_path = config
+        self._config = load_config(config)
+        validate_config(self._config, load_agent_manifest()["agents"])
+        # The harness block (store, thresholds, the two session timeouts)
+        # and the loaded harness: none until load_harness() is called.
+        self._harness_settings = dict(self._config["harness"])
+        self._harness: Optional[Harness] = None
         # By construction time every dependency import has settled, so
         # this atexit registration lands last (LIFO-first at exit) and
         # keeps third-party exit-time warning noise out of user output.
         CodingAgentFactory.register_quiet_exit()
 
-        # The agent's memory resolves ONCE here (design §8.2): knowledge =
-        # the KG connection below; experience = the bank home. Every later
-        # call (learn / learn_knowledge / evolve) reads this resolution —
-        # never re-reading config at call time.
+        # The bank home resolves ONCE here: every later call (learn /
+        # build) reads this resolution — never re-reading config at call
+        # time.
         configured_bank = (
             (self._config.get("learning") or {}).get("bank") or {}
         ).get("local_path")
@@ -221,83 +345,212 @@ class Kapso:
         self._bank_home: Optional[Path] = (
             Path(bank_path).expanduser() if bank_path else None
         )
-        
-        # Initialize knowledge search
-        if kg_index:
-            self._load_kg_index(kg_index)
-            self._kg_index_path = kg_index
-        else:
-            self.knowledge_search = KnowledgeSearchFactory.create_null()
-            self._kg_index_path = None
+        # The experience homes; `mine` lives where the bank home is, which
+        # `bank=` may have moved.
+        self._experience_settings = experience_settings(self._config)
+        if self._bank_home is not None:
+            self._experience_settings["bank_home"] = str(self._bank_home)
+        self._experience: List[ExperienceSource] = []
+        # The knowledge search is the null search until a build loads an
+        # index: it is connected from the index's record then, never from
+        # the config alone (a build with nothing loaded needs no key).
+        self.knowledge_search = KnowledgeSearchFactory.create_null()
         # Backend clients (Weaviate/Neo4j/embeddings) hold real sockets;
         # close them at interpreter exit so scripts end without unclosed-
         # socket ResourceWarnings (onboarding E2E finding #8).
         atexit.register(self.close)
-        
-        # Print initialization status
-        if kg_index:
-            print(f"Initialized Kapso")
-        else:
-            print(f"Initialized Kapso (Knowledge Graph: disabled)")
+        print("Initialized Kapso")
 
-        # Lazy-initialized web researcher (created on first `.research()` call).
-        self._web_researcher: Optional[Researcher] = None
-    
-    # =========================================================================
-    # Knowledge Graph Indexing
-    # =========================================================================
-    
-    def _load_kg_index(self, index_path: str) -> None:
-        """
-        Load existing index from .index file.
-        
-        Args:
-            index_path: Path to the .index file
-            
-        Raises:
-            KGIndexError: If index file is invalid or backend data is missing
-            FileNotFoundError: If index file doesn't exist
-        """
-        index_path = Path(index_path)
-        
-        if not index_path.exists():
-            raise FileNotFoundError(f"Index file not found: {index_path}")
-        
-        # Load index metadata
-        with open(index_path) as f:
-            index_data = json.load(f)
-        
-        metadata = KGIndexMetadata.from_dict(index_data)
-        
-        # Get search config from mode config
-        mode = self._config.get("default_mode", "GENERIC")
-        mode_config = self._config.get("modes", {}).get(mode, {})
-        search_config = mode_config.get("knowledge_search", {})
-        
-        # Merge backend_refs into params (backend_refs take precedence)
-        params = search_config.get("params", {}).copy()
-        params.update(metadata.backend_refs)
-        params.setdefault("models", mode_config.get("models"))
-        params.setdefault("retry", mode_config.get("retry"))
-        params.setdefault("inference", resolve_inference_config(self.config_path))
+    # ------------------------------------------------------------ harness
 
-        # Create search backend (closing any superseded one's clients)
-        self._close_knowledge_search()
-        self.knowledge_search = KnowledgeSearchFactory.create(
-            search_type=metadata.search_backend,
-            params=params,
-        )
-        
-        # Validate backend has data
-        if not self.knowledge_search.validate_backend_data():
-            raise KGIndexError(
-                f"Index file exists but backend data not found.\n"
-                f"Re-index with: kapso.index_kg("
-                f"wiki_dir='{metadata.data_source}', save_to='{index_path}')"
+    @property
+    def harness(self) -> Optional[Harness]:
+        """The loaded harness, or None: today's generic behaviour."""
+        return self._harness
+
+    def load_harness(self, ref: str) -> Harness:
+        """Resolve a bundled name, a path or a git reference; run `check`
+        and raise on a failure; hash it; read what this machine lacks into
+        `harness.missing` without raising. A second call replaces the
+        first: one object, one harness. Nothing starts here."""
+        self._harness = load_harness(ref, settings=self._harness_settings)
+        print(f"Harness: {self._harness.label()} from {self._harness.source}")
+        for row in self._harness.missing:
+            print(f"  needs {row.label}: {row.fix}  [{', '.join(row.modules)}]")
+        return self._harness
+
+    # --------------------------------------------------------- experience
+
+    @property
+    def experience(self) -> List[ExperienceSource]:
+        """The loaded sources, in load order; empty is today's generic
+        behaviour: nothing served."""
+        return list(self._experience)
+
+    def load_experience(self, ref: str) -> ExperienceSource:
+        """Resolve `mine` (or `mine:all`, every card you measured whatever
+        the harness), `leeroopedia`, a bank path, a bank git reference or
+        an index name; confirm it exists and is readable; pin it as it is
+        on disk (a bank at its head, an index at its id; loading never
+        pulls, `update_experience` does); append it to the object's
+        sources, replacing an earlier load of the same reference. Nothing
+        is served until a verb runs."""
+        reference = parse_experience_reference(ref, indexes_root=Path(self._experience_settings["indexes"]))
+        source = resolve_source(reference, settings=self._experience_settings)
+        self._experience = [s for s in self._experience if s.reference != source.reference] + [source]
+        print(f"Experience: {source.label()}")
+        return source
+
+    def share_experience(self, url: str) -> None:
+        """Attach `url` as your bank's remote and push the bank there; a
+        bank that does not exist yet is created first. learn() pushes
+        there from then on, `update_experience` pulls from there, and the
+        intro says "measured by you and your team". Credentials are git's
+        own."""
+        home = Path(self._experience_settings["bank_home"]).expanduser()
+        if not home.exists():
+            init_bank(str(home))
+            print(f"created your bank at {home}")
+        connect_bank(home, url)
+        print(f"your bank {home} shares to {url}")
+
+    def add_experience(
+        self,
+        ref: Optional[str] = None,
+        *,
+        repo: Optional[str] = None,
+        research: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> str:
+        """Make a source that must exist before it can be loaded, and
+        return its reference. `ref="mine"` creates your bank (a first
+        learn() does too); `ref="leeroopedia"` checks the hosted gate's
+        key is present. `repo=` ingests a repository, `research=` a
+        question answered on the web, into a new index under `name`:
+        the pages under the experience home, their own backend namespace,
+        the record `index.json` that pins the index at its id. An index
+        is never written again after this: a name that exists is refused
+        (`remove_experience` first). Exactly one of the three is given."""
+        given = [value for value in (ref, repo, research) if value]
+        if len(given) != 1:
+            raise ValueError(
+                "add_experience takes exactly one of ref (`mine` or `leeroopedia`), repo= or research="
             )
-        
-        print(f"  Knowledge Graph: Loaded ({metadata.page_count} pages from {metadata.search_backend})")
+        if ref == MINE:
+            home = Path(self._experience_settings["bank_home"]).expanduser()
+            if home.exists():
+                print(f"your bank exists at {home}")
+            else:
+                init_bank(str(home))
+                print(f"created your bank at {home} (empty; learn() fills it, `mine` serves it)")
+            return MINE
+        if ref == HOSTED:
+            server = probe_hosted_gate(self._experience_settings)
+            print(f"{HOSTED}: its key is present and the gate answers as {server}; `{HOSTED}` loads it")
+            return HOSTED
+        if ref is not None:
+            raise ValueError(
+                f"`{ref}` is not something to add: `mine` or `leeroopedia` by reference, a repository with "
+                "repo=, a question with research=; a bank by path or git reference needs no add"
+            )
+        store = ExperienceStore(self._experience_settings["banks"], self._experience_settings["indexes"])
+        name = check_name(name, store)
+        run_preflight("experience", self._config, research=research is not None)
+        sources = (
+            repository_source(repo) if repo
+            else research_sources(research, self._experience_settings, self.config_path)
+        )
+        heartbeat_seconds = self._status_heartbeat_seconds()
+        status = KnowledgeStatus(
+            self._status_file("experience"),
+            heartbeat_seconds=heartbeat_seconds,
+            daemon=bool(heartbeat_seconds),
+        )
+        print(f"status: {status.path}")
+        try:
+            record, result = ingest(
+                sources, name=name, origin=repo or research, store=store,
+                config=self._config, config_path=self.config_path, status=status,
+            )
+        finally:
+            in_flight = sys.exc_info()[1]
+            if in_flight is not None:
+                status.failed(in_flight)
+        status.done(
+            pages_extracted=result.total_pages_extracted, created=result.created,
+            edited=result.edited, errors=len(result.errors),
+        )
+        print(f"Experience added: {name} (index {record.id}, {record.page_count} pages); `{name}` loads it")
+        return name
 
+    def update_experience(self, ref: Optional[str] = None) -> None:
+        """The network step loading never takes: `mine` takes its remote's
+        main (fast-forward; a history that does not is an error in git's
+        words), a bank you read at a moving reference is fetched again,
+        a tag or a commit never moves. `None` updates every bank on this
+        machine. A campaign keeps the pin it launched with whatever moves
+        here; an index is what `add` made (remove it and add it again)."""
+        store = ExperienceStore(self._experience_settings["banks"], self._experience_settings["indexes"])
+        if ref is None:
+            references = [parse_experience_reference(MINE, indexes_root=Path(self._experience_settings["indexes"]))]
+            references += [
+                parse_experience_reference(
+                    f"git+{bank['remote']}@{bank['rev']}", indexes_root=Path(self._experience_settings["indexes"]),
+                )
+                for bank in store.banks()
+            ]
+        else:
+            references = [parse_experience_reference(ref, indexes_root=Path(self._experience_settings["indexes"]))]
+        for reference in references:
+            if reference.kind == MINE:
+                home = Path(self._experience_settings["bank_home"]).expanduser()
+                if not home.exists():
+                    print(f"{MINE}: no bank yet (`kapso experience add {MINE}`)")
+                elif not has_origin(home):
+                    print(f"{MINE}: no remote (`kapso experience share <url>`), nothing to pull")
+                else:
+                    before = bank_head(home)
+                    pull_home(home)
+                    after = bank_head(home)
+                    print(f"{MINE}: {'at ' + after[:12] + ', up to date' if after == before else f'now at {after[:12]} (was {before[:12]})'}")
+            elif reference.kind == "git":
+                moved = store.update(reference)
+                if moved["before"] == moved["after"]:
+                    print(f"{reference.raw}: at {moved['after'][:12]}: a tag or a commit never moves")
+                else:
+                    print(f"{reference.raw}: now at {moved['after'][:12]} (was {moved['before'][:12]})")
+            else:
+                raise ExperienceError(
+                    f"`{reference.raw}` has nothing to update: the hosted gate and a bank by path are read in place, "
+                    "and an index is what `add` made (`remove` it and add it again)"
+                )
+
+    def remove_experience(self, ref: str) -> None:
+        """Delete what `load` fetched or `add` made: a bank you read by git
+        reference (its clone and record) or an index by name (its backend
+        namespace, its pages and its record). Your bank, the hosted gate
+        and a bank by path are not the store's to remove."""
+        store = ExperienceStore(self._experience_settings["banks"], self._experience_settings["indexes"])
+        reference = parse_experience_reference(ref, indexes_root=Path(self._experience_settings["indexes"]))
+        if reference.kind == "index":
+            record = store.index_record(reference.name)
+            search = search_for(record, self._config)
+            search.clear()
+            search.close()
+            print(f"removed {store.remove_index(reference.name)} (index {record.id}; its collection and corpus cleared)")
+        elif reference.kind == "git":
+            print(f"removed {store.remove_bank(reference)}")
+        else:
+            raise ExperienceError(
+                f"`{ref}` is not something to remove: your bank is yours (delete its directory yourself), "
+                "the hosted gate is a key in .env, a bank by path is read in place"
+            )
+        self._experience = [source for source in self._experience if source.reference != reference.raw]
+
+    # =========================================================================
+    # Knowledge search
+    # =========================================================================
+    
     def _close_knowledge_search(self) -> None:
         # Runs at atexit — tolerate a test-stubbed backend without close();
         # every real KnowledgeSearch implements it (base class contract).
@@ -310,392 +563,8 @@ class Kapso:
         (Weaviate, Neo4j, embeddings). Idempotent — registered atexit at
         construction so scripts end without unclosed-socket
         ResourceWarnings; also safe to call earlier when done with
-        knowledge search (index_kg / learn_knowledge reconnect fresh)."""
+        knowledge search (a build with an index loaded connects fresh)."""
         self._close_knowledge_search()
-
-    def index_kg(
-        self,
-        wiki_dir: Optional[str] = None,
-        data_path: Optional[str] = None,
-        save_to: str = None,
-        search_type: Optional[str] = None,
-        force: bool = False,
-    ) -> str:
-        """
-        Index knowledge data and save index reference file.
-        
-        This is a ONE-TIME operation. After indexing, the data persists
-        in the configured backends (Weaviate, Neo4j, etc.). Use the returned
-        .index file path with kg_index parameter on subsequent runs.
-        
-        Args:
-            wiki_dir: Path to wiki directory (for kg_graph_search backend).
-                      Contains .md files organized in type subdirectories.
-            data_path: Path to JSON data file (for kg_llm_navigation backend).
-                       Contains nodes and edges dict.
-            save_to: Path to save .index file (e.g., "data/indexes/ml.index")
-            search_type: Override search backend type. If not provided, uses
-                         config default or infers from input type.
-            force: If True, clears existing data before indexing
-            
-        Returns:
-            Path to created .index file
-            
-        Raises:
-            ValueError: If neither wiki_dir nor data_path provided
-            
-        Example:
-            # Index wiki pages (kg_graph_search)
-            kapso.index_kg(
-                wiki_dir="data/wikis/ml_knowledge",
-                save_to="data/indexes/ml.index",
-            )
-            
-            # Index JSON knowledge graph (kg_llm_navigation)
-            kapso.index_kg(
-                data_path="benchmarks/mle/data/kg_data.json",
-                save_to="data/indexes/kaggle.index",
-                search_type="kg_llm_navigation",
-            )
-        """
-        if save_to is None:
-            raise ValueError("save_to is required - specify where to save the .index file")
-        
-        if not wiki_dir and not data_path:
-            raise ValueError("Must provide either wiki_dir or data_path")
-        
-        # Determine search type
-        if search_type is None:
-            if data_path:
-                # JSON data implies kg_llm_navigation
-                search_type = "kg_llm_navigation"
-            else:
-                # Wiki dir implies kg_graph_search (or use config default)
-                mode = self._config.get("default_mode", "GENERIC")
-                mode_config = self._config.get("modes", {}).get(mode, {})
-                search_config = mode_config.get("knowledge_search", {})
-                search_type = search_config.get("type", "kg_graph_search")
-        
-        # Get params from config
-        mode = self._config.get("default_mode", "GENERIC")
-        mode_config = self._config.get("modes", {}).get(mode, {})
-        search_config = mode_config.get("knowledge_search", {})
-        params = search_config.get("params", {}).copy()
-        params.setdefault("models", mode_config.get("models"))
-        params.setdefault("retry", mode_config.get("retry"))
-        params.setdefault("inference", resolve_inference_config(self.config_path))
-
-        # Create search backend (closing any superseded one's clients)
-        self._close_knowledge_search()
-        self.knowledge_search = KnowledgeSearchFactory.create(
-            search_type=search_type,
-            params=params,
-        )
-        
-        # Clear existing data if force=True
-        if force:
-            print("  Clearing existing index...")
-            self.knowledge_search.clear()
-        
-        # Determine data source and index
-        if wiki_dir:
-            data_source = str(wiki_dir)
-            print(f"  Indexing wiki: {wiki_dir}")
-            self.knowledge_search.index(KGIndexInput(wiki_dir=wiki_dir))
-        else:
-            data_source = str(data_path)
-            print(f"  Indexing JSON: {data_path}")
-            # Load JSON and index directly (for kg_llm_navigation)
-            with open(data_path) as f:
-                graph_data = json.load(f)
-            self.knowledge_search.index(graph_data)
-        
-        # Get page count
-        page_count = self.knowledge_search.get_indexed_count()
-        
-        # Build index metadata
-        metadata = KGIndexMetadata(
-            version="1.0",
-            created_at=datetime.now().isoformat(),
-            data_source=data_source,
-            search_backend=search_type,
-            backend_refs=self.knowledge_search.get_backend_refs(),
-            page_count=page_count,
-        )
-        
-        # Save index file
-        save_path = Path(save_to)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(save_path, 'w') as f:
-            json.dump(metadata.to_dict(), f, indent=2)
-        
-        self._kg_index_path = str(save_path)
-        print(f"  Index saved: {save_to} ({page_count} pages)")
-        
-        return str(save_path)
-
-    # =========================================================================
-    # Public Web Research
-    # =========================================================================
-
-    def research(
-        self,
-        objective: str,
-        *,
-        mode: ResearchMode = ["idea", "implementation"],
-        depth: ResearchDepth = "deep",
-    ) -> ResearchFindings:
-        """
-        Do deep public web research for an objective.
-        
-        Args:
-            objective: What you want to research on the public web.
-            mode: "idea" | "implementation" | "study" (or list of modes)
-            depth: "light" | "deep"
-                Maps to OpenAI `reasoning.effort`:
-                - light -> "medium"
-                - deep  -> "high"
-        
-        Returns:
-            `ResearchFindings` with fluent accessors:
-            - .ideas -> List[Source.Idea]
-            - .implementations -> List[Source.Implementation]
-            - .report -> Source.ResearchReport (if mode="study")
-        """
-        run_preflight("research", self._config)
-        if self._web_researcher is None:
-            # CLI-only inference: the researcher's session spec comes from
-            # the resolved `inference:` block (packaged defaults, this
-            # config file's overrides on top), not the mode's model routes.
-            self._web_researcher = Researcher(config_path=self.config_path)
-
-        return self._web_researcher.research(objective, mode=mode, depth=depth)
-    
-    def learn_knowledge(
-        self,
-        *sources: Union[Source.Repo, Source.Solution, Source.Idea, Source.Implementation, Source.ResearchReport, ResearchFindings],
-        wiki_dir: str = "data/wikis",
-        skip_merge: bool = False,
-        kg_index: Optional[str] = None,
-        github_org: Optional[str] = None,
-        is_private: Optional[bool] = None,
-        on_status: Optional[Any] = None,
-    ) -> "PipelineResult":
-        """
-        Learn from one or more knowledge sources.
-        
-        This ingests knowledge into the Knowledge Graph (KG) via `KnowledgePipeline`.
-        
-        Supported sources (MVP):
-        - `Source.Repo(...)`
-        - `Source.Solution(...)`
-        - `Source.Idea(...)`, `Source.Implementation(...)`, `Source.ResearchReport(...)`
-        - `ResearchFindings` (output of `Kapso.research(...)`)
-        
-        Args:
-            *sources: One or more Source objects.
-            wiki_dir: Path to a local wiki directory (e.g., `data/wikis`) used as
-                the KG source-of-truth on disk.
-                
-                Note:
-                - URL-based KG targets (e.g. `https://skills.leeroo.com`) are not
-                  supported in this code path yet.
-            skip_merge: If True, only extract `WikiPage`s (Stage 1) and skip merging
-                into the KG backends (Stage 2). This avoids requiring Neo4j/Weaviate.
-            github_org: GitHub organization to publish the extracted
-                workflows' repositories to (the token's own account when
-                not given). Passing it turns publishing on for this call;
-                otherwise `learner.ingestor.publish_workflows` decides.
-            is_private: Whether those repositories are private. None (the
-                default) defers to the config's github_repo_visibility.
-                Passing it turns publishing on for this call too.
-            
-        Example:
-            # Learn from repo + web research and merge into local KG
-            kapso.learn_knowledge(
-                Source.Repo("https://github.com/user/repo"),
-                kapso.research("How to pick LoRA rank?", mode="idea"),
-                wiki_dir="data/wikis",
-            )
-            
-            # Learn and push workflow repos to an organization as public
-            kapso.learn_knowledge(
-                Source.Repo("https://github.com/user/repo"),
-                github_org="my-org",
-                is_private=False,
-            )
-        """
-        if not sources:
-            raise ValueError("learn_knowledge() requires at least one source")
-        # skip_merge=True stops after page extraction, so the merger session
-        # and both KG stores drop out of the requirement set.
-        # The call's GitHub arguments turn publishing on; otherwise the
-        # config's learner.ingestor block decides (packaged default when a
-        # caller's config omits the key).
-        mode_for_publishing = self._config.get("default_mode", "GENERIC")
-        ingestor_config = (
-            self._config.get("modes", {}).get(mode_for_publishing, {})
-            .get("learner", {}).get("ingestor", {})
-        )
-        publish_workflows = (
-            github_org is not None
-            or is_private is not None
-            or bool(ingestor_config.get(
-                "publish_workflows", learner_defaults("ingestor")["publish_workflows"]
-            ))
-        )
-        run_preflight(
-            "learn_knowledge", self._config,
-            skip_merge=skip_merge, publish_workflows=publish_workflows,
-        )
-        # research(mode="idea"/"implementation") returns a LIST of typed
-        # sources; the advertised contract passes that output directly as
-        # one argument — flatten one level so the pipeline's per-source
-        # factory sees the typed items, never a bare list (found live
-        # 2026-08-24 by the facade E2E: "Unknown ingestor type: 'list'").
-        flattened: List[Any] = []
-        for item in sources:
-            if isinstance(item, (list, tuple)):
-                flattened.extend(item)
-            else:
-                flattened.append(item)
-        sources = tuple(flattened)
-        if not sources:
-            raise ValueError(
-                "learn_knowledge() received only empty source lists"
-            )
-
-        # URL wiki targets are not supported: silently rewriting the
-        # caller's destination to an unrelated local path was how pages
-        # landed somewhere the caller never chose (stale-code audit
-        # 2026-08-26, B2). Fail loud instead.
-        if isinstance(wiki_dir, str) and wiki_dir.startswith(("http://", "https://")):
-            raise ValueError(
-                f"URL wiki_dir is not supported ({wiki_dir}); pass a local "
-                "directory path"
-            )
-        resolved_wiki_dir = wiki_dir
-
-        # Optional: propagate an existing `.index` file path into the merge agent.
-        #
-        # Why:
-        # - The KnowledgeMerger performs create/edit operations via an MCP server.
-        # - That MCP server now supports Option A: initializing from KG_INDEX_PATH.
-        # - We pass the index path through pipeline->merger so the Claude Code
-        #   subprocess can set KG_INDEX_PATH for the MCP server.
-        index_path = kg_index or getattr(self, "_kg_index_path", None)
-        merger_params = {"kg_index_path": index_path} if index_path else {}
-
-        # Get learner config from mode config
-        # This allows config.yaml to specify ingestor/merger params (auth_mode, timeout, etc.)
-        mode = self._config.get("default_mode", "GENERIC")
-        mode_config = self._config.get("modes", {}).get(mode, {})
-        learner_config = mode_config.get("learner", {})
-
-        # Extract ingestor and merger params from config
-        ingestor_params = learner_config.get("ingestor", {}).copy()
-        config_merger_params = learner_config.get("merger", {})
-
-        # The call's GitHub settings override config.yaml's; the ingestor
-        # takes the config's github_repo_visibility when is_private is not
-        # passed (stale-code audit 2026-08-26, A1).
-        ingestor_params["publish_workflows"] = publish_workflows
-        if github_org is not None:
-            ingestor_params["github_org"] = github_org
-        if is_private is not None:
-            ingestor_params["github_repo_visibility"] = (
-                "private" if is_private else "public"
-            )
-
-        # Merge config merger params with kg_index_path (kg_index_path takes precedence)
-        final_merger_params = {**config_merger_params, **merger_params}
-
-        pipeline = KnowledgePipeline(
-            wiki_dir=resolved_wiki_dir,
-            ingestor_params=ingestor_params,
-            merger_params=final_merger_params,
-            index_builder=self.index_kg,
-        )
-
-        # Observability (design §2): ingestion sessions run long between
-        # natural updates, so the base-class daemon carries liveness; the
-        # pipeline reports per-source progress and the merge phase.
-        heartbeat_seconds = self._status_heartbeat_seconds()
-        status = KnowledgeStatus(
-            self._status_file("learn_knowledge"),
-            heartbeat_seconds=heartbeat_seconds,
-            daemon=bool(heartbeat_seconds),
-            on_status=on_status,
-        )
-        print(f"status: {status.path}")
-        try:
-            result = self._learn_knowledge_chain(
-                pipeline, sources, skip_merge, resolved_wiki_dir, status
-            )
-        finally:
-            in_flight = sys.exc_info()[1]
-            if in_flight is not None:
-                status.failed(in_flight)
-        return result
-
-    def _learn_knowledge_chain(
-        self,
-        pipeline: "KnowledgePipeline",
-        sources: tuple,
-        skip_merge: bool,
-        resolved_wiki_dir: str,
-        status: KnowledgeStatus,
-    ) -> "PipelineResult":
-        result = pipeline.run(*sources, skip_merge=skip_merge, status=status)
-
-        # The merge wrote pages into the KG backends AND an .index beside
-        # the wiki dir. Record that index as this agent's knowledge
-        # provenance: evolve stamps it into every SolutionResult and
-        # threads it to the wiki-search gates, so a solution is traceable
-        # to the knowledge state that produced it. Without this the stamp
-        # was null on every learn_knowledge -> evolve sequence and the
-        # gates had no index to mount (E2E review 2026-08-24).
-        if not skip_merge:
-            merged_index = Path(resolved_wiki_dir).expanduser() / ".index"
-            if merged_index.is_file():
-                self._kg_index_path = str(merged_index)
-                print(f"  Knowledge index: {merged_index}")
-        # S1 fix (learn-api-design.md §8.2): a merged run just wrote into
-        # the KG backends — a Kapso constructed without kg_index would
-        # otherwise keep its null search and the next evolve() in this
-        # object would be blind to knowledge it just learned. Refresh the
-        # search from the config preset, exactly as index_kg() does.
-        if not skip_merge and not self.knowledge_search.is_enabled():
-            mode = self._config.get("default_mode", "GENERIC")
-            mode_config = self._config.get("modes", {}).get(mode, {})
-            search_config = mode_config.get("knowledge_search", {})
-            params = search_config.get("params", {}).copy()
-            params.setdefault("models", mode_config.get("models"))
-            params.setdefault("retry", mode_config.get("retry"))
-            params.setdefault("inference", resolve_inference_config(self.config_path))
-            self._close_knowledge_search()
-            self.knowledge_search = KnowledgeSearchFactory.create(
-                search_type=search_config.get("type", "kg_graph_search"),
-                params=params,
-            )
-            print("  Knowledge search connected (post-learn refresh)")
-
-        # Keep a small, user-friendly summary.
-        print(
-            f"Learn complete: sources={result.sources_processed}, "
-            f"extracted_pages={result.total_pages_extracted}, "
-            f"created={result.created}, edited={result.edited}, "
-            f"errors={len(result.errors)}"
-        )
-
-        status.done(
-            pages_extracted=result.total_pages_extracted,
-            created=result.created,
-            edited=result.edited,
-            errors=len(result.errors),
-        )
-        return result
-    
 
     # =========================================================================
     # Learning from experience (learn-from-trajectories)
@@ -710,10 +579,9 @@ class Kapso:
 
     @property
     def memory(self) -> MemoryStatus:
-        """What this agent knows right now, across both memory stores
-        (design §8.2): knowledge (imported — KG) and experience (earned —
-        the bank)."""
-        knowledge_enabled = self.knowledge_search.is_enabled()
+        """Your own bank right now: its head, its active cards, the
+        trajectories in the store (what is loaded for serving is
+        `experience`)."""
         bank_head = None
         active_cards = None
         store_count = None
@@ -732,19 +600,10 @@ class Kapso:
             store = TrajectoryStore.from_config(self._config)
             store_count = len(store.list_manifests())
         return MemoryStatus(
-            knowledge_index=self._kg_index_path,
-            knowledge_backend=(
-                type(self.knowledge_search).__name__ if knowledge_enabled else None
-            ),
-            knowledge_enabled=knowledge_enabled,
             bank_path=str(self._bank_home) if self._bank_home else None,
             bank_head=bank_head,
             bank_active_cards=active_cards,
             store_trajectories=store_count,
-            serving_enabled=bool(
-                ((self._config.get("learning") or {}).get("serving") or {})
-                .get("enabled")
-            ),
         )
 
     # =========================================================================
@@ -759,12 +618,20 @@ class Kapso:
         screen `kapso watch` shows."""
         return OperationStatusView(path)
 
+    @staticmethod
+    def trace(path: str) -> TraceView:
+        """The campaign's record read after the fact: the attempts with
+        their sessions and run entries, the lessons served and used, what
+        was voided or rejected and on what evidence, the sessions that
+        failed, the delivered candidate. `view.explain()` is the text
+        `kapso trace` prints, `view.data` what `--json` prints; a campaign
+        still running renders partial. A pure reader."""
+        return read_trace(path)
+
     def _status_heartbeat_seconds(self) -> Optional[float]:
-        """The status daemons' beat, from the resolved mode config's
-        budget block (the same key that paces evolve's durable clock)."""
-        interval = (
-            load_mode_config(self.config_path).get("budget") or {}
-        ).get("checkpoint_heartbeat_seconds")
+        """The status daemons' beat, from the config's budget block (the
+        same key that paces a build's durable clock)."""
+        interval = self._config["budget"]["checkpoint_heartbeat_seconds"]
         return float(interval) if interval else None
 
     def _status_file(self, operation: str) -> Path:
@@ -773,30 +640,29 @@ class Kapso:
             # Sourced from the canonical config, never re-hardcoded
             # (Rule 1): caller configs that omit the key inherit the
             # packaged default from its single home.
-            status_dir = load_config(DEFAULT_CONFIG_PATH)["learning"][
-                "status_dir"
-            ]
+            status_dir = self._config["learning"]["status_dir"]
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         return Path(status_dir).expanduser() / f"{operation}-{stamp}.json"
 
     def learn(
         self,
-        source: Union[SolutionResult, str],
+        source: Union[Solution, str],
         *,
         trajectory_id: Optional[str] = None,
         learner_version: Optional[str] = None,
         exam: bool = True,
         push: Optional[bool] = None,
         on_status: Optional[Any] = None,
-    ) -> LessonResult:
+        detach: bool = False,
+    ) -> Union[LessonResult, Launch]:
         """Learn from one finished campaign: import it into the trajectory
         store, mine it, grade the bank on it (exam-before-lesson), then run
         the update crew — evidence-priced cards, one tagged bank commit.
 
         Args:
             source: What to learn from —
-                - the SolutionResult returned by evolve() (its campaign
-                  workspace is read directly),
+                - the Solution returned by build() (its campaign
+                  directory, `trace`, is read directly),
                 - a path to a campaign directory (archived + imported), or
                 - a trajectory id already in the store (import skipped).
             trajectory_id: Store id when importing a directory; default is
@@ -806,15 +672,41 @@ class Kapso:
             exam: Run the hindcast exam against the pinned pre-lesson bank
                 head first. False is for development replays only.
             push: Push the bank commit to the bank's `origin` remote
-                (attached via `kapso bank connect <url>`). None means
+                (attached via `kapso experience share <url>`). None means
                 "push exactly when an origin is attached".
             on_status: Optional hook called with the status dict after
                 every status write and heartbeat (observability §4b).
                 Exceptions from the hook propagate.
+            detach: Run the learn in a session of its own and return a
+                `Launch` (pid, log, the learning status directory) at once
+                — `kapso learn <campaign> --detach` from Python. Takes the
+                campaign form only: no trajectory id, learner version,
+                exam, push or callback.
 
         Returns:
             LessonResult — what changed in the bank and the paper trail.
         """
+        if detach:
+            # The same launch as `kapso learn <campaign> --detach`, from
+            # Python: hours of crews in a session of its own, a Launch
+            # handed back at once (the release gate's S1 engineers shelled
+            # out to the CLI for this, since learn() blocks).
+            if on_status is not None or trajectory_id is not None or learner_version is not None or not exam or push is not None:
+                raise ValueError(
+                    "learn(detach=True) runs `kapso learn <campaign>` in a session of its own, "
+                    "which takes no on_status, trajectory_id, learner_version, exam or push"
+                )
+            campaign = Path(source.campaign) if isinstance(source, Solution) else Path(source)
+            argv = ["learn", str(campaign)]
+            if self._harness is not None:
+                argv += ["--harness", self._harness.source]
+            config_path = self._launch_config_path()
+            if config_path is not None:
+                argv += ["--config", config_path]
+            log_path = beside(campaign, ".learn.log")
+            pid = launch_detached(argv, log_path=log_path, receipt_path=None)
+            status_dir = Path(self._config["learning"]["status_dir"]).expanduser()
+            return Launch(pid=pid, log=str(log_path), status=str(status_dir))
         started = datetime.now(timezone.utc)
         if self._bank_home is None:
             raise ValueError(
@@ -862,7 +754,7 @@ class Kapso:
 
     def _learn_chain(
         self,
-        source: Union[SolutionResult, str],
+        source: Union[Solution, str],
         trajectory_id: Optional[str],
         version: str,
         exam: bool,
@@ -875,10 +767,25 @@ class Kapso:
     ) -> LessonResult:
         status.phase("harvest")
 
+        # The harness for the learning sessions: the build's (or the loaded
+        # one, which must share its name) for a Solution; the loaded one, if
+        # any, for a path or a trajectory id. Its learning module is staged
+        # into the crews' sessions; the trajectory records which harness learned.
+        # A campaign directory with a record is the same case as its Solution.
+        record = source if isinstance(source, Solution) else None
+        if record is None and isinstance(source, str) and (Path(source) / ".kapso" / "solution.json").is_file():
+            record = Solution.open(source)
+        if record is not None:
+            learning_harness = self._harness_for(record, verb="learn")
+        elif self._harness is not None:
+            learning_harness = reload_harness(self._harness, settings=self._harness_settings)
+        else:
+            learning_harness = None
+
         # --- dispatch (design §2) ---
-        if isinstance(source, SolutionResult):
-            campaign_dir = Path(source.code_path).expanduser()
-            slug_seed = source.goal
+        if isinstance(source, Solution):
+            campaign_dir = source.campaign
+            slug_seed = source.brief.objective
         else:
             known_ids = {m["id"] for m in store.list_manifests()}
             if source in known_ids:
@@ -902,7 +809,7 @@ class Kapso:
                 stamp = started.strftime("%Y%m%dT%H%M%S")
                 trajectory_id = f"{slug}/{stamp}_facade"
             # Harvest bridge (the same step benchmark drivers run at
-            # campaign completion). A bare evolve workspace lacks the
+            # campaign completion). A bare build workspace lacks the
             # benchmark-shaped artifacts, so the facade synthesizes the
             # historical-contract trio HONESTLY from what the campaign
             # actually produced — each generated file says so.
@@ -918,37 +825,27 @@ class Kapso:
                 }, indent=1))
             report_path = campaign_dir / "final_report.json"
             if not report_path.is_file():
+                # The outcome from the solution's record, whether the
+                # object or the campaign directory's own was given.
                 report: Dict[str, Any] = {"generated_by": "Kapso.learn"}
-                # The manifest reads family/dataset from here, and the
-                # update crew scopes cards by them. Recording the coords
-                # the campaign was SERVED on keeps the cards a lesson
-                # mints eligible for the very task that produced them
-                # (E2E review 2026-08-24: cards were scoped to invented
-                # families and matched nothing).
-                served_record = (
-                    campaign_dir / ".kapso" / "serving" / "serving-record.yaml"
-                )
-                if served_record.is_file():
-                    served_task = yaml.safe_load(
-                        served_record.read_text()
-                    ).get("task") or {}
-                    report["family"] = served_task.get("family")
-                    report["dataset"] = served_task.get("dataset")
-                if isinstance(source, SolutionResult):
+                if record is not None:
                     report.update({
-                        "goal": source.goal,
-                        "succeeded": source.succeeded,
-                        "final_score": source.final_score,
-                        "metadata": source.metadata,
+                        "goal": record.brief.objective,
+                        "goal_achieved": record.goal_achieved,
+                        "final_score": record.score,
+                        "stopped_reason": record.stopped_reason,
+                        "experiments": record.experiments,
+                        "experiments_total": record.experiments_total,
+                        "cost_usd": record.cost_usd,
                     })
                 report_path.write_text(json.dumps(report, indent=1, default=str))
             log_path = campaign_dir / ".kapso" / "campaign.log"
             if not log_path.is_file():
                 lines = ["# facade-generated harvest log (Kapso.learn)"]
-                if isinstance(source, SolutionResult):
-                    lines.append(source.explain())
+                if record is not None:
+                    lines.append(record.explain())
                 log_path.write_text("\n".join(lines) + "\n")
-            # The store contract requires registered runs. A bare evolve
+            # The store contract requires registered runs. A bare build
             # workspace records its experiments in the history store, not
             # a runs/ archive — synthesize run manifests from that REAL
             # history (one per recorded experiment; a campaign with zero
@@ -989,18 +886,23 @@ class Kapso:
             serving_record = (
                 campaign_dir / ".kapso" / "serving" / "serving-record.yaml"
             )
-            served_head: Optional[str] = None
+            # The sources the campaign was served, each at its pinned
+            # head, in the records' own shape (the serving record adds the
+            # count served); the launcher wrote them, sessions never stamp
+            # anything. Unserved: the empty list, as every other record.
+            experience: List[Dict[str, Any]] = []
             if serving_record.is_file():
-                served_head = yaml.safe_load(
-                    serving_record.read_text()
-                )["bank_head"]
+                experience = [
+                    vars(ExperienceRef(**{key: source[key] for key in EXPERIENCE_RECORD_FIELDS}))
+                    for source in yaml.safe_load(serving_record.read_text())["sources"]
+                ]
             save_trajectory(
                 store,
                 trajectory_id,
                 work_dir=str(campaign_dir),
                 campaign_log=str(log_path),
                 contract="historical",
-                # An evolve workspace IS a git repo, and `.git/index` is
+                # A build workspace IS a git repo, and `.git/index` is
                 # rewritten by any git command a later reader runs — the
                 # mining frame's raw-immutability check then fails the view
                 # ("raw file .git/index was modified during mining", found
@@ -1008,7 +910,17 @@ class Kapso:
                 # campaign evidence: the working tree, living documents,
                 # run manifests and logs are.
                 work_dir_exclude=(".git",),
-                bank_head=served_head,
+                experience=experience,
+                # The build's harness, what lessons are scoped by; and the
+                # one that did the learning when it is another version.
+                harness=vars(record.harness) if record is not None and record.harness else None,
+                learning_harness=(
+                    learning_harness.ref_dict()
+                    if learning_harness is not None and (
+                        record is None or record.harness is None
+                        or learning_harness.hash != record.harness.hash
+                    ) else None
+                ),
                 upload=None,
             )
             print(f"  Harvested into store: {trajectory_id}")
@@ -1021,7 +933,9 @@ class Kapso:
         status.phase("mine", trajectory_id=trajectory_id)
         manifest = store.manifest(trajectory_id)
         if not manifest.get("derived", {}).get("mined"):
-            mined_dir = MiningFrame.from_config(self._config).mine(trajectory_id)
+            mined_dir = MiningFrame.from_config(self._config).mine(
+                trajectory_id, harness=learning_harness, status=status,
+            )
             print(f"  Mined view: {mined_dir}")
             status.note(f"mined view written ({mined_dir})")
 
@@ -1066,7 +980,7 @@ class Kapso:
 
         # --- the lesson ---
         status.phase("lesson")
-        frame = UpdateFrame(store, self._config)
+        frame = UpdateFrame(store, self._config, bank_home=self._bank_home)
         run_dir = frame.run_update(
             [{"trajectory": trajectory_id,
               "hindcast_report": exam_report_path}]
@@ -1074,6 +988,7 @@ class Kapso:
             [{"trajectory": trajectory_id}],
             learning_config["update_crew"]["run_root"],
             version,
+            harness=learning_harness,
         )
         bank_head_after = self._bank_head()
 
@@ -1104,16 +1019,19 @@ class Kapso:
                 elif change_status.startswith("M"):
                     cards_updated.append(name)
 
+        admitted = bank_head_after != bank_head_before
         status.note(
             f"lesson landed: {len(cards_created)} created, "
             f"{len(cards_updated)} updated; bank "
             f"{bank_head_before[:8]} -> {bank_head_after[:8]}"
+            if admitted else
+            f"lesson admitted nothing: the bank stays at {bank_head_before[:8]}"
         )
 
         # --- push (to the bank's own origin; preflighted at learn() start) ---
         status.phase("push")
         pushed = False
-        if should_push:
+        if should_push and admitted:
             subprocess.run(
                 ["git", "--git-dir", str(self._bank_home), "push", "origin",
                  "main", "--tags"],
@@ -1130,10 +1048,12 @@ class Kapso:
             bank_head_after=bank_head_after,
             pushed=pushed,
         )
-        if pushed:
+        if not admitted:
+            print(f"lesson admitted nothing: the bank stays at {bank_head_before[:12]} (the report says why)")
+        elif pushed:
             print(f"lesson banked and pushed to {origin}")
         else:
-            print("lesson banked locally · to share: kapso bank connect <url>")
+            print("lesson banked locally · to share: kapso experience share <url>")
         return LessonResult(
             trajectory_id=trajectory_id,
             bank_head_before=bank_head_before,
@@ -1150,99 +1070,217 @@ class Kapso:
             },
         )
 
-    def evolve(
+    def _launch_config_path(self) -> Optional[str]:
+        """The config as the launch record keeps it: None for the packaged
+        defaults, however they were named, so a resume from another
+        install compares equal; else the override file's absolute path."""
+        return None if is_packaged(self.config_path) else _absolute(self.config_path)
+
+    def build(
         self,
-        goal: Optional[str] = None,
-        context: Optional[List[Any]] = None,
-        output_path: Optional[str] = None,
-        initial_repo: Optional[str] = None,
-        max_iterations: Optional[int] = None,
-        time_budget_minutes: Optional[float] = None,
-        cost_budget: Optional[float] = None,
-        finalization_reserve_minutes: Optional[float] = None,
+        brief: Union[str, Brief, None] = None,
+        *,
+        evaluation: Optional[str] = None,
+        data: Optional[str] = None,
+        repo: Optional[str] = None,
+        output: Optional[str] = None,
+        budget: Optional[Budget] = None,
         resume: bool = False,
+        on_status: Optional[Any] = None,
         iteration_evaluator: Optional[IterationEvaluator] = None,
         iteration_evaluator_failure_policy: str = "record",
-        # --- Configuration options ---
-        mode: Optional[str] = None,
         coding_agent: Optional[str] = None,
-        # --- Directory options ---
-        eval_dir: Optional[str] = None,
-        data_dir: Optional[str] = None,
-        # --- Extra context options ---
-        additional_context: str = "",
-        # --- Experience serving (design §4/§8) ---
-        serving_scope: Optional[Dict[str, str]] = None,
-        # --- Observability (design §4b) ---
-        on_status: Optional[Any] = None,
-    ) -> SolutionResult:
-        """
-        Evolve a solution for the given goal.
-        
-        Uses the Kapso's knowledge (KG) and online experimentation to
-        generate robust software.
-        
+        detach: bool = False,
+    ) -> Union[Solution, Launch]:
+        """Build software that meets the brief, by experiment: propose a
+        candidate, implement it on its own branch, measure it, keep the
+        best, repeat until the goal is met or the budget is spent.
+
         Args:
-            goal: The high-level objective (problem description)
-            context: Optional list of Source objects to learn before evolving
-            output_path: Where to save the generated code
-            initial_repo: Optional starting repository. Accepts:
-                - Local path: "/path/to/repo" or "./relative/path"
-                - GitHub URL: "https://github.com/owner/repo" (will be cloned)
-                - None: Will search for relevant workflow repo in KG
-            max_iterations: Maximum experiment iterations (default: 10)
-            time_budget_minutes: Wall-clock budget for the campaign. The
-                durable clock continues across resumes.
-            cost_budget: Best-effort spend budget in USD (cost metering is a
-                floor, not a meter — see the budget design doc).
-            finalization_reserve_minutes: Wall-clock escrowed so the campaign
-                always ends with checkout and final evaluation inside budget.
-            resume: Continue an existing campaign at ``output_path``. Resume
-                is strict: the workspace and compatible checkpoint must exist.
-            iteration_evaluator: Optional callback that evaluates each
-                finalized candidate in an isolated detached Git worktree.
-            iteration_evaluator_failure_policy: ``record`` stores callback
-                errors on the candidate; ``raise`` stops the run.
-            
-            mode: Configuration mode (GENERIC, MINIMAL, etc.)
-            coding_agent: Coding agent to use (aider, gemini, claude_code, openhands)
-            
-            eval_dir: Path to evaluation files (copied to workspace/kapso_evaluation/)
-            data_dir: Path to data files (copied to workspace/kapso_datasets/)
-            
-            additional_context: Extra context appended to the problem prompt.
-                This is the intended integration point for research context.
-            
+            brief: What to build: a sentence, or a `Brief` with the metric,
+                the baseline, the target and the rules. A string becomes a
+                brief with only an objective. The whole brief reaches the
+                engine, never clipped. Left out only on a resume, which
+                takes it from the checkpoint.
+            evaluation: Directory holding the evaluation; copied to
+                `kapso_evaluation/` in the workspace and integrity-protected,
+                so a candidate that edits it is rejected.
+            data: Directory holding the data; copied to `kapso_datasets/`.
+            repo: The starting repository: a local path (copied, never
+                modified) or a GitHub URL (cloned). None starts empty, or
+                from a workflow the knowledge graph knows.
+            output: The campaign directory, the solution's `trace`. A
+                fresh campaign needs it empty; a resume needs it to hold
+                the campaign.
+            budget: What the build may spend. Its set fields win over the
+                brief's budget; on a resume the launch's values fill what
+                is still unset; the config's defaults fill the rest.
+            resume: Continue the campaign in `output`: its workspace and a
+                compatible checkpoint must exist. Settings the checkpoint
+                fingerprints (coding agent, evaluation, config, experience)
+                must match the launch's; a disagreement is refused by name.
+            on_status: Called with the status dict after every status
+                write and heartbeat.
+            iteration_evaluator: Callback that evaluates each finalized
+                candidate in an isolated detached worktree;
+                `iteration_evaluator_failure_policy` is `record` (store
+                the error on the candidate) or `raise` (stop the run).
+            detach: Launch the campaign in a session of its own and return
+                a `Launch` (pid, log, status path) at once — `kapso build
+                --detach` from Python. Needs `output`; takes no in-process
+                callback. The harness and experience loaded on this
+                instance go with it.
+
         Returns:
-            SolutionResult with code_path, experiment_logs, and metadata
+            The `Solution`: the delivered candidate, its measurement and
+            the account of the campaign. It is also written to
+            `<output>/.kapso/solution.json`, so `Solution.open(output)`
+            reads it from any process.
         """
+        if isinstance(brief, str):
+            brief = Brief(objective=brief)
+        elif brief is not None and not isinstance(brief, Brief):
+            raise TypeError(
+                f"brief must be a string or a Brief, got {type(brief).__name__}"
+            )
+        if brief is None and not resume:
+            raise ValueError(
+                "build() needs a brief: a sentence or a Brief; only a resume "
+                "may leave it out, and then it comes from the checkpoint"
+            )
+        # Absolute from here on: the workspace, its sessions and the record
+        # are addressed from directories other than the launch's (a session
+        # clone commits its run data by path, a resume runs from anywhere),
+        # and a relative `output` broke the first session close on the
+        # fresh-machine proof run. A repository URL is left as it is.
+        eval_dir, data_dir, output_path = _absolute(evaluation), _absolute(data), _absolute(output)
+        initial_repo = (
+            repo if repo is None or self._is_github_url(repo) else _absolute(repo)
+        )
+        for label, directory in (("evaluation", eval_dir), ("data", data_dir)):
+            if directory is not None and not Path(directory).is_dir():
+                raise FileNotFoundError(f"{label} directory not found: {directory}")
+        if initial_repo is not None and not self._is_github_url(initial_repo) \
+                and not Path(initial_repo).is_dir():
+            raise FileNotFoundError(f"repo directory not found: {initial_repo}")
+        if detach:
+            # The same launch as `kapso build --detach`, from Python: the
+            # campaign in a session of its own, a Launch handed back at
+            # once. Every engineer of the release gate's S1 reinvented this
+            # with a self-relaunching worker script, since build() blocks.
+            if output_path is None:
+                raise ValueError(
+                    "build(detach=True) needs output: the campaign directory is "
+                    "where its status lives, and its log goes beside it"
+                )
+            if on_status is not None or iteration_evaluator is not None:
+                raise ValueError(
+                    "build(detach=True) runs in a session of its own: on_status and "
+                    "iteration_evaluator are in-process callbacks and cannot follow it"
+                )
+            argv = ["build", "--output", output_path]
+            if resume:
+                argv.append("--resume")
+            else:
+                brief_path = beside(Path(output_path), ".brief.md")
+                brief_path.write_text(brief.render(), encoding="utf-8")
+                argv += ["--brief", str(brief_path)]
+            spend = budget or Budget()
+            for flag, value in (
+                ("--evaluation", eval_dir), ("--data", data_dir), ("--repo", initial_repo),
+                ("--coding-agent", coding_agent), ("--config", self._launch_config_path()),
+                ("--budget-minutes", spend.minutes), ("--budget-experiments", spend.experiments),
+                ("--budget-usd", spend.usd), ("--budget-reserve-minutes", spend.reserve_minutes),
+            ):
+                if value is not None:
+                    argv += [flag, str(value)]
+            if self._harness is not None:
+                argv += ["--harness", self._harness.source]
+            if self._experience:
+                argv += ["--experience", ",".join(source.reference for source in self._experience)]
+            log_path = beside(Path(output_path), ".log")
+            pid = launch_detached(argv, log_path=log_path, receipt_path=launch_receipt_path(Path(output_path)))
+            return Launch(pid=pid, log=str(log_path), status=str(Path(output_path) / ".kapso" / "status.json"))
+        checkpoint = None
+        record = None
         if resume:
             self._validate_resume_workspace(output_path)
+            # A resume without a checkpoint is refused by the orchestrator
+            # with its own message; here the checkpoint is read when it
+            # exists, for the brief and the harness comparison.
+            store = RunCheckpointStore(output_path)
+            checkpoint = store.load() if store.exists() else None
+            if brief is None:
+                if checkpoint is None:
+                    checkpoint = store.load()
+            if brief is None:
+                # The checkpoint's goal is the brief as the launch rendered
+                # it, so the one grammar reads it back; it comes first so
+                # its budget takes part in the merge below.
+                brief = Brief.parse(
+                    checkpoint.goal,
+                    source=str(Path(output_path) / ".kapso" / "run_state.json"),
+                )
+        spend = (budget or Budget()).merged_over(brief.budget)
+        max_iterations = spend.experiments
+        time_budget_minutes = spend.minutes
+        cost_budget = spend.usd
+        finalization_reserve_minutes = spend.reserve_minutes
+        if resume:
             # A resume needs the launch's own arguments. The launch record
-            # holds them, so a bare `kapso evolve --output <dir> --resume`
+            # holds them, so a bare `kapso build --output <dir> --resume`
             # works; anything passed explicitly must agree with the record
             # where the checkpoint fingerprints it, and a disagreement is
             # named here rather than surfacing as a bare fingerprint
             # mismatch from the checkpoint.
             record = read_launch_record(output_path)
             if record is not None:
+                # The campaign's own .env, from wherever the resume runs;
+                # the process environment keeps precedence.
+                if record.get("dotenv_path"):
+                    load_dotenv(record["dotenv_path"])
+                # The budget a resume asks for is the caller's own, a field
+                # left None keeping the launch's (the Budget contract); the
+                # brief-merged figures above would pass the checkpoint
+                # brief's budget off as the caller's and the record's would
+                # never apply (a campaign launched at 40 minutes resumed at
+                # the brief's 45, the release gate's S5, 2026-10-30).
+                requested = budget or Budget()
                 arguments = resume_arguments(record, {
-                    "mode": mode,
-                    "coding_agent": coding_agent,
+                    "host": coding_agent,
                     "eval_dir": eval_dir,
                     "data_dir": data_dir,
-                    "additional_context": additional_context,
-                    "context": context,
-                    "serving_scope": serving_scope,
-                    "max_iterations": max_iterations,
-                    "time_budget_minutes": time_budget_minutes,
-                    "cost_budget": cost_budget,
-                    "finalization_reserve_minutes": finalization_reserve_minutes,
+                    "experiments": requested.experiments,
+                    "minutes": requested.minutes,
+                    "usd": requested.usd,
+                    "reserve_minutes": requested.reserve_minutes,
                 })
+                # The loaded experience is campaign identity: a resume with
+                # nothing loaded takes the record's list and re-pins each
+                # source at its recorded head and scope; one that names a
+                # different list is refused by name below.
+                if not self._experience and record.get("experience"):
+                    for recorded in record["experience"]:
+                        # Re-loaded from where the launch recorded it, and
+                        # named as the launch named it (a bank read by a
+                        # relative path keeps that spelling in every record).
+                        self.load_experience(recorded_reference(recorded)).reference = recorded["reference"]
+                for source in self._experience:
+                    recorded = next(
+                        (r for r in record.get("experience", []) if r["reference"] == source.reference), None,
+                    )
+                    if recorded is not None and source.kind == "index" and source.head != recorded["head"]:
+                        raise ExperienceError(
+                            f"{source.reference} was re-ingested since this campaign launched "
+                            f"(index {recorded['head']} then, {source.head} now); a campaign is served "
+                            "the corpus it started with — start a new one to use the new index"
+                        )
+                    if recorded is not None and source.kind == "bank":
+                        source.head = recorded["head"]
                 mismatches = launch_mismatches(record, {
                     **arguments,
-                    "kg_index": self._kg_index_path,
                     "config_path": self._launch_config_path(),
+                    "experience": [vars(source.ref()) for source in self._experience],
                 })
                 if mismatches:
                     changed = "; ".join(
@@ -1254,303 +1292,305 @@ class Kapso:
                         f"fingerprints: {changed}. Pass the launch's values, or "
                         "start a new campaign in a new output path."
                     )
-                mode = arguments["mode"]
-                coding_agent = arguments["coding_agent"]
+                coding_agent = arguments["host"]
                 eval_dir = arguments["eval_dir"]
                 data_dir = arguments["data_dir"]
-                additional_context = arguments["additional_context"] or ""
-                context = arguments["context"]
-                serving_scope = arguments["serving_scope"]
-                max_iterations = arguments["max_iterations"]
-                time_budget_minutes = arguments["time_budget_minutes"]
-                cost_budget = arguments["cost_budget"]
-                finalization_reserve_minutes = arguments["finalization_reserve_minutes"]
-            if not goal:
-                goal = RunCheckpointStore(output_path).load().goal
-        if not goal:
-            raise ValueError(
-                "evolve() needs a goal; only a resume may leave it out, "
-                "and then it comes from the checkpoint"
-            )
+                max_iterations = arguments["experiments"]
+                time_budget_minutes = arguments["minutes"]
+                cost_budget = arguments["usd"]
+                finalization_reserve_minutes = arguments["reserve_minutes"]
+        # The whole brief is the engine's goal text: the judge reads every
+        # field, and the checkpoint fingerprints these exact bytes.
+        goal_text = brief.render()
         if max_iterations is None:
-            max_iterations = DEFAULT_MAX_ITERATIONS
+            max_iterations = int(self._config["budget"]["experiments"])
+        # A launch with an output directory is registered before the launch
+        # checks: a campaign that dies at one (a refused evaluation suite,
+        # a failed preflight) is still one `kapso watch --all` lists,
+        # stopped, with its receipt's log (wp6-observability.md, change 8).
+        # A resume was registered by its launch; a build with no output
+        # directory is registered once the orchestrator has made one.
+        inbox_block = self._config["inbox"]
+        registered = output_path is not None and not resume
+        if registered:
+            register_campaign(inbox_block["registry"], output_path, brief.objective)
         if eval_dir:
             # Validate caller-owned evaluation inputs before resolving an
-            # initial repository or initializing the experiment workspace.
-            build_evaluation_manifest(eval_dir)
+            # initial repository or initializing the experiment workspace
+            # (a result.json an earlier run left there is refused here).
+            launch_evaluation_manifest(eval_dir)
         # Preflight before the first session is spawned: the campaign's
         # own CLIs and credentials, the gates the strategy names, and the
         # stores this agent's knowledge/experience actually connect to.
         run_preflight(
-            "evolve", self._config,
-            mode=mode,
+            "build", self._config,
             coding_agent=coding_agent,
-            kg_index=self._kg_index_path,
-            bank_home=self._bank_home,
+            index=next((source.reference for source in self._experience if source.kind == "index"), None),
         )
 
         print(f"\n{'='*60}")
-        print(f"EVOLVING: {goal}")
+        print(f"BUILDING: {brief.objective.splitlines()[0]}")
         print(f"{'='*60}")
         print(f"  Max iterations: {max_iterations}")
         print(f"  Resume: {resume}")
         print(f"  Coding agent: {coding_agent or 'from config'}")
         if eval_dir:
-            print(f"  Eval dir: {eval_dir}")
+            print(f"  Evaluation: {eval_dir}")
         if data_dir:
-            print(f"  Data dir: {data_dir}")
-        
-        # Resolve initial_repo: handle URLs, local paths, or workflow search
+            print(f"  Data: {data_dir}")
+
+        # Resolve the starting repository: a URL, a local path, or a
+        # workflow search over the knowledge graph.
         resolved_repo = (
             None
             if resume
-            else self._resolve_initial_repo(initial_repo, goal)
+            else self._resolve_initial_repo(initial_repo, brief.objective)
         )
         if resolved_repo:
-            print(f"  Initial repo: {resolved_repo}")
+            print(f"  Repo: {resolved_repo}")
         print()
-        
-        # Build problem description
-        problem = self._build_problem_description(goal)
 
-        # Build context string from context items (text, not sources)
-        # Context items are converted to strings and appended to additional_context
-        context_parts = []
-        if context:
-            for item in context:
-                # Convert each context item to string
-                context_parts.append(str(item))
-        
-        # Combine knowledge context + caller-provided context + context items
-        #
-        # Why:
-        # - The system already uses `additional_context` to inject KG snippets.
-        # - Research ideas should be injected the same way.
-        user_context = (additional_context or "").strip()
-        items_context = "\n\n".join(context_parts).strip()
-        combined_context = "\n\n".join([c for c in [user_context, items_context] if c])
+        problem = self._build_problem_description(goal_text)
 
-        # Experience serving (learn-api-design.md §4), two-phase: the
-        # PLAN (deterministic env + head, no filesystem writes) happens
-        # before orchestrator construction so bank_serving can be
-        # fingerprinted into the strategy params; the STAGE (bank clone,
-        # intro, launch record) happens after construction, once the
-        # workspace exists — a seeded workspace must be EMPTY at
-        # construction, so nothing may touch it earlier. Serving off, or
-        # no bank -> byte-identical to the pre-serving path.
+        # The harness: the loaded one wins over the brief's line (as call
+        # arguments win for budgets); a resume with none loaded takes the
+        # launch record's source first (absolute, resolvable from any
+        # directory), then the brief's line. A resume compares the hash
+        # with the checkpoint's and refuses a changed harness by name.
+        harness = self._harness
+        if harness is not None:
+            # The directory as it is at the call, not at the load: an edit
+            # since changes the hash (and a resume compares that hash), a
+            # fix since clears a row. The object keeps the fresh handle.
+            harness = reload_harness(harness, settings=self._harness_settings)
+            self._harness = harness
+        if harness is None and record is not None and record.get("harness"):
+            harness = load_harness(record["harness"]["source"], settings=self._harness_settings)
+        if harness is None and brief.harness:
+            harness = load_harness(brief.harness, settings=self._harness_settings)
+        if checkpoint is not None:
+            recorded = checkpoint.harness
+            changed = (recorded is None) != (harness is None) or (
+                recorded is not None and recorded["hash"] != harness.hash
+            )
+            if changed:
+                raise RunCheckpointIncompatibleError(resume_refusal(recorded, harness))
+        if harness is not None:
+            unmet = harness.missing_for(BUILD_MODULES)
+            if unmet:
+                raise HarnessError(unmet_message(harness, unmet, "build"))
+            if coding_agent is not None:
+                host_for(coding_agent)   # a host with no staging is refused here, not inside the first session
+            # A variable put in .env since this process started reaches the
+            # sessions, as the prerequisite check above already counted it.
+            load_dotenv(find_dotenv(usecwd=True))
+            overrode = self._harness is not None and bool(brief.harness) and not _same_reference(brief.harness, harness)
+            print(
+                f"  Harness: {harness.label()} from {harness.source}"
+                + (f" (loaded; wins over the brief's line {brief.harness!r})" if overrode else "")
+            )
+            added = harness.sessions_added()
+            print(f"  Harness sessions: {'; '.join(added) if added else 'none (pages and attachments only)'}")
+            for line in advisory_lines(harness, BUILD_MODULES):
+                print(line)
+
+        # The experience: the loaded sources are what is served, and a
+        # loaded list wins over the brief's Experience line as the loaded
+        # harness wins over its Harness line; a fresh build with nothing
+        # loaded takes the brief's items (a resume took the record's list
+        # above, with its pins).
+        if not self._experience and record is None:
+            for reference in brief.experience:
+                self.load_experience(reference)
+
+        # Experience serving (docs/plans/redesign/wp3-experience.md): what
+        # is loaded is what is served, in two phases. The PLAN (the gate
+        # environment, the heads; no filesystem writes) happens before
+        # orchestrator construction so the gates it mounts can be
+        # fingerprinted into the strategy params; the STAGE (one clone per
+        # bank, the intro, the serving record) after, once the workspace
+        # exists — a seeded workspace must be EMPTY at construction, so
+        # nothing may touch it earlier. Nothing loaded -> nothing served,
+        # nothing staged.
         serving_plan = None
         serving = None
-        serving_coords = None
-        if (
-            ((self._config.get("learning") or {}).get("serving") or {})
-            .get("enabled")
-            and self._bank_home is not None
-            and self._bank_home.exists()
-        ):
-            output_path = output_path or os.path.join(
+        if self._experience:
+            output_path = output_path or _absolute(os.path.join(
                 "tmp", "search_strategy_workspace", uuid.uuid4().hex
-            )
-            serving_config = dict(self._config)
-            serving_config["learning"] = dict(self._config["learning"])
-            serving_config["learning"]["bank"] = {
-                **self._config["learning"]["bank"],
-                "local_path": str(self._bank_home),
-            }
-            serving_coords = serving_scope or {
-                "family": (
-                    mode or self._config.get("default_mode", "GENERIC")
-                ).lower()
-            }
+            ))
             serving_plan = plan_campaign_serving(
-                serving_config, serving_coords, output_path
+                self._experience,
+                task_coordinates(harness.name if harness is not None else None),
+                output_path,
+                self._experience_settings["probe_budget"],
             )
-            self._serving_config = serving_config
+            # The search over a loaded index, connected from its record
+            # (the plan has refused a second index already); its backend
+            # must hold the pages the record counts.
+            indexes = [source for source in self._experience if source.kind == "index"]
+            if indexes:
+                store = ExperienceStore(self._experience_settings["banks"], self._experience_settings["indexes"])
+                index_record = store.index_record(indexes[0].reference)
+                # The pin holds: the record on disk is the index the
+                # handle loaded, not one ingested under the name since.
+                if index_record.id != indexes[0].head:
+                    raise ExperienceError(
+                        f"{indexes[0].reference} was re-ingested since it was loaded (index {indexes[0].head} "
+                        f"then, {index_record.id} now); load it again to serve the new index"
+                    )
+                self._close_knowledge_search()
+                self.knowledge_search = search_for(index_record, self._config)
+                if not self.knowledge_search.validate_backend_data():
+                    raise ExperienceError(
+                        f"the index `{index_record.name}` has no pages in its stores (collection "
+                        f"{index_record.backend_refs.get('weaviate_collection')} at "
+                        f"{index_record.backend_refs.get('weaviate_url')}); the stores were wiped since it was "
+                        f"added — `kapso experience remove {index_record.name}` and add it again"
+                    )
 
-        # Create problem handler with all options
+        # The engine's problem text: the brief, and where the evaluation
+        # and the data live.
         handler = GenericProblemHandler(
             problem_description=problem,
             eval_dir=eval_dir,
             data_dir=data_dir,
-            additional_context=combined_context,
         )
-        
+
         # Create orchestrator
-        orchestrator = OrchestratorAgent(
-            handler,
-            config_path=self.config_path,
-            mode=mode,
-            coding_agent=coding_agent,
-            is_kg_active=self.knowledge_search.is_enabled(),
-            knowledge_search=self.knowledge_search if self.knowledge_search.is_enabled() else None,
-            # IMPORTANT:
-            # - Many callers (CLI + E2E tests) pass `output_path` expecting the final repo to live there.
-            # - The orchestration layer owns the experiment workspace (a git repo with branches).
-            # - Therefore, when `output_path` is provided, we must use it as the workspace directory
-            #   so `solution.code_path` points at a real git repo (with `.kapso/repo_memory.json`).
-            workspace_dir=output_path,
-            resume=resume,
-            iteration_evaluator=iteration_evaluator,
-            iteration_evaluator_failure_policy=(
-                iteration_evaluator_failure_policy
-            ),
-            initial_repo=resolved_repo,
-            eval_dir=eval_dir,
-            data_dir=data_dir,
-            goal=goal,
-            strategy_params_overrides=_memory_overrides(
-                serving_plan, self._kg_index_path
-            ),
-        )
+        # The status is born inside this construction (the strategy's
+        # constructor); whatever raises after that, in the constructor's
+        # tail or the orchestrator's own setup, is published on the file,
+        # whose writer went with the exception (wp6-observability.md).
+        try:
+            orchestrator = OrchestratorAgent(
+                handler,
+                config_path=self.config_path,
+                coding_agent=coding_agent,
+                knowledge_search=self.knowledge_search if self.knowledge_search.is_enabled() else None,
+                # The orchestration layer owns the experiment workspace (a git
+                # repo with branches); `output` IS that workspace, so the
+                # solution's trace is a real git repo with the record under
+                # .kapso/.
+                workspace_dir=output_path,
+                resume=resume,
+                harness=harness,
+                experience=[vars(source.ref()) for source in self._experience],
+                iteration_evaluator=iteration_evaluator,
+                iteration_evaluator_failure_policy=(
+                    iteration_evaluator_failure_policy
+                ),
+                initial_repo=resolved_repo,
+                eval_dir=eval_dir,
+                data_dir=data_dir,
+                goal=goal_text,
+                strategy_params_overrides=_memory_overrides(serving_plan),
+            )
+        finally:
+            in_flight = sys.exc_info()[1]
+            if in_flight is not None and output_path is not None:
+                mark_failed(Path(output_path) / ".kapso" / "status.json", in_flight)
 
         # Stage serving now that the workspace exists (see the plan/stage
-        # note above), and inject the intro into the problem context —
-        # the handler reads additional_context lazily at solve time.
-        if serving_plan is not None:
-            serving = stage_campaign_serving(
-                self._serving_config, serving_coords, serving_plan
-            )
-            # Fail loud rather than lie: the intro instructs sessions to
-            # call the three bank tools, so the gate that provides them
-            # must have resolved. A silently-unmounted gate produced an
-            # intro advertising tools no session had (E2E review
-            # 2026-08-24, blocker 1).
-            mounted = orchestrator.search_strategy.ideation_gates
-            if "bank" not in mounted:
-                raise RuntimeError(
-                    "serving staged but the 'bank' gate is not mounted in "
-                    f"ideation gates {mounted} — the intro would advertise "
-                    "tools the sessions do not have"
-                )
-            handler.additional_context = "\n\n".join(
-                [c for c in [handler.additional_context, serving["intro"]] if c]
-            )
-            print(f"  Knowledge bank: serving at head {serving['bank_head']}")
-            print(f"  Bank tools mounted in gates: {mounted}")
+        # note above): the clones, the record and the intro file the
+        # ideation and implementation prompts read at session time (the
+        # problem text is frozen at construction and never was a seam).
+        # From the orchestrator's construction to `solve()`, a failure (the
+        # serving's staging, the launch record) is published as the
+        # campaign's through the status the strategy opened, the exception
+        # propagating (wp6-observability.md, change 6).
+        try:
+            if serving_plan is not None:
+                serving = stage_serving(serving_plan, self._experience)
+                # Fail loud rather than lie: the intro instructs sessions to
+                # call the three bank tools, so the gate that provides them
+                # must have resolved. A silently-unmounted gate produced an
+                # intro advertising tools no session had (E2E review
+                # 2026-08-24, blocker 1).
+                mounted = orchestrator.search_strategy.ideation_gates
+                if serving_plan["banks"] and "bank" not in mounted:
+                    raise RuntimeError(
+                        "serving staged but the 'bank' gate is not mounted in "
+                        f"ideation gates {mounted} — the intro would advertise "
+                        "tools the sessions do not have"
+                    )
+                for line in serving["lines"]:
+                    print(f"  Experience: {line}")
+                print(f"  Gates mounted: {mounted}")
 
-        # The campaign inbox (docs/research/evolve-hub-design.md v4): on a
-        # fresh campaign, record the launch so `kapso inbox reply` can
-        # resume it without the person retyping anything, and register the
-        # campaign so `kapso inbox` can list it.
-        inbox_block = (
-            load_mode_config(self.config_path, mode).get("inbox") or {}
-        )
-        if not resume and inbox_block.get("enabled"):
-            workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
-            write_launch_record(workspace_dir, {
-                "config_path": self._launch_config_path(),
-                "kg_index": self._kg_index_path,
-                "mode": mode,
-                "coding_agent": coding_agent,
-                "output_path": str(Path(workspace_dir).resolve()),
-                "max_iterations": max_iterations,
-                "time_budget_minutes": time_budget_minutes,
-                "cost_budget": cost_budget,
-                "finalization_reserve_minutes": finalization_reserve_minutes,
-                "eval_dir": eval_dir,
-                "data_dir": data_dir,
-                "additional_context": additional_context,
-                "context": (
-                    list(context)
-                    if context and all(isinstance(item, str) for item in context)
-                    else None
-                ),
-                "serving_scope": serving_scope,
-                "resumable_from_inbox": (
-                    iteration_evaluator is None
-                    and all(isinstance(item, str) for item in (context or []))
-                ),
-                "dotenv_path": find_dotenv(usecwd=True),
-            })
-            register_campaign(inbox_block["registry"], workspace_dir, goal)
+            # On a fresh campaign, record the launch so a resume (`kapso build
+            # --resume`, `kapso inbox reply`) continues with the launch's own
+            # brief and flags without the person retyping anything.
+            if not resume:
+                workspace_dir = orchestrator.search_strategy.workspace.workspace_dir
+                write_launch_record(workspace_dir, {
+                    "brief": brief.to_dict(),
+                    "harness": harness.ref_dict() if harness is not None else None,
+                    "experience": [vars(source.ref()) for source in self._experience],
+                    "config_path": self._launch_config_path(),
+                    # The launch in the handle's words: the host the flag
+                    # set (None: the config's), the budget as resolved.
+                    "host": coding_agent,
+                    "output_path": str(Path(workspace_dir).resolve()),
+                    "experiments": max_iterations,
+                    "minutes": time_budget_minutes,
+                    "usd": cost_budget,
+                    "reserve_minutes": finalization_reserve_minutes,
+                    "eval_dir": _absolute(eval_dir),
+                    "data_dir": _absolute(data_dir),
+                    "resumable_from_inbox": iteration_evaluator is None,
+                    "dotenv_path": find_dotenv(usecwd=True),
+                })
+                # A build that named no output directory is registered now
+                # that the orchestrator has made one; every other launch was
+                # registered before its checks.
+                if not registered:
+                    register_campaign(inbox_block["registry"], workspace_dir, brief.objective)
+        finally:
+            in_flight = sys.exc_info()[1]
+            if in_flight is not None:
+                # The strategy's status (a test double may have none).
+                status = getattr(orchestrator.search_strategy, "operation_status", None)
+                if status is not None and not status.terminal:
+                    status.failed(in_flight)
+
+        # The status is born, so the launch receipt has told what it had
+        # to: a campaign that ran is known by its status from here on, and
+        # a deleted one is not listed forever on a leftover receipt.
+        launch_receipt_path(Path(orchestrator.search_strategy.workspace.workspace_dir)).unlink(missing_ok=True)
+
+        # The delivery runs inside the orchestrator's protected region,
+        # after the search and before the terminal publish: a watcher that
+        # sees `done` finds the record, and a checkout that raises is
+        # published as the campaign's failure, with no record and a
+        # checkpoint a resume can finish from (wp6-observability.md).
+        delivered: List[Tuple[Solution, Any]] = []
+
+        def finish(solve_result) -> None:
+            solution = _deliver(orchestrator, solve_result, brief=brief, harness=harness, experience=self._experience)
+            delivered.append((solution, solve_result))
 
         # Run experimentation
         print("Running experiments...")
-        solve_result = orchestrator.solve(
+        orchestrator.solve(
             experiment_max_iter=max_iterations,
             time_budget_minutes=time_budget_minutes,
             cost_budget=cost_budget,
             finalization_reserve_minutes=finalization_reserve_minutes,
             on_status=on_status,
+            finish=finish,
         )
-        
-        # Collect results
-        experiment_logs = self._extract_experiment_logs(orchestrator)
-        workspace_path = orchestrator.search_strategy.workspace.workspace_dir
-        
-        # Checkout to best solution. The returned ref makes the selected code
-        # state explicit and lets callers verify or materialize it independently.
-        best_branch = (
-            orchestrator.search_strategy.checkout_to_best_experiment_branch()
-        )
-        
-        # Use custom output path if provided
-        code_path = output_path or workspace_path
-        
-        # Create solution result with final feedback
-        solution = SolutionResult(
-            goal=goal,
-            code_path=code_path,
-            experiment_logs=experiment_logs,
-            final_feedback=solve_result.final_feedback,
-            delivered_score=(
-                orchestrator.search_strategy.get_deliverable_score()
-            ),
-            metadata={
-                "iterations": solve_result.iterations_run,
-                "cumulative_iterations": solve_result.cumulative_iterations,
-                "cost": f"${solve_result.total_cost:.3f}",
-                "stopped_reason": solve_result.stopped_reason,
-                "stop_detail": solve_result.stop_detail,
-                "best_branch": best_branch,
-                "resumed": resume,
-                # Observability (design §1): the durable last frame.
-                "status_path": str(orchestrator.operation_status.path),
-                # The inbox: what the person must answer when the campaign
-                # paused for them (empty otherwise).
-                "requests": list(getattr(solve_result, "requests", []) or []),
-                # Memory provenance (design §8.2): the exact stores this
-                # solution drew on.
-                "kg_index": self._kg_index_path,
-                "bank_head_served": (
-                    serving["bank_head"] if serving else None
-                ),
-                "external_metrics": dict(
-                    getattr(
-                        solve_result.best_experiment,
-                        "metrics",
-                        {},
-                    )
-                    or {}
-                ),
-                "external_primary_metric": getattr(
-                    solve_result.best_experiment,
-                    "primary_metric",
-                    None,
-                ),
-                "invalid_evaluations": sum(
-                    not getattr(node, "evaluation_valid", True)
-                    for node in (
-                        orchestrator.search_strategy.get_experiment_history()
-                    )
-                ),
-            }
-        )
-        
+        [(solution, solve_result)] = delivered
+        strategy = orchestrator.search_strategy
+
         print(f"\n{'='*60}")
-        print("Evolution Complete")
+        print("Build complete")
         print(f"{'='*60}")
-        print(f"Solution at: {code_path}")
-        print(f"Experiments run: {solve_result.iterations_run}")
-        print(f"Total cost: ${solve_result.total_cost:.3f}")
-        print(f"Stopped reason: {solve_result.stopped_reason}")
-        print(f"Goal achieved: {solution.succeeded}")
-        if solution.final_score is not None:
-            print(f"Final score: {solution.final_score}")
+        print(solution.explain())
         # Every gate call across the campaign's nodes, per gate and tool,
         # and what the metered gates reported spending.
         campaign_phases = {
             f"{node.node_id}:{phase}": values
-            for node in orchestrator.search_strategy.get_experiment_history()
+            for node in strategy.get_experiment_history()
             for phase, values in node.phase_telemetry.items()
         }
         knowledge = knowledge_summary(campaign_phases)
@@ -1616,8 +1656,9 @@ class Kapso:
 
     @classmethod
     def reply(
-        cls, campaign: str, request_id: int, note: str = ""
-    ) -> Optional[SolutionResult]:
+        cls, campaign: str, request_id: int, note: str = "", *,
+        allow_secret: bool = False,
+    ) -> Optional[Solution]:
         """Answer a request and, when the node that asked has every request
         answered, resume the campaign in this process: the session that
         asked is continued with the reply. Returns the campaign's result,
@@ -1630,7 +1671,10 @@ class Kapso:
         a note replacing the answer and an empty one keeping it.
 
         Refuses while a live process holds the campaign, so nothing runs
-        twice. On a new request an empty note means "done"."""
+        twice, and refuses a note shaped like a credential unless
+        allow_secret is True (replies are plain text handed to the coder;
+        the value belongs in the .env the fix names). On a new request an
+        empty note means "done"."""
         campaign_dir = str(Path(campaign).resolve())
         if not Path(campaign_dir, ".kapso").is_dir():
             raise FileNotFoundError(
@@ -1653,13 +1697,13 @@ class Kapso:
             raise ValueError(
                 f"inbox request #{request_id} was already answered and nothing "
                 f"waits on a resume: {current.reply!r}. To continue the campaign: "
-                f"kapso evolve --output {shlex.quote(campaign_dir)} --resume"
+                f"kapso build --output {shlex.quote(campaign_dir)} --resume"
             )
         if answered_before and (not note or note == current.reply):
             request = current
             print(f"#{request_id} keeps its answer: {request.reply!r}.")
         else:
-            request = record_reply(path, request_id, note)
+            request = record_reply(path, request_id, note, allow_secret=allow_secret)
             print(f"#{request_id} answered.")
         still_open = sorted(
             other.id
@@ -1696,24 +1740,21 @@ class Kapso:
                 return None
             checkpoint = RunCheckpointStore(campaign_dir).load()
             remaining = max(
-                1, int(record["max_iterations"]) - int(checkpoint.completed_iterations)
+                1, int(record["experiments"]) - int(checkpoint.completed_iterations)
             )
-            # Everything else a resume needs comes from the launch record.
-            kapso = cls(config_path=record["config_path"], kg_index=record["kg_index"])
-            return kapso.evolve(
-                output_path=campaign_dir,
-                max_iterations=remaining,
+            # Everything else a resume needs comes from the launch record,
+            # its .env included: a reply may run far from the launch directory.
+            if record.get("dotenv_path"):
+                load_dotenv(record["dotenv_path"])
+            # Your bank where the launch had it (`Kapso(bank=)`): the record's
+            # `mine` entry names its home, absolute.
+            mine = next((entry for entry in record.get("experience", []) if entry["reference"] == MINE), None)
+            kapso = cls(config=record["config_path"], bank=mine["resolved"] if mine is not None else None)
+            return kapso.build(
+                output=campaign_dir,
+                budget=Budget(experiments=remaining),
                 resume=True,
             )
-
-    def _launch_config_path(self) -> Optional[str]:
-        """The config a launch record names: None for the packaged default.
-        The default's path belongs to one install, so recording it would make
-        a resume from another install (or after an upgrade) look like a
-        changed config."""
-        if self.config_path == DEFAULT_CONFIG_PATH:
-            return None
-        return self.config_path
 
     @staticmethod
     def _validate_resume_workspace(output_path: Optional[str]) -> None:
@@ -1727,94 +1768,150 @@ class Kapso:
                 f"Resume workspace does not exist or is not a directory: {path}"
             )
 
-        import git
-
-        try:
-            repo = git.Repo(str(path), search_parent_directories=False)
-        except (git.InvalidGitRepositoryError, git.NoSuchPathError) as exc:
+        if not (path / ".git").is_dir():
             raise ValueError(
                 f"Resume workspace is not a Git repository: {path}"
-            ) from exc
-        if repo.bare:
+            )
+        if git.Repo(str(path), search_parent_directories=False).bare:
             raise ValueError(
                 f"Resume workspace must be a non-bare Git repository: {path}"
             )
     
     def deploy(
         self,
-        solution: SolutionResult,
-        strategy: DeployStrategy = DeployStrategy.AUTO,
-        env_vars: Optional[Dict[str, str]] = None,
+        solution: Solution,
+        target: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        options: Optional[Dict[str, str]] = None,
         coding_agent: Optional[str] = None,
-        model: Optional[str] = None,
     ) -> Software:
-        """
-        Deploy a solution to create running software.
-        
-        Uses the deployment pipeline:
-        1. Selector: Analyzes solution and selects strategy (if AUTO)
-        2. Adapter: Adapts and deploys via coding agent
-        3. Runner: Creates execution backend
-        
+        """Deploy a solution as running software (docs/plans/redesign/wp5-deploy.md).
+
+        One session on a copy of the solution adapts it to the target,
+        deploys it with the target's scripts and proves one call; the
+        engine checks the result, records the deployment under the
+        campaign (`.kapso/deployments/<n>/`) and hands back the handle.
+
         Args:
-            solution: The SolutionResult from evolve()
-            strategy: Where to deploy (AUTO, LOCAL, DOCKER, MODAL, BENTOML, LANGGRAPH)
-                - AUTO: System analyzes code and chooses best strategy
-                - LOCAL: Run as local Python process (fastest)
-                - DOCKER: Run in Docker container (isolated)
-                - MODAL: Deploy to Modal.com (serverless, GPU)
-                - BENTOML: Deploy with BentoML (BentoCloud)
-                - LANGGRAPH: Deploy as an agent on LangGraph Platform
-            env_vars: Environment variables the software needs at runtime:
-                written to `.env` in the adapted workspace, named (never
-                valued) in the adapter prompt, and set on the runtimes Kapso
-                manages (local process, Docker container)
-            coding_agent: The coding agent behind the selector and adapter
-                sessions; default from config `deployment.coding_agent`
-            model: The model that agent is asked for; default from config
-                `deployment.model`
-            
+            solution: The Solution from build(), or Solution.open(path); the
+                campaign must be checked out at the delivered candidate, its
+                tracked files unchanged
+            target: Where to deploy: `auto` (the session chooses), a bundled
+                target (`local`, `docker`, `modal`, `bentoml`, `langgraph`)
+                or a target the build's harness ships; the config's
+                `deployment.target` when None
+            env: Variables the software needs at runtime, written to `.env`
+                in the workspace, named (never valued) in the prompt, set on
+                every runtime the engine and the target's scripts manage
+            options: Options for the target's workflow (a harness target's
+                `schedule`, say), named in the prompt and exported to the
+                scripts as KAPSO_OPTION_<NAME>
+            coding_agent: The host the deployment session runs on; the
+                config's `deployment.cli`, else the build's host
+
         Returns:
-            Software instance with unified interface:
-            - .run(inputs) -> {"status": "success", "output": ...}
-            - .stop() -> cleanup resources
-            - .logs() -> execution logs
-            - .is_healthy() -> health check
-            
+            Software: run(inputs), stop(), start(), is_healthy(), logs(),
+            the record's facts; `Software.open(campaign, number)` from any
+            later process
+
         Example:
-            solution = kapso.evolve(goal="Create a trading bot")
-            software = kapso.deploy(solution, strategy=DeployStrategy.LOCAL)
+            solution = kapso.build("Create a trading bot")
+            software = kapso.deploy(solution, target="docker")
             result = software.run({"ticker": "AAPL"})
             software.stop()
         """
-        # The packaged deployment block, with the user config's own block
-        # layered over it key by key (the same shape as the inference block).
-        deployment = {
-            **load_deployment_defaults(),
-            **(self._config.get("deployment") or {}),
-        }
-        coding_agent = coding_agent or deployment["coding_agent"]
-        model = model or deployment["model"]
+        if solution.commit is None:
+            raise DeployError(
+                f"nothing to deploy: the build in {solution.campaign} delivered no "
+                f"candidate (stopped: {solution.stopped_reason})"
+            )
+        checked_out = _git_rev(solution.campaign, "HEAD")
+        if checked_out != solution.commit:
+            raise DeployError(
+                f"{solution.campaign} is checked out at {checked_out[:12]}, not at "
+                f"the delivered candidate {solution.commit[:12]} ({solution.branch}); "
+                f"run `git -C {solution.campaign} checkout {solution.branch}` first"
+            )
+        # The harness: the loaded one (the build's name, any version), else
+        # the record's; its deployment module rides into the session.
+        harness = self._harness_for(solution, verb="deploy")
+        chosen, _offered = resolve_target(target, self._config["deployment"]["target"], harness)
         run_preflight(
-            "deploy", self._config,
-            strategy=getattr(strategy, "value", str(strategy)),
-            coding_agent=coding_agent,
+            "deploy", self._config, target=AUTO if chosen is None else chosen.name, coding_agent=coding_agent,
         )
         print(f"\n{'='*60}")
-        print(f"DEPLOYING: {solution.goal}")
+        print(f"DEPLOYING: {solution.brief.objective.splitlines()[0]}")
         print(f"{'='*60}")
-        print(f"  Strategy: {strategy}")
-        print(f"  Code path: {solution.code_path}")
+        print(f"  Target: {AUTO if chosen is None else chosen.name}")
+        print(f"  Campaign: {solution.campaign}")
         print()
-        
-        config = DeployConfig(
-            solution=solution,
-            env_vars=env_vars,
-            coding_agent=coding_agent,
-            model=model,
+        return run_deployment(
+            solution, config=self._config, target=target, env=env, options=options,
+            coding_agent=coding_agent, harness=harness,
         )
-        
-        return DeploymentFactory.create(strategy, config)
+
+    def _harness_for(self, solution: Solution, *, verb: str) -> Optional[Harness]:
+        """The harness a verb on a finished build runs with: the loaded one
+        when its name is the record's (another version is allowed and
+        printed beside the build's), else the record's source resolved
+        again, else none. A verb refuses while a requirement of its own
+        module is unmet."""
+        recorded = solution.harness
+        loaded = self._harness
+        if loaded is not None:
+            loaded = reload_harness(loaded, settings=self._harness_settings)
+            self._harness = loaded
+            if recorded is None and verb == "learn":
+                # A learn may run under a harness the build did not have:
+                # its learning module shapes the crews' sessions, and the
+                # lessons stay scoped to the build's own coordinate (none).
+                print(f"  Harness: {loaded.label()} for the learn; the build ran without one")
+                return self._ready_for(loaded, verb)
+            if recorded is None:
+                raise HarnessError(
+                    f"{solution.campaign} was built without a harness, and a {verb} runs as its build "
+                    f"did: the loaded {loaded.label()} is not attached to a finished campaign"
+                )
+            if loaded.name != recorded.name:
+                raise HarnessError(
+                    f"{solution.campaign} was built with harness {recorded.name} {recorded.version}; "
+                    f"the loaded harness is {loaded.name} {loaded.version}: a {verb} runs with the "
+                    "build's harness (another version of it is allowed)"
+                )
+            harness = loaded
+        elif recorded is not None:
+            if not _source_is_reachable(recorded.source):
+                raise HarnessError(
+                    f"{solution.campaign} was built with harness {recorded.name} {recorded.version} "
+                    f"from {recorded.source}, which is not here; pass --harness <ref> (or load one) "
+                    f"pointing at a copy of {recorded.name} {recorded.version}"
+                )
+            harness = load_harness(recorded.source, settings=self._harness_settings)
+            if harness.name != recorded.name:
+                raise HarnessError(
+                    f"{recorded.source} now holds harness {harness.name}, and {solution.campaign} was "
+                    f"built with {recorded.name} {recorded.version}; pass --harness <ref> pointing at "
+                    f"a copy of {recorded.name}"
+                )
+        else:
+            return None
+        if harness.hash != recorded.hash:
+            print(
+                f"  Harness: {harness.label()} for the {verb}; the build ran with "
+                f"{recorded.name} {recorded.version} ({recorded.hash[:12]})"
+            )
+        return self._ready_for(harness, verb)
+
+    def _ready_for(self, harness: Harness, verb: str) -> Harness:
+        """The harness a verb runs with, its own module's requirements met
+        and its advisories printed."""
+        modules = DEPLOY_MODULES if verb == "deploy" else LEARN_MODULES
+        unmet = harness.missing_for(modules)
+        if unmet:
+            raise HarnessError(unmet_message(harness, unmet, verb))
+        for line in advisory_lines(harness, modules):
+            print(line)
+        return harness
     
     # =========================================================================
     # INITIAL REPO RESOLUTION HELPERS
@@ -1864,23 +1961,13 @@ class Kapso:
         Returns:
             Local path to cloned repository
         """
-        import tempfile
-        import git
-        
-        # Create temp directory with meaningful prefix
         temp_dir = tempfile.mkdtemp(prefix="kapso_repo_")
-        
         print(f"  Cloning {url}...")
-        try:
-            git.Repo.clone_from(url, temp_dir)
-            print(f"  Cloned to: {temp_dir}")
-            return temp_dir
-        except Exception as e:
-            print(f"  Warning: Failed to clone {url}: {e}")
-            # Clean up temp dir on failure
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            return None
+        # A clone that fails propagates: a build must not start from an
+        # empty repository when the person named one.
+        git.Repo.clone_from(url, temp_dir)
+        print(f"  Cloned to: {temp_dir}")
+        return temp_dir
     
     def _search_workflow_repo(self, goal: str) -> Optional[str]:
         """
@@ -1897,56 +1984,20 @@ class Kapso:
             print("  No KG index - skipping workflow search")
             return None
         
-        try:
-            from kapso.knowledge_base.search.workflow_search import WorkflowRepoSearch
-            
-            print("  Searching for relevant workflow...")
-            workflow_search = WorkflowRepoSearch(kg_search=self.knowledge_search)
-            result = workflow_search.search(goal, top_k=1)
-            
-            if not result.is_empty and result.top_result.github_url:
-                starter_url = result.top_result.github_url
-                print(f"  Found workflow repo: {starter_url}")
-                return self._clone_github_repo(starter_url)
-            else:
-                print("  No matching workflow found")
-                return None
-        except Exception as e:
-            print(f"  Warning: Workflow search failed: {e}")
-            return None
+        print("  Searching for relevant workflow...")
+        workflow_search = WorkflowRepoSearch(kg_search=self.knowledge_search)
+        result = workflow_search.search(goal, top_k=1)
+        if not result.is_empty and result.top_result.github_url:
+            starter_url = result.top_result.github_url
+            print(f"  Found workflow repo: {starter_url}")
+            return self._clone_github_repo(starter_url)
+        print("  No matching workflow found")
+        return None
     
     def _build_problem_description(self, goal: str) -> str:
         """Build the full problem description for the orchestrator."""
         return f"# Goal\n{goal}"
     
-    def _extract_experiment_logs(self, orchestrator: OrchestratorAgent) -> List[str]:
-        """Extract experiment history as string logs."""
-        logs = []
-        history = orchestrator.search_strategy.get_experiment_history()
-        
-        for exp in history:
-            if getattr(exp, "suspended", False):
-                logs.append(
-                    f"Waiting: {exp.solution[:100]}... (asked the person, "
-                    f"requests {', '.join(f'#{i}' for i in exp.request_ids)})"
-                )
-            elif hasattr(exp, 'had_error') and exp.had_error:
-                logs.append(f"Failed: {exp.solution[:100]}... (Error: {exp.error_message})")
-            elif not getattr(exp, "evaluation_valid", True):
-                integrity_error = getattr(
-                    exp,
-                    "evaluation_integrity_error",
-                    "Invalid evaluation",
-                )
-                logs.append(
-                    f"Rejected: {exp.solution[:100]}... "
-                    f"(Evaluation: {integrity_error})"
-                )
-            else:
-                score = getattr(exp, 'score', 'N/A')
-                logs.append(f"Success: {exp.solution[:100]}... (Score: {score})")
-        
-        return logs
 
 
 # =============================================================================
@@ -1955,13 +2006,10 @@ class Kapso:
 
 __all__ = [
     "Kapso",
-    "KGIndexError",
-    "Source",
-    "SolutionResult",
+    "Brief",
+    "Budget",
+    "Solution",
     "Software",
-    "DeployStrategy",
-    "DeployConfig",
-    "DeploymentFactory",
-    "ResearchFindings",
+    "DeployError",
     "IterationEvaluator",
 ]

@@ -13,12 +13,9 @@ is an explicit strategy parameter and is fixed for the campaign.
 ## Configuration
 
 ```yaml
-modes:
-  GENERIC:
-    search_strategy:
-      type: "generic"
-      params:
-        parent_policy: "best"
+search_strategy:
+  params:
+    parent_policy: best
 ```
 
 `parent_policy` accepts exactly three values:
@@ -51,16 +48,13 @@ already built on it. Rank, not raw score, keeps the policy independent of the
 metric's scale and direction.
 
 ```yaml
-modes:
-  GENERIC:
-    search_strategy:
-      type: "generic"
-      params:
-        parent_policy: "weighted"
-        parent_sampling:
-          temperature: 1.0
-          offspring_penalty: 1.0
-          seed: 0
+search_strategy:
+  params:
+    parent_policy: "weighted"
+    parent_sampling:
+      temperature: 1.0
+      offspring_penalty: 1.0
+      seed: 0
 ```
 
 | Key | Effect |
@@ -127,10 +121,7 @@ do not reference an earlier node and branch/node pairs that disagree. The
 `parent_sampling` settings are part of the mode configuration, so the campaign's
 config fingerprint covers them and a resume with different settings is refused.
 
-For compatibility, checkpoint state created before this field existed is
-interpreted as `best`, which was the historical behavior. The campaign-level
-configuration fingerprint provides an additional guard against changing
-strategy parameters during resume.
+The campaign-level configuration fingerprint guards against changing strategy parameters during a resume.
 
 ## Choosing a policy
 

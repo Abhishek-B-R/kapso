@@ -19,7 +19,7 @@ services/wiki_backend/
 
 # Distribution / packaging
 .Python
-build/
+/build/
 develop-eggs/
 dist/
 downloads/
@@ -204,8 +204,13 @@ data/indexes/
 # Paper directory (private/unpublished work)
 paper/
 
-# Data directory (local data files)
+# Data directory (local data files); the benchmarks' data directories are
+# committed files (provided evaluation suites, seeded baselines, vocabularies)
 data/
+!benchmarks/*/data/
+
+# An arm's working copy of the benchmark machine script (benchmark_machine.<run-id>.sh)
+scripts/redesign/benchmark_machine.*.sh
 
 # Developer docs (internal documentation)
 developer_docs/
@@ -235,9 +240,6 @@ leeroopedia_mcp_backend/
 services/leeroopedia-mcp/
 services/backend_search/
 services/wiki-service-backend/
-# E2E track run artifacts
-examples/ml_model_development/e2e/runs/
-
 # fetched run artifacts (large, regenerable from GCS)
 
 # Claim prediction arrays: multi-hundred-MB float dumps that breach GitHub's
@@ -289,6 +291,23 @@ skills-lock.json
 # files here and symlinks .claude/skills/ at them, so ignoring only the symlink
 # directory above still leaves this one showing up in every commit.
 .agents/
+# The repository is Codex's marketplace: its one file under .agents is tracked.
+!/.agents/
+/.agents/*
+!/.agents/plugins/
+/.agents/plugins/*
+!/.agents/plugins/marketplace.json
+
+# Local records of fresh-machine runs (scripts/redesign/fresh_machine.sh)
+/scripts/redesign/runs/
+
+# Example builds land beside each example's repo and are never committed.
+examples/*/campaign/
+# The trigger suite's run outputs (`claude plugin eval` writes them beside the cases)
+/plugin/evals/results/
+
+# The semantic suite's reports are committed under immutable run ids (docs/plans/redesign/wp9-semantic-suite.md).
+!tests/semantic/reports/
 
 # Retrieval-eval results (benchmarks/kg_retrieval/README.md)
 benchmarks/kg_retrieval/results/

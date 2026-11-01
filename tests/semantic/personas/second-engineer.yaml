@@ -1,0 +1,15 @@
+name: second-engineer
+role: engineer on the same team as the churn model's owner, joining the repository this week
+expertise: fluent in Python and git; has the Kapso plugin installed and has never run a build; knows nothing of what the first engineer did
+knows: >
+  a teammate shared a bank of lessons from their campaign at a git
+  reference the teammate sent; the repository is the churn one; the
+  metric is AUC
+wants: a build of their own, at a small budget, served the teammate's lessons, and to see which lessons it read
+patience: 2
+answers: >
+  terse; one line; "go" when the proposal is right; asks for the bank's
+  reference to be used rather than explaining where it came from
+pushes_back_when: >
+  asked to add a bank by hand when loading it should suffice; asked the
+  same thing twice; a message runs longer than a screen

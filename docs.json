@@ -2,101 +2,100 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "maple",
   "name": "Kapso by Leeroo",
-
   "colors": {
     "primary": "#2563EB",
     "light": "#DBEAFE",
     "dark": "#2563EB"
   },
-
   "seo": {
     "indexing": "all",
     "metatags": {
       "canonical": "https://docs.leeroo.com"
     }
   },
-
   "favicon": "/docs/logo/logo-transparent.png",
-
   "logo": {
     "light": "/docs/logo/logo-transparent.png",
     "dark": "/docs/logo/logo-transparent.png"
   },
-
   "navigation": {
     "tabs": [
       {
         "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Start",
             "pages": [
               "docs/index",
               "docs/installation",
-              "docs/quickstart",
-              "docs/agent-access",
+              "docs/first-build",
               "docs/coding-agent-skills"
             ]
           },
           {
-            "group": "Evolve system",
+            "group": "Build",
+            "pages": [
+              "docs/build/brief",
+              "docs/build/evaluation",
+              "docs/build/run-and-watch",
+              "docs/build/inbox",
+              "docs/build/review",
+              "docs/build/trace",
+              "docs/build/resume-and-budgets"
+            ]
+          },
+          {
+            "group": "Harnesses",
+            "pages": [
+              "docs/harnesses/index",
+              "docs/harnesses/use",
+              "docs/harnesses/bundled/predictive-modelling",
+              "docs/harnesses/bundled/competitive-programming",
+              "docs/harnesses/write",
+              "docs/harnesses/example-trading"
+            ]
+          },
+          {
+            "group": "Experience",
+            "pages": [
+              "docs/experience/index",
+              "docs/experience/use",
+              "docs/experience/add",
+              "docs/experience/share"
+            ]
+          },
+          {
+            "group": "Deploy",
+            "pages": [
+              "docs/deploy/targets",
+              "docs/deploy/write-a-target-skill"
+            ]
+          },
+          {
+            "group": "Learn",
+            "pages": [
+              "docs/learn/what-learn-produces",
+              "docs/learn/development-mode"
+            ]
+          },
+          {
+            "group": "How it works",
             "pages": [
               "docs/evolve/overview",
               "docs/evolve/architecture",
               "docs/evolve/execution-flow",
-              "docs/evolve/resuming-runs",
-              "docs/evolve/inbox",
-              "docs/evolve/external-evaluation",
               "docs/evolve/evaluation-integrity",
-              {
-                "group": "Components",
-                "pages": [
-                  "docs/evolve/orchestrator",
-                  "docs/evolve/search-strategies",
-                  "docs/evolve/parent-selection",
-                  "docs/evolve/cost-aware-selection",
-                  "docs/evolve/mcp-gates",
-                  "docs/evolve/model-routing-retries",
-                  "docs/evolve/coding-agents",
-                  "docs/evolve/feedback-generator",
-                  "docs/evolve/experiment-lifecycle",
-                  "docs/evolve/repo-memory"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Knowledge graph",
-            "pages": [
-              "docs/knowledge/overview",
-              "docs/knowledge/learning-pipeline",
-              "docs/knowledge/search-backends"
-            ]
-          },
-          {
-            "group": "Trajectory learning",
-            "pages": [
-              "docs/learning/overview",
-              "docs/learning/bank",
-              "docs/learning/pipeline",
-              "docs/learning/graders",
-              "docs/learning/serving",
-              "docs/learning/development"
-            ]
-          },
-          {
-            "group": "Research",
-            "pages": [
-              "docs/research/overview"
-            ]
-          },
-          {
-            "group": "Deployment",
-            "pages": [
-              "docs/deployment/overview",
-              "docs/deployment/architecture",
-              "docs/deployment/strategies",
-              "docs/deployment/adding-strategies"
+              "docs/evolve/external-evaluation",
+              "docs/evolve/orchestrator",
+              "docs/evolve/search-strategies",
+              "docs/evolve/parent-selection",
+              "docs/evolve/cost-aware-selection",
+              "docs/evolve/mcp-gates",
+              "docs/evolve/model-routing-retries",
+              "docs/evolve/coding-agents",
+              "docs/evolve/feedback-generator",
+              "docs/evolve/experiment-lifecycle",
+              "docs/evolve/repo-memory"
             ]
           },
           {
@@ -118,7 +117,9 @@
             "pages": [
               "docs/reference/cli",
               "docs/reference/kapso-api",
-              "docs/deployment/api-reference",
+              "docs/reference/brief-format",
+              "docs/reference/harness",
+              "docs/reference/experience",
               "docs/reference/configuration"
             ]
           }
@@ -126,34 +127,171 @@
       }
     ]
   },
-
   "redirects": [
-    { "source": "/docs/evolve/reliability-roadmap", "destination": "/docs/evolve/overview" },
-    { "source": "/docs/evolve/cognitive-memory", "destination": "/docs/learning/overview" },
-    { "source": "/docs/evolve/budget-aware-experimentation", "destination": "/docs/evolve/overview" },
-    { "source": "/docs/evolve/evaluators", "destination": "/docs/evolve/external-evaluation" },
-    { "source": "/docs/evolve/stop-conditions", "destination": "/docs/evolve/overview" },
-    { "source": "/docs/concepts/execution-flow", "destination": "/docs/evolve/execution-flow" },
-    { "source": "/docs/concepts/tree-search", "destination": "/docs/evolve/search-strategies" },
-    { "source": "/docs/concepts/architecture", "destination": "/docs/evolve/architecture" },
-    { "source": "/docs/concepts/experiment-lifecycle", "destination": "/docs/evolve/experiment-lifecycle" },
-    { "source": "/docs/concepts/kapso-api", "destination": "/docs/reference/kapso-api" },
-    { "source": "/docs/concepts/tinkerer-api", "destination": "/docs/reference/kapso-api" },
-    { "source": "/docs/concepts/knowledge-system", "destination": "/docs/knowledge/overview" },
-    { "source": "/docs/components/orchestrator", "destination": "/docs/evolve/orchestrator" },
-    { "source": "/docs/components/coding-agents/overview", "destination": "/docs/evolve/coding-agents" },
-    { "source": "/docs/components/search-strategies/overview", "destination": "/docs/evolve/search-strategies" },
-    { "source": "/docs/components/knowledge-search/overview", "destination": "/docs/knowledge/search-backends" },
-    { "source": "/docs/components/wiki-mcp/overview", "destination": "/docs/knowledge/overview" },
-    { "source": "/docs/guides/configuration", "destination": "/docs/reference/configuration" },
-    { "source": "/docs/guides/setup-neo4j", "destination": "/docs/installation" },
-    { "source": "/docs/knowledge/wiki-structure", "destination": "/docs/knowledge/overview" },
-    { "source": "/docs/benchmarks/generic-problems", "destination": "/docs/benchmarks/mle-bench" }
+    {
+      "source": "/docs/agent-access",
+      "destination": "/docs/coding-agent-skills"
+    },
+    {
+      "source": "/docs/deployment/overview",
+      "destination": "/docs/deploy/targets"
+    },
+    {
+      "source": "/docs/deployment/architecture",
+      "destination": "/docs/deploy/targets"
+    },
+    {
+      "source": "/docs/deployment/strategies",
+      "destination": "/docs/deploy/targets"
+    },
+    {
+      "source": "/docs/deployment/adding-strategies",
+      "destination": "/docs/deploy/write-a-target-skill"
+    },
+    {
+      "source": "/docs/deployment/api-reference",
+      "destination": "/docs/reference/kapso-api#deploy"
+    },
+    {
+      "source": "/docs/evolve/reliability-roadmap",
+      "destination": "/docs/evolve/overview"
+    },
+    {
+      "source": "/docs/evolve/cognitive-memory",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/evolve/budget-aware-experimentation",
+      "destination": "/docs/evolve/overview"
+    },
+    {
+      "source": "/docs/evolve/evaluators",
+      "destination": "/docs/evolve/external-evaluation"
+    },
+    {
+      "source": "/docs/evolve/stop-conditions",
+      "destination": "/docs/evolve/overview"
+    },
+    {
+      "source": "/docs/concepts/execution-flow",
+      "destination": "/docs/evolve/execution-flow"
+    },
+    {
+      "source": "/docs/concepts/tree-search",
+      "destination": "/docs/evolve/search-strategies"
+    },
+    {
+      "source": "/docs/concepts/architecture",
+      "destination": "/docs/evolve/architecture"
+    },
+    {
+      "source": "/docs/concepts/experiment-lifecycle",
+      "destination": "/docs/evolve/experiment-lifecycle"
+    },
+    {
+      "source": "/docs/concepts/kapso-api",
+      "destination": "/docs/reference/kapso-api"
+    },
+    {
+      "source": "/docs/concepts/tinkerer-api",
+      "destination": "/docs/reference/kapso-api"
+    },
+    {
+      "source": "/docs/concepts/knowledge-system",
+      "destination": "/docs/experience"
+    },
+    {
+      "source": "/docs/knowledge/overview",
+      "destination": "/docs/experience"
+    },
+    {
+      "source": "/docs/knowledge/learning-pipeline",
+      "destination": "/docs/experience/add"
+    },
+    {
+      "source": "/docs/knowledge/search-backends",
+      "destination": "/docs/experience/add"
+    },
+    {
+      "source": "/docs/research/overview",
+      "destination": "/docs/experience/add"
+    },
+    {
+      "source": "/docs/components/orchestrator",
+      "destination": "/docs/evolve/orchestrator"
+    },
+    {
+      "source": "/docs/components/coding-agents/overview",
+      "destination": "/docs/evolve/coding-agents"
+    },
+    {
+      "source": "/docs/components/search-strategies/overview",
+      "destination": "/docs/evolve/search-strategies"
+    },
+    {
+      "source": "/docs/components/knowledge-search/overview",
+      "destination": "/docs/experience/add"
+    },
+    {
+      "source": "/docs/components/wiki-mcp/overview",
+      "destination": "/docs/experience"
+    },
+    {
+      "source": "/docs/guides/configuration",
+      "destination": "/docs/reference/configuration"
+    },
+    {
+      "source": "/docs/guides/setup-neo4j",
+      "destination": "/docs/installation"
+    },
+    {
+      "source": "/docs/knowledge/wiki-structure",
+      "destination": "/docs/experience/add"
+    },
+    {
+      "source": "/docs/benchmarks/generic-problems",
+      "destination": "/docs/benchmarks/mle-bench"
+    },
+    {
+      "source": "/docs/quickstart",
+      "destination": "/docs/first-build"
+    },
+    {
+      "source": "/docs/evolve/inbox",
+      "destination": "/docs/build/inbox"
+    },
+    {
+      "source": "/docs/evolve/resuming-runs",
+      "destination": "/docs/build/resume-and-budgets"
+    },
+    {
+      "source": "/docs/learning/overview",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/bank",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/serving",
+      "destination": "/docs/learn/what-learn-produces"
+    },
+    {
+      "source": "/docs/learning/pipeline",
+      "destination": "/docs/learn/development-mode"
+    },
+    {
+      "source": "/docs/learning/graders",
+      "destination": "/docs/learn/development-mode"
+    },
+    {
+      "source": "/docs/learning/development",
+      "destination": "/docs/learn/development-mode"
+    }
   ],
-
   "footer": {
     "socials": {
-    "github": "https://github.com/leeroo-ai/kapso"
+      "github": "https://github.com/leeroo-ai/kapso"
     }
   }
 }

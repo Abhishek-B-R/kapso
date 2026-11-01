@@ -1,6 +1,6 @@
 # Facade result types for learning (design: learn-api-design.md §3, §8.2).
 #
-# LessonResult mirrors SolutionResult deliberately — evolve() and learn()
+# LessonResult mirrors Solution deliberately — build() and learn()
 # are peers, and their artifacts answer "what just happened" the same way:
 # direct fields plus a human-readable explain(). MemoryStatus is the one
 # place to ask "what does this agent know" across both stores.
@@ -30,12 +30,12 @@ class LessonResult:
     @property
     def admitted(self) -> bool:
         """True when the lesson moved the bank (the peer of
-        SolutionResult.succeeded)."""
+        Solution.succeeded)."""
         return self.bank_head_after != self.bank_head_before
 
     def explain(self) -> str:
         """Return a summary of the lesson, same idiom as
-        SolutionResult.explain()."""
+        Solution.explain()."""
         lines = [
             f"Lesson from: {self.trajectory_id}",
             f"Bank: {self.bank_head_before[:9]} -> "
@@ -66,40 +66,25 @@ class LessonResult:
 
 @dataclass
 class MemoryStatus:
-    """What the agent knows right now, across both memory stores
-    (design §8.2): knowledge (imported — KG) and experience (earned —
-    the bank)."""
+    """Your own bank right now: its head, its active cards, the
+    trajectories in the store. What a build is served is
+    `Kapso.experience`, the loaded sources."""
 
-    knowledge_index: Optional[str]
-    knowledge_backend: Optional[str]
-    knowledge_enabled: bool
     bank_path: Optional[str]
     bank_head: Optional[str]
     bank_active_cards: Optional[int]
     store_trajectories: Optional[int]
-    serving_enabled: bool
 
     def explain(self) -> str:
         lines = ["Memory:"]
-        if self.knowledge_enabled:
-            lines.append(
-                f"  knowledge:  {self.knowledge_index or '(backends)'} "
-                f"({self.knowledge_backend}) — enabled"
-            )
-        else:
-            lines.append("  knowledge:  disabled")
         if self.bank_path and self.bank_head:
             lines.append(
                 f"  experience: {self.bank_path} @ {self.bank_head[:9]} — "
                 f"{self.bank_active_cards} active cards, "
-                f"{self.store_trajectories} trajectories in store, "
-                f"serving: {'enabled' if self.serving_enabled else 'disabled'}"
+                f"{self.store_trajectories} trajectories in store"
             )
         elif self.bank_path:
-            lines.append(
-                f"  experience: {self.bank_path} (bank not initialized), "
-                f"serving: {'enabled' if self.serving_enabled else 'disabled'}"
-            )
+            lines.append(f"  experience: {self.bank_path} (bank not initialized)")
         else:
             lines.append("  experience: no bank configured")
         return "\n".join(lines)

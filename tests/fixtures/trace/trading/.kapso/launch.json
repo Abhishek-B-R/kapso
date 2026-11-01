@@ -1,0 +1,50 @@
+{
+  "brief": {
+    "baseline": "0.14 (the shipped 20/100 moving-average cross; max drawdown\n0.11, annual turnover 3.5)",
+    "budget": {
+      "experiments": 2,
+      "minutes": 75.0,
+      "reserve_minutes": null,
+      "usd": null
+    },
+    "experience": [],
+    "harness": "../harnesses/trading",
+    "measured_by": "kapso_evaluation/evaluate.py: the annualised Sharpe of the\nequal-weight portfolio over 2024 after 5 basis points per unit\nof turnover, with the risk line (max drawdown, annual turnover)\nprinted beside it",
+    "objective": "Raise the strategy's out-of-sample Sharpe above 1.0 on the 2024\nwindow without breaking the signal contract: strategy.py keeps\na signal(bars) function that returns the position to hold per\nbar, in [-1, 1], from that bar and the ones before it.",
+    "rules": [
+      "a signal at bar t uses only bars at or before t; the position decided at t earns from t+1",
+      "the 2024 bars are read by the evaluation alone; develop on 2021 to 2023",
+      "every price comes from the pinned snapshot the setup session builds; no live fetches",
+      "the evaluator is never modified"
+    ],
+    "target": "1.0"
+  },
+  "config_path": null,
+  "data_dir": "/home/ubuntu/fixture/examples/trading/data",
+  "dotenv_path": "",
+  "eval_dir": "/home/ubuntu/fixture/examples/trading/evaluation",
+  "experience": [
+    {
+      "head": "a9ddad3d302dcaa258cca1d213f33bd5bd0600f0",
+      "kind": "bank",
+      "provenance": "measured by you",
+      "reference": "mine",
+      "resolved": "/home/ubuntu/.kapso/bank.git",
+      "scope": "harness"
+    }
+  ],
+  "experiments": 2,
+  "harness": {
+    "hash": "83b6c0b60d6ac724613c469bc1315d5cba32420bdf705d8f4c2c04c73d834f2b",
+    "name": "trading",
+    "source": "/home/ubuntu/fixture/examples/harnesses/trading",
+    "version": "0.1.0"
+  },
+  "host": null,
+  "minutes": 40.0,
+  "output_path": "/campaign",
+  "reserve_minutes": null,
+  "resumable_from_inbox": true,
+  "schema_version": 2,
+  "usd": null
+}

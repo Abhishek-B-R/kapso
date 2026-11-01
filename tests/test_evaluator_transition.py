@@ -19,6 +19,7 @@ import kapso.execution.search_strategies.generic.registered_evaluation as regist
 from kapso.execution.run_checkpoint import RunCheckpoint, RunCheckpointStore
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+from tests.harness_support import fake_config
 
 from tests.test_evaluation_maintainer_wiring import (
     ScriptedMaintainerAgent,
@@ -38,11 +39,13 @@ from tests.test_run_checkpoint import (
 
 def test_transition_state_round_trips_and_validates():
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.node_history = []
     source.iteration_count = 0
     source.previous_errors = []
     source.parent_policy = "best"
     source.scores_evaluator_id = "ev-2"
+    source.last_round_seconds = None
     source.evaluator_transition = {
         "old_evaluator_id": "ev-1",
         "new_evaluator_id": "ev-2",
@@ -51,6 +54,7 @@ def test_transition_state_round_trips_and_validates():
     state = source.dump_state()
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.parent_policy = "best"
     restored.load_state(state)
     assert restored.scores_evaluator_id == "ev-2"
@@ -60,6 +64,7 @@ def test_transition_state_round_trips_and_validates():
     broken["evaluator_transition"] = {"status": "half-done"}
     with pytest.raises(ValueError, match="evaluator_transition"):
         fresh = GenericSearch.__new__(GenericSearch)
+        fresh.harness = None
         fresh.parent_policy = "best"
         fresh.load_state(broken)
 
@@ -71,6 +76,7 @@ def test_multi_lane_checkpoint_restores_with_fewer_iterations_than_nodes():
     (first live hit: rel-event/user-ignore resume, 2026-08-09 — 4 lane
     nodes, iteration_count 1, RunCheckpointCorruptError)."""
     source = GenericSearch.__new__(GenericSearch)
+    source.harness = None
     source.node_history = [
         SearchNode(node_id=i, branch_name=f"generic_exp_{i}")
         for i in range(4)
@@ -79,10 +85,12 @@ def test_multi_lane_checkpoint_restores_with_fewer_iterations_than_nodes():
     source.previous_errors = []
     source.parent_policy = "best"
     source.scores_evaluator_id = "ev-1"
+    source.last_round_seconds = None
     source.evaluator_transition = None
     state = source.dump_state()
 
     restored = GenericSearch.__new__(GenericSearch)
+    restored.harness = None
     restored.parent_policy = "best"
     restored.load_state(state)
     assert restored.iteration_count == 1
@@ -126,6 +134,7 @@ def fake_eval_subprocess(payload, returncode: int = 0):
 
 def make_bridge_strategy(tmp_path, *, branches):
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.registered_evaluator_id = "ev-2"
     strategy.registered_subsample_seed = 1337
     strategy.registered_data_manifest = {}
@@ -207,14 +216,8 @@ def test_bridge_skips_missing_artifacts_and_appends_on_success(
 # Orchestrator-level: the durable state machine
 # =========================================================================
 
-def maintainer_mode_config(config_path, mode):
-    return {
-        "search_strategy": {"type": "generic", "params": {}},
-        "evaluation_maintainer": {
-            "type": "claude_code",
-            "max_change_requests": 2,
-        },
-    }
+def maintainer_config(config_path=None):
+    return fake_config(evaluation_maintainer={"enabled": True, "max_change_requests": 2})
 
 
 def test_accepted_change_request_runs_the_full_transition(
@@ -227,7 +230,7 @@ def test_accepted_change_request_runs_the_full_transition(
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
 
     # One scripted agent serves both the setup and the CR call: the setup
@@ -254,7 +257,7 @@ def test_accepted_change_request_runs_the_full_transition(
         ),
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     orchestrator = _orchestrator(workspace)
     strategy = orchestrator.search_strategy
@@ -307,7 +310,7 @@ def test_pending_transition_replays_idempotently_on_resume(
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     _orchestrator(workspace).solve(experiment_max_iter=1)
 
@@ -359,7 +362,7 @@ def test_failed_bridges_anchor_an_empty_frontier(tmp_path, monkeypatch):
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     _orchestrator(workspace).solve(experiment_max_iter=1)
 
@@ -424,7 +427,7 @@ def test_accepted_request_bridges_the_requester_first(tmp_path, monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     orchestrator = _orchestrator(workspace)
     strategy = orchestrator.search_strategy
@@ -453,7 +456,7 @@ def test_pending_priority_replays_first_on_resume(tmp_path, monkeypatch):
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     first = _orchestrator(workspace)
     # Node 0 scoreless, node 1 scored: without priority, replay would
@@ -528,7 +531,7 @@ def test_unsound_measurement_bridges_but_tampering_never_does(
         ),
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     orchestrator = _orchestrator(workspace)
     strategy = orchestrator.search_strategy
@@ -569,7 +572,7 @@ def test_change_requests_freeze_late_in_a_time_budget(tmp_path, monkeypatch):
         monkeypatch, ScriptedMaintainerAgent(write_entrypoint)
     )
     monkeypatch.setattr(
-        orchestrator_module, "load_mode_config", maintainer_mode_config
+        orchestrator_module, "load_config", maintainer_config
     )
     orchestrator = _orchestrator(workspace)
     assert orchestrator._transition_freeze_fraction == 0.85
@@ -577,7 +580,7 @@ def test_change_requests_freeze_late_in_a_time_budget(tmp_path, monkeypatch):
     orchestrator.budget_spec = SimpleNamespace(time_budget_seconds=3600.0)
     filings = []
     orchestrator.evaluation_maintainer.handle_change_request = (
-        lambda request: filings.append(request)
+        lambda request, staged=None: filings.append(request)
         or SimpleNamespace(accepted=False, reason="filed", new_version=None)
     )
     candidate = SimpleNamespace(

@@ -8,7 +8,7 @@ and a wrong key is detected, so the coder cannot fake its way past the
 blocker. Run as a script to drive one campaign by hand:
 
     python tests/live/inbox_live_support.py build  <root> claude|codex [--variant single|two_needs|keep_working]
-    python tests/live/inbox_live_support.py evolve <root> [--iterations N]
+    python tests/live/inbox_live_support.py build <root> [--iterations N]
     python tests/live/inbox_live_support.py reply  <root> <id> [note]
 """
 
@@ -22,7 +22,7 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import git
 import yaml
@@ -147,15 +147,18 @@ def _dotenv_without_key(source: Path) -> str:
 
 
 def write_config(path: Path, cli: str, *, stop_grace_seconds: Optional[int] = None) -> None:
-    """The packaged config with MINIMAL's implementation lane on the CLI
-    under test, and the inbox grace shortened when asked."""
-    config = yaml.safe_load(PACKAGED_CONFIG.read_text())
-    mode = config["modes"]["MINIMAL"]
-    params = mode["search_strategy"]["params"]
-    params["implementation_cli"] = "codex" if cli == "codex" else "claude_code"
-    params["implementation_model"] = CODEX_MODEL if cli == "codex" else "claude-opus-5"
+    """An override file over the packaged config: the gates off (the bait
+    needs none), the implementation lane on the CLI under test with its
+    model, and the inbox grace shortened when asked."""
+    config: Dict[str, Any] = {
+        "hosts": {"codex": {"model": CODEX_MODEL}},
+        "search_strategy": {"params": {
+            "ideation": {"gates": []},
+            "implementation": {"cli": "codex" if cli == "codex" else "claude_code", "gates": []},
+        }},
+    }
     if stop_grace_seconds is not None:
-        mode["inbox"] = {**(mode.get("inbox") or {}), "stop_grace_seconds": stop_grace_seconds}
+        config["inbox"] = {"stop_grace_seconds": stop_grace_seconds}
     path.write_text(yaml.safe_dump(config, sort_keys=False))
 
 
@@ -181,8 +184,11 @@ def build_fixture(root: Path, cli: str, *, variant: str = "single",
     (root / "goal.txt").write_text(VARIANT_GOALS[variant])
     (root / ".env").write_text(_dotenv_without_key(dotenv_source))
     (root / "cli.txt").write_text(cli)
+    write_config(root / "config.yaml", cli, stop_grace_seconds=VARIANT_GRACE_SECONDS.get(variant))
+    # The codex and the shortened-grace fixtures run through the Python
+    # API, the others through the CLI: both launch forms stay covered.
     if cli == "codex" or variant in VARIANT_GRACE_SECONDS:
-        write_config(root / "config.yaml", cli, stop_grace_seconds=VARIANT_GRACE_SECONDS.get(variant))
+        (root / "api.txt").write_text("the build runs through the Python API\n")
     return {"root": str(root), "campaign": str(root / "campaign"), "key": key.hex(), "cli": cli,
             "variant": variant}
 
@@ -194,50 +200,51 @@ def _subprocess_env() -> Dict[str, str]:
     return env
 
 
-def run_evolve(root: Path, *, iterations: int = 1, log: Optional[Path] = None,
+def run_build(root: Path, *, iterations: int = 1, log: Optional[Path] = None,
                extra: Optional[List[str]] = None) -> subprocess.CompletedProcess:
-    """`kapso evolve` on the fixture — the CLI with the packaged config,
-    or the Python API when the fixture carries its own config (codex,
-    or a shortened grace) — cwd at the root so the root's .env is the
-    one the run loads."""
-    if not (root / "config.yaml").exists():
+    """`kapso build` on the fixture — the CLI with the fixture's override
+    file, or the Python API for the fixtures marked for it (codex, or a
+    shortened grace) — cwd at the root so the root's .env is the one the
+    run loads."""
+    if not (root / "api.txt").exists():
         command = [
-            sys.executable, "-m", "kapso.cli", "evolve",
-            "--goal-file", "goal.txt", "--output", "campaign", "--initial-repo", "seed",
-            "--iterations", str(iterations), "-m", "MINIMAL", *(extra or []),
+            sys.executable, "-m", "kapso.cli", "build",
+            "--goal-file", "goal.txt", "--output", "campaign", "--repo", "seed",
+            "--budget-experiments", str(iterations), "--config", "config.yaml", *(extra or []),
         ]
     else:
-        command = [sys.executable, str(Path(__file__).resolve()), "api-evolve", str(root),
+        command = [sys.executable, str(Path(__file__).resolve()), "api-build", str(root),
                    "--iterations", str(iterations)]
     return _run(command, root, log)
 
 
-def api_evolve(root: Path, iterations: int, *, resume: bool = False) -> None:
+def api_build(root: Path, iterations: int, *, resume: bool = False) -> None:
     """The campaign through the Python API with the fixture's config;
     `resume` continues the existing campaign (the checkpoint's
     fingerprint is that config, so a CLI resume with the packaged
     config would be refused)."""
     from kapso.kapso import Kapso
+    from kapso.handles import Budget
 
-    solution = Kapso(config_path=str(root / "config.yaml")).evolve(
-        goal=(root / "goal.txt").read_text(), output_path=str(root / "campaign"),
-        initial_repo=None if resume else str(root / "seed"), max_iterations=iterations,
-        mode="MINIMAL", resume=resume,
+    solution = Kapso(config=str(root / "config.yaml")).build(
+        (root / "goal.txt").read_text(), output=str(root / "campaign"),
+        repo=None if resume else str(root / "seed"), budget=Budget(experiments=iterations),
+        resume=resume,
     )
-    print(f"stopped_reason={solution.metadata.get('stopped_reason')} requests={solution.requests}")
+    print(f"stopped_reason={solution.stopped_reason} requests={solution.requests}")
 
 
 def run_resume(root: Path, *, log: Optional[Path] = None) -> subprocess.CompletedProcess:
-    """`kapso evolve --resume` on the campaign: the CLI form with the
-    packaged config, or the API form with the fixture's config when the
-    fixture carries one (the checkpoint's fingerprint is that config)."""
-    if (root / "config.yaml").exists():
-        command = [sys.executable, str(Path(__file__).resolve()), "api-evolve", str(root),
+    """`kapso build --resume` on the campaign: the API form for the
+    fixtures marked for it, else the CLI form, both with the fixture's
+    override file (the checkpoint's fingerprint is that config)."""
+    if (root / "api.txt").exists():
+        command = [sys.executable, str(Path(__file__).resolve()), "api-build", str(root),
                    "--iterations", "1", "--resume"]
     else:
         command = [
-            sys.executable, "-m", "kapso.cli", "evolve", "--goal-file", "goal.txt",
-            "--output", "campaign", "--iterations", "1", "-m", "MINIMAL", "--resume",
+            sys.executable, "-m", "kapso.cli", "build", "--goal-file", "goal.txt",
+            "--output", "campaign", "--budget-experiments", "1", "--config", "config.yaml", "--resume",
         ]
     return _run(command, root, log)
 
@@ -393,10 +400,10 @@ def main(argv: List[str]) -> None:
     build.add_argument("root")
     build.add_argument("cli", choices=["claude", "codex"])
     build.add_argument("--variant", choices=sorted(VARIANT_GOALS), default="single")
-    evolve = sub.add_parser("evolve")
-    evolve.add_argument("root")
-    evolve.add_argument("--iterations", type=int, default=1)
-    api = sub.add_parser("api-evolve")
+    build = sub.add_parser("build")
+    build.add_argument("root")
+    build.add_argument("--iterations", type=int, default=1)
+    api = sub.add_parser("api-build")
     api.add_argument("root")
     api.add_argument("--iterations", type=int, default=1)
     api.add_argument("--resume", action="store_true")
@@ -415,11 +422,11 @@ def main(argv: List[str]) -> None:
     root = Path(args.root).resolve()
     if args.command == "build":
         print(json.dumps(build_fixture(root, args.cli, variant=args.variant)))
-    elif args.command == "evolve":
-        completed = run_evolve(root, iterations=args.iterations, log=root / "evolve.log")
+    elif args.command == "build":
+        completed = run_build(root, iterations=args.iterations, log=root / "build.log")
         print(f"exit={completed.returncode}")
-    elif args.command == "api-evolve":
-        api_evolve(root, args.iterations, resume=args.resume)
+    elif args.command == "api-build":
+        api_build(root, args.iterations, resume=args.resume)
     elif args.command == "reply":
         completed = run_reply(root, args.id, args.note, log=root / "reply.log")
         print(f"exit={completed.returncode}")

@@ -15,18 +15,30 @@ import yaml
 
 CARD_TYPES = ("insight", "procedure")
 RELIABILITY_STATES = ("candidate", "active", "cold", "retired", "superseded")
-EVIDENCE_VERDICTS = ("confirm", "weaken", "refine", "refute", "spawn", "exercise")
+EVIDENCE_VERDICTS = ("confirm", "weaken", "refine", "refute", "spawn", "exercise", "reported")
 REPRESENTATIONS = ("text", "code")
 SERVABLE_STATES = ("candidate", "active")  # cold/retired/superseded never serve
 # Outcome/exercise verdicts imply execution (CD§1): admission demands effect
 # numbers that re-grep in a run where the method actually ran — a mere
 # mention can never earn one.
 EXECUTED_VERDICTS = ("confirm", "weaken", "refute", "refine", "exercise")
+# A `reported` entry records a score at a source outside kapso — a public
+# leaderboard, an organizer's reference solution, a winner's notebook — with
+# who reported it and under what terms. A conversion writes it, never a
+# learner run (the write side refuses it); it is not executed evidence, so
+# it promotes nothing and prices nothing: a card born from it is a candidate
+# until a campaign measures it, and serves as "reported by others".
+REPORTED_VERDICT = "reported"
+REPORTED_SOURCE_FIELDS = ("url", "author", "licence", "score", "protocol")
 # A failed codify attempt is recorded as a log entry carrying this marker;
 # the seeder skips the card until new executed evidence arrives (CD§1/§2).
 CODIFY_FAILED_MARKER = "codify attempt failed"
 
-_SCOPE_COORD_PATTERN = re.compile(r"^(family|dataset):(.+)$")
+# A card's scope: `domain`, or a list of `harness:<name>` coordinates
+# (`harness:none` for a lesson learned without one). The coordinate is the
+# harness (docs/plans/redesign/wp3-experience.md); a coordinate of any
+# other kind matches nothing.
+_SCOPE_COORD_PATTERN = re.compile(r"^(harness):(.+)$")
 DECOY_REGISTRY_NAME = ".decoys.yaml"
 SIGHTINGS_NAME = "sightings.md"
 _RULE_PATTERN = re.compile(r"\*\*Rule:\*\*\s*(.+?)(?:\n\s*\n|\n#|\Z)", re.S)
@@ -166,10 +178,18 @@ class Card:
     def representation(self) -> str:
         return self.frontmatter.get("representation", "text")
 
+    @property
+    def reported_only(self) -> bool:
+        """Every evidence entry is `reported`: the card's whole support is
+        what others reported at a source, nothing kapso measured."""
+        return bool(self.evidence) and all(
+            entry.get("verdict") == REPORTED_VERDICT for entry in self.evidence
+        )
+
     def eligible_for(self, task_coords: Dict[str, str]) -> bool:
         """Serving eligibility (§5.1): task ∈ scope. `domain` covers every
-        task; a coordinate list covers tasks matching any family:/dataset:
-        coordinate. Tags never participate."""
+        task; a coordinate list covers the tasks whose harness it names.
+        Tags never participate."""
         scope = self.scope
         if scope == "domain":
             return True
@@ -180,6 +200,22 @@ class Card:
             if match and task_coords.get(match.group(1)) == match.group(2):
                 return True
         return False
+
+    def _reported_source_findings(self, entry: Dict[str, Any]) -> List[str]:
+        """A reported entry names its source whole: where (url), who
+        (author), under what terms (licence), what it reported (score —
+        null when the source states none) and how that was established
+        (protocol)."""
+        source = entry.get("source")
+        if not isinstance(source, dict):
+            return [f"{self.name}: reported evidence has no source mapping"]
+        findings = []
+        for field in REPORTED_SOURCE_FIELDS:
+            if field not in source:
+                findings.append(f"{self.name}: reported evidence source lacks {field}")
+            elif field != "score" and not str(source[field] or "").strip():
+                findings.append(f"{self.name}: reported evidence {field} is empty")
+        return findings
 
     def conformance_findings(self) -> List[str]:
         """Card-level schema checks (admission raises live in the write side;
@@ -197,7 +233,7 @@ class Card:
             and all(_SCOPE_COORD_PATTERN.match(str(c)) for c in scope)
         ):
             findings.append(f"{self.name}: scope {scope!r} is neither `domain` "
-                            f"nor a family:/dataset: coordinate list")
+                            f"nor a harness: coordinate list")
         if not self.evidence:
             findings.append(f"{self.name}: evidence ledger is empty")
         for entry in self.evidence:
@@ -205,6 +241,8 @@ class Card:
                 findings.append(
                     f"{self.name}: evidence verdict {entry.get('verdict')!r} invalid"
                 )
+            elif entry.get("verdict") == REPORTED_VERDICT:
+                findings += self._reported_source_findings(entry)
         if self.state not in RELIABILITY_STATES:
             findings.append(f"{self.name}: reliability state {self.state!r} invalid")
         if not str(self.reliability.get("rationale", "")).strip():

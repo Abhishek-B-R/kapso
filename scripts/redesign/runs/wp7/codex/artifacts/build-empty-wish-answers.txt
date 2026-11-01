@@ -1,0 +1,15 @@
+Only [README.md](README.md) exists, describing future churn modelling; there’s no dataset or evaluator.
+
+Two useful starting points:
+- **Recommended:** a churn CSV checker that flags missing fields, duplicate customers, and unusable targets.
+- A churn training pipeline, whose predictive quality would require real labelled data to measure.
+
+I wrote [kapso-brief.md](kapso-brief.md) proposing the checker, seven correctness checks, and a 30-minute / 5-experiment budget. No campaign has launched.
+
+Approve the checker brief, or edit its scope?
+
+The invoked [kapso-evaluation skill](/home/ubuntu/.codex/plugins/cache/kapso/kapso/0.8.0.dev1/skills/kapso-evaluation/SKILL.md) requires “the single approval before anything is measured” when neither an evaluator nor a criterion exists.
+
+---
+
+Selected the churn CSV checker. Stopping here; nothing has been launched.

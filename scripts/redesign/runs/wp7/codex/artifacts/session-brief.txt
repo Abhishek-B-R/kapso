@@ -1,0 +1,12 @@
+Bash
+mcp__kapso__bank_index
+
+The MCP server’s instructions say:
+
+> 0 cards measured by you, every scope, from your bank at head `a6daf4b1ad4a`, pinned for this campaign
+
+I called `bank_index()`, which returned:
+
+> The bank holds NO card yet — this is its whole answer; nothing else exists.
+
+So there’s no card available to read or title to quote.

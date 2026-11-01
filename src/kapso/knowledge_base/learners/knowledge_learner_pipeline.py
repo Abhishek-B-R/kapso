@@ -141,8 +141,9 @@ class KnowledgePipeline:
             ingestor_params: Default parameters for all ingestors
             merger_params: Parameters for the knowledge merger
             index_builder: Builds the search index of a wiki that has none
-                (`Kapso.index_kg`; see KnowledgeMerger). The backends and the
-                collection the index names come from the config it reads.
+                (the experience package's ingestion passes one; see
+                KnowledgeMerger). The backends and the collection the index
+                names come from the config it reads.
         """
         # Normalize wiki_dir and make it absolute
         self.wiki_dir = (Path(wiki_dir) if wiki_dir else DEFAULT_WIKI_DIR).expanduser().resolve()

@@ -3,16 +3,11 @@
 # Run from the repository root:
 #   python -m benchmarks.kg_retrieval.runner --config benchmarks/kg_retrieval/config.yaml
 #
-# The modes block exists so the platform defaults (models, retry) resolve the
-# way they do for every other config; the rerank model comes from the
-# `inference:` roles of the packaged config (role kg_rerank) unless an
-# `inference:` block here, or in a layered file such as config.local.yaml,
-# overrides it.
-default_mode: KG_RETRIEVAL
-modes:
-  KG_RETRIEVAL: {}
-
-retrieval_eval:
+# A kapso override file: the engine's blocks (models, retry, inference) are
+# the packaged config's unless named here or in a layered file such as
+# config.local.yaml; the rerank model is the `inference:` role kg_rerank.
+# The eval's own settings sit under `benchmark`, the runners' key.
+benchmark:
   corpus_dir: benchmarks/kg_retrieval/corpus
   labels_path: benchmarks/kg_retrieval/labels/queries.jsonl
   # Gitignored. results.json holds every number, results.md the tables.

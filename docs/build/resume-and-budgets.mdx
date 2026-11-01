@@ -1,0 +1,182 @@
+---
+title: "Resume a Kapso build and set its budgets"
+sidebarTitle: "Resume and budgets"
+description: "Continue an interrupted or budget-stopped build from its exact checkpoint; how the four budget dials resolve between the call, the brief, the launch record and the config; and how a campaign ends: the reserve, the finishing sessions and their obligations, the admission of a round, an unjudged attempt."
+keywords: ["kapso build resume", "checkpoint", "budget", "reserve", "finishing", "admission", "unjudged", "durable clock"]
+---
+
+A build that stopped, died or ran out of budget continues from its exact
+search state. Resume is strict: it never turns a missing, corrupt,
+incompatible or completed checkpoint into a new campaign.
+
+## Resume
+
+```bash
+kapso watch campaign                              # DEAD or STALLED: it died; max_iterations: it ran out
+kapso build --output campaign --resume --detach
+```
+
+```python
+solution = Kapso().build(output="campaign", resume=True)
+```
+
+Nothing is retyped: the brief comes from the checkpoint and every launch
+flag from the launch record, `.kapso/launch.json`. Pass only what you mean
+to change, which is usually a bigger budget:
+
+```bash
+kapso build --output campaign --resume --budget-minutes 120 --budget-experiments 8 --detach
+```
+
+A campaign that paused for you resumes through `kapso inbox reply`, not
+`--resume`; a `--resume` with a request still open pauses again without
+running anything. See [The inbox](/docs/build/inbox).
+
+## What a resume requires
+
+- `--output` names an existing campaign directory, a non-bare git
+  repository with `.kapso/run_state.json`.
+- The brief, when passed, matches the checkpoint's exactly; left out, it
+  comes from the checkpoint.
+- The host (`--coding-agent`), evaluation directory, config and
+  experience match the launch's. A difference is refused by name; start a
+  new build in a new output directory instead. A bare resume is served the
+  sources the launch pinned, at the same heads.
+- The campaign is not `completed`: only reaching the objective completes a
+  campaign, and a completed one is not resumed.
+
+Validation happens before anything is touched: a refused resume creates no
+repository, renames no branch and overwrites no state.
+
+## The budget
+
+Four dials, every one optional:
+
+| Dial | Brief token | Flag | Python | Config |
+|---|---|---|---|---|
+| Wall clock | `minutes=60` | `--budget-minutes 60` | `Budget(minutes=60)` | `budget.minutes` |
+| Experiments | `experiments=10` | `--budget-experiments 10` | `Budget(experiments=10)` | `budget.experiments` |
+| Model spend, USD | `usd=25` | `--budget-usd 25` | `Budget(usd=25)` | `budget.usd` |
+| Reserve, kept out of the search for finishing | `reserve_minutes=5` | `--budget-reserve-minutes 5` | `Budget(reserve_minutes=5)` | `budget.reserve_minutes` |
+
+Precedence, dial by dial: the flag or the `budget=` argument, then on a
+resume the launch record (the launch's own figures, so a bare `--resume`
+runs on what the campaign was launched with, not the brief's line), then
+the brief's `Budget` line, then the
+[config's `budget` block](/docs/reference/configuration#budget).
+`experiments` is the number this call may run; the clock is durable across
+resumes (paused time does not count), and the result keeps both counts:
+
+```python
+solution.experiments             # this call
+solution.experiments_total       # the whole campaign
+```
+
+The trace's `budget` line says which won when the brief and the launch
+both named minutes, and the reserve in force.
+
+## How a campaign ends
+
+A budget stop records why in `stopped_reason: budget_exhausted` and
+`stop_detail`, and leaves the checkpoint `running` for the next slice:
+
+| `stop_detail` | What happened |
+|---|---|
+| `time_budget` | The wall clock ran out |
+| `cost_budget` | The model spend reached its budget |
+| `attempt_would_not_fit` | A round was not admitted: the searchable remainder would not cover an attempt. The note says why, `the remaining 8.0 min would not cover an attempt (the last took 14.0 min)`. A node waiting on a request you have answered is not a round: its session continues whatever the remainder, and the round after it is admitted on what is left |
+| `finishing_cut` | A finishing session was not launched or was cut at the deadline: the note names it, `the verification of node 3 was not launched: …` |
+
+The mechanism behind the last two:
+
+**Two classes of session.** A *search* session (the harness setup,
+ideation and its members, the lens planner, the selector, the
+implementation) is clamped against the searchable remainder: the budget
+less the reserve. A *finishing* session completes an attempt that was
+already made (the candidate's evaluation run, the verification, the judge,
+the reconstruction of what went wrong): it is clamped against the whole
+remainder less the obligations that follow it. After the evaluation run come
+the verification when the harness verifies, then the judge, then the
+delivery's own slice; the evaluation and the verification are protected at
+the floor, `budget.min_agent_timeout_seconds` (a verification cut short is
+unverified, and the judge still speaks), the judge at its reserve: its last
+observed duration in the campaign, `budget.judge_reserve_seconds` before
+one, since a judge takes minutes. Time a session leaves unused flows to the
+next obligation. A session's deadline is the smaller of its configured
+timeout and this room, never raised to the floor; an unbudgeted campaign
+keeps its configured timeouts.
+
+**The reserve.** `reserve_minutes` set wins. Unset, the packaged default,
+it is derived each round from the obligations themselves: the harness's
+`verification_minutes` when it verifies, the judge's last observed duration
+(`judge_reserve_seconds` before the first), the delivery's slice. Either is bounded by a
+quarter of the budget, so a short budget keeps its search; a finishing
+session then takes what its room leaves. A budget whose search room is
+under the floor before anything ran (a harness setup session with no room)
+is refused at launch with the reason.
+
+**Admission.** A round starts only when the searchable remainder covers
+the larger of `budget.min_iteration_seconds` and the previous round's own
+duration, measured from its ideation's start to its last lane's judgment
+and recorded on the checkpoint, so a resume reasons from the history it
+restored. The duration counts the round's finishing (its verification and
+its judge), which the reserve holds back as well, so the admission errs
+early by about one finishing span rather than late. Before any round, the
+floor alone.
+
+**A session not launched says why.** Verification not launched leaves the
+attempt `unverified` with the reason; a judge not launched leaves it
+`unjudged`; a reconstruction not launched is noted on the attempt.
+
+**An unjudged attempt.** `unjudged` is the attempt's field, empty when the
+attempt was judged and otherwise the reason: `the budget left no time for
+the judge`, `the judge's session ended at the budget's deadline`, or `no
+tags after a retry` when the judge answered twice without its tags. The
+attempt keeps its score, is never a parent and is never delivered, as an
+`unverified` attempt is never delivered; the trace shows it on the
+attempt's `judge` line. A judge that answered in full without its tags is
+resumed once in its own session with the nudge, under a room computed
+again; a judge cut at its deadline is not retried.
+
+## The checkpoint
+
+`.kapso/run_state.json` holds the brief, its hash, the configuration
+fingerprint, the search state (every node, with its commit at evaluation
+and whether it was judged), the durable clock, the last round's duration,
+the cumulative cost and the status. It is written atomically after every
+finalized experiment, so an interrupted write leaves the previous
+checkpoint readable. A resume restores the node history, the feedback for
+the next experiment, the clock and the cost, and continues.
+
+Resume errors are importable from `kapso`:
+
+| Error | Meaning |
+|---|---|
+| `RunCheckpointMissingError` | No checkpoint in the directory |
+| `RunCheckpointCorruptError` | The checkpoint's fields or state are invalid |
+| `RunCheckpointIncompatibleError` | The brief, strategy, configuration or schema does not match |
+| `RunCheckpointCompletedError` | The campaign already reached the objective |
+
+Fix the mismatch or name the right directory; never edit the checkpoint
+to force a resume.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Run and watch" icon="play" href="/docs/build/run-and-watch">
+    Launching and following a build
+  </Card>
+  <Card title="The inbox" icon="inbox" href="/docs/build/inbox">
+    The pause a reply resumes
+  </Card>
+  <Card title="Review the result" icon="magnifying-glass" href="/docs/build/review">
+    What a stopped build delivered so far
+  </Card>
+  <Card title="Configuration" icon="gear" href="/docs/reference/configuration#budget">
+    The budget block
+  </Card>
+</CardGroup>
+
+Related pages: [Run and watch](/docs/build/run-and-watch) · [The inbox](/docs/build/inbox) · [Review the result](/docs/build/review) · [Configuration](/docs/reference/configuration#budget) · [CLI reference](/docs/reference/cli#kapso-build)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

@@ -16,7 +16,8 @@ Environment Variables:
 
 import logging
 import os
-from typing import Any, Dict, List, Type
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Type
 
 try:
     from mcp.server import Server
@@ -39,6 +40,7 @@ from kapso.gated_mcp.gates import (
     RepoMemoryGate,
     BankGate,
     InboxGate,
+    CampaignGate,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -54,12 +56,15 @@ GATE_CLASSES: Dict[str, Type[ToolGate]] = {
     "repo_memory": RepoMemoryGate,
     "bank": BankGate,
     "inbox": InboxGate,
+    "campaign": CampaignGate,
 }
 
 
-def _resolve_configuration() -> Dict[str, GateConfig]:
+def _resolve_configuration(gate_params: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, GateConfig]:
     """
-    Resolve which gates to enable and their configurations.
+    Resolve which gates to enable and their configurations: each gate's
+    default params, with `gate_params[name]` (what an in-process launcher
+    such as `kapso-mcp` passes) over them.
     
     Reads MCP_ENABLED_GATES env var for comma-separated gate names.
     Falls back to all gates if not specified.
@@ -96,13 +101,17 @@ def _resolve_configuration() -> Dict[str, GateConfig]:
     configs = {}
     for name in resolution.enabled_gates:
         default_params = GATES[name].default_params
-        configs[name] = GateConfig(enabled=True, params=default_params.copy())
+        configs[name] = GateConfig(enabled=True, params={**default_params, **(gate_params or {}).get(name, {})})
     return configs
 
 
-def create_gated_mcp_server() -> "Server":
+def create_gated_mcp_server(
+    gate_params: Optional[Dict[str, Dict[str, Any]]] = None, instructions: Optional[str] = None,
+) -> "Server":
     """
-    Create and configure the gated MCP server.
+    Create and configure the gated MCP server. `instructions` is what the
+    host shows on connect; None reads the staged intro the environment
+    names, as a campaign session's server does.
     
     Returns:
         Configured MCP Server instance
@@ -115,7 +124,7 @@ def create_gated_mcp_server() -> "Server":
         raise ImportError("MCP package not installed. Install with: pip install mcp")
     
     # Resolve configuration
-    gate_configs = _resolve_configuration()
+    gate_configs = _resolve_configuration(gate_params)
     
     # Initialize enabled gates
     active_gates: Dict[str, ToolGate] = {}
@@ -147,8 +156,14 @@ def create_gated_mcp_server() -> "Server":
     
     logger.info(f"Registered {len(all_tools)} tools from {len(active_gates)} gates")
     
-    # Create MCP server
-    mcp = Server("gated-knowledge")
+    # Create MCP server. A host session served experience gets the intro
+    # (what it is served, measured before) as the server's instructions,
+    # so the session names its sources on connect; the launcher stages
+    # the file and names it in the environment.
+    intro_path = os.environ.get("KAPSO_SERVING_INTRO")
+    if instructions is None and intro_path:
+        instructions = Path(intro_path).read_text()
+    mcp = Server("gated-knowledge", instructions=instructions)
     
     @mcp.list_tools()
     async def list_tools() -> List[Tool]:
@@ -185,14 +200,16 @@ def create_gated_mcp_server() -> "Server":
     return mcp
 
 
-async def run_server():
+async def run_server(
+    gate_params: Optional[Dict[str, Dict[str, Any]]] = None, instructions: Optional[str] = None,
+):
     """Run the MCP server with stdio transport."""
     if not HAS_MCP:
         raise ImportError("MCP package not installed. Install with: pip install mcp")
     
     logger.info("Starting Gated MCP Server...")
     
-    mcp = create_gated_mcp_server()
+    mcp = create_gated_mcp_server(gate_params, instructions)
     
     async with stdio_server() as (read_stream, write_stream):
         logger.info("MCP server running on stdio transport")

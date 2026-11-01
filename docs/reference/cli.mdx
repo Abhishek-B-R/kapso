@@ -1,23 +1,23 @@
 ---
 title: "Kapso CLI reference: every command, flag and default"
 sidebarTitle: "CLI"
-description: "The ten kapso commands and their thirteen subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
-keywords: ["kapso CLI", "kapso evolve", "kapso learn", "kapso report", "kapso doctor", "command reference", "CLI flags"]
+description: "The ten kapso commands and their subcommands, with every flag, its default value, whether it is required, and a runnable example for each one."
+keywords: ["kapso CLI", "kapso build", "kapso harness", "kapso experience", "kapso learn", "kapso report", "kapso doctor", "command reference", "CLI flags"]
 ---
 
-Kapso installs a single `kapso` executable with ten commands.
+Kapso installs the `kapso` executable with ten commands, and `kapso-mcp`, the MCP server that serves Kapso's experience to the coding-agent session you work in (see [below](#kapso-mcp)).
 
 | Command | What it does |
 |---------|--------------|
-| [`kapso evolve`](#kapso-evolve) | Build software from a goal through experimentation |
-| [`kapso research`](#kapso-research) | Deep web research for an objective |
-| [`kapso learn`](#kapso-learn) | Trajectory learning: import, mine, grade, update, codify |
+| [`kapso build`](#kapso-build) | Build software that meets a brief, by experiment |
+| [`kapso harness`](#kapso-harness) | Author, check and fetch harnesses: the domain layer a build loads |
+| [`kapso experience`](#kapso-experience) | What a build is served that was measured before: your bank, the hosted gate, ingested corpora |
+| [`kapso learn`](#kapso-learn) | Mine a finished campaign into your bank; the learning system's own tools under `dev` |
 | [`kapso deploy`](#kapso-deploy) | Deploy a solution as running software |
-| [`kapso index_kg`](#kapso-index-kg) | Index a knowledge graph from a wiki or JSON |
-| [`kapso watch`](#kapso-watch) | Watch a running operation |
+| [`kapso watch`](#kapso-watch) | Watch a running operation, or list the ones alive |
+| [`kapso trace`](#kapso-trace) | Read a campaign's record after the fact: the attempts, the lessons, what was voided, what was delivered |
 | [`kapso inbox`](#kapso-inbox) | What a paused campaign is waiting on you for, and the reply that resumes it |
-| [`kapso report`](#kapso-report) | Export an evolve campaign as a shareable Markdown summary |
-| [`kapso bank`](#kapso-bank) | Manage the lesson bank's share remote |
+| [`kapso report`](#kapso-report) | Export a campaign as a shareable Markdown summary |
 | [`kapso doctor`](#kapso-doctor) | Check this machine can run what your config asks for |
 
 ## Global options
@@ -33,58 +33,155 @@ kapso --list-agents
 
 On a standard install the six agents are `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code` and `vertex_claude_code`; the legacy `aider` extra registers a seventh.
 
-## kapso evolve
+## kapso build
 
-Runs an experiment campaign against a goal and returns the best solution.
+Runs an experiment campaign that meets a brief and returns the solution; writes it to `<output>/.kapso/solution.json` too. See [The brief](/docs/build/brief) and [Run and watch](/docs/build/run-and-watch).
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `-g`, `--goal` | Goal or problem description. A resume takes it from the checkpoint | — |
-| `-f`, `--goal-file` | File containing the goal. Mutually exclusive with `--goal` | — |
-| `-i`, `--iterations` | Maximum experiments to run. A resume keeps the launch's cap | `10` |
-| `-o`, `--output` | Output directory | — |
-| `--time-budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
-| `--cost-budget` | Best-effort spend budget in USD | — |
-| `--finalization-reserve-minutes` | Wall-clock escrowed for final checkout and evaluation | — |
-| `--resume` | Continue the compatible checkpoint in `--output`. The goal and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
-| `-m`, `--mode` | Config mode: `GENERIC` or `MINIMAL` | from config (`default_mode`) |
-| `-a`, `--coding-agent` | One of `claude_code`, `codex`, `gemini`, `openhands`, `oss_claude_code`, `vertex_claude_code` | from config |
-| `--eval-dir` | Evaluation files directory | — |
-| `--data-dir` | Data files directory | — |
-| `--initial-repo` | Starting repository, as a path or GitHub URL | — |
-| `--kg-index` | Path to a `.index` file for knowledge search | — |
+| `--brief` | The brief file (`kapso-brief.md`): objective, how it is measured, baseline, target, rules, budget. Mutually exclusive with the two below | — |
+| `-g`, `--goal` | The objective in a sentence. A resume takes it from the checkpoint | — |
+| `-f`, `--goal-file` | A file holding the objective as plain text | — |
+| `--evaluation` | Directory holding your evaluator; copied to `kapso_evaluation/` and protected | — |
+| `--data` | Directory holding your data; copied to `kapso_datasets/` | — |
+| `--repo` | The starting repository, a local path (copied) or a GitHub URL (cloned) | — |
+| `--harness` | The [harness](/docs/harnesses) to build with: a bundled name, a directory, or a git reference. Wins over the brief's `Harness` line; checked before anything starts, and an unmet need of the build's modules refuses with its fix | the brief's `Harness` line, else none |
+| `--experience` | Comma-separated [experience](/docs/experience) to serve: `mine`, `mine:all`, `leeroopedia`, a bank path or git reference, an index name. Wins over the brief's `Experience` line; each source is loaded before anything starts, and one that does not exist refuses with the `kapso experience add` line that makes it | the brief's `Experience` line, else nothing served |
+| `-o`, `--output` | The campaign directory, the solution's trace. Empty for a fresh build | a temporary directory |
+| `--budget-minutes` | Wall-clock budget for the campaign, durable across resumes | — |
+| `--budget-experiments` | Maximum experiments this call may run. A resume keeps the launch's cap | `10` |
+| `--budget-usd` | Best-effort model-spend budget in USD | — |
+| `--budget-reserve-minutes` | Wall clock kept out of the search for finishing: the last attempt's evaluation, verification and judgment, and the delivery. Unset, it is derived from those obligations each round; see [Resume and budgets](/docs/build/resume-and-budgets#how-a-campaign-ends) | — |
+| `--resume` | Continue the campaign in `--output` from its checkpoint. The brief and every launch flag come from the checkpoint and launch record; pass only what changes, such as a bigger budget | off |
+| `--stop` | End the campaign running in `--output`: its process group gets SIGTERM, then SIGKILL after `budget.stop_grace_seconds`; the status is marked `failed` with `stopped by the person` and `stopped_reason: stopped`, the launch receipt goes, and `--resume` continues from the checkpoint. A campaign whose status is terminal, or whose writer is gone already (dead, not running: resume it), is refused by state | off |
+| `--detach` | Start the campaign in a session of its own and return at once with its pid, the log, the status path and the `watch` command. Needs `--output`. The run outlives the shell that started it, a coding agent's tool call included | off |
+| `--log` | Where a detached run's output goes | `<output>.log`, beside the campaign directory |
+| `-a`, `--coding-agent` | The host every role without a `cli` of its own runs on, with that host's model: an entry of the config's `hosts` table (`claude_code`, `codex`, `oss_claude_code`, `vertex_claude_code`: the adapters with a staging). Recorded in the launch record and fingerprinted, so a resume runs on the launch's host. The engine's own inference sessions (the repo memory, the commit messages) follow `inference.default` instead, Codex as packaged, whatever the host; an all-Claude run sets `inference.default.cli: claude_code` in its override file | `search_strategy.params.host`, `claude_code` as packaged |
+| `--config` | Your override file, layered over the packaged config; see [Configuration](/docs/reference/configuration) | the packaged defaults |
+
+A budget flag wins over the brief's `Budget` line; on a resume the launch record fills what is still unset, the experience included: a bare resume is served the sources the launch pinned, and a resume that names a different list is refused by name.
 
 ```bash
-kapso evolve --goal "Build a web scraper for news articles"
-kapso evolve --goal-file problem.txt --iterations 20
-kapso evolve --goal "Build a classifier" --eval-dir ./eval/ --data-dir ./data/
-kapso evolve --output ./campaign --resume
+kapso build --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+kapso build --harness ./harnesses/trading --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+kapso build --experience mine,leeroopedia --brief kapso-brief.md --evaluation evaluation --data data --repo repo --output campaign --detach
+kapso build --goal "Build a web scraper for news articles" --output ./scraper
+kapso build --goal-file problem.txt --budget-experiments 20 --output ./campaign
+kapso build --output ./campaign --resume --detach
 ```
 
-When a session needs something only you can provide, the campaign pauses: the summary block says `WAITING ON YOU` instead of `COMPLETED`, the exit code stays 0, and [`kapso inbox reply`](#kapso-inbox) resumes it. See [the inbox](/docs/evolve/inbox).
+When a session needs something only you can provide, the campaign pauses: the summary block says `WAITING ON YOU` instead of `COMPLETED`, the exit code stays 0, and [`kapso inbox reply`](#kapso-inbox) resumes it. See [the inbox](/docs/build/inbox).
 
-## kapso research
+## kapso harness
 
-Runs deep web research and writes structured findings.
+Author, check and fetch harnesses, the domain layer a build loads: one directory per domain holding instruction pages, skills, tool servers, delegates and hooks, listed per module in `harness.yaml`. See [Harnesses](/docs/harnesses) and the [harness reference](/docs/reference/harness).
 
-| Flag | What it does | Default |
-|------|--------------|---------|
-| `--objective` | Research objective | — |
-| `--objective-file` | File containing the objective. Mutually exclusive with `--objective` | — |
-| `--mode` | `idea`, `implementation` or `study`. Repeat the flag for more than one | `idea` and `implementation` |
-| `--depth` | `light` or `deep` | `deep` |
-| `-o`, `--output` | Output file for results, as JSON | — |
+| Subcommand | What it does |
+|------------|--------------|
+| `new` | Write the two-file starter for a new harness: `harness.yaml` and `instructions/guardrails.md` |
+| `check` | Check a harness: failures, warnings, and what this machine lacks |
+| `add` | Fetch a git reference into the store and check it; a directory is checked in place |
+| `update` | Re-fetch a branch or `HEAD` reference; a tag or a commit never moves |
+| `remove` | Delete one fetched clone, every harness in it; a directory is refused |
+| `list` | The bundled and fetched harnesses, each `ready`, with what it needs, or failing check |
+| `export` | Write a harness's skills, delegates and servers as the files an ordinary session of one host discovers; hooks and the module pages stay behind |
+
+A reference is a bundled name (`predictive-modelling`), a directory (`./trading`), a git URL (`git+https://github.com/acme/harnesses@v3#trading`) or GitHub shorthand (`acme/harnesses@v3#trading`). Every subcommand but `new` takes `--config` for the config whose `harness.store` is the store.
+
+### kapso harness new
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `name` | The harness name, `[a-z0-9][a-z0-9-]*`. **Required** | — |
+| `--dir` | The parent directory | the working directory |
 
 ```bash
-kapso research --objective "How to optimize transformers?"
-kapso research --objective "LLM fine-tuning" --mode idea
-kapso research --objective "RAG implementation" --mode idea --mode implementation
-kapso research --objective-file topic.txt --mode study --depth deep
+kapso harness new trading
+```
+
+### kapso harness check, add, update and remove
+
+| Argument | What it does | Required |
+|----------|--------------|----------|
+| `ref` | A bundled name, a directory, or a git reference | **yes** |
+
+```bash
+kapso harness check ./trading
+kapso harness add acme/harnesses@v3#trading
+kapso harness update acme/harnesses@main#trading
+kapso harness remove acme/harnesses@v3#trading
+```
+
+`check` and `add` print the report: a summary line such as `check ok (7 skills, 2 agents, 2 servers, 7 hooks)`, then one line per `fail`, `warn` or `needs`, then the harness's name and version. A failure exits 1; what the machine lacks never does.
+
+### kapso harness list
+
+```bash
+kapso harness list
+```
+
+### kapso harness export
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `ref` | A bundled name, a directory, or a git reference. **Required** | — |
+| `--host` | The host whose files to write: `claude_code` or `codex`. **Required** | — |
+| `--to` | The directory to write into | the working directory |
+
+```bash
+kapso harness export ./trading --host claude_code
+kapso harness export acme/harnesses@v3#trading --host codex --to ~/work/strategies
+```
+
+The union of the harness's modules, each attachment once: for Claude Code `.claude/skills/<name>/`, `.claude/agents/<name>.md` and `.mcp.json` (`${PLUGIN_ROOT}` expanded to the harness's directory, `KAPSO_HARNESS_ROOT` in each server's environment); for Codex `.agents/skills/<name>/`, `.codex/agents/<name>.toml` with the `[agents.<name>]` lines to add to `~/.codex/config.toml` printed, and one `codex mcp add` line per server printed. The standing rules travel as `kapso-harness-<name>.md`, with the line that includes it from `CLAUDE.md` or `AGENTS.md` printed; the export never writes those files. Hooks stay behind (campaign-bound: a Stop gate or a prepared-directory deny would block an ordinary session), as do the module pages and the routing per module, and the output says so. Every destination is checked first; one that exists refuses the whole export by name. A harness that fails `check` is refused with the report.
+
+## kapso experience
+
+What a build is served that was measured before: your own bank (the one `learn()` writes), the hosted Leeroopedia gate, a bank you read, a corpus ingested under a name. A build loads sources at the call (`--experience mine,leeroopedia`, the brief's `Experience` line, `load_experience()`); this verb makes what must exist first, lists what exists, and shares your bank.
+
+| Subcommand | What it does |
+|------------|--------------|
+| `add` | `add mine` creates your bank, empty; `add leeroopedia` checks the gate's key is in `.env`; `add --repo <url> --name <n>` ingests a repository into the index `<n>`; `add --research "<question>" --name <n>` researches the web and ingests the findings. Exactly one of the three; an index name that exists is refused |
+| `list` | `mine` with its head, card count and remote; the hosted gate's key state; the banks you read; the indexes with their id, page count and origin |
+| `share` | Attach a git remote to your bank and push it; `learn()` pushes there from then on |
+| `update` | The network step loading never takes: `mine` takes its remote's main, a bank you read at a moving reference is fetched again, a tag or a commit never moves; every bank when none is named. A running campaign keeps the pin it launched with |
+| `remove` | Delete a bank you read (its clone and record) or an index (its backend namespace, its pages and its record). Your bank, the hosted gate and a bank by path are not the store's to remove |
+
+Every subcommand takes `--config` for the config whose `experience` block names the homes.
+
+```bash
+kapso experience add mine
+kapso experience add leeroopedia
+kapso experience add --repo https://github.com/org/x --name org-x
+kapso experience add --research "QLoRA memory optimizations" --name qlora
+kapso experience add --repo https://github.com/org/x --name org-x --detach   # an ingest in a session of its own; the log under experience.indexes, the status under learning.status_dir
+kapso experience list
+kapso experience share https://github.com/acme/kapso-bank.git
+kapso experience update
+kapso experience update acme/kapso-bank
+kapso experience remove org-x
 ```
 
 ## kapso learn
 
-Trajectory learning. Ten subcommands cover importing finished campaigns, mining them, grading a bank, and folding results back in.
+Learn from a finished campaign into your bank: import, mine, exam, lesson, what [`learn()`](/docs/reference/kapso-api#learn) does.
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `campaign` | The campaign directory (the solution's trace) or a trajectory id in the store. **Required** | — |
+| `--harness` | The harness the campaign ran under (a name, a path or a git reference), when its launch record names none | the record's |
+| `--config` | Config path | packaged `config.yaml` |
+| `--detach` | Run the learn in a session of its own and return at once with its pid, the log (`<campaign>.learn.log` beside the campaign) and the watch line, `kapso watch learning/status --follow` (the newest status under `learning.status_dir` is this run's) | off |
+
+```bash
+kapso learn ./campaign
+kapso learn ./campaign --harness ./harness
+kapso learn ./campaign --detach            # hours of crews; follow with kapso watch learning/status --follow
+```
+
+### kapso learn dev
+
+The learning system's own tools, the development regime: nine subcommands cover importing archived campaigns, mining them, grading a bank, and folding results back in. Every one takes `--config` to point at a config other than the packaged `config.yaml`.
 
 | Subcommand | What it does |
 |------------|--------------|
@@ -92,16 +189,13 @@ Trajectory learning. Ten subcommands cover importing finished campaigns, mining 
 | `mine` | Mine store-resident trajectories into their derived `mined/` views |
 | `grade` | Grade a bank against held-out trajectories, or one arriving trajectory |
 | `update` | Run the update crew: fold mined and graded trajectories into the bank |
-| `init-bank` | Create the bank home: a bare repo plus the founding skeleton |
 | `develop` | Run one learner version through the development regime |
-| `codify` | Run one codify request, which is evolve minus ideation, against the bank |
+| `codify` | Run one codify request, which is a build minus ideation, against the bank |
 | `ingest` | Operating-regime chain for one campaign: mine, exam, lesson |
 | `gauntlet` | Run the duplicate and stability traps against a completed development run |
 | `behave` | Run behavior scenarios as semantic production tests |
 
-Every subcommand takes `--config` to point at a config other than the packaged `config.yaml`.
-
-### kapso learn import
+### kapso learn dev import
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -111,11 +205,11 @@ Every subcommand takes `--config` to point at a config other than the packaged `
 | `--no-upload` | Skip remote upload even when one is configured | no |
 
 ```bash
-kapso learn import --subset docs/plans/learning/d1-subset.yaml
-kapso learn import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.tgz
+kapso learn dev import --subset docs/plans/learning/d1-subset.yaml
+kapso learn dev import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.tgz
 ```
 
-### kapso learn mine
+### kapso learn dev mine
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -124,10 +218,10 @@ kapso learn import --archive gs://bucket/runs/campaign/20260731T092629_lane-a2.t
 | `--force` | Regenerate even when already mined | no |
 
 ```bash
-kapso learn mine --all
+kapso learn dev mine --all
 ```
 
-### kapso learn grade
+### kapso learn dev grade
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -138,10 +232,10 @@ kapso learn mine --all
 | `--trajectory` | One trajectory id, for exam mode | no |
 
 ```bash
-kapso learn grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
+kapso learn dev grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
 ```
 
-### kapso learn update
+### kapso learn dev update
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -150,18 +244,10 @@ kapso learn grade --bank ./bank --bank-head lr_042 --split splits/d1.yaml
 | `--split` | Split manifest. On development runs this asserts batch and held-out are disjoint | no |
 
 ```bash
-kapso learn update --learner-version v3 --batch-manifest batch.yaml
+kapso learn dev update --learner-version v3 --batch-manifest batch.yaml
 ```
 
-### kapso learn init-bank
-
-Creates the bank home. Takes only `--config`.
-
-```bash
-kapso learn init-bank
-```
-
-### kapso learn develop
+### kapso learn dev develop
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -169,20 +255,20 @@ kapso learn init-bank
 | `--learner-version` | Crew version identifier | **yes** |
 
 ```bash
-kapso learn develop --split splits/d1.yaml --learner-version v3
+kapso learn dev develop --split splits/d1.yaml --learner-version v3
 ```
 
-### kapso learn codify
+### kapso learn dev codify
 
 | Flag | What it does | Required |
 |------|--------------|----------|
 | `--request` | Request YAML naming the card, fixture, materials and gates | **yes** |
 
 ```bash
-kapso learn codify --request requests/card-117.yaml
+kapso learn dev codify --request requests/card-117.yaml
 ```
 
-### kapso learn ingest
+### kapso learn dev ingest
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -190,20 +276,20 @@ kapso learn codify --request requests/card-117.yaml
 | `--learner-version` | Crew version doing the lesson | **yes** |
 
 ```bash
-kapso learn ingest --trajectory rel-hm-user-churn-a2 --learner-version v3
+kapso learn dev ingest --trajectory rel-hm-user-churn-a2 --learner-version v3
 ```
 
-### kapso learn gauntlet
+### kapso learn dev gauntlet
 
 | Flag | What it does | Required |
 |------|--------------|----------|
 | `--learner-version` | Completed development run to trap | **yes** |
 
 ```bash
-kapso learn gauntlet --learner-version v3
+kapso learn dev gauntlet --learner-version v3
 ```
 
-### kapso learn behave
+### kapso learn dev behave
 
 | Flag | What it does | Required |
 |------|--------------|----------|
@@ -211,73 +297,109 @@ kapso learn gauntlet --learner-version v3
 | `--all` | Run every scenario | no |
 
 ```bash
-kapso learn behave --all
+kapso learn dev behave --all
 ```
 
 ## kapso deploy
 
-Turns a solution directory into running software.
+Turns the solution a build wrote into running software, and stops, starts, reads and lists what was deployed. See [Deploy](/docs/deploy/targets).
 
 | Flag | What it does | Default |
 |------|--------------|---------|
-| `--solution-path` | Path to the solution code. **Required** | — |
-| `--strategy` | `auto`, `local`, `docker`, `modal`, `bentoml` or `langgraph` | `auto` |
-| `--goal` | Goal description for the solution | — |
-| `--env` | Environment variable as `KEY=VALUE`. Repeat for more than one | — |
-| `--coding-agent` | Agent behind the selector and adapter sessions | from config (`deployment.coding_agent`) |
-| `--model` | Model that agent is asked for | from config (`deployment.model`) |
-| `--interactive` | Keep running after deploy instead of returning | off |
+| `campaign` | The campaign directory a build wrote; its `.kapso/solution.json` is the solution, and it must be checked out at the delivered candidate. **Required**, positional | — |
+| `--target` | Where to deploy: `auto` (the session chooses), a bundled target (`local`, `docker`, `modal`, `bentoml`, `langgraph`) or a target the build's harness ships (`paper-trading` in the trading example). An unknown name is refused naming the targets | from config (`deployment.target`, `auto` as packaged) |
+| `--env` | A variable the software needs at runtime, `KEY=VALUE`; repeat for more than one. Written to `.env` in the deployment's workspace, named (never valued) in the session's prompt, set on every runtime the engine manages | — |
+| `--option` | An option for the target's workflow, `KEY=VALUE`; repeat for more than one. Exported to the target's scripts as `KAPSO_OPTION_<KEY>`; a harness target's skill says which it takes | — |
+| `--coding-agent` | The host the deployment session runs on, an entry of the config's `hosts` table | from config (`deployment.cli`, else the build's host) |
+| `--config` | Config path; pass the one the build used | packaged `config.yaml` |
+| `--harness` | The harness whose deployment module the session carries: the build's, from the campaign record, or another version of it | the campaign record's |
+| `--status` | List the campaign's deployments: number, state (health for a running one, the error for a failed one), target (the request until the session chose), endpoint; one of them with `--number`; a campaign not yet deployed says so, exit 0 | off |
+| `--stop`, `--start`, `--logs` | Stop a deployment, start a stopped one again, print its logs; each acts on `--number`. One of the four lifecycle flags at a time, and none of the deploy flags beside it | off |
+| `--number` | Which deployment `--status`, `--stop`, `--start` and `--logs` act on; refused on a deploy, which takes the next number | every one for `--status`, the highest otherwise |
 
 ```bash
-kapso deploy --solution-path ./solution
-kapso deploy --solution-path ./solution --strategy docker
-kapso deploy --solution-path ./solution --env API_KEY=xxx --interactive
+kapso deploy ../churn-build
+kapso deploy ../churn-build --target docker --env API_KEY=xxx
+kapso deploy ../churn-build --target paper-trading --option schedule="*/5 * * * *"
+kapso deploy ../churn-build --status
+kapso deploy ../churn-build --stop --number 2
 ```
 
-## kapso index_kg
-
-Indexes a corpus into the knowledge graph and writes a `.index` file that campaigns load with `--kg-index`.
-
-| Flag | What it does | Default |
-|------|--------------|---------|
-| `--save-to` | Path to write the `.index` file. **Required** | — |
-| `--wiki-dir` | Wiki directory to index. Mutually exclusive with `--data-path` | — |
-| `--data-path` | JSON data file to index | — |
-| `--search-type` | `kg_graph_search` or `kg_llm_navigation` | from config |
-| `--force` | Clear existing data before indexing | off |
-
-```bash
-kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index
-kapso index_kg --data-path ./data/kg_data.json --save-to ./data/indexes/kaggle.index
-kapso index_kg --wiki-dir ./data/wikis --save-to ./data/indexes/ml.index --force
-```
-
-<Note>
-  Indexing needs Weaviate and Neo4j running. See [Optional: knowledge-graph backends](/docs/installation#optional-knowledge-graph-backends).
-</Note>
+The summary after a deployment names its number and state, the target (and the session's reasoning when it chose), how `run()` calls it, the call the session proved and what the engine's own call of it answered, the endpoint, the interpreter, the workspace and the record under `<campaign>/.kapso/deployments/<n>/`, and the next actions pinned to that number, copy-pastable as printed: the Python line (`from kapso import Software; Software.open(…).run(…)`, the proof's inputs as Python literals) and the three lifecycle lines (with `--config` when one was passed). A deploy that fails prints the record's path and the `--stop` line, since what its deploy script started may be running.
 
 ## kapso watch
 
-Renders the status of a running `evolve`, `learn` or `learn_knowledge` operation.
+Renders the status of a running `build`, `learn` or `experience` operation (an ingest); with no path, lists the campaigns alive or waiting on you and the learns and ingests running.
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `path` | Workspace, status file, or directory of status files. **Required** | — |
-| `--json` | Print the status file once, as JSON | off |
-| `--follow` | Re-render on each heartbeat until the operation ends | off |
-| `--tree` | Show the evolve campaign's search lineage from its checkpoint, each node with its score, its platform cost and `refused` as the outcome of a cost-refused node when cost-aware selection is on, external baseline comparison, and the knowledge gates it consulted | off |
+| `path` | Workspace, status file, or directory of status files; none lists | — |
+| `--json` | Print the status file once, as JSON; with no path, the listing as JSON | off |
+| `--follow` | Re-render on each heartbeat until the operation ends; needs a path | off |
+| `--all` | With no path: every campaign the registry knows, with its state, not only the live ones | off |
+| `--config` | The config whose registry and status directory the listing reads | packaged `config.yaml` |
 
 ```bash
 kapso watch ./campaign
 kapso watch learning/status
 kapso watch ./campaign --follow
-kapso watch ./campaign --tree
 kapso watch ./campaign --json | jq -r '[.state] | @tsv'
+kapso watch                       # what is alive or waiting, newest first
+kapso watch --all --json
 ```
+
+The header names the harness (`harness: trading 0.1.0 (83b6c0b60d6a)`) and each source the campaign is served (`served: mine at a9ddad3d302d, measured by you`) from the first second, then the phase, the budget, the best and the latest score, the last lines; a failed campaign's `error` line says why.
+
+A campaign writes its status file the moment its workspace is seeded, in phase `setup`, so a watch started right after the launch sees it within seconds. Before that, a detached launch has left a receipt beside its log (`<campaign>.launch.json`): while the child's pid lives the line is `starting (pid N, launched 12s ago; log: …)`; once it is gone, `stopped before writing a status; the log says why: <log>`, exit 1, and `--follow` stops waiting (a child that dies at a launch check while `--follow` waits ends the wait the same way). Without a receipt the line is `no status yet at <path>` and exit 1; with `--follow` it prints the line and waits for the file. `--json` before a status prints the launch state as data: `{"state": "starting" | "stopped", "pid", "log", "started_at"}`, or `{"state": "no_status", "path"}`. A detached resume leaves a receipt newer than the status: its child alive is `starting again (pid N, …); the status below is the earlier run's`, its child gone the stopped line. The receipt goes once the status is born.
+
+With no path, one line per entry (`RUNNING`, `STARTING`, `WAITING`, or with `--all` every state, `DEAD` for a running campaign whose writer is gone or silent past its beats): the operation, the phase, the heartbeat's age, the best score and the path. Listed are the campaigns the registry knows that are alive (a fresh beat and a living writer) or waiting on you, and the learns and ingests under `learning.status_dir`; `--json` prints `[{path, operation, state, phase, heartbeat_age_seconds, best, stopped_reason, alive}]`.
+
+### The status file
+
+`--json` prints the file as it is. Every operation (`build`, `learn`, `experience`) carries the same core; `build` adds its campaign payload. Fields appear as they are first written, so a reader treats each as optional.
+
+| Field | What it holds |
+|-------|---------------|
+| `operation` | `build`, `learn` or `experience` |
+| `phases` | The operation's phases in order. Build: `setup`, `harness_setup`, `lens_planning`, `ideation`, `implementation`, `evaluation`, `verification`, `feedback`. Learn: `harvest`, `mine`, `exam`, `lesson`, `push`. Experience (an ingest): `ingest`, `merge` |
+| `state` | `starting` (preparing, for a build the `setup` phase), `running`, `done` or `failed` |
+| `phase`, `phase_started_at` | The current phase and when it began |
+| `pid` | The writing process. `kapso watch` reports `DEAD` when it is gone |
+| `started_at`, `heartbeat_at`, `finished_at` | Timestamps, UTC |
+| `heartbeat_seconds` | The writer's beat; `STALLED` after three missed beats |
+| `recent` | The last ten human-readable lines |
+| `error` | The failure, when `state` is `failed` |
+| `budget` | Build: `{elapsed_min, total_min}`, the time dial |
+| `iteration` | Build: the iteration in progress |
+| `best`, `last` | Build: `{score, node}` of the best and the latest candidate |
+| `stopped_reason`, `stop_detail` | Build, at the end: why the campaign stopped |
+| `requests` | Build, when `stopped_reason` is `waiting_for_user`: the open inbox requests |
+| `platform_budget` | Build, with cost-aware selection on: `{used, budget, unit, refused}` |
+| `harness`, `harness_setup` | Build: `{name, version, hash, source}` of the harness, `null` without one, from the first write; `{prepared}` once the setup session ran |
+| `experience` | Build: the sources the campaign is served, each `{reference, kind, resolved, head, provenance, scope}`; empty when nothing was loaded |
+| `trajectory_id`, `bank_head_before`, `cards` | Learn: what is being learned and what the lesson changed |
+
+## kapso trace
+
+Reads a campaign's record after the fact and lays it out section by section: the header, every attempt with its sessions and runs (the hooks that fired, the delegates asked, the gates called, what each cost), the lessons served and which an attempt used, what was voided or rejected and on what evidence, the sessions that failed, the delivered candidate. A pure reader. See [Read the record](/docs/build/trace).
+
+| Argument | What it does | Default |
+|----------|--------------|---------|
+| `campaign` | The campaign directory a build wrote. **Required** | — |
+| `--branch` | Narrow the attempts to this branch, shown with its evidence in full | every attempt, compact |
+| `--json` | Print the trace as JSON, the keys pinned on [Read the record](/docs/build/trace#the-data) | off |
+
+```bash
+kapso trace ./campaign
+kapso trace ./campaign --branch generic_exp_1
+kapso trace ./campaign --json | jq '.delivered'
+```
+
+A campaign still running renders `partial` with the reason; a directory with no `.kapso/` inside is refused by name, exit 1; a branch no attempt ran on is refused naming the attempts.
 
 ## kapso inbox
 
-What a paused campaign is waiting on you for, and the reply that resumes it. Inside a campaign directory both forms act on that campaign; elsewhere, name it first. See [the inbox](/docs/evolve/inbox).
+What a paused campaign is waiting on you for, and the reply that resumes it. Inside a campaign directory both forms act on that campaign; elsewhere, name it first. See [the inbox](/docs/build/inbox).
 
 | Form | What it does |
 |------|--------------|
@@ -287,6 +409,8 @@ What a paused campaign is waiting on you for, and the reply that resumes it. Ins
 | Flag | What it does | Default |
 |------|--------------|---------|
 | `--yes` | Store a reply shaped like a credential anyway. Put it at the end of the line | off |
+| `--detach` | Check the reply here, then resume the campaign in a session of its own and return at once with the log and the `watch` command | off |
+| `--log` | Where a detached resume's output goes | `<campaign>.log`, beside the campaign directory |
 | `--config` | Config whose `inbox.registry` lists the campaigns | packaged `config.yaml` |
 
 ```bash
@@ -294,11 +418,12 @@ kapso inbox
 kapso inbox ./campaign
 kapso inbox reply 1 "added the key"
 kapso inbox reply ./campaign 1
+kapso inbox reply 1 "added the key" --detach
 ```
 
 ## kapso report
 
-Renders a finished or running evolve campaign as Markdown that pastes straight into a pull request, an issue or a team thread. It is a pure reader: it uses only the files and git history the campaign already has, never writes into the campaign directory or changes its branches, and makes no model calls. On a running campaign it is a snapshot of that moment.
+Renders a finished or running campaign as Markdown that pastes straight into a pull request, an issue or a team thread. It is a pure reader: it uses only the files and git history the campaign already holds, writes nothing into it and makes no model calls.
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
@@ -311,12 +436,12 @@ The report has seven sections:
 
 | Section | Contents |
 |---------|----------|
-| Summary | The goal, state and stop reason, iterations, elapsed time and model spend against the launch's budgets when they were set, and platform cost when [cost-aware selection](/docs/evolve/cost-aware-selection) is on |
+| Summary | The brief's objective, the state and stop reason, iterations, elapsed time and model spend against the launch's budgets when they were set, and platform cost when [cost-aware selection](/docs/evolve/cost-aware-selection) is on |
 | Deliverable | The candidate the campaign delivers, its branch, its score and any external evaluator metrics |
-| Leaderboard | The top scored candidates in the campaign's own ranking, so minimize metrics and cost-aware selection order it as the campaign does, with each one's score, platform cost when cost is on, parent node, branch and idea |
-| Lineage | The campaign tree, the same rows `kapso watch --tree` draws |
+| Leaderboard | The top scored candidates in the campaign's own ranking, so a minimised metric and cost-aware selection order it as the campaign does, with each one's score, platform cost when cost is on, parent, branch and idea |
+| Lineage | The campaign tree, as the status view draws it |
 | What changed | `git diff --stat` of each leaderboard candidate against its parent branch |
-| Human input | Every [inbox](/docs/evolve/inbox) request, its state and the reply that answered it, with line breaks folded into one table row |
+| Human input | Every [inbox](/docs/build/inbox) request, its state and the reply that answered it, with line breaks folded into one table row |
 | Outcomes | How many candidates ran, were scored, failed, were integrity-flagged and were cost-refused |
 
 A directory without a run checkpoint or a status file fails with an explicit error, and a corrupt state file raises.
@@ -327,50 +452,50 @@ kapso report ./campaign -o report.md
 kapso report ./campaign --top 10
 ```
 
-## kapso bank
-
-The lesson bank is local-only by default. These two subcommands give it a git remote. Credentials stay with `git` and `gh`; Kapso never handles them.
-
-### kapso bank connect
-
-| Argument | What it does | Required |
-|----------|--------------|----------|
-| `url` | Git URL of the bank repository, https or ssh | **yes** |
-
-```bash
-kapso bank connect https://github.com/your-org/kapso-bank.git
-```
-
-### kapso bank create
-
-Creates the GitHub repository with the `gh` CLI, then connects it.
-
-| Argument | What it does | Default |
-|----------|--------------|---------|
-| `slug` | `org/name` for the new repository. **Required** | — |
-| `--public` | Create the repository public | private |
-
-```bash
-kapso bank create your-org/kapso-bank
-```
-
 ## kapso doctor
 
-Reports the requirements your **active config** implies, and exits non-zero when a required item is missing.
+Reports the requirements your **effective config** implies, and exits non-zero when a required item is missing. The first line names the layers a run uses and what your file sets: `config: packaged defaults + kapso-config.yaml (overrides: search_strategy.params.host, hosts.codex.model)`.
 
 | Argument | What it does | Default |
 |----------|--------------|---------|
-| `verb` | Narrow the report to `research`, `learn_knowledge`, `evolve`, `learn` or `deploy` | union of all five |
+| `verb` | Narrow the report to `build`, `learn`, `deploy` or `experience` (what an ingest needs) | union of all four |
 | `--models` | Live-probe each configured CLI and model pair, spending a few one-token calls | off |
-| `--config` | Config to check | packaged `config.yaml` |
+| `--json` | Print the report as data: `{scope, version, kapso, python, config_path, config, overrides, ok, requirements: [{label, ok, required, origin, fix, detail}]}`, `config` the effective config and `overrides` the dotted paths your file sets; the exit code is the text form's | off |
+| `--show-config` | Print the effective config, the packaged defaults with your file over them, as YAML, and exit | off |
+| `--config` | Your override file, layered over the packaged config | the packaged defaults |
 
 ```bash
 kapso doctor
-kapso doctor evolve
-kapso doctor evolve --models
+kapso doctor build
+kapso doctor build --models
+kapso doctor build --json | jq '.requirements[] | select(.ok | not)'
+kapso doctor --config kapso-config.yaml --show-config
 ```
 
 See [How do I check my setup?](/docs/installation#how-do-i-check-my-setup) for the output format and what each marker means.
+
+## kapso-mcp
+
+A stdio MCP server for the coding-agent session you work in: the gates Kapso's own sessions get, configured from where the session runs, and the campaign verbs as tools. Not a `kapso` subcommand but a second executable, so a host can name it in a static MCP file; [the plugin](/docs/coding-agent-skills) names it for Claude Code.
+
+| Flag | What it does | Default |
+|------|--------------|---------|
+| `--experience` | Comma-separated sources to serve, in the forms `kapso experience list` shows (`mine`, `mine:all`, a bank path or git reference, an index name); a bank mounts the `bank` gate, an index the `idea` and `code` gates. Explicit, so strict: a source that does not exist refuses; an empty string loads nothing | the config's `experience.session_sources` (empty as packaged); a listed source that does not exist leaves its gate off, named in the instructions |
+| `--harness` | The harness the session works under (a name, a path or a git reference): its name is the coordinate `mine` serves cards by | `none` |
+| `--config` | Config whose experience, bank and embedding settings apply, and the one the campaign tools pass to the verbs | `kapso-config.yaml` at the repository root when there is one, else the packaged `config.yaml` |
+| `--root` | The directory the session works in | the current directory |
+
+The `campaign` gate always rides: `kapso_build_start` launches a campaign detached and returns its receipt, `kapso_status` reads one as `kapso watch --json` prints it, `kapso_stop` ends one; the tools refuse without `kapso` on PATH and inside a campaign directory, and a campaign's own sessions never get them. `research`, `repo_memory` and `experiment_history` ride by what the directory holds. The server prints its version and config line on start, names every gate left off on stderr and in its instructions with the reason, and connects whatever is off; the intro naming the loaded sources opens those instructions, so the session sees what it is served on connect.
+
+```bash
+claude mcp add kapso -- kapso-mcp --experience mine
+codex mcp add kapso -- kapso-mcp --experience mine
+kapso-mcp --harness ./harness --experience mine,org-x --config kapso-config.yaml
+```
+
+`kapso-mcp --version` prints the version it serves, as `kapso --version` does; the setup skill reads both to tell one install from two.
+
+A gate that cannot be served is named on stderr with its reason; see [Use the gates from your own coding agent](/docs/evolve/mcp-gates#use-the-gates-from-your-own-coding-agent).
 
 ## Related
 

@@ -66,7 +66,10 @@ Body — sections in loop order, each present ONLY as far as the flow went:
    quotes; a quote it cannot find is a rejected document. Ref fragments the
    frame verifies mechanically: `#L<n>` / `#L<n>-<m>` (line anchors) and
    `#"literal snippet"` (re-grepped); any other fragment is checked as
-   path-existence only.
+   path-existence only. A ref whose fragment holds a colon is written
+   quoted whole in frontmatter (`idea: 'runs/run_0001/stream.jsonl#"rows: 3000"'`),
+   or YAML reads the fragment as a mapping; the frame names such a line
+   as a finding.
 5. DEDUPE ECHOES: the log repeats content (re-streamed file reads). Identical
    content counts once; cite the first occurrence.
 6. LINEAGE SLICING: `changes.log` in a run snapshot is cumulative over the
@@ -90,5 +93,5 @@ Body — sections in loop order, each present ONLY as far as the flow went:
 
 Cross-cutting: the campaign log duplicates some content ~20× (session re-reads
 of the same file get re-streamed) — dedupe by content, count once. Bundles vary
-by evolve version and completeness: every channel above is a place to look,
+by kapso version and completeness: every channel above is a place to look,
 never a guarantee.

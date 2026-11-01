@@ -1,0 +1,65 @@
+ToolSearch
+mcp__plugin_kapso_kapso__kapso_build_start
+mcp__plugin_kapso_kapso__kapso_status
+mcp__plugin_kapso_kapso__kapso_stop
+
+I started the campaign, read its status once while it was running, then stopped it. Here are the three answers verbatim:
+
+**1. `kapso_build_start`**
+```json
+{
+ "accepted": true,
+ "pid": 30452,
+ "log": "/home/ubuntu/proof/work/tools-campaign.log",
+ "status": "/home/ubuntu/proof/work/tools-campaign/.kapso/status.json",
+ "watch": "kapso watch /home/ubuntu/proof/work/tools-campaign --follow",
+ "campaign": "/home/ubuntu/proof/work/tools-campaign",
+ "started_at": "2026-10-27T02:06:10+00:00"
+}
+```
+
+**2. `kapso_status`**
+```json
+{
+ "operation": "build",
+ "phases": [
+  "setup",
+  "harness_setup",
+  "lens_planning",
+  "ideation",
+  "implementation",
+  "evaluation",
+  "verification",
+  "feedback"
+ ],
+ "state": "running",
+ "pid": 30452,
+ "started_at": "2026-10-27T02:06:16+00:00",
+ "heartbeat_at": "2026-10-27T02:06:16+00:00",
+ "phase": "ideation",
+ "phase_started_at": "2026-10-27T02:06:16+00:00",
+ "recent": [
+  "02:06 iteration 1 started (budget 0%)"
+ ],
+ "harness": null,
+ "experience": [],
+ "heartbeat_seconds": 60.0,
+ "budget": {
+  "elapsed_min": 0.0,
+  "total_min": 10.0,
+  "reserve_min": 1.5
+ },
+ "iteration": 1,
+ "exit": 0
+}
+```
+
+**3. `kapso_stop`**
+```json
+{
+ "stopped": true,
+ "pid": 30452
+}
+```
+
+It was stopped in the ideation phase of iteration 1, before the experiment ran, so there's no score. The checkpoint is kept in `/home/ubuntu/proof/work/tools-campaign`, and `kapso build --output /home/ubuntu/proof/work/tools-campaign --resume --detach` continues it.

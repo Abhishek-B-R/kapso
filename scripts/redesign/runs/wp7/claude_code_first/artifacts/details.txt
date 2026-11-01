@@ -1,0 +1,35 @@
+kapso 0.8.0.dev1
+  Description: Set up Kapso, state an objective with its evaluation, launch and follow a campaign, review and deploy the result, author a harness
+  Source: kapso@kapso
+
+Component inventory
+  Skills (16)  build, deploy, experience, harness, inbox, kapso, kapso-build, kapso-evaluation, kapso-harness, kapso-review, kapso-setup, learn, resume, review, setup, watch
+  Agents (0)
+  Hooks (0)
+  MCP servers (1)  kapso  (tool schemas resolved at runtime; not counted)
+  LSP servers (0)
+
+Projected token cost
+  Always-on:   ~1,739 tok   added to every session
+
+Per-component (rounded)
+  component         always-on  on-invoke
+  kapso-build            ~220      ~1.9k
+  kapso-review           ~210      ~1.1k
+  kapso-harness          ~310      ~2.3k
+  kapso                  ~300      ~6.6k
+  kapso-setup            ~190      ~1.8k
+  kapso-evaluation       ~150      ~1.3k
+  experience              ~60       ~150
+  review                  ~30       ~120
+  resume                  ~30       ~170
+  harness                 ~40       ~150
+  build                   ~40       ~140
+  watch                   ~30       ~110
+  inbox                   ~30       ~140
+  deploy                  ~40       ~190
+  setup                   ~30       ~130
+  learn                   ~40       ~180
+
+  On-invoke cost is paid each time a skill or agent fires.
+  Token counts are estimates and may differ from actual usage.

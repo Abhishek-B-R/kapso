@@ -26,9 +26,10 @@
 /.claude/
 /.agents/
 
-# The coding-agent skill: SKILL.md files the agents load, documented on
-# docs/coding-agent-skills. Markdown, but not pages of the site.
-/skills/
+# The coding-agent plugin: the skills, the commands and the trigger suite's
+# prompts the agents load, documented on docs/coding-agent-skills. Markdown,
+# but not pages of the site.
+/plugin/
 
 # Tracked, part of the package rather than the docs
 /src/

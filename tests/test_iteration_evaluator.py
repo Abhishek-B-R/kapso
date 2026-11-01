@@ -9,6 +9,8 @@ from typing import Any, Dict, Iterator, List, Optional
 import git
 import pytest
 
+from kapso.core.config import load_config
+from tests.harness_support import fake_config
 from kapso.execution.iteration_evaluator import (
     IterationEvaluationError,
     IterationEvaluationResult,
@@ -27,6 +29,7 @@ from kapso.execution.search_strategies.base import SearchNode
 from kapso.gated_mcp.gates.experiment_history_gate import (
     ExperimentHistoryGate,
 )
+from kapso.handles import Budget
 from kapso.kapso import Kapso
 
 
@@ -62,9 +65,6 @@ class FakeProblemHandler:
     def get_problem_context(self) -> str:
         return "Improve the candidate"
 
-    def deliverable_ready_reserve_seconds(self):
-        return None
-
 
 class FakeKnowledgeSearch:
     def close(self) -> None:
@@ -98,7 +98,12 @@ class TwoCandidateStrategy:
     def __init__(self, workspace_dir: str):
         self.workspace_dir = workspace_dir
         self.workspace = MaterializingWorkspace(workspace_dir)
+        self.last_round_seconds = None
+        self.finishing_cut = None
         self.node_history: List[SearchNode] = []
+
+    def continues_an_answered_node(self) -> bool:
+        return False   # the fake has no inbox continuation; the orchestrator's admission asks every strategy
 
     def run(self, context: str, budget_progress: float = 0.0) -> SearchNode:
         repo = git.Repo(self.workspace_dir)
@@ -159,21 +164,13 @@ def _patch_orchestrator(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(orchestrator_module, "CliInference", FakeLLM)
     monkeypatch.setattr(
-        orchestrator_module,
-        "load_mode_config",
-        lambda config_path, mode: {
-            "search_strategy": {"type": "generic", "params": {}}
-        },
-    )
-    monkeypatch.setattr(
         OrchestratorAgent,
         "_create_feedback_generator",
-        lambda self, coding_agent=None: object(),
+        lambda self: object(),
     )
 
     def create_strategy(
         self: OrchestratorAgent,
-        coding_agent: Optional[str],
         workspace_dir: Optional[str],
         start_from_checkpoint: bool,
     ) -> TwoCandidateStrategy:
@@ -465,7 +462,7 @@ def test_raise_policy_stops_before_history_and_checkpoint_write(
     }
 
 
-def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
+def test_public_build_forwards_evaluator_and_reports_selected_metrics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -490,6 +487,9 @@ def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
         def get_experiment_history(self) -> List[SearchNode]:
             return [selected]
 
+        def get_deliverable_experiment(self):
+            return selected
+
         def get_deliverable_score(self):
             return selected.score
 
@@ -511,8 +511,9 @@ def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
             cost_budget=None,
             finalization_reserve_minutes=None,
             on_status=None,
+            finish=None,
         ) -> SolveResult:
-            return SolveResult(
+            result = SolveResult(
                 best_experiment=selected,
                 final_feedback=None,
                 stopped_reason="max_iterations",
@@ -520,6 +521,10 @@ def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
                 total_cost=0.0,
                 cumulative_iterations=1,
             )
+            # the delivery runs inside solve(), as the real orchestrator runs it
+            if finish is not None:
+                finish(result)
+            return result
 
     monkeypatch.setattr(
         kapso_module,
@@ -533,15 +538,17 @@ def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
     kapso = Kapso.__new__(Kapso)
     kapso.config_path = None
     kapso.knowledge_search = SimpleNamespace(is_enabled=lambda: False)
-    # Mirror __init__-set attributes the evolve path reads (stub gotcha:
+    # Mirror __init__-set attributes the build path reads (stub gotcha:
     # new Kapso instance attributes must be added here too).
-    kapso._config = {}
+    kapso._config = fake_config(inbox={"registry": str(Path(workspace).with_name("registry.jsonl"))})
     kapso._bank_home = None
-    kapso._kg_index_path = None
-    solution = kapso.evolve(
-        goal="Improve support",
-        output_path=str(workspace),
-        max_iterations=1,
+    kapso._harness = None
+    kapso._harness_settings = load_config()["harness"]
+    kapso._experience = []
+    solution = kapso.build(
+        "Improve support",
+        output=str(workspace),
+        budget=Budget(experiments=1),
         resume=True,
         iteration_evaluator=evaluator,
         iteration_evaluator_failure_policy="raise",
@@ -549,10 +556,10 @@ def test_public_evolve_forwards_evaluator_and_reports_selected_metrics(
 
     assert captured["iteration_evaluator"] is evaluator
     assert captured["iteration_evaluator_failure_policy"] == "raise"
-    assert solution.metadata["external_metrics"] == {
+    assert solution.callback_metrics == {
         "holdout_accuracy": 0.8
     }
-    assert solution.metadata["external_primary_metric"] == (
+    assert solution.callback_primary_metric == (
         "holdout_accuracy"
     )
 
@@ -598,12 +605,6 @@ def test_comparison_persists_with_lineage_without_changing_selection(
         "metadata",
         "error",
     }
-    tree_lines = restored.explain(tree=True).splitlines()
-    candidate_rows = [line for line in tree_lines if "candidate_" in line]
-    assert len(candidate_rows) == 2
-    assert all(" external: " in line for line in candidate_rows)
-    assert "improved" in restored.explain(tree=True)
-    assert "regressed" in restored.explain(tree=True)
 
 
 def test_resume_preserves_baseline_reports(tmp_path, monkeypatch):

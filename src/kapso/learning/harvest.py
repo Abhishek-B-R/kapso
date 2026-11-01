@@ -1,19 +1,19 @@
-# Campaign harvest — the evolve->learn bridge for live campaigns (P1.G).
+# Campaign harvest — the build->learn bridge for live campaigns (P1.G).
 #
 # Design: learn-from-trajectories-design.md §3.4 (save_trajectory IS the
 # harvest step) + §3.4.1 (the bundle-contract additions: workspace .kapso
 # files, living documents, sessions, and the ideation/selector artifacts that
 # previously died in temp worktrees). This module owns the framework-side
-# gather conventions (where evolve keeps its workspace artifacts); the caller
+# gather conventions (where a build keeps its workspace artifacts); the caller
 # — a benchmark's campaign driver — supplies its own paths (work dir, log,
 # living documents) and stays the authority on what its shared space holds.
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from kapso.learning.trajectory_store import TrajectoryStore, save_trajectory
 
-# Workspace-side artifacts (evolve's conventions, framework-owned):
+# Workspace-side artifacts (the build's conventions, framework-owned):
 # required by the strict contract...
 WORKSPACE_KAPSO_FILES = ("lens_plan_history.jsonl", "experiment_history.json")
 # ...and gathered when present (session forensics; the ideation candidate
@@ -30,7 +30,7 @@ def harvest_campaign(
     living_documents: Optional[Dict[str, str]] = None,
     work_dir_exclude: tuple = (),
     kapso_commit: Optional[str] = None,
-    bank_head: Optional[str] = None,
+    experience: Optional[List[Dict[str, Any]]] = None,
     upload: Optional[bool] = None,
 ) -> str:
     """Harvest a finished campaign into the store under the strict contract.
@@ -62,6 +62,6 @@ def harvest_campaign(
         work_dir_exclude=work_dir_exclude,
         contract="strict",
         kapso_commit=kapso_commit,
-        bank_head=bank_head,
+        experience=experience,
         upload=upload,
     )

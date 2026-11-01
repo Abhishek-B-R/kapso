@@ -1,0 +1,2 @@
+mine         /home/ubuntu/.kapso/bank.git                 head f979f4273c0b   0 cards   no remote (kapso experience share <url>)
+leeroopedia  hosted                                       no key: put LEEROOPEDIA_API_KEY=... in .env

@@ -1,0 +1,51 @@
+The run is finished and the target was not met. The model scored 0.845 against a target above 0.85.
+
+- **What won:** branch `generic_exp_0` @ `e670ca4`, with holdout ROC AUC **0.8450**. The evaluation was the one provided with the project and checked as untouched ("protected, unversioned"; no evaluator is registered). That is +0.0476 over the 0.7974 baseline but **0.005 short of the target**. The judge puts that gap at about half a standard error, so it could be chance in the holdout sample.
+- **What changed:** the logistic regression in `predict.py` was replaced by a blend of two models, weighted 0.60/0.40 by rank:
+  - a gradient-boosted tree model that handles categories and missing values itself, set to 135 iterations chosen by cross-validation and retrained on all 10,000 rows with 5 seeds;
+  - a spline-based logistic regression.
+  
+  Both models use a shared set of engineered features. Cross-validated score was 0.8549 (tree model alone 0.8511, spline model alone 0.8478). The prediction contract (`id,churn_probability`, same command) is unchanged.
+- **Voided or rejected:** nothing was voided and no candidate was rejected for touching the evaluation. During planning, other models (ExtraTrees 0.8389, a neural net 0.8324, several tree-model configs averaged 0.8507) were measured and dropped because they added nothing to the blend.
+- **Risks:**
+  - No harness was used, so the attempt had no independent verification and no hooks that could block anything.
+  - The holdout labels are committed in the seed at `kapso_evaluation/private/holdout_labels.csv`. The judge's rules say "the labels are not in the workspace", but the record contradicts that. `predict.py` never reads `private/`, and the judge reports no labels were read.
+  - Both Codex repo-memory sessions crashed on `invalid transport in mcp_servers.kapso` in `config.toml`.
+- **Spend:** 22.6 of 30 minutes and $3.09 (Claude Code sessions only; Codex reports no cost). One experiment, none rejected. The run stopped because the 4.6 minutes left could not fit another attempt.
+- **Next:** fix the Codex `config.toml` first, then resume from this branch with more budget, aiming at the non-month-to-month contract rows (46% of rows, cross-validated score 0.8154 vs 0.8393 for month-to-month): `kapso build --output ../churn-campaign --resume --budget-minutes 60 --detach`
+
+**Changes from base `4c6e96f` (11 files):**
+- `predict.py`: the new model (+169/−14)
+- `predictions.csv`: 3,000 holdout rows
+- `kapso_evaluation/result.json`: auc 0.8450
+- `kapso_evaluation/eval_profile.md`: scores by row group and by iteration count
+- `PLAN.md`, `changes.log`: the attempt's own notes
+- `output_data_generic_exp_0/`: scratch files (`cv_check.py`, `diag.py`, three `.pid` files). Drop these before merging.
+
+---
+
+**Short answer: the code change looks safe, but don't merge the branch as it stands.** It misses the target, and it carries leftover files from the run. Taking just the new `predict.py` is the better move.
+
+**What won.** The run delivered `generic_exp_0 @ e670ca44c514`. It scores **0.8450 holdout AUC** (protected, unversioned: the trace says no evaluator was registered and labels the score "provided"). The baseline was 0.7974. The target was **> 0.85, so it falls short by 0.005**, about half a bootstrap SE. I re-ran `kapso_evaluation/evaluate.py` on that commit in a scratch worktree and got the same 0.8450 in 10.6s.
+
+**What changed.** `predict.py` swaps the logistic regression for a 0.6/0.4 rank-averaged blend of two models:
+- a gradient-boosted tree model (`HistGradientBoostingClassifier`) that handles categories and missing values itself;
+- a logistic regression on spline-expanded numeric features.
+
+Both use the same engineered features and are trained on all 10,000 labelled rows. Cross-validation on the training data gave 0.8549, so the holdout came in about 0.01 lower. The output contract is unchanged: same command, same `id,churn_probability` columns.
+
+**Safety checks:**
+- **Integrity holds:** `evaluate.py` and `kapso_evaluation/private/` are byte-identical to the base commit. The record shows no rejected candidates.
+- **No leakage that I can see:** `predict.py` trains only on `train.csv` and only applies the trained models to the holdout rows. It never reads the private labels.
+- **Nothing was voided or rejected.**
+
+**What I couldn't check:**
+- No harness was set up, so no reviewers verified the attempt.
+- No hooks were active in its sessions, so nothing could have blocked a bad action.
+- The judge's only warning was that the result is real progress but misses the target.
+
+**Leftover files in the diff:** process-ID files and two scratch scripts under `output_data_generic_exp_0/`, a committed 3,000-row `predictions.csv`, `kapso_evaluation/result.json`, `PLAN.md` and `changes.log`. Merging the whole branch would put all of these into your repo.
+
+**Spend:** 22.6 of 30 min, $3.09 (Claude Code sessions only), 1 experiment, 0 rejected. Two Codex sessions failed instantly on a bad `config.toml` (`invalid transport in mcp_servers.kapso`). Fix that before the next run.
+
+**Next action:** cherry-pick `predict.py`, and `kapso_evaluation/eval_profile.md` if you want the notes, as a clear gain over the baseline. If you need to clear 0.85, resume with more budget: `kapso build --output ../churn-campaign --resume --budget-minutes 120 --detach --config kapso-config.yaml`. The profile says the weakest results are on rows with missing values (about 0.75 AUC), so that's where to push next.

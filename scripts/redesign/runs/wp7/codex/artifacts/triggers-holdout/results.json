@@ -1,0 +1,181 @@
+{
+ "model": "gpt-6-astra",
+ "effort": "medium",
+ "runs": 1,
+ "tag": "holdout",
+ "skipped": [],
+ "results": [
+  {
+   "case": "holdout-01",
+   "run": 1,
+   "exit": 0,
+   "seconds": 51.9,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-02",
+   "run": 1,
+   "exit": 0,
+   "seconds": 31.0,
+   "loaded": [
+    "kapso-setup"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-03",
+   "run": 1,
+   "exit": 0,
+   "seconds": 42.9,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-04",
+   "run": 1,
+   "exit": 0,
+   "seconds": 25.4,
+   "loaded": [
+    "kapso-build",
+    "kapso-evaluation"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-05",
+   "run": 1,
+   "exit": 0,
+   "seconds": 22.5,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-06",
+   "run": 1,
+   "exit": 0,
+   "seconds": 19.3,
+   "loaded": [
+    "kapso-harness"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-07",
+   "run": 1,
+   "exit": 0,
+   "seconds": 23.8,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-08",
+   "run": 1,
+   "exit": 0,
+   "seconds": 25.0,
+   "loaded": [
+    "kapso-review"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-09",
+   "run": 1,
+   "exit": 0,
+   "seconds": 28.8,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  },
+  {
+   "case": "holdout-10",
+   "run": 1,
+   "exit": 0,
+   "seconds": 21.8,
+   "loaded": [
+    "kapso"
+   ],
+   "graders": [
+    {
+     "name": "skill-fired",
+     "count": 1,
+     "passed": true
+    }
+   ],
+   "passed": true
+  }
+ ]
+}

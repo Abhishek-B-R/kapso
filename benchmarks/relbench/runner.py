@@ -1,251 +1,188 @@
 #!/usr/bin/env python3
-"""
-RelBench Runner
+"""RelBench runner: one task, one campaign on the facade's build().
 
-Runs the Kapso Agent on RelBench tasks (relbench.stanford.edu — relational deep
-learning benchmark: 11 databases, 66 tasks across entity classification,
-entity regression, recommendation, and autocomplete).
+    python -m benchmarks.relbench.runner -s rel-f1 -t driver-position [-i N] [--workspace DIR] [--resume]
+        [--time-budget-hours H] [--harness REF] [--experience REFS] [--coding-agent CLI] [--rebuild-cache]
+    python -m benchmarks.relbench.runner --list
 
-Usage:
-    python -m benchmarks.relbench.runner --dataset rel-f1 --task driver-position
-    python -m benchmarks.relbench.runner -s rel-hm -t user-item-purchase -i 25
-    python -m benchmarks.relbench.runner --list            # list native tasks
-    python -m benchmarks.relbench.runner --list-agents
-
-Options:
-    --dataset, -s        Dataset name (e.g. rel-f1)
-    --task, -t           Task name (e.g. driver-position)
-    --iterations, -i     Maximum search iterations (default: 20)
-    --mode, -m           Config mode: RELBENCH_GENERIC (default), FAST_DEBUG, MINIMAL
-    --coding-agent, -d   Coding agent: aider, gemini, claude_code, openhands
-    --no-kg              Disable knowledge graph
-    --workspace          Reuse/name a workspace dir (enables resuming archives)
-    --resume             Resume from a checkpointed workspace
-    --target-val         Stop early once validation primary metric reaches this value
-    --rebuild-cache      Force rebuild of the sanitized data cache
-    --knowledge-file     Extra knowledge markdown injected into the problem context
+The runner keeps the task material and launches the engine: it downloads the
+task into the library's cache, builds the sanitized copy (and the per-tick
+snapshots of a rolling task) with the harness's sanitizer, reused across
+campaigns under a marker; stages the provided grader with the task's
+settings beside it; writes the Brief from the task's facts; seeds a
+shape-correct baseline candidate; and runs build() with the bundled
+predictive-modelling harness (or the one --harness names) and the experience
+--experience loads. After the campaign it selects among the archive's
+registered finals, scores the winner on test once, runs the harness's
+leakage scan over its code and writes final_report.json under the task's
+archive root (`benchmark.work_root` in config.yaml).
 """
 
 import argparse
 import json
-import os
+import shutil
 import sys
+import tempfile
+from pathlib import Path
+from typing import Dict, Optional
 
-import yaml
 from dotenv import load_dotenv
+from relbench.tasks import get_task_names
+from relbench.utils import get_relbench_cache_dir
 
-from kapso.core.config import load_config
-from kapso.kapso import DEFAULT_CONFIG_PATH
-from kapso.learning.serving_launch import prepare_campaign_serving
+from kapso.core.config import read_yaml
+from kapso.handles import Budget, Solution
+from kapso.harness import BUNDLED_ROOT
+from kapso.kapso import Kapso
+
+from benchmarks.common import stage_evaluation, write_runtime_config
+from benchmarks.relbench.context import build_brief
+from benchmarks.relbench.scoring import ensure_sanitized_copy, final_report, pristine_task
+from benchmarks.relbench.task_specs import NATIVE_DATASETS, resolve_spec
 
 load_dotenv()
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.yaml")
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-AVAILABLE_AGENTS = ["aider", "gemini", "claude_code", "codex", "openhands"]
+BENCH_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = BENCH_DIR / "config.yaml"
+DATA_DIR = BENCH_DIR / "data"
+EVALUATION_SUITE = DATA_DIR / "generic_eval"
+STARTER_KIT = DATA_DIR / "starter_kit"
+BASELINE = DATA_DIR / "generic_baseline" / "main.py"
+BUNDLED_HARNESS = "predictive-modelling"
+SANITIZER = BUNDLED_ROOT / BUNDLED_HARNESS / "skills" / "sanitized-copy" / "scripts" / "sanitize.py"
 
 
 def list_tasks() -> None:
-    from relbench.tasks import get_task_names
-
-    from benchmarks.relbench.task_specs import NATIVE_DATASETS
-
     print(f"\n{'=' * 70}\nRelBench native tasks (11 databases / 66 tasks)\n{'=' * 70}")
-    for ds in NATIVE_DATASETS:
-        names = get_task_names(ds)
-        print(f"\n  {ds}:")
-        for name in names:
+    for dataset in NATIVE_DATASETS:
+        print(f"\n  {dataset}:")
+        for name in get_task_names(dataset):
             print(f"    • {name}")
     print()
 
 
-def _write_runtime_config(
-    mode: str, shared_cache_dir: str, work_dir, time_budget_hours=None,
-    bank_serving=None,
-) -> str:
-    """Write a per-run config injecting the task-scoped shared_cache_dir (and,
-    when given, the wall-clock budget override and the bank-serving env
-    mapping) into the mode's config, and return its path. The orchestrator
-    reloads config from disk, so a runtime value must live in a file."""
-    with open(CONFIG_PATH) as f:
-        config = yaml.safe_load(f)
-    params = config["modes"][mode]["search_strategy"]["params"]
-    params["shared_cache_dir"] = os.path.abspath(shared_cache_dir)
-    if bank_serving is not None:
-        params["bank_serving"] = bank_serving
-    if time_budget_hours is not None:
-        config["modes"][mode]["budget"]["time_budget_minutes"] = time_budget_hours * 60
-    runtime_dir = os.path.join(str(work_dir), ".kapso_runtime")
-    os.makedirs(runtime_dir, exist_ok=True)
-    runtime_path = os.path.join(runtime_dir, "config.yaml")
-    with open(runtime_path, "w") as f:
-        yaml.safe_dump(config, f, sort_keys=False)
-    return runtime_path
+def solution_summary(solution: Solution) -> Dict[str, object]:
+    """What the build delivered, beside the archive's selection in the report."""
+    return {
+        "campaign": str(solution.campaign),
+        "branch": solution.branch,
+        "commit": solution.commit,
+        "score": solution.score,
+        "stopped_reason": solution.stopped_reason,
+        "experiments": solution.experiments_total,
+        "cost_usd": solution.cost_usd,
+        "harness": solution.harness.name if solution.harness else None,
+    }
+
+
+def seeded_baseline() -> str:
+    """A fresh directory holding the shape-correct trivial candidate: the
+    maintainer's calibration needs a runnable candidate, and the search a
+    real starting parent."""
+    directory = tempfile.mkdtemp(prefix="relbench_baseline_")
+    shutil.copy2(BASELINE, Path(directory) / "main.py")
+    return directory
 
 
 def solve_task(args) -> dict:
-    from kapso.execution.orchestrator import OrchestratorAgent
-
-    from benchmarks.relbench.handler import RelBenchHandler
-
+    settings = read_yaml(str(CONFIG_PATH))["benchmark"]
+    work_dir = (Path(settings["work_root"]) / f"{args.dataset}--{args.task}").resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
     print(f"\n{'=' * 70}\nSolving: {args.dataset} / {args.task}\n{'=' * 70}")
-    print(f"  Max iterations: {args.iterations}")
-    print(f"  Config mode: {args.mode or 'from config'}")
-    print(f"  Coding agent: {args.coding_agent or 'from config'}")
-    print(f"  Knowledge graph: {'disabled' if args.no_kg else 'enabled'}\n")
+    print(f"  Archive root: {work_dir}")
 
-    handler = RelBenchHandler(
-        dataset_name=args.dataset,
-        task_name=args.task,
-        planned_iterations=args.iterations,
-        target_val_score=args.target_val,
-        extra_knowledge_file=args.knowledge_file,
-        rebuild_sanitized_cache=args.rebuild_cache,
+    task = pristine_task(args.dataset, args.task)
+    spec = resolve_spec(task, args.dataset, args.task, settings["timeouts"])
+    source = Path(get_relbench_cache_dir())
+    sanitized_copy = ensure_sanitized_copy(
+        SANITIZER, source, args.dataset, args.task, work_dir / "sanitized_cache",
+        rolling=False, rebuild=args.rebuild_cache,
+    )
+    rolling_root: Optional[Path] = None
+    if spec.rolling:
+        rolling_root = ensure_sanitized_copy(
+            SANITIZER, source, args.dataset, args.task, work_dir / "rolling_caches",
+            rolling=True, rebuild=args.rebuild_cache,
+        )
+    evaluation_dir = stage_evaluation(EVALUATION_SUITE, work_dir, {
+        "dataset": args.dataset,
+        "task": args.task,
+        "primary_metric": spec.primary_metric,
+        "higher_is_better": spec.maximize,
+        "work_dir": str(work_dir),
+        "full_timeout": spec.full_timeout,
+        "debug_timeout": spec.debug_timeout,
+        "poll_seconds": settings["grader_poll_seconds"],
+        "cache_dir": str(sanitized_copy),
+        "rolling_root": str(rolling_root) if rolling_root is not None else None,
+    })
+    shared_cache_dir = work_dir / "shared_cache"
+    shared_cache_dir.mkdir(exist_ok=True)
+    brief = build_brief(
+        task, spec, sanitized_copy, rolling_root, shared_cache_dir, settings["hosted_model_api"],
     )
 
-    # Generic is the only strategy (benchmark_tree_search was deleted —
-    # stale-code audit 2026-08-26): champion-chain search with code-reading
-    # agentic ideation. Our provided grader (data/generic_eval) becomes the
-    # maintainer-registered evaluation entrypoint; in-loop scoring is
-    # val-only by construction (the sanitized cache holds no test labels).
-    generic = True
-    mode = args.mode or "RELBENCH_GENERIC"
-
-    # Serving live (learn-from-trajectories §5.3, config-gated): pin the
-    # bank, compile the push brief into the problem context, stage the
-    # pull-tool env for ideation/implementation sessions. The feedback judge
-    # never receives the tools; the learner runs after campaigns, never
-    # inside them.
-    serving = None
-    if generic:
-        learning_config = load_config(DEFAULT_CONFIG_PATH)
-        serving = prepare_campaign_serving(
-            learning_config,
-            {"family": handler.spec.family, "dataset": args.dataset},
-            handler.work_dir,
-        )
-        if serving:
-            handler.apply_bank_intro(serving["intro"])
-            print(f"  Knowledge bank: serving at head {serving['bank_head']}")
-
-    initial_repo = args.initial_repo
-    # Never auto-seed on --resume: the workspace already exists with its git
-    # history, and seeded init demands an empty directory.
-    if generic and not initial_repo and not args.resume:
-        # The maintainer calibrates the registered evaluation at setup, which
-        # requires a runnable candidate — and parent_policy=best needs a real
-        # starting parent. Seed a trivial shape-correct baseline.
-        import shutil
-        import tempfile
-
-        initial_repo = tempfile.mkdtemp(prefix="relbench_baseline_")
-        shutil.copy2(
-            os.path.join(DATA_DIR, "generic_baseline", "main.py"),
-            os.path.join(initial_repo, "main.py"),
-        )
-
-    # Generic search owns KAPSO_SHARED_CACHE_DIR (the handler no longer
-    # exports it). Thread the handler's task-scoped, campaign-persistent
-    # shared-cache path into the strategy's params so the registry's artifact
-    # offer and the sessions' $KAPSO_SHARED_CACHE_DIR agree and re-runs of
-    # this task reuse cached artifacts. Written to a per-run config because
-    # the orchestrator reloads config from disk (ioai-2025 runner pattern).
-    config_path = CONFIG_PATH
-    if generic:
-        config_path = _write_runtime_config(
-            mode, str(handler.shared_cache_dir), handler.work_dir,
-            time_budget_hours=args.time_budget_hours,
-            bank_serving=serving["bank_serving"] if serving else None,
-        )
-    elif args.time_budget_hours is not None:
-        raise ValueError("--time-budget-hours requires --strategy generic")
-
-    orchestrator = OrchestratorAgent(
-        handler,
-        config_path=config_path,
-        mode=mode,
-        coding_agent=args.coding_agent,
-        is_kg_active=not args.no_kg,
-        workspace_dir=args.workspace,
+    kapso = Kapso(config=str(write_runtime_config(CONFIG_PATH, shared_cache_dir, work_dir,
+                                                  archive_root=work_dir / "runs")))
+    kapso.load_harness(args.harness or BUNDLED_HARNESS)
+    for reference in (args.experience or "").split(","):
+        if reference.strip():
+            kapso.load_experience(reference.strip())
+    budget = Budget(
+        minutes=args.time_budget_hours * 60 if args.time_budget_hours is not None else None,
+        experiments=args.iterations,
+    )
+    solution = kapso.build(
+        brief,
+        evaluation=str(evaluation_dir),
+        data=str(STARTER_KIT),
+        repo=None if args.resume else seeded_baseline(),
+        output=args.workspace,
+        budget=budget,
         resume=args.resume,
-        initial_repo=initial_repo,
-        eval_dir=os.path.join(DATA_DIR, "generic_eval") if generic else None,
-        data_dir=os.path.join(DATA_DIR, "starter_kit"),
-        goal=f"Beat the published state of the art on RelBench {args.dataset}/{args.task}",
+        coding_agent=args.coding_agent,
     )
-
-    orchestrator.solve(experiment_max_iter=args.iterations)
-
-    print("\n" + "=" * 70 + "\nExperiment History\n" + "=" * 70)
-    for node in orchestrator.search_strategy.get_experiment_history(best_last=True):
-        print(f"  branch={node.branch_name} score={node.score} error={node.had_error}")
-
-    best_branch = orchestrator.search_strategy.checkout_to_best_experiment_branch()
-    cost = orchestrator.get_cumulative_cost()
-    workspace = orchestrator.search_strategy.workspace.workspace_dir
 
     print("\n" + "=" * 70 + "\nFinal Evaluation (validation-selected, test reported once)\n" + "=" * 70)
-    report = handler.final_evaluate(workspace)
-    report.update({"best_branch": best_branch, "workspace": workspace, "cost_usd": round(cost, 3)})
+    report = final_report(work_dir, evaluation_dir, task, spec, kapso.harness.path, solution_summary(solution))
     print(json.dumps(report, indent=2, default=str))
     return report
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run Kapso Agent on RelBench tasks",
+        description="Run Kapso on a RelBench task",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument("-s", "--dataset", type=str, help="Dataset name (e.g. rel-f1)")
     parser.add_argument("-t", "--task", type=str, help="Task name (e.g. driver-position)")
-    parser.add_argument("-i", "--iterations", type=int, default=20)
-    parser.add_argument("-m", "--mode", type=str, default=None)
-    parser.add_argument("-d", "--coding-agent", type=str, choices=AVAILABLE_AGENTS, default=None)
-    parser.add_argument("--no-kg", action="store_true")
-    parser.add_argument("--workspace", type=str, default=None)
+    parser.add_argument("-i", "--iterations", type=int, default=None, help="Budget.experiments (the config's when absent)")
+    parser.add_argument("-d", "--coding-agent", type=str, default=None, help="The host every session runs on (the config's when absent)")
+    parser.add_argument("--workspace", type=str, default=None, help="The campaign directory (output=); needed to resume")
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument(
-        "--initial-repo", type=str, default=None,
-        help="Seed the workspace from an existing repo (e.g. a scout's winning branch)",
-    )
-    parser.add_argument("--target-val", type=float, default=None)
-    parser.add_argument(
-        "--time-budget-hours", type=float, default=None,
-        help="Wall-clock budget override (config time_budget_minutes stays the default)",
-    )
-    parser.add_argument("--rebuild-cache", action="store_true")
-    parser.add_argument("--knowledge-file", type=str, default=None)
+    parser.add_argument("--time-budget-hours", type=float, default=None, help="Budget.minutes, in hours")
+    parser.add_argument("--harness", type=str, default=None, help=f"A harness reference (default: the bundled {BUNDLED_HARNESS})")
+    parser.add_argument("--experience", type=str, default=None,
+                        help="Comma-separated sources to serve: mine, a bank path or git reference, an index name")
+    parser.add_argument("--rebuild-cache", action="store_true", help="Build the sanitized copy again")
     parser.add_argument("--list", action="store_true", help="List native RelBench tasks")
-    parser.add_argument("--list-agents", action="store_true")
     args = parser.parse_args()
 
-    if args.list_agents:
-        from kapso.execution.coding_agents.factory import CodingAgentFactory
-
-        CodingAgentFactory.print_agents_info()
-        return
     if args.list:
         list_tasks()
         return
     if not args.dataset or not args.task:
-        parser.print_help()
-        print("\nError: --dataset and --task are required unless using --list")
-        sys.exit(1)
-
-    from relbench.tasks import get_task_names
-
+        parser.error("--dataset and --task are required unless --list is given")
     if args.task not in get_task_names(args.dataset):
-        print(f"\nError: unknown task '{args.task}' for {args.dataset}.")
-        print(f"Available: {get_task_names(args.dataset)}")
-        sys.exit(1)
+        parser.error(f"unknown task {args.task!r} for {args.dataset}; available: {get_task_names(args.dataset)}")
 
-    result = solve_task(args)
+    report = solve_task(args)
     print("\n" + "=" * 70 + "\nCOMPLETED\n" + "=" * 70)
     print(f"Task: {args.dataset}/{args.task}")
-    print(f"Selected run: {result.get('run')} | val: {result.get('val_metrics')}")
-    print(f"TEST metrics: {result.get('test_metrics')}")
-    print(f"Cost: ${result.get('cost_usd')}")
+    print(f"Selected run: {report.get('run')} | val: {report.get('val_metrics')}")
+    print(f"TEST metrics: {report.get('test_metrics')}")
+    print(f"Delivered: {report['solution']}")
 
 
 if __name__ == "__main__":

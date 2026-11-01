@@ -89,13 +89,10 @@ def _cites(path: str, statement: str) -> dict:
     }
 
 
-# 1500 fits one ~1.3k-character file but not two; 100 fits none, and a file
-# larger than the budget still goes whole, in a call of its own.
-@pytest.mark.parametrize("budget", [1500, 100], ids=["fits-one", "fits-none"])
-def test_update_windows_changed_files_across_calls_within_the_budget(
-    tmp_path: Path,
-    budget: int,
-) -> None:
+# 1500 fits one ~1.3k-character file but not two (a file larger than the
+# budget on its own is withheld by name, the test below).
+def test_update_windows_changed_files_across_calls_within_the_budget(tmp_path: Path) -> None:
+    budget = 1500
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     names = ["a.py", "b.py", "c.py"]
@@ -171,3 +168,82 @@ def test_update_lists_a_deleted_file_as_deleted(tmp_path: Path) -> None:
     prompt = llm.calls[0]["messages"][0]["content"]
     payload = prompt.split("CHANGED FILE CONTENTS (with line numbers")[1]
     assert "=== FILE: gone.py (deleted) ===" in payload
+
+
+def test_update_withholds_binary_and_data_sized_files_by_name(tmp_path: Path) -> None:
+    # The gate's campaigns commit their datasets; a 1 MB csv in a change sent
+    # whole put the update past Codex's input limit on every experiment. Such
+    # a file, or a binary, is listed by name and size and never shown, so the
+    # call stays within its budget and the model is told what it did not see.
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    repo_root.joinpath("code.py").write_text("x = 1\n" * 10)
+    repo_root.joinpath("train.csv").write_text("1,2,3\n" * 400)
+    repo_root.joinpath("model.bin").write_bytes(b"\x00\x01" * 50)
+    previous_model = {
+        "summary": "Old",
+        "sections": {
+            "opt.code": _cites("code.py", "old code"),
+            "opt.data": _cites("train.csv", "old data"),
+        },
+    }
+    llm = SequenceLLM(
+        [json.dumps({"summary": "S", "sections": {"opt.code": _cites("code.py", "new code")}, "removed_sections": []})]
+    )
+
+    result = infer_repo_model_update(
+        llm=llm,
+        repo_root=str(repo_root),
+        repo_map={"files": ["code.py", "train.csv", "model.bin"]},
+        previous_model=previous_model,
+        diff_summary="code.py, train.csv and model.bin changed",
+        changed_files=["train.csv", "model.bin", "code.py"],
+        max_payload_chars=1500,
+    )
+
+    assert len(llm.calls) == 1
+    payload = llm.calls[0]["messages"][0]["content"].split("CHANGED FILE CONTENTS (with line numbers")[1]
+    assert re.findall(r"=== FILE: (\S+) ===", payload) == ["code.py"]
+    assert "=== FILE: train.csv (2400 bytes, not shown) ===" in payload
+    assert "=== FILE: model.bin (100 bytes, not shown) ===" in payload
+    assert "1,2,3" not in payload and "\x00" not in payload
+    assert len(payload) < 1500
+    # The section citing a withheld file is kept as it is, not demanded back.
+    assert result["sections"]["opt.data"]["claims"][0]["statement"] == "old data"
+    assert result["sections"]["opt.code"]["claims"][0]["statement"] == "new code"
+
+
+def test_initial_inference_keeps_the_updates_budget_withholding_data_and_windowing_the_rest(tmp_path: Path) -> None:
+    # The baseline memory of the release gate's S1 campaign sent the planner's
+    # files whole, a 1 MB dataset among them, and Codex refused the call
+    # (1,400,956 characters against its 1,048,576 limit). The initial
+    # inference keeps the update's budget: a binary or over-budget file is
+    # listed by name and size, never shown, and the files past the first
+    # budget's worth reach the model in further calls, each patching the model.
+    budget = 1500
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    for name in ("a.py", "b.py"):
+        repo_root.joinpath(name).write_text(f"{name} = 1\n" * 100)   # ~1.3k characters each: one per call
+    repo_root.joinpath("train.csv").write_text("1,2,3\n" * 400)      # 2400 bytes: over the budget on its own
+    repo_root.joinpath("model.bin").write_bytes(b"\x00\x01" * 50)
+    files = ["a.py", "train.csv", "b.py", "model.bin"]
+    plan = json.dumps({"files_to_read": [{"path": path, "why": "x"} for path in files]})
+    llm = SequenceLLM([plan, VALID_MODEL, json.dumps({"summary": "S2", "sections": {}, "removed_sections": []})])
+
+    result = infer_repo_model_with_retry(
+        llm=llm,
+        repo_root=str(repo_root),
+        repo_map={"files": files, "key_files": [], "entrypoints": []},
+        max_payload_chars=budget,
+    )
+
+    assert len(llm.calls) == 3, "the plan, the first budget's worth, the rest"
+    first = llm.calls[1]["messages"][0]["content"].split("FILE CONTENTS (with line numbers")[1]
+    assert re.findall(r"=== FILE: (\S+) ===", first) == ["a.py"]
+    assert "=== FILE: train.csv (2400 bytes, not shown) ===" in first
+    assert "=== FILE: model.bin (100 bytes, not shown) ===" in first
+    assert "1,2,3" not in first and "\x00" not in first
+    second = llm.calls[2]["messages"][0]["content"].split("CHANGED FILE CONTENTS (with line numbers")[1]
+    assert re.findall(r"=== FILE: (\S+) ===", second) == ["b.py"] and "not shown" not in second
+    assert result["summary"] == "S2"

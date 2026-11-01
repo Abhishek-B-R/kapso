@@ -49,7 +49,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 Also required:
 ```bash
-export OPENAI_API_KEY="sk-..."  # For KAPSO's evolve function
+export OPENAI_API_KEY="sk-..."  # For KAPSO's build function
 ```
 
 ## Customizing Your Agent

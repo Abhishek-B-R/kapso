@@ -157,6 +157,9 @@ class SpawningLeadFake:
     def initialize(self, workspace):
         self.cwd = workspace
 
+    def cleanup(self):
+        pass
+
     def generate_code(self, prompt, debug_mode=False, timeout_seconds=None):
         if "knowledge-update crew" not in prompt:
             raise AssertionError("the gauntlet spawns update leads only")

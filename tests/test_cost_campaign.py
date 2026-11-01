@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from kapso.core.config import load_config
 from kapso.execution.budget import BudgetLedger
 from kapso.execution.cost_estimator import CostEstimate, normalize_cost_config
 from kapso.execution.fidelity import FidelitySpec
@@ -41,9 +42,7 @@ def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
     strategy.evaluator_transition = None
     strategy.problem_handler = SimpleNamespace(
         maximize_scoring=True,
-        honor_agent_stop=True,
         get_problem_context=lambda: "Improve the candidate",
-        deliverable_ready_reserve_seconds=lambda: None,
     )
     policy = normalize_cost_config({
         "enabled": True,
@@ -95,13 +94,20 @@ def campaign(tmp_path, monkeypatch, *, campaign_budget, suspended_lane=False):
     orchestrator.problem_handler = strategy.problem_handler
     orchestrator.maximize_scoring = True
     orchestrator.cost_config = policy
+    orchestrator.harness = None
+    orchestrator._harness_setup = None
+    orchestrator.experience = []
+    orchestrator._setup_requests = []
+    orchestrator._task_budget = {}
     orchestrator.cost_estimator = lambda context: CostEstimate(
         amount=2.0, unit="credits", basis="Candidate plan"
     )
     orchestrator.goal = "Improve the candidate"
     orchestrator.strategy_type = "generic"
     orchestrator.config_fingerprint = config_fingerprint({"cost": policy})
-    orchestrator._config_budget = {}
+    orchestrator._config_budget = load_config()["budget"]
+    orchestrator._status_reserve_seconds = None
+    orchestrator._fidelity_active = False
     orchestrator.budget_ledger = BudgetLedger()
     orchestrator.fidelity_spec = FidelitySpec.resolve({"mode": "off"})
     orchestrator.evaluation_maintainer = None

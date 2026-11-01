@@ -1,0 +1,48 @@
+{
+ "launch": [
+  "Initialized Kapso",
+  "kapso build started in a session of its own (pid 34393)",
+  "  log:     /home/ubuntu/proof/work/isolation-campaign.log"
+ ],
+ "status": "done",
+ "claude_sessions": [
+  {
+   "session": ".kapso/ideation/iter1/claude_code_claude-opus-5.stream.txt",
+   "plugin_tools": [],
+   "plugin_commands": [],
+   "servers": [
+    "gated-knowledge"
+   ]
+  },
+  {
+   "session": ".kapso/sessions/generic_exp_0/stream.jsonl",
+   "plugin_tools": [],
+   "plugin_commands": [],
+   "servers": [
+    "gated-knowledge"
+   ]
+  }
+ ],
+ "codex_sessions": [
+  {
+   "session": ".kapso/sessions/engine/repo_memory/1",
+   "exits": [
+    "error"
+   ],
+   "errors": [
+    "Codex CLI exited with code 1: Reading prompt from stdin...\n{\"type\":\"thread.started\",\"thread_id\":\"01a17b98-a7a5-7322-80c1-ae0580cf04e2\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"error\",\"message\":\"Quota exceeded. Check your plan and billing details.\"}\n{\"type\":\"turn.failed\",\"error\":{\"message\":\"Quota exceeded. Check your plan and billing details.\"}}\n"
+   ]
+  },
+  {
+   "session": ".kapso/sessions/engine/repo_memory/2",
+   "exits": [
+    "error"
+   ],
+   "errors": [
+    "Codex CLI exited with code 1: Reading prompt from stdin...\n{\"type\":\"thread.started\",\"thread_id\":\"01a17ba0-781e-7603-8237-6828f96f3c3c\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"error\",\"message\":\"Quota exceeded. Check your plan and billing details.\"}\n{\"type\":\"turn.failed\",\"error\":{\"message\":\"Quota exceeded. Check your plan and billing details.\"}}\n"
+   ]
+  }
+ ],
+ "codex_quota_refused": 2,
+ "codex_rules_files": []
+}

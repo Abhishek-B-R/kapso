@@ -1,8 +1,9 @@
 """Task-aware ideation lens planning for the generic strategy.
 
-Owns the lens planner/replanner feature: config normalization and
-validation, plan/revision parsing, the planner claude session, per-campaign
-plan + history file IO, and the design-axes / member-roster prompt briefs.
+Owns the lens planner/replanner feature: the planner's validation,
+plan/revision parsing (the design axes the planner names included), the
+planner session, per-campaign plan + history file IO, and the axes /
+member-roster prompt briefs.
 Stateless functions only — GenericSearch assembles arguments from its state
 and delegates here.
 """
@@ -11,96 +12,112 @@ import json
 import logging
 import os
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
-from kapso.core.prompt_loader import load_prompt, render_prompt
+from kapso.core.prompt_loader import load_prompt, optional_block, render_prompt
+from kapso.harness.staging import StagedHarness
 from kapso.execution.search_strategies.base import SearchNode
 from kapso.execution.search_strategies.generic import codex_ideation
+from kapso.execution.search_strategies.generic.ideation import WEB_TOOLS
+from kapso.core.roles import SessionRole
+from kapso.execution.coding_agents.factory import CodingAgentFactory
 
 logger = logging.getLogger(__name__)
 
-_LENS_PLANNER_KEYS = frozenset({"cli", "model", "effort", "timeout"})
 LENS_PLAN_FILENAME = "lens_plan.json"
 LENS_PLAN_HISTORY_FILENAME = "lens_plan_history.jsonl"
 
 
-DESIGN_AXES_DEFAULT: Tuple[str, ...] = (
-    "input representation — the features/joins/encodings fed to the model",
-    "training distribution — example construction, augmentation, weighting",
-    "model mechanism — estimator family, objectives, ensembling",
-    "decoding / post-processing — calibration, constraints, blending",
-    "validation protocol — splits/origins, gates, generalization estimation",
-)
+# The design axes of the solution space are the planner's: its first plan
+# names them (derived from the goal and the ideation page), a revision
+# restates every one with its status, and the judge reports the frontier
+# per axis while a plan exists (docs/plans/redesign/wp4-config.md).
+AXIS_LINE = re.compile(r"^\s*(\d+)[.)]\s*(\S.*?)\s*$")
 
 
-def normalize_design_axes(value: Any) -> Tuple[str, ...]:
-    """Task-declared design axes of the solution space.
-
-    The axes feed the lens planner/replanner axis-coverage contract and the
-    feedback generator's axis-frontier report. None selects the generic
-    default set; a task supplies its own vocabulary via the mode config.
-    """
-    if value is None:
-        return DESIGN_AXES_DEFAULT
-    if not isinstance(value, list) or not value:
-        raise ValueError("design_axes must be a non-empty list of strings")
-    axes: List[str] = []
-    for item in value:
-        if not isinstance(item, str) or not item.strip():
-            raise ValueError("design_axes entries must be non-empty strings")
-        axes.append(item.strip())
-    return tuple(axes)
+def numbered_list(text: str) -> Optional[List[str]]:
+    """The items of a list numbered from 1; None when a line is not."""
+    items: List[str] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        item = AXIS_LINE.match(line)
+        if item is None or int(item.group(1)) != len(items) + 1:
+            return None
+        items.append(item.group(2))
+    return items
 
 
-def normalize_ideation_lens_planner(value: Any) -> Optional[Dict[str, Any]]:
-    """Validate the optional task-aware lens planner config block."""
-    if value is None:
-        return None
-    if not isinstance(value, dict):
-        raise ValueError("ideation_lens_planner must be a mapping")
-    unknown = sorted(set(value) - _LENS_PLANNER_KEYS)
-    if unknown:
-        raise ValueError(
-            f"ideation_lens_planner has unknown keys: {', '.join(unknown)}"
-        )
-    if value.get("cli") != "claude_code":
-        raise ValueError(
-            "ideation_lens_planner.cli must be claude_code (the planner "
-            "needs the CLI's native WebSearch/WebFetch tools)"
-        )
-    model = value.get("model")
-    if not isinstance(model, str) or not model.strip():
-        raise ValueError("ideation_lens_planner.model must be a non-empty string")
-    timeout = value.get("timeout")
-    if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0):
-        raise ValueError("ideation_lens_planner.timeout must be a positive number")
-    return dict(value)
+def parse_axes(output: str, origin: str) -> List[str]:
+    """The `<axes>` tag's list; raises when the tag is missing, empty or
+    not numbered from 1 (the first plan fails loud, a restart is cheap)."""
+    match = re.search(r"<axes>(.*?)</axes>", output or "", re.DOTALL)
+    if match is None:
+        raise ValueError(f"{origin}: no <axes> tag")
+    axes = numbered_list(match.group(1))
+    if axes is None:
+        raise ValueError(f"{origin}: <axes> is not a list numbered from 1")
+    if not axes:
+        raise ValueError(f"{origin}: <axes> names no axis")
+    return axes
 
 
-def validate_lens_planner_against_ensemble(
-    planner: Optional[Dict[str, Any]],
-    ensemble: Optional[List[Dict[str, str]]],
+def validated_axes(value: Any, origin: str) -> List[str]:
+    """A plan record's axes: a non-empty list of non-empty strings."""
+    if (
+        not isinstance(value, list) or not value
+        or any(not isinstance(axis, str) or not axis.strip() for axis in value)
+    ):
+        raise ValueError(f"{origin} has no axes — delete it to replan")
+    return list(value)
+
+
+def axes_brief(axes: List[str]) -> str:
+    """Numbered axes block for prompts; empty without axes."""
+    return "\n".join(f"{i}. {axis}" for i, axis in enumerate(axes, 1))
+
+
+def current_plan_axes(workspace_dir: str) -> List[str]:
+    """The lens plan's axes, for the judge's frontier duty: empty when the
+    campaign has no plan (no planner, or none written yet)."""
+    plan_path = os.path.join(workspace_dir, ".kapso", LENS_PLAN_FILENAME)
+    if not os.path.isfile(plan_path):
+        return []
+    with open(plan_path, encoding="utf-8") as f:
+        return validated_axes(json.load(f).get("axes"), plan_path)
+
+
+def validate_lens_planner(
+    planner: Optional[SessionRole],
+    ensemble: Optional[List[SessionRole]],
 ) -> None:
-    """The planner owns every lens: static member lenses are forbidden with it."""
+    """The planner researches with Claude Code's native web tools and owns
+    every lens: a Codex host is refused, and static member lenses are
+    forbidden with it."""
     if planner is None:
         return
+    if planner.cli == "codex":
+        raise ValueError(
+            "search_strategy.params.ideation.lens_planner.cli: the planner researches "
+            "with Claude Code's native WebSearch/WebFetch tools; name a Claude Code host"
+        )
     if not ensemble:
         raise ValueError(
-            "ideation_lens_planner requires ideation_ensemble (there are no "
-            "members to design lenses for)"
+            "search_strategy.params.ideation.lens_planner needs an ensemble (there are "
+            "no members to design lenses for)"
         )
-    lensed = [i for i, member in enumerate(ensemble) if "lens" in member]
+    lensed = [i for i, member in enumerate(ensemble) if member.lens is not None]
     if lensed:
         raise ValueError(
-            "ideation_ensemble members "
+            "search_strategy.params.ideation.ensemble members "
             f"{', '.join(str(i) for i in lensed)} carry static lens keys — "
-            "remove them (the lens planner designs every lens) or disable "
-            "ideation_lens_planner"
+            "remove them (the lens planner designs every lens) or drop the lens_planner"
         )
 
 
 def parse_lens_plan(output: str, expected_count: int) -> Dict[str, Any]:
-    """Extract <lens_N> tags (member order) + <sources> from planner output."""
+    """The <axes>, the <lens_N> tags (member order) and <sources> of the
+    planner's output."""
     lenses = []
     for i in range(1, expected_count + 1):
         match = re.search(
@@ -114,18 +131,22 @@ def parse_lens_plan(output: str, expected_count: int) -> Dict[str, Any]:
         lenses.append(" ".join(match.group(1).split()))
     sources_match = re.search(r"<sources>(.*?)</sources>", output, re.DOTALL)
     return {
+        "axes": parse_axes(output, "lens planner output"),
         "lenses": lenses,
         "sources": sources_match.group(1).strip() if sources_match else "",
     }
 
 
-def parse_lens_revision(output: str, expected_count: int) -> Dict[str, Any]:
+def parse_lens_revision(output: str, expected_count: int, axes_count: int) -> Dict[str, Any]:
     """Classify a keep-or-revise replanner output; never raises.
 
     Returns one of:
       {"kind": "keep", "rationale": str}
-      {"kind": "revise", "lenses": [...], "sources": str, "rationale": str}
+      {"kind": "revise", "axes": [...], "lenses": [...], "sources": str, "rationale": str}
       {"kind": "invalid", "reason": str}
+    A revision restates every axis of the plan with its status in <axes>
+    (at least ``axes_count``, numbered from 1): a revision cannot erase an
+    unexplored dimension unstatused.
     `invalid` is a first-class outcome: the caller records it loudly and the
     previous validated plan stays in force — a mid-flight campaign must
     never die on a malformed revision.
@@ -146,12 +167,23 @@ def parse_lens_revision(output: str, expected_count: int) -> Dict[str, Any]:
                 ),
             }
         lenses.append(" ".join(match.group(1).split()))
+    axes_match = re.search(r"<axes>(.*?)</axes>", text, re.DOTALL)
+    axes = numbered_list(axes_match.group(1)) if axes_match else None
+    if axes is None or len(axes) < axes_count:
+        return {
+            "kind": "invalid",
+            "reason": (
+                "a revision restates every axis of the plan with its status "
+                f"in <axes> ({axes_count} numbered from 1)"
+            ),
+        }
     rationale = re.search(
         r"<revision_rationale>(.*?)</revision_rationale>", text, re.DOTALL
     )
     sources = re.search(r"<sources>(.*?)</sources>", text, re.DOTALL)
     return {
         "kind": "revise",
+        "axes": axes,
         "lenses": lenses,
         "sources": sources.group(1).strip() if sources else "",
         "rationale": (
@@ -162,20 +194,13 @@ def parse_lens_revision(output: str, expected_count: int) -> Dict[str, Any]:
     }
 
 
-def design_axes_brief(design_axes: Tuple[str, ...]) -> str:
-    """Numbered design-axes block for prompts."""
-    return "\n".join(
-        f"{i}. {axis}" for i, axis in enumerate(design_axes, 1)
-    )
-
-
-def member_roster_brief(ideation_ensemble: List[Dict[str, str]]) -> str:
+def member_roster_brief(ideation_ensemble: List[SessionRole]) -> str:
     """One line per ensemble member for the planner prompts."""
     return "\n".join(
-        f"- member {i + 1}: cli={m['cli']}, model={m['model']}"
+        f"- member {i + 1}: cli={m.cli}, model={m.model}"
         + (
             " (has native web search during ideation)"
-            if m["cli"] == "codex"
+            if m.cli == "codex"
             else ""
         )
         for i, m in enumerate(ideation_ensemble)
@@ -186,19 +211,16 @@ def run_lens_planner_session(
     prompt: str,
     ideation_dir: str,
     *,
-    planner: Dict[str, Any],
+    planner: SessionRole,
     bank_serving: Optional[Dict[str, str]] = None,
-    claude_auth_settings: Dict[str, Any],
     env_strip: List[str],
     env_defaults: Dict[str, str],
-    web_disallowed_tools: List[str],
-    ideation_web_search: bool,
-    session_effort: Optional[str],
+    clamped_timeout: Callable[[Optional[float]], Optional[float]],
     artifacts_dir: str,
+    staged: Optional[StagedHarness] = None,
 ):
-    """One planner/replanner claude session; returns (result, cost_usd)."""
-    from kapso.execution.coding_agents.base import CodingAgentConfig
-    from kapso.execution.coding_agents.adapters.claude_code_agent import ClaudeCodeCodingAgent
+    """One planner/replanner session on the planner's host; returns
+    (result, cost_usd)."""
     from kapso.gated_mcp import get_mcp_config
 
     # The planner is the campaign's direction-setter, so it gets the bank
@@ -210,37 +232,33 @@ def run_lens_planner_session(
         include_base_tools=False,
         gate_failure_policy="skip",
         bank_serving=bank_serving,
+        session=staged.session_id if staged is not None else None,
     )
     print(
-        f"[GenericSearch] Lens planner starting: {planner['model']} "
-        f"({'web-enabled' if ideation_web_search else 'web-OFF'}"
-        f"{', bank-served' if mcp_servers else ''})"
+        f"[GenericSearch] Lens planner starting: {planner.label}"
+        f"{' (bank-served)' if mcp_servers else ''}"
     )
-    config = CodingAgentConfig(
-        agent_type="claude_code",
-        model=planner["model"],
-        debug_model=planner["model"],
-        agent_specific={
-            **claude_auth_settings,
+    own = {
             "env_strip": env_strip,
             "env_defaults": env_defaults,
             "mcp_servers": mcp_servers,
             "allowed_tools": [
-                "Read", "WebSearch", "WebFetch",
+                "Read",
+                *(WEB_TOOLS if planner.web else []),
                 *[t for t in mcp_tools if t.startswith("mcp__")],
+                *(staged.allowed_tools if staged is not None else []),
             ],
-            "disallowed_tools": web_disallowed_tools,
-            "timeout": planner.get("timeout", 600),
+            "disallowed_tools": [] if planner.web else WEB_TOOLS,
+            "timeout": clamped_timeout(planner.timeout),
             "streaming": True,
             "planning_mode": False,
-            "effort": planner.get("effort", session_effort),
             "stream_artifact_path": codex_ideation.ideation_stream_path(
                 artifacts_dir, "lens_planner",
-                planner["model"],
+                planner.model,
             ),
-        },
-    )
-    agent = ClaudeCodeCodingAgent(config)
+    }
+    config = CodingAgentFactory.session_config(planner, own, staged)
+    agent = CodingAgentFactory.create(config)
     agent.initialize(ideation_dir)
     result = agent.generate_code(prompt)
     cost = agent.get_cumulative_cost()
@@ -264,16 +282,17 @@ def resolve_member_lenses(
     problem: str,
     ideation_dir: str,
     *,
-    ideation_lens_planner: Optional[Dict[str, Any]],
-    ideation_ensemble: List[Dict[str, str]],
+    ideation_lens_planner: Optional[SessionRole],
+    ideation_ensemble: List[SessionRole],
     workspace_dir: str,
     iteration_count: int,
     shared_artifacts_brief: str,
-    design_axes: Tuple[str, ...],
     node_history: List[SearchNode],
     campaign_state_brief: Callable[[], str],
     get_best_experiment: Callable[[], Optional[SearchNode]],
     run_planner_session: Callable[[str, str], tuple],
+    domain_guidance: str = "",
+    experience_intro: str = "",
 ) -> tuple:
     """Task-aware lenses, replanned per iteration; returns (lenses, cost).
 
@@ -301,6 +320,7 @@ def resolve_member_lenses(
     if os.path.isfile(plan_path):
         with open(plan_path, encoding="utf-8") as f:
             plan = json.load(f)
+        plan["axes"] = validated_axes(plan.get("axes"), plan_path)
         if len(plan["lenses"]) != expected:
             raise ValueError(
                 f"{plan_path} holds {len(plan['lenses'])} lenses for "
@@ -322,7 +342,8 @@ def resolve_member_lenses(
                 "member_roster": roster,
                 "lens_count": str(expected),
                 "shared_artifacts_brief": shared_artifacts_brief,
-                "design_axes": design_axes_brief(design_axes),
+                "domain_guidance": optional_block(domain_guidance),
+                "experience_intro": optional_block(experience_intro),
             },
         )
         result, cost = run_planner_session(prompt, ideation_dir)
@@ -332,15 +353,18 @@ def resolve_member_lenses(
             )
         parsed = parse_lens_plan(result.output, expected)
         plan = {
+            "axes": parsed["axes"],
             "lenses": parsed["lenses"],
             "sources": parsed["sources"],
-            "planner_model": planner["model"],
+            "planner_model": planner.model,
             "iteration": iteration_count,
             "decision": "initial",
             "rationale": "",
         }
         write_lens_plan(plan_path, plan)
         append_lens_history(history_path, plan)
+        for i, axis in enumerate(plan["axes"], 1):
+            print(f"[GenericSearch] Axis {i}: {axis}")
         for i, lens in enumerate(plan["lenses"], 1):
             print(f"[GenericSearch] Lens {i}: {lens}")
         return plan["lenses"], cost
@@ -376,7 +400,7 @@ def resolve_member_lenses(
             "member_roster": roster,
             "lens_count": str(expected),
             "shared_artifacts_brief": shared_artifacts_brief,
-            "design_axes": design_axes_brief(design_axes),
+            "axes": axes_brief(plan["axes"]),
             "campaign_state": campaign_state_brief(),
             "plan_iteration": str(plan.get("iteration", "?")),
             "previous_lenses": previous_lenses,
@@ -384,19 +408,22 @@ def resolve_member_lenses(
             "previous_rationale": plan.get("rationale") or "(none recorded)",
             "recent_feedback": recent_feedback,
             "champion_solution": champion_solution,
+            "domain_guidance": optional_block(domain_guidance),
+            "experience_intro": optional_block(experience_intro),
         },
     )
     result, cost = run_planner_session(prompt, ideation_dir)
     revision = (
-        parse_lens_revision(result.output, expected)
+        parse_lens_revision(result.output, expected, len(plan["axes"]))
         if result.success
         else {"kind": "invalid", "reason": f"session failed: {result.error}"}
     )
     if revision["kind"] == "revise":
         plan = {
+            "axes": revision["axes"],
             "lenses": revision["lenses"],
             "sources": revision["sources"],
-            "planner_model": planner["model"],
+            "planner_model": planner.model,
             "iteration": iteration_count,
             "decision": "revise",
             "rationale": revision["rationale"],
@@ -421,6 +448,7 @@ def resolve_member_lenses(
                 "iteration": iteration_count,
                 "decision": "keep",
                 "rationale": revision["rationale"],
+                "axes": plan["axes"],
                 "lenses": plan["lenses"],
             },
         )

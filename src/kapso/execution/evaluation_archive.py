@@ -23,6 +23,7 @@ finals under the head — returns an empty selection for the caller to report.
 
 from __future__ import annotations
 
+import glob
 import json
 import math
 import os
@@ -104,6 +105,42 @@ def infer_session_finals(runs_root: Path) -> None:
             f"[evaluation-archive] session {session}: final={final.name} "
             f"(+{len(runs) - 1} superseded)"
         )
+
+
+def label_run_of_record(archive_glob: Optional[str], manifest: Mapping, valid: bool) -> None:
+    """The engine's own labelling at score-of-record time: find the archive
+    root under `archive_glob` that holds the manifest's run and stamp it
+    there (`finalize_session_run`). No glob means no registered archive and
+    nothing to label; a full-fidelity manifest whose run no root holds is an
+    error, since the grader archived it before printing the line; a run
+    name more than one root holds is refused rather than guessed, since
+    every task's archive numbers its runs from one and a label written
+    into another task's archive would promote a run that is not this
+    session's (a runner names the task's own root)."""
+    if not archive_glob or manifest["fidelity"] != "full":
+        return
+    run_name = manifest["run"]
+    if not run_name:
+        raise ValueError(
+            "full-fidelity manifest of record carries no run name — "
+            "grader/archive generation mismatch"
+        )
+    holders = [
+        Path(runs_root) for runs_root in sorted(glob.glob(archive_glob))
+        if (Path(runs_root) / run_name / "private" / "selection.json").is_file()
+    ]
+    if len(holders) > 1:
+        raise ValueError(
+            f"the manifest of record names {run_name}, and more than one archive "
+            f"under {archive_glob} holds a run of that name ({', '.join(str(h) for h in holders)}); "
+            "name the task's own archive root"
+        )
+    if not holders:
+        raise ValueError(
+            f"the manifest of record names {run_name}, and no archive under "
+            f"{archive_glob} holds it"
+        )
+    finalize_session_run(holders[0], manifest, valid)
 
 
 def finalize_session_run(runs_root: Path, manifest: Mapping, valid: bool) -> None:

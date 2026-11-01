@@ -26,6 +26,8 @@ MINING_CONFIG = {
     "critic_model": "critic-model",
     "timeout_minutes": 1,
     "repair_rounds": 1,
+    "refusal_relaunches": 1,
+    "run_root": "learning/mining",
 }
 
 
@@ -33,6 +35,8 @@ class FakeResult:
     def __init__(self, output):
         self.success = True
         self.output = output
+        self.error = None
+        self.refused = False
 
 
 class FakeLead:
@@ -43,6 +47,7 @@ class FakeLead:
         self.writers = list(writers)
         self.prompts = []
         self.workspace = None
+        self.cleaned_up = False
 
     def initialize(self, workspace):
         self.workspace = workspace
@@ -51,6 +56,11 @@ class FakeLead:
         self.prompts.append(prompt)
         writer = self.writers.pop(0)
         return FakeResult(writer(self.workspace))
+
+    def cleanup(self):
+        """The adapter's own staging beside the session (its MCP config
+        directory) goes with the session; the frames call this."""
+        self.cleaned_up = True
 
 
 class FakeFactory:

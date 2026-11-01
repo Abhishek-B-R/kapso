@@ -1,23 +1,38 @@
-# Generic Problem Runner Configuration
-# Configuration for solving arbitrary problems
+# Kapso's configuration: the packaged defaults.
 #
-# Usage:
-#   kapso evolve --goal "Your problem..." --mode GENERIC
+# Every tunable lives here and nothing is read from the environment. Your
+# own file carries only what you change and is layered over this one
+# (`kapso build --config kapso-config.yaml`, `Kapso(config="kapso-config.yaml")`):
+# nested mappings merge key by key, scalars and lists replace. A top-level
+# key this file does not name is refused by name; `benchmark:` is reserved
+# for a benchmark runner's own settings and never read by the engine.
+# `kapso doctor --show-config` prints what a run will use.
 #
-# Available Search Strategies:
-#   - generic: Claude Code + MCP gates for ideation and implementation
+# Credentials never live here: the coding-agent CLIs hold their own logins,
+# and the keys the SDKs need (OPENAI_API_KEY for embeddings, LEEROOPEDIA_API_KEY
+# for the hosted gate) are read from `.env` by the code that needs them.
 #
-# Knowledge Search Backends (via KnowledgeSearchFactory):
-#   - kg_graph_search: Weaviate embeddings + Neo4j graph (for wiki pages)
-#   - kg_llm_navigation: Neo4j KG with LLM-guided navigation (for JSON KG)
-#
-# Experiment History:
-#   - Stored in .kapso/experiment_history.json
-#   - Accessed via MCP tools (get_top_experiments, get_recent_experiments, search_similar_experiments)
-#   - Optionally indexed in Weaviate for semantic search (knowledge_search.params.weaviate_url)
+# Design: docs/plans/redesign/wp4-config.md; the reference page:
+# docs/reference/configuration.mdx.
 
-# Default mode to use
-default_mode: GENERIC
+# =============================================================================
+# Hosts — the coding-agent CLIs a build may run on, and what each is asked
+# for. A build's session names its host by role (search_strategy.params
+# below) or inherits `params.host`; the model is the host's unless the role
+# names one. The other keys are the adapter's own settings: `auth_mode` for
+# Claude Code's login (oauth: the CLI's stored login; api_key: ANTHROPIC_API_KEY;
+# auto: either), `effort` for the reasoning effort, `vertex_project` and
+# friends for the Vertex adapter. A host must be able to serve its model: a
+# Claude model on the codex CLI is refused by a ChatGPT login, and the
+# preflight refuses the pair before a session runs.
+# =============================================================================
+hosts:
+  claude_code:
+    model: "claude-opus-5"
+    auth_mode: "oauth"
+  codex:
+    model: "gpt-5.6-sol"
+    effort: "xhigh"              # OpenAI's reasoning ceiling
 
 # =============================================================================
 # Inference — every non-embedding completion runs through the configured
@@ -33,6 +48,11 @@ inference:
     effort: "xhigh"
     sandbox: "read-only"          # inference sessions never write
     timeout_seconds: 900
+    web_search: false
+    # The adapter's own settings for every inference session (an
+    # openai_compatible endpoint's base_url and api_key_env, say); a
+    # role's agent_specific merges over it.
+    agent_specific: {}
   roles:
     # Web research — codex --search carries the live-web tool.
     research: {web_search: true, timeout_seconds: 1800}
@@ -79,242 +99,333 @@ gates:
     tool_timeout_seconds: 600
 
 # =============================================================================
-# Deployment — the two sessions deploy() runs: the selector (picks a target
-# for DeployStrategy.AUTO) and the adapter (rewrites a copy of the solution
-# for the target). One coding agent and one model for both. The agent must
-# be able to serve the model: a Claude model name on the codex CLI is refused
-# by a ChatGPT login (seen 2026-09-07 with a hardcoded claude-opus-4-5).
+# Deployment (docs/plans/redesign/wp5-deploy.md) — the session deploy()
+# runs on a copy of the solution, a spec over the hosts table like the
+# build's roles, plus the target it deploys to when the call names none,
+# the deadlines, and the host ports a deployment takes.
 # =============================================================================
 deployment:
-  coding_agent: claude_code
-  model: "claude-opus-5"
+  target: auto         # what deploy() targets when the call names none: auto, a bundled target (local, docker, modal, bentoml, langgraph) or a harness's
+  cli: null            # the host the deployment session runs on, an entry of hosts; null follows search_strategy.params.host
+  model: null          # the host entry's when null
+  effort: null
+  timeout: 1800        # the deployment session's deadline, seconds, its one resume included
+  call_timeout: 300    # one run() call of the deployed software, seconds
+  script_timeout: 600  # one lifecycle script of its target (start, stop, health, logs), seconds
+  port_base: 8000      # the host ports a deployment takes: port_base + (hash + number) % port_span, the first free
+  port_span: 1000
 
 # =============================================================================
-# Platform defaults — the base layer under every mode of every config file
+# Harness — the domain layer a build loads (docs/research/harness-design.md).
+# Nothing here names a harness: what a run loads is said at the call, on
+# the command line, or in the brief.
 # =============================================================================
-# load_mode_config() resolves a mode as deep_merge(defaults, modes[<mode>]):
-# nested dicts merge key-by-key; scalars and lists replace wholesale. A key
-# here is inherited by any mode (platform or benchmark) that does not
-# override it — keep this layer to values that are correct for every
-# deployment; anything modes legitimately differ on stays per-mode.
-defaults:
-  search_strategy:
-    params:
-      # Platform execution cost, separate from model spend in USD.
-      cost:
-        enabled: false
-        estimator: null
-        cap_per_candidate: null
-        campaign_budget: null
-        unit: "credits"
-        weight: 0.0
-      # Sampler behind `parent_policy: weighted`. Lower temperature moves
-      # toward `best`, higher toward uniform; the offspring penalty
-      # down-weights parents that were already expanded.
-      parent_sampling:
-        temperature: 1.0
-        offspring_penalty: 1.0
-        seed: 0
-      # Characters of line-numbered changed-file text one RepoMemory update
-      # call carries. Past it the update is windowed into several calls of
-      # whole files, so an experiment that commits large data or vendored
-      # files still gets a memory update instead of a prompt past the
-      # model's context window.
-      repo_memory_update_payload_max_chars: 400000
-  models:
-    # Semantic search over past experiments (`search_similar_experiments`
-    # and the ideation gate's similarity lookup) embeds every node's
-    # solution with this model through OPENAI_API_KEY. Null turns it off:
-    # the experiment store is recency-only and no OpenAI key is needed.
-    # Turn it on with an OpenAI embedding model, e.g. "text-embedding-3-small".
-    embedding: null
-  budget:
-    # Durable-clock + status heartbeat interval. Feeds the orchestrator's
-    # checkpoint heartbeat daemon (elapsed_seconds and the spend stay fresh
-    # between boundary checkpoints) and the observability layer's liveness signal:
-    # a status file whose heartbeat is 3 intervals stale renders STALLED.
-    checkpoint_heartbeat_seconds: 60
-  retry:
-    # Hard per-request wall clock handed to the provider client. Without it
-    # a connection the server abandons mid-stream blocks the calling thread
-    # forever (first live wedge: rel-event/user-ignore re-run, 2026-08-09).
-    request_timeout_seconds: 600
-  # The campaign inbox (docs/research/evolve-hub-design.md v4): a session
-  # that needs something only a person can provide asks through the
-  # request_from_user tool and is stopped; the campaign pauses and exits;
-  # `kapso inbox reply` resumes it and continues the very session.
-  inbox:
-    # Off means no session gets the tool and nothing ever pauses.
-    enabled: true
-    # After request_from_user returns, how long the session gets to end
-    # its own turn before the adapter ends it.
-    stop_grace_seconds: 120
-    # One line per launched campaign, so `kapso inbox` with no campaign
-    # can list every campaign waiting on a person.
-    registry: "~/.kapso/campaigns.jsonl"
-  # `kapso report`: how many top candidates the leaderboard and its
-  # diff section list; --top overrides it for one run.
-  report:
-    leaderboard_size: 5
+harness:
+  store: ~/.kapso/harnesses          # fetched git references, one directory per <slug>@<rev>
+  page_warning_lines: 40             # `check` warns on an always-on page longer than this
+  setup_minutes: 20                  # the harness setup session's timeout, clamped by the budget
+  verification_minutes: 10           # each verification session's timeout, clamped by the budget
+  verification_attempts: 2           # sessions run for one attempt before it is recorded unverified
+  server_tool_timeout_seconds: 600   # a harness server's per-call timeout where the host takes one (Codex)
+
+# The experience homes (docs/plans/redesign/wp3-experience.md). Your own
+# bank is learning.bank.local_path; the hosted gate is gates.leeroopedia.
+experience:
+  banks: ~/.kapso/experience/banks      # banks you read, one clone per <slug>@<rev> with a fetch record beside
+  indexes: ~/.kapso/experience/indexes  # corpora you ingested with `kapso experience add --name <n>`, one directory each
+  # `kapso experience add --research "<question>"`: the modes the web
+  # search answers in (idea, implementation, study) and its depth (light,
+  # deep); the findings are ingested as they come.
+  research_modes: [idea, implementation]
+  research_depth: deep
+  # What a host session (`kapso-mcp`, the plugin's server) is served when
+  # `--experience` is absent: references in the grammar `kapso experience
+  # list` shows (mine, mine:all, a bank path or git reference, an index
+  # name). A listed source that does not exist leaves its gate off, named
+  # in the server's instructions; `kapso learn` offers `[mine:all]`.
+  session_sources: []
 
 # =============================================================================
-# Available configuration modes
+# The build's search: the generic strategy and its parameters. Three roles
+# name the build's sessions — ideation, implementation (the verification,
+# the harness setup and the difficulties reconstruction sessions follow it)
+# and the judge — each with `cli`, `model`, `effort` and `timeout` (seconds;
+# absent means no deadline beyond the budget's clamp), the host's values
+# where the role says nothing. `kapso build --coding-agent <cli>` sets
+# `host` for the campaign. A parameter this block does not name is refused
+# by name.
 # =============================================================================
-modes:
-  # ===========================================
-  # Production Mode
-  # ===========================================
-  
-  # Standard configuration for generic problems
-  # Uses Claude Code with MCP gates for ideation and implementation
-  GENERIC:
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        implementation_model: "claude-opus-5"
-        auth_mode: "oauth"
-        gate_failure_policy: "warn"
-        ideation_gates: ["research", "experiment_history", "repo_memory", "leeroopedia"]
-        implementation_gates: ["research", "repo_memory", "leeroopedia"]
-
-    retry:
-      max_attempts: 2
-      initial_delay_seconds: 5
-      max_delay_seconds: 60
-      multiplier: 2
-      jitter: true
-    
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-      debug_model: "claude-opus-5"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-    
-    feedback_generator:
-      type: "claude_code"
-      model: "claude-opus-5"
-      debug_model: "claude-opus-5"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-    
-    # Knowledge search configuration
-    # All model/collection details are in knowledge_search.yaml presets.
-    # Use index_kg() to index data, then pass kg_index to Kapso.
-    knowledge_search:
-      type: "kg_graph_search"
-      enabled: true
-      preset: "DEFAULT"
-    
-    # Learner configuration for kapso.learn()
-    learner:
-      # Each learning phase is one Claude Code session. `effort` is pinned here
-      # so a session never inherits the reasoning effort from the machine's own
-      # Claude settings. `timeout: null` means no deadline: a phase runs until
-      # it finishes (a number of seconds imposes one).
-      ingestor:
-        # The coding agent that runs the sessions: claude_code (first-party
-        # login), or vertex_claude_code for a Vertex AI open model, which
-        # takes its settings from agent_specific (vertex_project, ...).
-        cli: "claude_code"
-        agent_specific: {}
-        model: "claude-opus-5-5"
-        auth_mode: "oauth"
-        effort: "xhigh"
-        timeout: null
-        cleanup: true
-        cleanup_staging: false
-        fail_on_validation_errors: true
-        # Publish each extracted Workflow as a runnable GitHub repository
-        # (after validation; `gh` reads GH_TOKEN). Off by default: a run then
-        # produces pages only, and Workflow pages keep a placeholder URL.
-        # learn_knowledge(github_org=..., is_private=...) turns it on for a call.
-        publish_workflows: false
-        github_repo_visibility: "private"
-      merger:
-        # The coding agent that runs the sessions: claude_code (first-party
-        # login), or vertex_claude_code for a Vertex AI open model, which
-        # takes its settings from agent_specific (vertex_project, ...).
-        cli: "claude_code"
-        agent_specific: {}
-        model: "claude-opus-5-5"
-        auth_mode: "oauth"
-        effort: "xhigh"
-        timeout: null
-
-  # ===========================================
-  # Testing Modes
-  # ===========================================
-  
-  # Minimal configuration for quick testing
-  MINIMAL:
-    search_strategy:
-      type: "generic"
-      params:
-        idea_generation_model: "claude-opus-5"
-        implementation_model: "claude-opus-5"
-        auth_mode: "oauth"
-        gate_failure_policy: "warn"
-        ideation_gates: ["research", "experiment_history", "repo_memory", "leeroopedia"]
-        implementation_gates: ["research", "repo_memory", "leeroopedia"]
-
-    retry:
-      max_attempts: 2
-      initial_delay_seconds: 5
-      max_delay_seconds: 60
-      multiplier: 2
-      jitter: true
-    
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-      debug_model: "claude-opus-5"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-    
-    feedback_generator:
-      type: "claude_code"
-      model: "claude-opus-5"
-      debug_model: "claude-opus-5"
-      agent_specific:
-        auth_mode: "oauth"
-        streaming: true
-    
-    knowledge_search:
-      type: "kg_llm_navigation"
+search_strategy:
+  type: "generic"
+  params:
+    host: "claude_code"
+    ideation:
+      # The role's own host, model, effort and deadline (seconds); null
+      # takes the host's (`host` above and its entry in `hosts`), and no
+      # deadline beyond the budget's clamp.
+      cli: null
+      model: null
+      effort: null
+      timeout: null
+      # The bundled MCP gates the session mounts: research (web), the
+      # experiment history (past attempts) and the repo memory; a loaded
+      # bank or index mounts its own gate when it is loaded.
+      gates: ["research", "experiment_history", "repo_memory"]
+      # The native web tools (Claude Code's WebSearch and WebFetch, Codex's
+      # --search): the engine's permission boundary, which the selector
+      # and the lens planner follow. A harness whose protocol forbids the
+      # web on a module lists a hook there as well.
+      web: true
+      # Candidates each member is asked for; with one member and one
+      # candidate no selector runs.
+      candidates_per_member: 1
+      # Parallel members [{cli, model?, effort?, lens?}, …] pooled by a
+      # selector {cli, model?, effort?}; a lens_planner {cli, model?,
+      # effort?, timeout} designs each member's lens per iteration and
+      # names the design axes the judge reports on; ensemble_time_split
+      # {member_fraction, selector_fraction, selector_min_seconds?} carves
+      # the ideation clamp between the members and the selector (absent:
+      # each role takes the whole clamp).
+      ensemble: null
+      selector: null
+      lens_planner: null
+      ensemble_time_split: null
+    implementation:
+      cli: null
+      model: null
+      effort: null
+      timeout: null
+      gates: ["research", "repo_memory"]
+      web: true
+      # A second model tried once when the session crashes (a provider's
+      # safety kill); null retries nothing.
+      fallback_model: null
+    # The feedback session that judges every attempt.
+    judge:
+      cli: null
+      model: null
+      effort: null
+      timeout: null
+    # A gate the machine cannot serve: skip it, warn and go on, or error.
+    gate_failure_policy: "warn"
+    # Whether the judge's stop vote ends the campaign: true for a task with a
+    # goal to reach; false for open-ended maximisation (a contest has no
+    # "achieved", so the vote is advisory and the budget is the only clock).
+    honor_agent_stop: true
+    # The branch a new attempt starts from: best (the champion) or baseline.
+    parent_policy: "best"
+    # Behind `parent_policy: weighted`: lower temperature moves toward
+    # `best`, higher toward uniform; the offspring penalty down-weights
+    # parents that were already expanded; the seed makes a resume draw
+    # the parent it would have drawn uninterrupted.
+    parent_sampling:
+      temperature: 1.0
+      offspring_penalty: 1.0
+      seed: 0
+    # Parallel implementation lanes per iteration (the selector ranks that
+    # many candidates); expansion_lane_env pins each lane's environment,
+    # one {VAR: value} mapping per lane.
+    node_expansion_value: 1
+    expansion_lane_env: null
+    # Environment variables stripped from every session (credential
+    # containment), and set-if-absent defaults for every session.
+    env_strip: []
+    session_env_defaults: {}
+    # A campaign-level cache the sessions share (null: under the campaign).
+    shared_cache_dir: null
+    # Where a registered evaluation's archived runs are recovered from
+    # (a glob of run archive parents); null recovers nothing.
+    registered_evaluation_archive_glob: null
+    # The repo memory's failure policy (warn or fail) and its retries.
+    repo_memory_failure_policy: "warn"
+    repo_memory_max_retries: 1
+    # Characters of line-numbered changed-file text one repo-memory update
+    # call carries; past it the update is windowed into several calls of
+    # whole files, so an experiment that commits large files still gets a
+    # memory update instead of a prompt past the model's context window.
+    repo_memory_update_payload_max_chars: 400000
+    # Platform execution cost, separate from model spend in USD.
+    cost:
       enabled: false
-    
-    # Learner configuration for kapso.learn()
-    learner:
-      ingestor:
-        # The coding agent that runs the sessions: claude_code (first-party
-        # login), or vertex_claude_code for a Vertex AI open model, which
-        # takes its settings from agent_specific (vertex_project, ...).
-        cli: "claude_code"
-        agent_specific: {}
-        model: "claude-opus-5-5"
-        auth_mode: "oauth"
-        effort: "xhigh"
-        timeout: null
-        cleanup: true
-        cleanup_staging: false
-        fail_on_validation_errors: true
-        publish_workflows: false
-        github_repo_visibility: "private"
-      merger:
-        # The coding agent that runs the sessions: claude_code (first-party
-        # login), or vertex_claude_code for a Vertex AI open model, which
-        # takes its settings from agent_specific (vertex_project, ...).
-        cli: "claude_code"
-        agent_specific: {}
-        model: "claude-opus-5-5"
-        auth_mode: "oauth"
-        effort: "xhigh"
-        timeout: null
+      estimator: null
+      cap_per_candidate: null
+      campaign_budget: null
+      unit: "credits"
+      weight: 0.0
+
+# Knowledge search over an ingested corpus: how an index (`kapso experience
+# add --repo|--research`) is built and searched. The model and collection
+# details are knowledge_search.yaml presets; a build searches the index it
+# loads (`--experience <name>`).
+knowledge_search:
+  type: "kg_graph_search"
+  preset: "DEFAULT"
+  # The store's own parameters over the preset's (weaviate_url,
+  # embedding_base_url, …): an open namespace, empty by default.
+  params: {}
+
+# The ingest's two sessions (`kapso experience add --repo|--research`).
+# `effort` is pinned so a session never inherits the machine's own Claude
+# settings; `timeout: null` means no deadline.
+learner:
+  ingestor:
+    # The coding agent that runs the sessions: claude_code (first-party
+    # login), or vertex_claude_code for a Vertex AI open model, which
+    # takes its settings from agent_specific (vertex_project, ...).
+    cli: "claude_code"
+    agent_specific: {}
+    model: "claude-opus-5-5"
+    auth_mode: "oauth"
+    effort: "xhigh"
+    timeout: null
+    cleanup: true
+    cleanup_staging: false
+    fail_on_validation_errors: true
+    # Publish each extracted Workflow as a runnable GitHub repository
+    # (after validation; `gh` reads GH_TOKEN). Off by default: a run then
+    # produces pages only, and Workflow pages keep a placeholder URL.
+    publish_workflows: false
+    github_repo_visibility: "private"
+  merger:
+    cli: "claude_code"
+    agent_specific: {}
+    model: "claude-opus-5-5"
+    auth_mode: "oauth"
+    effort: "xhigh"
+    timeout: null
+
+# Bounded exponential backoff for transient model failures, and the hard
+# per-request wall clock handed to the provider client (without it a
+# connection the server abandons mid-stream blocks the calling thread
+# forever).
+retry:
+  max_attempts: 2
+  initial_delay_seconds: 5
+  max_delay_seconds: 60
+  multiplier: 2
+  jitter: true
+  request_timeout_seconds: 600
+
+models:
+  # Semantic search over past experiments (`search_similar_experiments`
+  # and the ideation gate's similarity lookup) embeds every node's
+  # solution with this model through OPENAI_API_KEY. Null turns it off:
+  # the experiment store is recency-only and no OpenAI key is needed.
+  # Turn it on with an OpenAI embedding model, e.g. "text-embedding-3-small".
+  embedding: null
+
+# =============================================================================
+# The budget, in the words of the brief's Budget line and the build's flags:
+# the brief's values win over these, a call's over the brief's.
+# =============================================================================
+budget:
+  # Experiments the campaign may run when neither the brief nor the call
+  # names a cap.
+  experiments: 10
+  # The wall clock in minutes (null: unbounded) and the model spend in USD
+  # (null: unbounded, best effort).
+  minutes: null
+  usd: null
+  # Kept out of the search for finishing: the last attempt's evaluation,
+  # verification and judgment run inside it, and the delivery after them.
+  # Null derives it each round from those obligations (the harness's
+  # verification minutes, the judge's observed duration, the delivery's
+  # protected slice); a number wins; either is bounded by a quarter of
+  # the budget, so a short budget keeps its search.
+  reserve_minutes: null
+  # A round is admitted when the searchable remainder covers the larger
+  # of this floor (seconds) and the previous round's own duration.
+  min_iteration_seconds: 60
+  # Below this an agent session cannot do useful work: a session whose
+  # deadline would be clamped to it is not launched.
+  min_agent_timeout_seconds: 60
+  # What the judge is kept, in seconds, before one has been observed in
+  # the campaign (a judge takes minutes): the round's reserve for it and
+  # the obligation the evaluation and the verification leave standing, so
+  # a first attempt's verification cannot run the remainder down to the
+  # floor and lose the attempt unjudged. A judge that has been observed
+  # is kept its own last duration.
+  judge_reserve_seconds: 300
+  # Durable-clock + status heartbeat interval. Feeds the orchestrator's
+  # checkpoint heartbeat daemon (elapsed_seconds and the spend stay fresh
+  # between boundary checkpoints) and the observability layer's liveness signal:
+  # a status file whose heartbeat is 3 intervals stale renders STALLED.
+  checkpoint_heartbeat_seconds: 60
+  # `kapso build --output <campaign> --stop`: how long the campaign's
+  # processes get after SIGTERM before SIGKILL ends them.
+  stop_grace_seconds: 10
+  # How often the stop looks whether they are gone, while it waits.
+  stop_poll_seconds: 0.1
+  # Budget-aware fidelity (docs/evolve/budget-aware-experimentation.mdx):
+  # fast-fidelity probes under a committed full-size run, with the
+  # evaluation maintainer's timing model. `off` runs every attempt at full
+  # fidelity; `on` or `auto` need the maintainer enabled.
+  fidelity:
+    mode: "off"
+    # The fraction of the budget escrowed for the committed full-size run.
+    committed_run_fraction: 0.45
+    # Full runs the search affords before probes pay; the margin a probe
+    # must clear to be promoted; the caps on full runs and full
+    # evaluations; the calibration pairs the timing model needs; whether
+    # the endgame validates the champion at full fidelity.
+    min_affordable_full_runs: 4
+    promotion_margin: 0.02
+    max_full_runs: 2
+    max_full_evals: 3
+    calibration_min_pairs: 3
+    endgame_validate: true
+    # The fast fractions: the build's (null: no fast build dial) and the
+    # evaluation's.
+    build:
+      fast_fraction: null
+    eval:
+      fast_fraction: 0.15
+
+# The campaign inbox (docs/research/evolve-hub-design.md v4): a session
+# that needs something only a person can provide asks through the
+# request_from_user tool and is stopped; the campaign pauses and exits;
+# `kapso inbox reply` resumes it and continues the very session.
+inbox:
+  # Off means no session gets the tool and nothing ever pauses.
+  enabled: true
+  # After request_from_user returns, how long the session gets to end
+  # its own turn before the adapter ends it.
+  stop_grace_seconds: 120
+  # One line per launched campaign, so `kapso inbox` with no campaign
+  # can list every campaign waiting on a person.
+  registry: "~/.kapso/campaigns.jsonl"
+
+# `kapso report`: how many top candidates the leaderboard and its diff
+# section list; --top overrides it for one run.
+report:
+  leaderboard_size: 5
+
+# The evaluation maintainer: its own sessions calibrate and register the
+# evaluator a build measures with, and protect it file by file
+# (docs/evolve/evaluation-integrity.mdx). Off by default: `enabled: true`
+# turns it on, its session on the build's host unless cli, model, effort
+# or timeout say otherwise.
+evaluation_maintainer:
+  enabled: false
+  cli: null
+  model: null
+  effort: null
+  timeout: null
+  # The fast-fidelity calibration run: its subsample seed and fraction,
+  # its timeout, and the full-run threshold above which a fast variant is
+  # registered at all; the overhead factor pads the timing model.
+  subsample_seed: 1337
+  calibration_fraction: 0.03
+  calibration_timeout_seconds: 900
+  fast_variant_threshold_minutes: 20
+  overhead_factor: 1.25
+  # Evaluator change requests a campaign may file, and the fraction of the
+  # time budget past which they are deferred (a ruler change near the
+  # deadline orphans the final selection).
+  max_change_requests: 3
+  transition_freeze_fraction: 0.85
+  # Data paths the maintainer protects beside the evaluator.
+  protected_data_paths: []
 
 # =============================================================================
 # Learning — the learn-from-trajectories system
@@ -336,13 +447,13 @@ learning:
   # Import reports land under the run-dir home (doubt D6: repo-root
   # `learning/`, gitignored, synced to the artifacts bucket).
   import_report_dir: learning/imports
-  # Status files for learn / learn_knowledge (observability design §1);
-  # evolve's lives with its workspace at W/.kapso/status.json. Watch any
+  # Status files for learn / experience (observability design §1);
+  # a build's lives with its workspace at W/.kapso/status.json. Watch any
   # of them with `kapso watch <path>`.
   status_dir: learning/status
   harvest:
     # Campaign drivers save finished campaigns into the store under the
-    # strict contract (P1.G — the evolve->learn bridge). Store stays
+    # strict contract (P1.G — the build->learn bridge). Store stays
     # local-only until `trajectory_store.remote` is set (doubt D2).
     enabled: true
   mining:
@@ -359,6 +470,14 @@ learning:
     critic_model: "claude-fable-5"
     timeout_minutes: 240
     repair_rounds: 1
+    # A lead turn the model's safeguards refused is launched again this
+    # many times (a fresh session, the same prompt) before the lesson
+    # fails; the learn status notes each relaunch.
+    refusal_relaunches: 1
+    # A mining run's own directory, `<run_root>/<trajectory>/`: the lead's
+    # harness staging record and stream (`.kapso/sessions/lead/`) when the
+    # lesson runs with a harness. The mined view itself lives in the bundle.
+    run_root: learning/mining
   retriever:
     # Serving v2 (serving-agentic-redesign.md): no selection knobs — the
     # index carries the whole eligible set and the reading agent selects.
@@ -395,19 +514,22 @@ learning:
     # The bank home (design §3.1): a local bare repo, created automatically
     # on first learn(). Every update run clones this home, edits, and pushes
     # back — single writer per bank. Sharing is git-native: the home's own
-    # `origin` remote (attached via `kapso bank connect <url>`) is the push
+    # `origin` remote (attached via `kapso experience share <url>`) is the push
     # target; no origin means learn() stays local-only. There is no remote
     # key here — a bank carries its remote itself, like any git repo. One
     # bank per user, under ~/.kapso like the trajectory store: at
     # data/kapso-bank.git it was copied into campaigns with --data-dir data.
     local_path: ~/.kapso/bank.git
   serving:
-    # Serving v2 (serving-agentic-redesign.md): when enabled, campaign
-    # launches pin the bank, the knowledge intro rides after the static
-    # context notes, and ideation/implementation sessions get the three
-    # bank tools — bank_index / bank_get_card / bank_get_card_with_evidence
-    # (the feedback judge never does). Per-benchmark off-switch.
-    enabled: false
+    # What is loaded is what is served (docs/plans/redesign/wp3-experience.md):
+    # a build with experience loaded pins each bank, rides the intro after
+    # the static context notes, and gives ideation/implementation sessions
+    # the three bank tools — bank_index / bank_get_card /
+    # bank_get_card_with_evidence (the feedback judge never gets them).
+    # Where a host session's serving is staged (its pinned bank checkouts,
+    # serving record and pull log), one directory per kapso-mcp process.
+    # A campaign stages into its own work dir instead.
+    session_root: ~/.kapso/serving
   update_crew:
     # The update crew (design §4.3; update-crew doc): Claude lead (structural
     # — self-organization + native critic subagent), codex GPT-5.6 xhigh
@@ -450,7 +572,7 @@ learning:
   codify:
     # The procedure code path (codify doc §7). min_recurrence gates the
     # seeder's layer-1 nomination; the run knobs govern the codify driver
-    # (evolve minus ideation) and the freshness clock.
+    # (a build minus ideation) and the freshness clock.
     min_recurrence: 2
     max_iterations: 3
     iteration_timeout_minutes: 60

@@ -21,14 +21,14 @@ experiment.
 | `research` | — | Bundled |
 | `experiment_history` | `EXPERIMENT_HISTORY_PATH` | Bundled |
 | `repo_memory` | — | Bundled |
-| `bank` | `KAPSO_BANK_DIR`, `KAPSO_BANK_HEAD`, `KAPSO_SERVING_PULL_LOG`, `KAPSO_TASK_FAMILY`, `KAPSO_PROBE_BUDGET` | Bundled |
+| `bank` | `KAPSO_BANKS`, `KAPSO_SERVING_PULL_LOG`, `KAPSO_TASK_HARNESS`, `KAPSO_PROBE_BUDGET` (injected by Kapso per session from the loaded experience) | Bundled |
 | `leeroopedia` | `LEEROOPEDIA_API_KEY` | Hosted (`mcp.leeroopedia.com`, nothing to install) |
 | `inbox` | `KAPSO_INBOX_PATH`, `KAPSO_SESSION_ID`, `KAPSO_NODE_ID` (injected by Kapso per session) | Bundled |
 
 The `inbox` gate carries one tool, `request_from_user`, through which an
 implementation session asks you for a credential, access or a file; Kapso
 injects the gate's three variables for each session when `inbox.enabled`
-is true, so the gate always resolves. See the [inbox](/docs/evolve/inbox).
+is true, so the gate always resolves. See the [inbox](/docs/build/inbox).
 
 `GateDefinition.required_env` checks for a non-empty value. That establishes
 that a dependency is configured; it does not make a network request or prove
@@ -40,8 +40,8 @@ Every session's MCP tool calls are tallied per gate into the node's phase
 telemetry (`<gate>_calls` and `<gate>.<tool>` under `ideation` and
 `implementation`), so the checkpoint keeps what each node consulted. The
 tally appears on the node-completed line in the log and status file, on each
-row of `kapso watch --tree`, and as "Knowledge consulted" totals in the final
-summary. Leeroopedia answers carry the account's remaining credits, so the tree
+attempt in `kapso trace`, and as "Knowledge consulted" totals in the final
+summary. Leeroopedia answers carry the account's remaining credits, so the trace
 and the summary also show "leeroopedia 761 → 747 remaining": the balance after
 the campaign's first answer to the balance after its last. A configured gate
 that cannot resolve is named once in the launch banner with its fix, for
@@ -97,7 +97,7 @@ from kapso.gated_mcp import get_mcp_config
 
 mcp_servers, allowed_tools = get_mcp_config(
     ["idea", "experiment_history", "repo_memory"],
-    kg_index_path="./knowledge.index",
+    kg_index_path="~/.kapso/experience/indexes/org-x/index.json",
     experiment_history_path="./.kapso/experiment_history.json",
     repo_root=".",
     gate_failure_policy="error",
@@ -125,20 +125,44 @@ search_strategy:
   type: generic
   params:
     gate_failure_policy: warn  # skip | warn | error
-    ideation_gates:
-      - research
-      - experiment_history
-      - repo_memory
-      - leeroopedia
-    implementation_gates:
-      - research
-      - repo_memory
-      - leeroopedia
+    ideation:
+      gates: [research, experiment_history, repo_memory]
+    implementation:
+      gates: [research, repo_memory]
 ```
 
 Use `error` for a reproducible campaign where every configured knowledge source
 is mandatory. Use `skip` when optional capabilities are expected to vary across
 machines and warnings would be noisy.
+
+## Use the gates from your own coding agent
+
+The same gates are available to the session you work in, through the `kapso-mcp` console script that `pip install leeroo-kapso` puts beside `kapso`. It is a stdio MCP server; add it to your host once:
+
+```bash
+claude mcp add kapso -- kapso-mcp        # Claude Code
+codex mcp add kapso -- kapso-mcp         # Codex CLI
+```
+
+A campaign session has its gate configuration built per session, with the campaign's paths and the interpreter Kapso runs in. A host's MCP file is static, so `kapso-mcp` derives the same configuration from where the session runs and from the config when it starts:
+
+| Gate | Served when | Derived from |
+|------|-------------|--------------|
+| `research` | The `codex` CLI is on PATH | — |
+| `repo_memory` | The repository holds `.kapso/repo_memory.json`, which a campaign builds | The git top level of the working directory |
+| `experiment_history` | The working directory is inside a campaign directory | The nearest ancestor with `.kapso/experiment_history.json`; `models.embedding` from the config adds semantic search |
+| `campaign` | Always | The campaign verbs as tools: `kapso_build_start` (a detached launch, its receipt returned), `kapso_status` (`kapso watch --json`), `kapso_stop`; `kapso_build_start` refused without `kapso` on PATH, all three refused inside a campaign directory; never served to a campaign's own sessions |
+| `bank` | `--experience`, or the config's `experience.session_sources` when the flag is absent, loads a bank (`mine`, `mine:all`, a bank path or git reference) | One pinned clone per loaded bank, the serving record, the pull log and the intro staged under `learning.serving.session_root`, one directory per server process, removed when the server exits; the coordinate is the harness `--harness` names, `none` without one; the intro is the server's instructions, so the session names its sources on connect |
+| `idea`, `code` | `--experience`, or the config's list, loads an index by name | The index's record |
+
+Every gate left out is named on stderr and in the server's instructions with its reason, so `claude mcp list`, the host's log or the session itself says what it can and cannot reach; the server connects whatever is off. A listed source that does not exist leaves its gate off with the line that makes it. The `kg` gate (which carries the write tools) and the `inbox` gate (a session asking a person) are never served to a host. Leeroopedia is a hosted server, not a bundled gate: add it to the host as an HTTP MCP server at the address in the config's `gates:` block, with your key on the URL.
+
+```bash
+kapso-mcp --help
+kapso-mcp --harness ./harness --experience mine,org-x --config kapso-config.yaml
+```
+
+`--root` names the session's directory when it is not the current one, `--experience` the sources to serve, comma-separated, in the forms `kapso experience list` shows, and `--harness` the harness the session works under (a name, a path or a git reference): its name is the coordinate `mine` serves cards by, as a build's is. Leeroopedia is a hosted server, not a bundled gate: loading it here only prints a reminder to add it to the host as an HTTP MCP server.
 
 ## Adding a gate
 
@@ -167,7 +191,7 @@ available dependencies; live credential tests should remain opt-in.
     Where gates are offered
   </Card>
   <Card title="Configuration" icon="gear" href="/docs/reference/configuration#search_strategy">
-    ideation_gates and implementation_gates
+    The roles' gates lists
   </Card>
 </CardGroup>
 

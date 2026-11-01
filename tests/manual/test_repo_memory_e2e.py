@@ -3,7 +3,7 @@ E2E Test for RepoMemory - Seeded Repo Improvement (Claude Code + Bedrock)
 
 This test:
 1. Seeds from a real repo (tests/fixtures/sample_repo_to_improve)
-2. Runs Kapso.evolve() to improve it using Claude Code with AWS Bedrock
+2. Runs Kapso.build() to improve it using Claude Code with AWS Bedrock
 3. Dumps .kapso/repo_memory.json at baseline + after each experiment
 4. Prints memory for human quality assessment
 
@@ -94,7 +94,6 @@ TEST_CONFIG = {
     "goal": GOAL,
     "max_iterations": 2,
     "coding_agent": "claude_code",  # Use Claude Code agent
-    "mode": "MINIMAL",
     "evaluator": "regex_pattern",
     "evaluator_params": {"pattern": r"SCORE:\s*(\d+)"},
     # Bedrock-specific configuration for Claude Code
@@ -297,49 +296,25 @@ def dump_branch_memory(repo, branch_name: str) -> dict:
 # =============================================================================
 
 def _create_bedrock_config_file(output_dir: str) -> str:
-    """Create a temporary config file with Claude Code + Bedrock settings."""
+    """An override file over the packaged config: the Claude Code host on
+    Bedrock with the test's model, every role on it, the gates off."""
     import yaml
-    
+
     config = {
-        "default_mode": "BEDROCK_TEST",
-        "modes": {
-            "BEDROCK_TEST": {
-                "search_strategy": {
-                    "type": "generic",
-                    "params": {
-                        "code_debug_tries": 2,
-                        "idea_generation_model": "gpt-4o-mini",
-                        "reasoning_effort": "medium",
-                        "node_expansion_limit": 2,
-                        "node_expansion_new_childs_count": 2,
-                        "idea_generation_steps": 1,
-                        "first_experiment_factor": 1,
-                        "experimentation_per_run": 1,
-                        "per_step_maximum_solution_count": 5,
-                        "exploration_budget_percent": 40,
-                        "idea_generation_ensemble_models": ["gpt-4o-mini"],
-                    }
-                },
-                "coding_agent": {
-                    "type": "claude_code",
-                    "model": TEST_CONFIG["coding_agent_model"],
-                    "debug_model": TEST_CONFIG["coding_agent_model"],
-                    "agent_specific": TEST_CONFIG["coding_agent_params"],
-                },
-                "knowledge_search": {
-                    "type": "kg_llm_navigation",
-                    "enabled": False,
-                },
-                "evaluator": {
-                    "type": "regex_pattern",
-                    "params": TEST_CONFIG["evaluator_params"],
-                },
-                "stop_condition": {
-                    "type": "never",
-                    "params": {},
-                },
-            }
-        }
+        "hosts": {
+            "claude_code": {
+                "model": TEST_CONFIG["coding_agent_model"],
+                "auth_mode": TEST_CONFIG["coding_agent_params"]["auth_mode"],
+                "aws_region": TEST_CONFIG["coding_agent_params"]["aws_region"],
+            },
+        },
+        "search_strategy": {
+            "params": {
+                "host": "claude_code",
+                "ideation": {"gates": []},
+                "implementation": {"gates": [], "timeout": TEST_CONFIG["coding_agent_params"]["timeout"]},
+            },
+        },
     }
     
     config_path = os.path.join(output_dir, "bedrock_test_config.yaml")
@@ -405,11 +380,9 @@ def run_test():
         orchestrator = OrchestratorAgent(
             problem_handler=handler,
             config_path=config_path,
-            mode="BEDROCK_TEST",
             coding_agent=None,  # Use config, not override
-            is_kg_active=False,
             workspace_dir=workspace_dir,  # Use separate workspace subdirectory
-            starting_repo_path=str(SEED_REPO),
+            initial_repo=str(SEED_REPO),
         )
         
         # Verify the coding agent config was set correctly

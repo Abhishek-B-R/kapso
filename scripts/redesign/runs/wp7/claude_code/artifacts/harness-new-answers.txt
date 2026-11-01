@@ -1,0 +1,69 @@
+I've read the repository (README, brief, `strategy.py`, `evaluate.py`, `generate.py`) and the authoring guide. Note: the README refers to a harness at `../harnesses/trading`, but that directory doesn't exist on this machine, and `kapso harness list` shows no harnesses. So this one is written from scratch at `./trading`.
+
+## Proposed harness: `trading`
+
+**The domain:** daily-bar systematic strategies. Each one is a `signal(bars)` function that returns a position in [-1, 1]. It is scored by a protected evaluator on an out-of-sample window the attempt never sees, after trading costs.
+
+### Standing rules (`instructions/guardrails.md`)
+1. **No look-ahead.** A signal at bar t uses only bars at or before t, and the position decided at t earns from t+1. *Source:* the `strategy.py` docstring, the shift in `evaluate.py` (`positions()`), and the brief's first rule.
+2. **Keep the contract.** `signal(bars)` returns a Series with one value per bar, within [-1, 1]. *Source:* `evaluate.py` exits with code 2 on any violation.
+3. **The out-of-sample bars belong to the evaluator.** Develop on the bars in the workspace and never look for the held-out ones. *Source:* the brief, `generate.py`, and the README's note that they are "not sealed by this example".
+4. **No live prices.** Every price comes from the snapshot pinned at setup. *Source:* the brief.
+5. **The evaluator is never modified.** *Source:* the brief.
+6. **Report a score with its risk line** (max drawdown and turnover), never the Sharpe alone. *Source:* `evaluate.py` prints them before the metric.
+7. **Task values are not in the harness.** The window, cost, target and budget come from the task statement.
+
+### Attachments, each with its evidence
+| Kind | Name | Module(s) | Evidence |
+|---|---|---|---|
+| page | `setup.md`: copy the development bars into `prepared/market-data/`, record their hashes and date range in the domain statement | setup | brief: "the pinned snapshot the setup session builds" |
+| page | `implementation.md`: run `lookahead-scan`, smoke-test with `evaluate.py --fast`, then a full evaluation; leave `results/equity_curve.csv` and `results/trades.csv` | implementation | `evaluate.py --fast` and what it writes |
+| page | `verification.md`: run the scan on the diff, check the contract, ask `lookahead-auditor`; a finding names a file and line | verification | README: the verifier asks an auditor |
+| page | `feedback.md`: weigh drawdown and turnover beside the Sharpe; a big score bought with very high turnover or a deep drawdown is suspect | feedback | the risk line in `evaluate.py` |
+| skill | `lookahead-scan` + `scripts/scan.py` (stdlib only): flags `shift(-n)`, `center=True`, whole-series stats (`.mean()`/`.std()` with no rolling or expanding window), `bfill`, and indexing past t | implementation, verification | README names it; brief rule 1 |
+| delegate | `lookahead-auditor` | verification | README |
+| hook | `deny-web-fetch`: denies curl, wget, `requests` and similar in Bash, plus WebFetch and WebSearch | all modules | brief: no live fetches |
+| hook | `protect-prepared`: denies writes under `prepared/market-data/` | implementation, verification | README: "deny a write under the snapshot" |
+| hook | `deny-oos-read`: at runtime, reads the directory named in `kapso_evaluation/private_dir.txt` and denies any tool call that touches it, so the harness holds no path | implementation, ideation, verification | README: the bars "are not sealed" |
+| hook | `require-results`: a Stop hook that blocks once if `results/` lacks the two files | implementation | README |
+
+**No server.** The data is plain CSV files with no client or credential, so the setup session's snapshot under `prepared/` is enough. No `requirements.txt` either, since every script is stdlib-only.
+
+### Modules where the repository gave nothing
+- **ideation**: the README hints at faster crosses and volatility-targeted momentum. I'd rather ask than put a near-answer on the page.
+- **learning**, **deployment**: nothing in the repository.
+
+### Tree
+```text
+trading/
+├── harness.yaml
+├── instructions/{guardrails,setup,implementation,verification,feedback}.md
+├── skills/lookahead-scan/{SKILL.md,scripts/scan.py}
+├── agents/lookahead-auditor.md
+└── hooks/{deny-web-fetch,protect-prepared,deny-oos-read,require-results}/{hook.json,<script>.py}
+```
+
+Nothing is written yet. **Confirm, or tell me what to change.** After that I'll write it, ask one question each for ideation, learning and deployment, and get `kapso harness check ./trading` green.
+
+---
+
+The `trading` harness is written at `./trading`, and `kapso harness check ./trading` passes with no failures, no warnings, and nothing missing on this machine.
+
+**What I tested by hand:**
+- **The scan:** it finds nothing in the shipped `strategy.py`. On a deliberately bad strategy it flags all four planted patterns: a whole-series z-score, `shift(-1)`, `center=True` and `bfill`.
+- **Web fetches:** `curl` is denied, and running the evaluator is not.
+- **Held-out data:** both reading `private_dir.txt` and listing the private directory are denied. `evaluate.py --fast` still runs.
+- **The snapshot:** writes under `prepared/market-data/` are denied, both through the file tools and through a Codex `apply_patch`. Reading the files with `cat` is allowed.
+- **Results files:** a session that tries to end without them is blocked once, and is let through on the second try.
+
+One change from the proposal: `deny-web-fetch` is on setup, ideation, implementation, verification and feedback, not literally every module. I left it off learning and deployment, which may need the network; that depends on your answer below.
+
+**Three questions, one per module the repository was silent on:**
+
+1. **Ideation.** In the guide's example, the ideation page lists the families of approaches worth trying and what is known not to work. Which families should attempts here explore (trend or momentum horizons, volatility targeting, ensembles, mean reversion), and is anything off limits? I'd write the answer as a few lines on `ideation.md`, since that guides every idea session and needs no procedure.
+
+2. **Learning.** What should a finished campaign keep as a lesson? For example: "trailing-window bugs the scan missed" and "which horizons held up out of sample". And what is noise, such as one run's exact parameter values? I'd make that a short `learning.md` page.
+
+3. **Deployment.** Does a winning strategy go anywhere: a paper-trading broker, a scheduled job, a file handed to someone? If it reaches a broker, that becomes a server in `mcp.json`, with the credential referenced by its variable name. If the answer is "nowhere", I leave the module out.
+
+Once you've answered, I'll write those pages, bump `version` if the harness has changed, and get `check` green again. Then I can offer one probe build on the brief in this directory with `--harness ./trading`, and read its trace for the improve pass. I won't launch it unless you ask.

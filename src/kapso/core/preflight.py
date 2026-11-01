@@ -19,7 +19,7 @@ the account can actually serve it; it is config-gated
 
 Every failed row carries the config key that asked for it and one
 copy-pasteable fix. That pairing is the point: "install claude" is not
-actionable, "install claude — modes.GENERIC.coding_agent.model wants
+actionable, "install claude — hosts.claude_code.model wants
 claude-opus-5" is.
 """
 
@@ -33,7 +33,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
-from kapso.core.config import deep_merge, load_config, load_deployment_defaults, load_platform_defaults
+from kapso.core.config import deep_merge, load_config
+from kapso.core.roles import ROLES, SPEC_KEYS, deployment_role, resolve_members, resolve_optional, resolve_role, resolve_spec
+from kapso.deployment.targets import AUTO, bundled_targets, probe_failure
 from kapso.core.agent_manifest import load_agent_manifest
 from kapso.core.api_endpoint import (
     openai_compatible_options,
@@ -46,7 +48,6 @@ from kapso.learning.bank_remote import bank_origin, bank_remote_error
 # The packaged platform config is the single source for preflight's own
 # defaults (Rule 1) — a user config that predates the `preflight:` block
 # inherits them rather than a duplicated literal.
-_PACKAGED_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 
 # Agent types that run as an external CLI binary. Everything else in the
 # manifest is a Python SDK adapter, whose requirement is the package its
@@ -75,23 +76,7 @@ CLI_BINARIES = {
     "aider": "aider",
 }
 
-def deploy_tools() -> Dict[str, Tuple[str, str]]:
-    """Deployment targets and the tool each one needs on the box, read from
-    every strategy's config.yaml (`requires: {binary, install}`), so a new
-    strategy directory is a new doctor row with nothing to edit here. LOCAL
-    declares nothing and runs in process; AUTO is resolved by a coding-agent
-    session, so its requirement is that session's agent (added separately).
-    """
-    from kapso.deployment.strategies import StrategyRegistry
-    registry = StrategyRegistry.get()
-    tools = {}
-    for name in registry.list_strategies():
-        requires = registry.get_strategy(name).get_requires()
-        if requires and requires.get("binary"):
-            tools[name] = (requires["binary"], requires.get("install", f"install {requires['binary']}"))
-    return tools
-
-VERBS = ("research", "learn_knowledge", "evolve", "learn", "deploy")
+VERBS = ("build", "learn", "deploy", "experience")
 
 
 # =============================================================================
@@ -144,7 +129,7 @@ class PreflightError(RuntimeError):
 
 def default_preflight_config() -> Dict[str, Any]:
     """The platform `preflight:` block from the packaged config."""
-    return load_config(str(_PACKAGED_CONFIG_PATH))["preflight"]
+    return load_config()["preflight"]
 
 
 def preflight_settings(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -225,11 +210,11 @@ def session_specs(
     """Every coding-agent session the given config subtree can spawn.
 
     A model key (`model` or `*_model`) names the session; the CLI that runs
-    it resolves from, in order: an explicit `cli` sibling, an
-    `implementation_cli` sibling (for `implementation_model`), a `type`
+    it resolves from, in order: an explicit `cli` sibling, a `type`
     sibling naming a known agent, or the model-name prefix (claude-* runs
     on the claude CLI, everything else on codex). Embedding models are not
-    sessions — their check is the OPENAI_API_KEY row.
+    sessions — their check is the OPENAI_API_KEY row. The build's own
+    sessions do not walk this: they are roles (build_session_specs).
     """
     manifest = load_agent_manifest()["agents"]
     specs: List[SessionSpec] = []
@@ -237,11 +222,8 @@ def session_specs(
     def resolve_cli(block: Dict[str, Any], key: str, model_name: str) -> str:
         if block.get("cli"):
             return str(block["cli"])
-        if key == "implementation_model" and block.get("implementation_cli"):
-            return str(block["implementation_cli"])
-        # `coding_agent` / `feedback_generator` name their CLI as `type`;
-        # guard against unrelated `type` keys (search_strategy.type is a
-        # strategy name, not an agent).
+        # A block may name its CLI as `type`; guard against unrelated
+        # `type` keys (search_strategy.type is a strategy name, not an agent).
         block_type = block.get("type")
         if isinstance(block_type, str) and block_type.lower() in manifest:
             return block_type.lower()
@@ -257,7 +239,7 @@ def session_specs(
         if isinstance(current, dict):
             blocked = set()
             if not inference:
-                for selector in ("cli", "type", "implementation_cli"):
+                for selector in ("cli", "type"):
                     name = current.get(selector)
                     info = manifest.get(name.lower(), {}) if isinstance(
                         name, str
@@ -266,7 +248,7 @@ def session_specs(
                         blocked.add(name.lower())
                         specs.append(SessionSpec(
                             cli=name.lower(),
-                            model=str(info["default_model"]),
+                            model=str(current.get("model") or ""),
                             origin=f"{path}.{selector} = {name}",
                         ))
             for key, value in current.items():
@@ -482,12 +464,6 @@ def _auth_requirements(
     )]
 
 
-def _mode_block(config: Dict[str, Any], mode: Optional[str]) -> Tuple[str, Dict]:
-    """The active mode's name and config block."""
-    name = mode or config.get("default_mode", "GENERIC")
-    return name, (config.get("modes") or {}).get(name) or {}
-
-
 def _embedding_requirement(origin: str, params=None) -> Requirement:
     endpoint = validate_api_base_url(
         (params or {}).get(
@@ -543,8 +519,9 @@ def _git_requirement(origin: str) -> Requirement:
 # =============================================================================
 
 def research_requirements(config: Dict[str, Any]) -> List[Requirement]:
-    """`research()` runs one web-search session — the `inference` block's
-    default spec with the `research` role's overrides on top."""
+    """`add_experience(research=)` runs one web-search session — the
+    `inference` block's default spec with the `research` role's overrides
+    on top."""
     inference = config.get("inference") or {}
     spec = deep_merge(
         inference.get("default") or {},
@@ -571,36 +548,34 @@ def research_requirements(config: Dict[str, Any]) -> List[Requirement]:
                 ok=False,
                 fix="set inference.roles.research.cli to a "
                     "web-capable CLI agent",
-                origin="research() requires live web search",
+                origin="add_experience(research=) requires live web search",
             )
         )
     return requirements
 
 
-def learn_knowledge_requirements(
+def experience_requirements(
     config: Dict[str, Any],
     *,
-    mode: Optional[str] = None,
-    skip_merge: bool = False,
+    research: bool = False,
     publish_workflows: Optional[bool] = None,
 ) -> List[Requirement]:
-    """`learn_knowledge()` ingests sources into wiki pages, then merges
-    them into the KG. `skip_merge=True` stops after extraction, which
-    drops the merger session and both backend stores. Publishing the
-    extracted workflows as repositories (`learner.ingestor.publish_workflows`,
-    or the call's GitHub arguments, passed as `publish_workflows`) needs
-    the token `gh` reads."""
-    mode_name, block = _mode_block(config, mode)
-    learner = block.get("learner") or {}
-    prefix = f"modes.{mode_name}.learner"
+    """`add_experience(repo=|research=)` ingests a corpus into an index:
+    the ingestor and merger sessions, git for the clone, the embeddings
+    key and both graph stores the index is written into; with
+    `research=True` the web-search session too. Publishing the extracted
+    workflows as repositories (`learner.ingestor.publish_workflows`)
+    needs the token `gh` reads."""
+    learner = config["learner"]
+    prefix = "learner"
 
     specs = session_specs(learner.get("ingestor") or {}, f"{prefix}.ingestor")
-    if not skip_merge:
-        specs += session_specs(learner.get("merger") or {}, f"{prefix}.merger")
+    specs += session_specs(learner.get("merger") or {}, f"{prefix}.merger")
 
-    requirements = cli_requirements(specs)
+    requirements = research_requirements(config) if research else []
+    requirements += cli_requirements(specs)
     requirements.append(_git_requirement(
-        "Source.Repo ingestion clones the repository"
+        "ingesting a repository clones it"
     ))
     ingestor = learner.get("ingestor") or {}
     if publish_workflows is None:
@@ -614,49 +589,124 @@ def learn_knowledge_requirements(
                 "account is logged in",
             origin=f"{prefix}.ingestor.publish_workflows",
         ))
-    if not skip_merge:
-        requirements.append(_embedding_requirement(
-            "the merge embeds every wiki page",
-            (block.get("knowledge_search") or {}).get("params"),
+    requirements.append(_embedding_requirement(
+        "the index embeds every page",
+        config["knowledge_search"]["params"],
+    ))
+    requirements.extend(_kg_backend_requirements(
+        "the index is written into the graph stores",
+        config["knowledge_search"],
+    ))
+    return requirements
+
+
+def build_params(config: Dict[str, Any], coding_agent: Optional[str]) -> Dict[str, Any]:
+    """The strategy's parameters as a build resolves them: the config's
+    block with `--coding-agent` as the host."""
+    params = dict(config["search_strategy"]["params"])
+    if coding_agent:
+        params["host"] = coding_agent
+    return params
+
+
+def build_session_specs(config: Dict[str, Any], params: Dict[str, Any]) -> List[SessionSpec]:
+    """The sessions a build runs, from the roles over the hosts table
+    (kapso.core.roles): the three roles, the ensemble's members, the
+    selector, the lens planner, and the evaluation maintainer when the
+    config names one. The same resolver the campaign runs, so the doctor
+    never names a session a build would not run."""
+    hosts = config["hosts"]
+    specs: List[SessionSpec] = []
+
+    def add(role, origin: str) -> None:
+        specs.append(SessionSpec(
+            cli=role.cli,
+            model=role.model,
+            origin=f"{origin} = {role.cli}:{role.model}",
+            auth_mode=str(role.settings.get("auth_mode") or "auto"),
+            agent_specific=dict(role.settings),
         ))
-        requirements.extend(_kg_backend_requirements(
-            "the merge writes pages into the KG stores "
-            "(pass skip_merge=True to extract only)",
-            block.get("knowledge_search"),
+
+    ideation = params["ideation"]
+    for name in ROLES:
+        if name == "ideation" and ideation["ensemble"]:
+            # The members' sessions replace the role's own; its host is
+            # not asked for.
+            continue
+        add(resolve_role(hosts, params, name), f"search_strategy.params.{name}")
+    for index, member in enumerate(resolve_members(hosts, params, ideation["ensemble"]) or []):
+        add(member, f"search_strategy.params.ideation.ensemble[{index}]")
+    for key in ("selector", "lens_planner"):
+        spec = resolve_optional(hosts, params, ideation[key], name=key)
+        if spec is not None:
+            add(spec, f"search_strategy.params.ideation.{key}")
+    maintainer = config["evaluation_maintainer"]
+    if maintainer["enabled"]:
+        add(
+            resolve_spec(
+                hosts, params["host"], {key: maintainer[key] for key in SPEC_KEYS if key in maintainer},
+                name="evaluation_maintainer", origin="evaluation_maintainer",
+            ),
+            "evaluation_maintainer",
+        )
+    return specs
+
+
+# The model family an adapter serves (`serves` in agents.yaml): the
+# `claude` family is the `claude-*` models, the `openai` family everything
+# but them; `any` is not checked statically (the live tier probes it).
+CLAUDE_MODEL_PREFIX = "claude-"
+
+
+def host_model_requirements(specs: Sequence[SessionSpec]) -> List[Requirement]:
+    """One row per distinct host-and-model pair a build asks for, failed
+    when the adapter's family cannot serve the model (a Claude model on
+    the codex CLI is refused by a ChatGPT login, found at the first
+    session otherwise)."""
+    manifest = load_agent_manifest()["agents"]
+    pairs: Dict[Tuple[str, str], List[str]] = {}
+    for spec in specs:
+        pairs.setdefault((spec.cli, spec.model), []).append(spec.origin.split(" = ")[0])
+    requirements = []
+    for (cli, model), origins in sorted(pairs.items()):
+        family = (manifest.get(cli) or {}).get("serves", "any")
+        is_claude_model = model.startswith(CLAUDE_MODEL_PREFIX)
+        if family == "claude":
+            ok = is_claude_model
+        elif family == "openai":
+            ok = not is_claude_model
+        else:
+            continue
+        requirements.append(Requirement(
+            label=f"{cli} is asked for {model}",
+            ok=ok,
+            fix=(
+                f"name a model {cli} serves for {', '.join(dict.fromkeys(origins))}, "
+                f"or the host's own in hosts.{cli}.model"
+            ),
+            origin="; ".join(dict.fromkeys(origins)),
+            detail="" if ok else f"{cli} cannot serve {model}",
         ))
     return requirements
 
 
-def evolve_requirements(
+def build_requirements(
     config: Dict[str, Any],
     *,
-    mode: Optional[str] = None,
     coding_agent: Optional[str] = None,
-    kg_index: Optional[str] = None,
-    bank_home: Optional[Path] = None,
+    index: Optional[str] = None,
 ) -> List[Requirement]:
-    """`evolve()` runs a campaign: ideation, implementation, evaluation and
-    feedback sessions, plus whatever MCP gates the strategy names."""
-    mode_name, block = _mode_block(config, mode)
-    prefix = f"modes.{mode_name}"
-    strategy = block.get("search_strategy") or {}
-    params = strategy.get("params") or {}
-
-    # A caller-passed coding_agent overrides the mode's `type`, so the
-    # requirement must follow the agent that will actually run.
-    agent_block = dict(block.get("coding_agent") or {})
-    if coding_agent:
-        agent_block["type"] = coding_agent
-
-    specs = session_specs(params, f"{prefix}.search_strategy.params")
-    specs += session_specs(agent_block, f"{prefix}.coding_agent")
-    specs += session_specs(
-        block.get("feedback_generator") or {}, f"{prefix}.feedback_generator"
-    )
+    """`build()` runs a campaign: ideation, implementation, evaluation and
+    feedback sessions, plus whatever MCP gates the strategy names. `index`
+    is the name of a loaded index, whose search needs the embeddings key
+    and the graph stores; a bank a build loads is read from its home and
+    needs nothing of this machine."""
+    params = build_params(config, coding_agent)
+    specs = build_session_specs(config, params)
 
     inference = config.get("inference") or {}
     roles = ["commit_message", "repo_memory"]
-    if kg_index:
+    if index:
         roles.extend(["kg_rerank", "kg_navigate"])
     for role in roles:
         role_spec = deep_merge(
@@ -667,61 +717,44 @@ def evolve_requirements(
             role_spec, f"inference.roles.{role}", inference=True,
         ))
 
-    requirements = cli_requirements(specs)
+    requirements = host_model_requirements(specs) + cli_requirements(specs)
     requirements.append(_git_requirement(
         "the campaign workspace is a git repository"
     ))
-    requirements.extend(_gate_requirements(params, prefix))
+    requirements.extend(_gate_requirements(params))
     # The key is needed exactly when something will embed: the experiment
-    # store when `models.embedding` names a model (the mode block over
-    # the platform defaults, as the campaign resolves it), and knowledge
-    # search when an index is served.
-    embedding_model = (
-        (deep_merge(load_platform_defaults(), block).get("models") or {})
-        .get("embedding")
-    )
+    # store when `models.embedding` names a model, and knowledge search
+    # when an index is served.
+    embedding_model = config["models"]["embedding"]
     embedding_uses = []
     if embedding_model:
         embedding_uses.append(
             f"the experiment store embeds every node's solution "
             f"(models.embedding = {embedding_model})"
         )
-    if kg_index:
-        embedding_uses.append(f"knowledge search — Kapso(kg_index={kg_index!r})")
+    if index:
+        embedding_uses.append(f"the search over the loaded index `{index}`")
     if embedding_uses:
         requirements.append(_embedding_requirement(
             "; ".join(embedding_uses),
-            (block.get("knowledge_search") or {}).get("params"),
+            config["knowledge_search"]["params"],
         ))
-    if kg_index:
+    if index:
         requirements.extend(_kg_backend_requirements(
-            f"knowledge search — Kapso(kg_index={kg_index!r})",
-            block.get("knowledge_search"),
+            f"the search over the loaded index `{index}`",
+            config["knowledge_search"],
         ))
 
-    serving = ((config.get("learning") or {}).get("serving") or {})
-    if serving.get("enabled") and bank_home is not None:
-        requirements.append(Requirement(
-            label=f"lesson bank at {bank_home}",
-            ok=Path(bank_home).exists(),
-            fix="run kapso.learn(...) once to create it, or "
-                "set learning.serving.enabled: false",
-            origin="learning.serving.enabled: true — campaigns are served bank cards",
-            required=False,
-        ))
     return requirements
 
 
-def _gate_requirements(
-    params: Dict[str, Any], prefix: str,
-) -> List[Requirement]:
+def _gate_requirements(params: Dict[str, Any]) -> List[Requirement]:
     """The MCP gates the strategy names, checked through the gate
     resolver that the campaign itself uses. Whether a missing gate BLOCKS
     is the config's own call: `gate_failure_policy: error` makes it
     required, `warn`/`skip` leave it advisory."""
     gates = list(dict.fromkeys(
-        list(params.get("ideation_gates") or [])
-        + list(params.get("implementation_gates") or [])
+        list(params["ideation"]["gates"]) + list(params["implementation"]["gates"])
     ))
     if not gates:
         return []
@@ -741,7 +774,7 @@ def _gate_requirements(
             label=f"MCP gate '{gate_name}'",
             ok=False,
             fix=fix,
-            origin=f"{prefix}.search_strategy.params gates",
+            origin="search_strategy.params gates",
             required=policy == "error",
             detail=f"missing environment: {', '.join(missing_env)}",
         ))
@@ -757,7 +790,7 @@ def learn_requirements(
     """`learn()` runs four crews — mining, grading, the update crew, and
     (when a procedure is codified) the codify run. The grading crew is
     deliberately cross-model, so a default config genuinely needs both
-    CLIs here even though `research()` needs one."""
+    CLIs here even though a web-search session needs one."""
     learning = config.get("learning") or {}
 
     specs = session_specs(learning.get("mining") or {}, "learning.mining")
@@ -806,7 +839,7 @@ def _bank_push_requirements(
             return [Requirement(
                 label="bank origin remote",
                 ok=False,
-                fix="kapso bank connect <url>   (or kapso bank create <org>/<name>)",
+                fix="kapso experience share <url>",
                 origin="push=True was requested",
             )]
         if push is None:
@@ -817,7 +850,7 @@ def _bank_push_requirements(
             return [Requirement(
                 label="bank remote (sharing)",
                 ok=False,
-                fix="kapso bank connect <url> — shares lessons across "
+                fix="kapso experience share <url> — shares lessons across "
                     "machines and teammates",
                 origin=f"{bank_home} has no origin remote — lessons stay local",
                 required=False,
@@ -839,77 +872,63 @@ def _bank_push_requirements(
     )]
 
 
+def deployment_session_spec(config: Dict[str, Any], coding_agent: Optional[str] = None) -> SessionSpec:
+    """The deployment session as the doctor's rows and the live tier see it."""
+    role = deployment_role(config, coding_agent)
+    return SessionSpec(
+        cli=role.cli, model=role.model, origin=f"deployment = {role.cli}:{role.model}",
+        auth_mode=str(role.settings.get("auth_mode") or "auto"), agent_specific=dict(role.settings),
+    )
+
+
 def deploy_requirements(
     config: Dict[str, Any],
     *,
-    strategy: Optional[str] = None,
+    target: Optional[str] = None,
     coding_agent: Optional[str] = None,
 ) -> List[Requirement]:
-    """`deploy()` adapts the solution with a coding-agent session, then
-    hands it to the target's runner.
-
-    Three cases. A named target checks that target's tool. AUTO checks
-    nothing extra — the target is chosen by the selector session, so
-    demanding every tool up front would fail deploys that were only ever
-    going to run locally. `strategy=None` is the doctor's view, with no
-    call in flight: it maps which targets this machine could serve.
-    """
-    deployment = {
-        **load_deployment_defaults(), **(config.get("deployment") or {})
-    }
-    coding_agent = coding_agent or deployment["coding_agent"]
-    manifest = load_agent_manifest()["agents"]
-    model = (manifest.get(coding_agent) or {}).get("default_model") or coding_agent
-    requirements = cli_requirements([SessionSpec(
-        cli=coding_agent,
-        model=str(model),
-        origin=f"deploy(coding_agent={coding_agent!r}) adapts the solution",
-    )])
-
-    tools = deploy_tools()
-    if strategy is None:
-        for name, (binary, fix) in sorted(tools.items()):
+    """`deploy()` runs one session on the resolved host, then the target's
+    scripts. The session's host row and its pairing always; then the
+    target's tool: a named target's is required (and its probe, when its
+    skill declares one: the docker daemon answering), `auto` asks for
+    none (the session is told each target's readiness). `target=None` is
+    the doctor's view, no call in flight: the configured target's tool is
+    required when it names one, the other bundled targets' tools are
+    advisory."""
+    spec = deployment_session_spec(config, coding_agent)
+    requirements = host_model_requirements([spec]) + cli_requirements([spec])
+    tools = {skill.name: skill for skill in bundled_targets() if skill.requires}
+    configured = config["deployment"]["target"]
+    named = target if target is not None else configured
+    if named != AUTO and named in tools:
+        skill = tools[named]
+        binary, fix = skill.requires["binary"], skill.requires["install"]
+        present = shutil.which(binary) is not None
+        origin = f"deploy(target={named!r})" if target is not None else f"deployment.target = {named}"
+        requirements.append(Requirement(label=f"{binary} (deploy target)", ok=present, fix=fix, origin=origin))
+        probe = skill.requires.get("probe")
+        if probe is not None and present:
+            failure = probe_failure(skill)
             requirements.append(Requirement(
-                label=f"deploy target {name}",
-                ok=shutil.which(binary) is not None,
-                fix=fix,
-                origin=f"only needed for deploy(strategy=DeployStrategy."
-                       f"{name.upper()})",
-                required=False,
+                label=f"{binary}: `{probe['command']}` answers", ok=failure is None, fix=probe["fix"], origin=origin,
+                detail=failure or "",
             ))
-        return requirements
-
-    target = str(strategy).lower()
-    if target not in tools:
-        return requirements
-
-    binary, fix = tools[target]
-    present = shutil.which(binary) is not None
-    requirements.append(Requirement(
-        label=f"{binary} (deploy target)",
-        ok=present,
-        fix=fix,
-        origin=f"deploy(strategy={strategy})",
-    ))
-    if target == "docker" and present:
-        daemon = subprocess.run(
-            ["docker", "info"], capture_output=True, text=True, timeout=30,
-        )
-        requirements.append(Requirement(
-            label="docker daemon running",
-            ok=daemon.returncode == 0,
-            fix="start Docker Desktop, or: sudo systemctl start docker",
-            origin=f"deploy(strategy={strategy})",
-        ))
+    if target is None:
+        for name, skill in sorted(tools.items()):
+            if name == named:
+                continue
+            requirements.append(Requirement(
+                label=f"deploy target {name}", ok=shutil.which(skill.requires["binary"]) is not None, fix=skill.requires["install"],
+                origin=f"only needed for kapso deploy --target {name}", required=False,
+            ))
     return requirements
 
 
 _BUILDERS = {
-    "research": research_requirements,
-    "learn_knowledge": learn_knowledge_requirements,
-    "evolve": evolve_requirements,
+    "build": build_requirements,
     "learn": learn_requirements,
     "deploy": deploy_requirements,
+    "experience": experience_requirements,
 }
 
 
@@ -927,14 +946,14 @@ def requirements_for(
     verb: Optional[str], config: Dict[str, Any], **context: Any,
 ) -> List[Requirement]:
     """Static requirements for one verb, or — with `verb=None` — the union
-    across all five, which is what a bare `kapso doctor` reports."""
+    across all four, which is what a bare `kapso doctor` reports."""
     if verb is None:
         bank_home = configured_bank_home(config)
         merged: List[Requirement] = []
         for name in VERBS:
             merged.extend(
                 _BUILDERS[name](config, bank_home=bank_home)
-                if name in ("evolve", "learn")
+                if name == "learn"
                 else _BUILDERS[name](config)
             )
         return dedupe(merged)
@@ -990,7 +1009,7 @@ def live_model_requirements(
             label=f"{cli} can serve {model}",
             ok=ok,
             fix="copy the packaged config, change the model, and pass "
-                "Kapso(config_path=...) — see README \"Choosing models\"",
+                "Kapso(config=...) — see README \"Choosing models\"",
             origin="; ".join(dict.fromkeys(origins)),
             detail=detail,
         ))
@@ -1003,40 +1022,28 @@ def _specs_for(
     """Every session spec a verb (or the whole config) can spawn. Built by
     re-walking the same subtrees the requirement builders use, so the live
     tier can never probe a model the static tier does not know about."""
-    mode_name, block = _mode_block(config, context.get("mode"))
     learning = config.get("learning") or {}
     inference = config.get("inference") or {}
     research_spec = {**(inference.get("default") or {}),
                      **((inference.get("roles") or {}).get("research") or {})}
-    agent_block = dict(block.get("coding_agent") or {})
-    if context.get("coding_agent"):
-        agent_block["type"] = context["coding_agent"]
 
+    research_specs = (
+        [SessionSpec(
+            cli=str(research_spec.get("cli") or "codex"),
+            model=str(research_spec["model"]),
+            origin=f"inference.roles.research = {research_spec['model']}",
+            inference=True,
+        )] if research_spec.get("model") else []
+    )
     per_verb: Dict[str, List[SessionSpec]] = {
-        "research": (
-            [SessionSpec(
-                cli=str(research_spec.get("cli") or "codex"),
-                model=str(research_spec["model"]),
-                origin=f"inference.roles.research = {research_spec['model']}",
-                inference=True,
-            )] if research_spec.get("model") else []
+        # Ingesting a corpus: the ingestor and merger sessions, and the
+        # web-search session when a question is researched (the union a
+        # bare doctor reports includes it).
+        "experience": (
+            session_specs(config["learner"], "learner")
+            + (research_specs if verb is None or context.get("research") else [])
         ),
-        "learn_knowledge": session_specs(
-            block.get("learner") or {}, f"modes.{mode_name}.learner"
-        ),
-        "evolve": (
-            session_specs(
-                (block.get("search_strategy") or {}).get("params") or {},
-                f"modes.{mode_name}.search_strategy.params",
-            )
-            + session_specs(
-                agent_block, f"modes.{mode_name}.coding_agent"
-            )
-            + session_specs(
-                block.get("feedback_generator") or {},
-                f"modes.{mode_name}.feedback_generator",
-            )
-        ),
+        "build": build_session_specs(config, build_params(config, context.get("coding_agent"))),
         "learn": (
             session_specs(learning.get("mining") or {}, "learning.mining")
             + session_specs(
@@ -1050,7 +1057,7 @@ def _specs_for(
                 "learning.codify",
             )
         ),
-        "deploy": [],
+        "deploy": [deployment_session_spec(config, context.get("coding_agent"))],
     }
     if verb is None:
         return [spec for name in VERBS for spec in per_verb[name]]

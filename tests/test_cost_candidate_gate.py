@@ -7,6 +7,9 @@ import time
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from strategy_support import generic_params, packaged_hosts
+from kapso.core.roles import SessionRole
+
 import pytest
 
 from kapso.execution.search_strategies.base import SearchNode
@@ -22,6 +25,7 @@ from kapso.execution.search_strategies.generic.registered_evaluation import (
     deferred_evaluation_instructions,
 )
 from kapso.execution.search_strategies.generic.strategy import GenericSearch
+import kapso.execution.search_strategies.generic.strategy as strategy_module
 
 
 class CandidateWorkspace:
@@ -35,17 +39,21 @@ class CandidateWorkspace:
 
 class FeedbackProvider:
     configured_timeout_seconds = None
+    agent_type = "claude_code"
 
     def __init__(self):
         self.outputs = []
         self.end_facts = []
+
+    def attach_harness(self, staged):
+        """No harness in these tests: nothing to attach."""
 
     def generate(self, **kwargs):
         self.outputs.append(kwargs["evaluation_result"])
         self.end_facts.append(kwargs["session_end_facts"])
         return SimpleNamespace(
             feedback="Evaluation succeeded", evaluation_valid=True,
-            score=0.8, stop=False, duration_seconds=None,
+            score=0.8, stop=False, duration_seconds=None, cards_load_bearing=[], unjudged="",
         )
 
 
@@ -68,23 +76,28 @@ def candidate_strategy(tmp_path, count=1):
             parent_branch_name="main", code_diff="candidate changes",
         ))
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.cost_config = {"enabled": True, "unit": "credits", "weight": 1.0}
     strategy.node_history = []
     strategy.workspace = CandidateWorkspace(folders)
     strategy.workspace_dir = str(tmp_path)
     strategy.feedback_generator = FeedbackProvider()
     strategy.goal = "improve"
-    strategy.design_axes = []
     strategy.problem_handler = SimpleNamespace(maximize_scoring=True)
     strategy.registered_evaluation_manifest = {}
     strategy.registered_evaluation_command = ""
+    strategy.registered_evaluation_archive_glob = None
     strategy.registered_evaluator_id = None
     strategy.registered_subsample_seed = 1337
     strategy.registered_data_manifest = {}
     strategy.evaluation_provenance = "agent_generated"
     strategy.fidelity_decision = None
     strategy.record_eval_duration = None
-    strategy.implementation_timeout = None
+    strategy.implementation_role = SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=None)
+    strategy.provided_evaluation_manifest = {}
+    strategy.last_round_seconds = None
+    strategy.finishing_cut = None
+    strategy._attempt_commit = lambda branch_name: "c" * 40
     strategy.budget_snapshot = None
     strategy.parent_policy = "best"
     strategy.env_strip = []
@@ -206,7 +219,7 @@ def test_finalized_candidate_output_replaces_implementation_claims(tmp_path):
     assert "999" not in strategy.feedback_generator.outputs[0]
 
 
-def test_registered_manifest_keeps_raw_score_and_records_measured_cost(tmp_path):
+def test_registered_manifest_keeps_raw_score_and_records_measured_cost(tmp_path, monkeypatch):
     strategy, nodes, _ = candidate_strategy(tmp_path)
     evaluation = tmp_path / "kapso_evaluation"
     evaluation.mkdir()
@@ -221,8 +234,11 @@ def test_registered_manifest_keeps_raw_score_and_records_measured_cost(tmp_path)
         f"{shlex.quote(sys.executable)} kapso_evaluation/evaluate.py"
     )
     finalized = []
-    strategy.problem_handler.finalize_run_selection = (
-        lambda record, valid: finalized.append((record, valid))
+    # The engine labels its own archive at score-of-record time; here the
+    # labelling is recorded instead of touching a run archive.
+    monkeypatch.setattr(
+        strategy_module, "label_run_of_record",
+        lambda archive_glob, record, valid: finalized.append((record, valid)),
     )
     strategy.before_candidate_evaluation = admit_estimate
     strategy._finalize_nodes(nodes, time.monotonic(), append=True)
@@ -240,7 +256,7 @@ def test_failed_frame_run_is_judged_but_cannot_be_revalidated_by_feedback(tmp_pa
         else "import sys, time\nsys.stdout.flush()\ntime.sleep(60)\n"
     ))
     if failure == "deadline":
-        strategy.implementation_timeout = 0.5
+        strategy.implementation_role = SessionRole(name="implementation", cli="claude_code", model="m", effort=None, timeout=0.5)
     strategy.before_candidate_evaluation = admit_estimate
     strategy._finalize_nodes(nodes, time.monotonic(), append=True)
     assert strategy.feedback_generator.outputs == [nodes[0].evaluation_output]
@@ -259,14 +275,15 @@ def test_failed_frame_run_is_judged_but_cannot_be_revalidated_by_feedback(tmp_pa
     ]
 
 
-def test_errored_build_is_judged_on_its_session_output_and_cannot_score_itself(tmp_path):
+def test_errored_build_is_judged_on_its_session_output_and_cannot_score_itself(tmp_path, monkeypatch):
     strategy, nodes, folders = candidate_strategy(tmp_path)
     strategy.registered_evaluation_command = (
         f"{shlex.quote(sys.executable)} kapso_evaluation/evaluate.py"
     )
     finalized = []
-    strategy.problem_handler.finalize_run_selection = (
-        lambda record, valid: finalized.append((record, valid))
+    monkeypatch.setattr(
+        strategy_module, "label_run_of_record",
+        lambda archive_glob, record, valid: finalized.append((record, valid)),
     )
     strategy.before_candidate_evaluation = (
         lambda node: pytest.fail("an errored build is never estimated")
@@ -306,7 +323,7 @@ def test_inconsistent_measured_unit_fails_before_feedback(tmp_path):
 
 def test_enabled_initialization_requires_estimator_before_workspace_setup(tmp_path):
     with pytest.raises(ValueError, match="cost.estimator is required"):
-        GenericSearch(SimpleNamespace(params={"cost": {"enabled": True}}), str(tmp_path))
+        GenericSearch(SimpleNamespace(params=generic_params(cost={"enabled": True}), hosts=packaged_hosts()), str(tmp_path))
 
 
 def test_suspended_build_cannot_publish_an_unestimated_score(tmp_path):
@@ -393,8 +410,14 @@ def test_corrupt_cost_manifest_fails_loud():
 
 def test_cost_build_prompt_defers_all_evaluation_to_orchestrator():
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.cost_config = {"enabled": True}
+    strategy.provided_evaluation_manifest = {}
+    strategy.last_round_seconds = None
+    strategy.finishing_cut = None
+    strategy._attempt_commit = lambda branch_name: "c" * 40
     strategy.registered_evaluation_command = "python kapso_evaluation/kapso_eval.py"
+    strategy.registered_evaluation_archive_glob = None
     registered = strategy._evaluation_instructions()
     assert "Do not run the candidate or evaluation" in registered
     assert strategy.registered_evaluation_command in registered

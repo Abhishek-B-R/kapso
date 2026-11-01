@@ -45,6 +45,19 @@ PROC_ROOT = "/proc"
 
 # Byte-identical to the pre-maintainer template text: rendered whenever no
 # maintainer-registered evaluation exists, keeping default prompts unchanged.
+# The provided suite's contract: run as given, never edited; the
+# directory's rule (docs/build/evaluation.mdx) allows the data and the
+# reports a run writes beside it.
+PROVIDED_EVALUATION_INSTRUCTIONS = """The evaluation is provided in `kapso_evaluation/` and is read-and-execute only:
+
+1. **Read it** to learn what it measures and how it is run.
+2. **Run it as given** and capture its full output. Never modify, delete,
+   replace or add evaluator source files; the runtime outputs it writes or
+   you write beside it (`result.json`, predictions, a profile) are allowed.
+3. **Retry on crash**: fix your solution, never the suite, and run it again
+   (max 3 attempts). A suite you believe defective is reported in your
+   final response, not patched."""
+
 DEFAULT_EVALUATION_INSTRUCTIONS = """You MUST build and run evaluation in `kapso_evaluation/` directory:
 
 1. **Create evaluation script**: `kapso_evaluation/evaluate.py` (or similar)
@@ -411,11 +424,13 @@ def sync_registered_evaluation(session_folder: str, workspace_dir: str) -> None:
     shutil.copytree(source, destination)
 
 
-def evaluation_instructions(registered_evaluation_command: Optional[str]) -> str:
-    """Registered-evaluation contract when a maintainer owns evaluation;
-    the historical build-your-own instructions otherwise."""
+def evaluation_instructions(registered_evaluation_command: Optional[str], *, provided: bool = False) -> str:
+    """The evaluation contract, rendered once in the implementation prompt,
+    in one of three forms: the registered one when a maintainer owns
+    evaluation, the provided suite's (run it, never edit it) when the
+    build brought one, build-your-own otherwise."""
     if not registered_evaluation_command:
-        return DEFAULT_EVALUATION_INSTRUCTIONS
+        return PROVIDED_EVALUATION_INSTRUCTIONS if provided else DEFAULT_EVALUATION_INSTRUCTIONS
     return f"""The evaluation is maintained by the system and is read-and-execute only.
 
 1. **Run the registered evaluation**: `{registered_evaluation_command}`
@@ -495,7 +510,7 @@ def evaluation_instructions(registered_evaluation_command: Optional[str]) -> str
 5. **Retry on transient crashes** of your own code (max 3 attempts)."""
 
 
-def deferred_evaluation_instructions(registered_evaluation_command: Optional[str]) -> str:
+def deferred_evaluation_instructions(registered_evaluation_command: Optional[str], *, provided: bool = False) -> str:
     """The build-only contract of a cost-aware campaign: Kapso estimates the
     finalized candidate's platform cost and runs the evaluator itself once
     the candidate passes its cap and the campaign budget."""
@@ -505,6 +520,12 @@ def deferred_evaluation_instructions(registered_evaluation_command: Optional[str
             f"only: `{registered_evaluation_command}` keeps its manifest fields and "
             "its entrypoint, and altering its behavior at rest or at runtime voids "
             "the score."
+        )
+    elif provided:
+        evaluation_code = (
+            "The evaluation is provided in `kapso_evaluation/` and is read-and-execute "
+            "only: Kapso runs it after admission; never modify, delete, replace or add "
+            "evaluator source files."
         )
     else:
         evaluation_code = (

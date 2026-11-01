@@ -100,6 +100,7 @@ def test_parse_selected_solutions():
 def make_stub(monkeypatch, expansion, scores, stop_flags):
     """GenericSearch.__new__ stub wired for _expand_round."""
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
     strategy.node_expansion_value = expansion
     strategy.node_history = []
     strategy.problem_handler = SimpleNamespace(maximize_scoring=True)
@@ -111,7 +112,9 @@ def make_stub(monkeypatch, expansion, scores, stop_flags):
         calls["lanes"].append((solution, node_id, lane_index))
         node = SimpleNamespace(
             node_id=node_id,
+            branch_name=f"generic_exp_{node_id}",
             score=None,
+            unjudged="",
             should_stop=False,
             phase_telemetry={"implementation": {"cost_usd": 1.0}},
             evaluation_integrity_error=None,
@@ -129,6 +132,7 @@ def make_stub(monkeypatch, expansion, scores, stop_flags):
         return node
 
     monkeypatch.setattr(strategy, "_run_expansion_lane", fake_lane)
+    monkeypatch.setattr(strategy, "_attempt_commit", lambda branch_name: "c" * 40)
     monkeypatch.setattr(strategy, "enforce_evaluation_integrity", fake_integrity)
     monkeypatch.setattr(strategy, "_generate_feedback", fake_feedback)
     monkeypatch.setattr(
@@ -229,6 +233,9 @@ def test_lane_brief_single_lane_states_pins_without_sibling_talk():
 
 def test_implementation_prompt_injects_lane_brief(monkeypatch):
     strategy = GenericSearch.__new__(GenericSearch)
+    strategy.harness = None
+    strategy.experience_intro_path = None
+    strategy.hosted = None
     strategy.shared_artifacts_brief = "No shared-cache artifacts registered yet."
     monkeypatch.setattr(
         GenericSearch, "_render_budget_status", lambda self: "budget"

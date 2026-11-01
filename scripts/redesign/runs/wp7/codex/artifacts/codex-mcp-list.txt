@@ -1,0 +1,6 @@
+Name   Command    Args  Env  Cwd  Status   Auth       
+kapso  kapso-mcp  -     -    -    enabled  Unsupported
+
+Name                 Url                                                                                                                                                                                                                                                                                                               Bearer Token Env Var  Status   Auth       
+brightdata           https://mcp.brightdata.com/mcp?tools=search_engine,search_engine_batch,scrape_as_markdown,scrape_batch,discover,web_data_linkedin_company_profile,web_data_linkedin_people_search,web_data_linkedin_person_profile,web_data_linkedin_job_listings,web_data_crunchbase_company,list_dataset_fields,search_dataset  -                     enabled  Unknown    
+openaiDeveloperDocs  https://developers.openai.com/mcp                                                                                                                                                                                                                                                                                 -                     enabled  Unsupported

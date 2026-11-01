@@ -8,11 +8,11 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Mapping, Optional
 
-from kapso.core.config import load_platform_defaults
+from kapso.core.config import load_config
 from kapso.execution.iteration_evaluator import IterationEvaluationContext
 
 
-DEFAULT_COST_CONFIG = load_platform_defaults()["search_strategy"]["params"]["cost"]
+DEFAULT_COST_CONFIG = load_config()["search_strategy"]["params"]["cost"]
 
 
 @dataclass(frozen=True)

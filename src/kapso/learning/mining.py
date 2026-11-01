@@ -21,13 +21,26 @@ import yaml
 
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
+from kapso.harness.load import Harness
+from kapso.harness.staging import StagedHarness, host_for, stage_harness
 from kapso.learning.refs import extract_refs
-from kapso.learning.trajectory_store import MANIFEST_NAME, TrajectoryStore, _hash_file
+from kapso.learning.trajectory_store import (
+    MANIFEST_NAME,
+    STAGING_DIRECTORIES,
+    TrajectoryStore,
+    _hash_file,
+)
 
 CREW_DIR = Path(__file__).parent / "crews" / "mining"
 MINED_DIR_NAME = "mined"
 MINING_REPORT_NAME = "mining-report.md"
 FORMAT_DOC_NAME = "mined-format.md"
+# The lead's session, as the harness staging records it under the mining
+# run directory (`<run_root>/<trajectory>/.kapso/sessions/lead/`).
+LEAD_SESSION = "lead"
+# The learn status's line when the model's safeguards refused the lead's
+# turn and the frame launched it again (wp6-observability.md, change 12).
+REFUSAL_NOTE = "lead refused by the model's safeguards; relaunched"
 
 FLOW_STATUSES = (
     "ideated", "selected-unbuilt", "build-failed", "evaluated", "judged", "champion"
@@ -38,6 +51,28 @@ _FLOW_FILE_PATTERN = re.compile(r"^it-\d+/flow-\d+\.md$")
 _RUN_ID_PATTERN = re.compile(r"^runs/(run_\d+)/")
 _MD_LINK_PATTERN = re.compile(r"\]\(([^)\s]+)\)")
 _LINE_FRAGMENT_PATTERN = re.compile(r"^L\d+(-L?\d+)?$")
+# A frontmatter line whose unquoted value is a reference with a fragment
+# holding a colon followed by whitespace: YAML reads a mapping value there.
+_COLON_FRAGMENT_PATTERN = re.compile(r"""^(\s*(?:- )?[\w.-]+:\s+)([^\s"'][^\s]*#.*:\s.*)$""")
+
+
+def _unquoted_colon_fragments(text: str) -> List[str]:
+    """The frontmatter lines whose unquoted reference carries a fragment
+    with a colon in it, which YAML would read as a mapping value: a
+    finding for the crew (quote the reference whole), where the parser
+    would raise and the repair round never see the document."""
+    if not text.startswith("---\n") or "\n---" not in text[4:]:
+        return []
+    block = text[4:text.index("\n---", 4)]
+    findings = []
+    for number, line in enumerate(block.splitlines(), 1):
+        match = _COLON_FRAGMENT_PATTERN.match(line)
+        if match:
+            findings.append(
+                f"frontmatter line {number}: the reference `{match.group(2).strip()}` is unquoted and its "
+                "fragment holds a colon; quote the whole reference"
+            )
+    return findings
 
 
 def _split_frontmatter(text: str) -> Optional[Dict[str, Any]]:
@@ -128,7 +163,12 @@ class MinedViewValidator:
         flows = []
         for path in self._flow_files():
             rel = path.relative_to(self.mined_dir).as_posix()
-            frontmatter = _split_frontmatter(path.read_text())
+            text = path.read_text()
+            unquoted = _unquoted_colon_fragments(text)
+            if unquoted:
+                findings.extend(f"mined/{rel}: {finding}" for finding in unquoted)
+                continue
+            frontmatter = _split_frontmatter(text)
             if frontmatter is None:
                 findings.append(f"mined/{rel}: missing or non-mapping frontmatter block")
                 continue
@@ -287,11 +327,21 @@ class MiningFrame:
 
     # ------------------------------------------------------------- public
 
-    def mine(self, trajectory_id: str, force: bool = False) -> Path:
+    def mine(
+        self, trajectory_id: str, force: bool = False, harness: Optional[Harness] = None, status=None,
+    ) -> Path:
         """Produce <bundle>/mined/ for one trajectory; returns the mined dir.
 
         Idempotent: an already-mined trajectory is skipped unless `force`
         (the mined view is a derived layer — regeneration replaces it whole).
+        ``harness`` is the one the lesson runs with: its learning module is
+        staged into the lead's session at the bundle root (the pages in the
+        prompt; the skills, servers, delegates and hooks beside it) and
+        removed with the rest of the staging, the session's record and
+        stream kept under `<run_root>/<trajectory>/`; none without one.
+        ``status`` is the learn status the frame notes a relaunch in (a
+        turn the model's safeguards refused is launched again, up to
+        `refusal_relaunches` times, before the frame fails loud).
         """
         manifest = self.store.manifest(trajectory_id)
         bundle_dir = self.store.resolve(trajectory_id)
@@ -300,14 +350,19 @@ class MiningFrame:
             return mined_dir
         if mined_dir.exists():
             shutil.rmtree(mined_dir)
+        run_dir = Path(self.config["run_root"]).expanduser() / trajectory_id.replace("/", "--")
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
 
-        self._stage(bundle_dir, trajectory_id)
-        agent = self._build_lead(bundle_dir)
+        staged = self._stage(bundle_dir, trajectory_id, harness, run_dir)
+        agent = self._build_lead(bundle_dir, staged)
         timeout = self.config["timeout_minutes"] * 60
         prompt = (CREW_DIR / "lead_prompt.md").read_text().replace(
             "{{trajectory_id}}", trajectory_id
         )
-        result = agent.generate_code(prompt, timeout_seconds=timeout)
+        if staged.guidance:
+            prompt += "\n\n" + staged.guidance
+        result, relaunched = self._launch(agent, prompt, timeout, status, 0)
         self._write_report(mined_dir, result.output)
 
         findings = MinedViewValidator(bundle_dir, manifest).validate()
@@ -316,9 +371,10 @@ class MiningFrame:
         while findings and rounds_used < repair_rounds:
             rounds_used += 1
             repair_prompt = self._repair_prompt(findings)
-            result = agent.generate_code(repair_prompt, timeout_seconds=timeout)
+            result, relaunched = self._launch(agent, repair_prompt, timeout, status, relaunched)
             self._write_report(mined_dir, result.output)
             findings = MinedViewValidator(bundle_dir, manifest).validate()
+        agent.cleanup()
         self._unstage(bundle_dir)
         if findings:
             raise RuntimeError(
@@ -331,12 +387,19 @@ class MiningFrame:
 
     # ------------------------------------------------------------ staging
 
-    def _stage(self, bundle_dir: Path, trajectory_id: str) -> None:
-        """Place the contract and agent definitions at the checkout root.
+    def _stage(
+        self, bundle_dir: Path, trajectory_id: str, harness: Optional[Harness], run_dir: Path
+    ) -> StagedHarness:
+        """Place the contract, the crew's agent definitions and the harness's
+        learning module at the bundle root.
 
-        A crashed earlier run leaves our own staging behind; that exact
-        leftover (byte-identical contract doc) is removed and re-staged. Any
-        OTHER occupant of these names is not ours to delete — refuse loudly.
+        The staging owns the contract's name and the hosts' staging
+        directories there: a crashed earlier run's leftover (the
+        byte-identical contract doc marks it) is removed and re-staged; any
+        other occupant of these names is not ours to delete — refuse loudly.
+        A harvest leaves those directories out, so a bundle has none of its
+        own. The session's record and stream go under the run directory,
+        never into the bundle.
         """
         format_target = bundle_dir / FORMAT_DOC_NAME
         contract_text = (CREW_DIR / "mined_format.md").read_text()
@@ -346,19 +409,14 @@ class MiningFrame:
                     f"bundle {trajectory_id} contains a foreign {FORMAT_DOC_NAME}; "
                     "refusing to stage over it"
                 )
-            format_target.unlink()
-        claude_dir = bundle_dir / ".claude"
-        if claude_dir.exists():
-            leftover_names = sorted(
-                p.name for p in (claude_dir / "agents").glob("*.md")
-            ) if (claude_dir / "agents").is_dir() else []
-            our_names = sorted(p.name for p in (CREW_DIR / "agents").glob("*.md"))
-            if leftover_names != our_names:
+            self._unstage(bundle_dir)
+        for name in STAGING_DIRECTORIES:
+            if (bundle_dir / name).exists():
                 raise FileExistsError(
-                    f"bundle {trajectory_id} contains a foreign .claude dir; "
-                    "refusing to stage over it"
+                    f"bundle {trajectory_id} contains a {name} directory that is not the "
+                    "mining crew's; refusing to stage over it (a harvest leaves the hosts' "
+                    "staging directories out of a bundle; harvest the campaign again)"
                 )
-            shutil.rmtree(claude_dir)
         shutil.copy2(CREW_DIR / "mined_format.md", format_target)
         agents_dir = bundle_dir / ".claude" / "agents"
         agents_dir.mkdir(parents=True)
@@ -371,28 +429,56 @@ class MiningFrame:
             for placeholder, value in substitutions.items():
                 text = text.replace(placeholder, value)
             (agents_dir / definition.name).write_text(text)
+        lead = self.config["lead"]
+        return stage_harness(
+            harness, "learning", session_dir=bundle_dir, campaign_dir=bundle_dir,
+            session_id=LEAD_SESSION,
+            host=host_for(lead["cli"]) if harness is not None else lead["cli"],
+            records_dir=run_dir / ".kapso" / "sessions",
+        )
 
     def _unstage(self, bundle_dir: Path) -> None:
         (bundle_dir / FORMAT_DOC_NAME).unlink()
-        shutil.rmtree(bundle_dir / ".claude")
+        for name in STAGING_DIRECTORIES:
+            if (bundle_dir / name).is_dir():
+                shutil.rmtree(bundle_dir / name)
 
-    def _build_lead(self, bundle_dir: Path):
+    def _build_lead(self, bundle_dir: Path, staged: StagedHarness):
         lead = self.config["lead"]
         agent_config = CodingAgentConfig(
             agent_type=lead["cli"],
             model=lead["model"],
             debug_model=lead["model"],
-            agent_specific={
+            agent_specific=staged.merged_agent_specific({
                 "auth_mode": lead["auth_mode"],
                 "effort": lead["effort"],
                 "append_system_prompt":
                     (CREW_DIR / "append_system_prompt.md").read_text().strip(),
                 "streaming": True,
-            },
+            }),
         )
         agent = self.agent_factory.create(agent_config)
         agent.initialize(str(bundle_dir))
         return agent
+
+    def _launch(self, agent, prompt: str, timeout: float, status, relaunched: int):
+        """One lead invocation. A turn the model's safeguards refused
+        (`CodingResult.refused`) is launched again with the same prompt, a
+        fresh session, while the run's `refusal_relaunches` last, each
+        noted in the learn status; a refusal past them fails loud. An
+        ordinary failure is the caller's to judge from the result."""
+        relaunches = int(self.config["refusal_relaunches"])
+        result = agent.generate_code(prompt, timeout_seconds=timeout)
+        while result.refused and relaunched < relaunches:
+            relaunched += 1
+            if status is not None:
+                status.note(REFUSAL_NOTE)
+            result = agent.generate_code(prompt, timeout_seconds=timeout)
+        if result.refused:
+            raise RuntimeError(
+                f"mining lead refused by the model's safeguards after {relaunched} relaunch(es): {result.error}"
+            )
+        return result, relaunched
 
     # ----------------------------------------------------------- outputs
 

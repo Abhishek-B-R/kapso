@@ -47,10 +47,10 @@ class ExperimentIngestor(Ingestor):
     
     def ingest(self, source: Any) -> List[WikiPage]:
         """
-        Extract knowledge from a SolutionResult object.
+        Extract knowledge from a Solution object.
         
         Args:
-            source: Source.Solution wrapper or SolutionResult object
+            source: Source.Solution wrapper or Solution object
             
         Returns:
             List of proposed WikiPage objects

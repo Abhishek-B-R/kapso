@@ -13,6 +13,7 @@
 # assembled frame-side.
 
 import re
+import shlex
 import shutil
 import subprocess
 from datetime import date, datetime, timezone
@@ -21,9 +22,14 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from kapso.execution.coding_agents.adapters.codex_agent import DEFAULT_SANDBOX
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
-from kapso.learning.bank import Bank
+from kapso.execution.coding_agents.session_record import EXIT_ERROR, EXIT_SUCCESS, append_run, run_entry
+from kapso.execution.coding_agents.transcripts import codex_threads, digest_codex
+from kapso.harness.load import Harness
+from kapso.harness.staging import CODEX_HOST, StagedHarness, host_for, stage_harness
+from kapso.learning.bank import DECOY_REGISTRY_NAME, Bank
 from kapso.learning.bank_invariants import (
     BankTransactionValidator,
     body_contract_gaps,
@@ -31,10 +37,20 @@ from kapso.learning.bank_invariants import (
 )
 from kapso.learning.graders.hindcast import HindcastReport
 from kapso.learning.refs import extract_refs
-from kapso.learning.retriever import compile_probe_queue
-from kapso.learning.trajectory_store import TrajectoryStore
+from kapso.learning.retriever import compile_probe_queue, exposure_ladder
+from kapso.learning.trajectory_store import MANIFEST_NAME, TrajectoryStore
 
 CREW_DIR = Path(__file__).parent / "crews" / "update"
+# The two sessions a run stages the harness's learning module into, as
+# recorded under `<run_dir>/.kapso/sessions/`: the Claude lead, and the
+# `codex exec` workers run-role.sh launches, which read the module's
+# guidance from a file beside the launcher.
+LEAD_SESSION = "lead"
+WORKERS_SESSION = "workers"
+WORKERS_GUIDANCE_FILE = "harness-guidance.md"
+# The campaign's pull log inside its archived bundle: the exposure the
+# evidence check credits usage claims against.
+PULL_LOG_REL = ".kapso/serving/serving-pull.jsonl"
 # NOTE is the acknowledgment verdict for serving-feedback rows (journal-only,
 # no bank edit) — a small vocabulary extension over the update-crew doc,
 # discovered at implementation: feedback rows need a verdict that is neither a
@@ -98,11 +114,20 @@ class UpdateFrame:
         store: TrajectoryStore,
         config: Dict[str, Any],
         agent_factory=CodingAgentFactory,
+        bank_home: Optional[Path] = None,
     ):
+        """``bank_home`` is the bank the run clones, edits and pushes back
+        to: the facade's resolved home (`Kapso(bank=)` may have moved it
+        off the config); the config's `learning.bank.local_path` when the
+        caller passes none."""
         self.store = store
         self.learning_config = config["learning"]
         self.crew_config = self.learning_config["update_crew"]
         self.bank_config = self.learning_config["bank"]
+        self.bank_home = (
+            Path(bank_home).expanduser() if bank_home is not None
+            else Path(self.bank_config["local_path"]).expanduser()
+        )
         self.score_band = self.learning_config["graders"]["score_band"]
         self.codify_config = self.learning_config["codify"]
         self.agent_factory = agent_factory
@@ -114,16 +139,20 @@ class UpdateFrame:
         batch: List[Dict[str, str]],
         run_root: str,
         learner_version: str,
+        harness: Optional[Harness] = None,
     ) -> Path:
         """batch: [{trajectory, hindcast_report}] — empty list is a
-        docket-only consolidation run. Returns the run dir (report inside)."""
+        docket-only consolidation run. Returns the run dir (report inside).
+        ``harness`` is the one the lesson runs with: its learning module is
+        staged into the run directory for the lead's session and for the
+        workers' (the pages in their prompts; the skills, servers, delegates
+        and hooks in each host's own format); none without one."""
         lr_id = "lr_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         run_dir = Path(run_root).expanduser() / lr_id
         (run_dir / "work").mkdir(parents=True)
 
-        bank_home = self.bank_config["local_path"]
         subprocess.run(
-            ["git", "clone", str(Path(bank_home).expanduser()), str(run_dir / "bank")],
+            ["git", "clone", str(self.bank_home), str(run_dir / "bank")],
             check=True, capture_output=True,
         )
         before_dir = run_dir / "bank-before"
@@ -132,36 +161,97 @@ class UpdateFrame:
 
         self._stage_codify_runs(run_dir, before)
         self._seed_worksheet(run_dir, batch, before)
-        self._stage_crew(run_dir, lr_id, batch, learner_version)
+        lead = self.crew_config["lead"]
+        staged_lead = stage_harness(
+            harness, "learning", session_dir=run_dir, campaign_dir=run_dir, session_id=LEAD_SESSION,
+            host=host_for(lead["cli"]) if harness is not None else lead["cli"],
+        )
+        staged_workers = stage_harness(
+            harness, "learning", session_dir=run_dir, campaign_dir=run_dir, session_id=WORKERS_SESSION,
+            host=CODEX_HOST,
+        )
+        self._stage_crew(run_dir, lr_id, batch, learner_version, staged_workers)
 
-        agent = self._build_lead(run_dir)
+        agent = self._build_lead(run_dir, staged_lead)
         timeout = self.crew_config["timeout_minutes"] * 60
         prompt = (CREW_DIR / "lead_prompt.md").read_text()
-        agent.generate_code(prompt, timeout_seconds=timeout)
+        if staged_lead.guidance:
+            prompt += "\n\n" + staged_lead.guidance
+        # The workers' invocations are recorded however the lead's session
+        # ends: the launcher runs under the lead, so no adapter saw them.
+        try:
+            agent.generate_code(prompt, timeout_seconds=timeout)
 
-        findings = self._validate(run_dir, before_dir, batch)
-        repair_rounds = self.crew_config["repair_rounds"]
-        rounds_used = 0
-        while findings and rounds_used < repair_rounds:
-            rounds_used += 1
-            numbered = "\n".join(f"{i+1}. {f}" for i, f in enumerate(findings))
-            agent.generate_code(
-                prompt + "\n\nThe frame's validation found the following "
-                "violations. Fix each in place (bank/ and work/ only), then "
-                "stop:\n" + numbered,
-                timeout_seconds=timeout,
-            )
             findings = self._validate(run_dir, before_dir, batch)
+            repair_rounds = self.crew_config["repair_rounds"]
+            rounds_used = 0
+            while findings and rounds_used < repair_rounds:
+                rounds_used += 1
+                numbered = "\n".join(f"{i+1}. {f}" for i, f in enumerate(findings))
+                agent.generate_code(
+                    prompt + "\n\nThe frame's validation found the following "
+                    "violations. Fix each in place (bank/ and work/ only), then "
+                    "stop:\n" + numbered,
+                    timeout_seconds=timeout,
+                )
+                findings = self._validate(run_dir, before_dir, batch)
+            agent.cleanup()
+        finally:
+            self._record_workers(staged_workers, self.crew_config["worker"]["model"])
         if findings:
             raise RuntimeError(
                 f"update run {lr_id} failed validation after {rounds_used} "
                 f"repair round(s): " + "; ".join(findings)
             )
 
-        self._rebuild_derived(run_dir, lr_id)
-        self._commit(run_dir, lr_id, batch)
+        # A lesson that admits nothing moves nothing: no card, sighting or
+        # quarantine changed, so there is no commit, no tag and no push —
+        # the report says so, and the bank stays at the head it was.
+        if self._bank_changed(run_dir):
+            self._rebuild_derived(run_dir, lr_id)
+            self._commit(run_dir, lr_id, batch)
         self._assemble_report(run_dir, lr_id, batch, learner_version, before_dir)
         return run_dir
+
+    def _record_workers(self, workers: StagedHarness, model: str) -> None:
+        """The workers' invocations, one run entry per `codex exec` thread
+        the launcher appended to the crew's stream, recorded once the
+        lead's session is over (the launcher runs under the lead, so no
+        adapter saw them end). A thread the launcher never closed, or one
+        that completed no turn, ended in error."""
+        stream = Path(workers.agent_specific["stream_artifact_path"])
+        if not stream.exists():
+            return
+        with open(stream, encoding="utf-8", errors="replace") as handle:
+            threads = codex_threads(handle)
+        for thread in threads:
+            digest = digest_codex(thread["lines"])
+            if thread["code"] is None:
+                error: Optional[str] = "the launcher recorded no exit: the lead's session ended first"
+            elif not thread["lines"]:
+                error = f"codex exec exited with code {thread['code']} before starting a thread"
+            elif thread["code"] != 0:
+                error = f"codex exec exited with code {thread['code']}"
+            elif not digest["turns"]:
+                error = "codex exec completed no turn"
+            else:
+                error = None
+            append_run(workers.record_path, run_entry(
+                digest, model=model, cli_session_id=digest["cli_session_id"],
+                exit=EXIT_SUCCESS if error is None else EXIT_ERROR, error=error,
+                files_changed=[], started=None, ended=None, duration_seconds=None,
+            ))
+
+    def _bank_changed(self, run_dir: Path) -> bool:
+        """Whether the crew changed the bank's content: the cards, the
+        retired cards, the sightings, the quarantine registry — not the
+        derived index or the log, which the frame rebuilds."""
+        status = subprocess.run(
+            ["git", "-C", str(run_dir / "bank"), "status", "--porcelain", "--",
+             "insights", "procedures", "retired", "sightings.md", DECOY_REGISTRY_NAME],
+            check=True, capture_output=True, text=True,
+        )
+        return bool(status.stdout.strip())
 
     # ------------------------------------------------------------- staging
 
@@ -371,8 +461,12 @@ class UpdateFrame:
 
     def _stage_crew(
         self, run_dir: Path, lr_id: str, batch: List[Dict[str, str]],
-        learner_version: str,
+        learner_version: str, workers: StagedHarness,
     ) -> None:
+        """The role prompts, the critic, the inputs, and the worker launcher:
+        a worker reads its role, the harness's guidance when there is one,
+        then the assignment, and runs with the staged servers, delegates and
+        hook trust (`StagedHarness.codex_exec_args`) and variables."""
         roles_dir = run_dir / "role-prompts"
         roles_dir.mkdir()
         for role_file in (CREW_DIR / "roles").glob("*.md"):
@@ -385,14 +479,38 @@ class UpdateFrame:
         (agents_dir / "critic.md").write_text(critic)
 
         worker = self.crew_config["worker"]
+        guidance_file = ""
+        if workers.guidance:
+            (run_dir / WORKERS_GUIDANCE_FILE).write_text(workers.guidance)
+            guidance_file = f" {WORKERS_GUIDANCE_FILE}"
+        exports = "".join(
+            f"export {name}={shlex.quote(value)}\n" for name, value in workers.env.items()
+        )
+        harness_args = workers.codex_exec_args()
+        extra = (" \\\n  " + " ".join(shlex.quote(arg) for arg in harness_args)) if harness_args else ""
+        stream = shlex.quote(workers.agent_specific["stream_artifact_path"])
+        # The worker runs codex exec directly, outside the adapter: its
+        # sandbox is the role's when the config names one, else the
+        # adapter's own default, so the two never drift apart.
+        sandbox = worker.get("sandbox", DEFAULT_SANDBOX)
         launcher = f"""#!/bin/bash
 # Generated by the update frame — worker-role invocations (config-threaded).
+# Every invocation's event stream is appended to the workers' stream, one
+# thread each, closed by its exit code; the frame records them after the
+# lead's session.
 set -euo pipefail
 ROLE="$1"; ASSIGNMENT="$2"; OUT="$3"
-cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec \\
-  --sandbox workspace-write --skip-git-repo-check --color never \\
+STREAM={stream}
+mkdir -p "$(dirname "$STREAM")"
+status=0
+{exports}cat "role-prompts/$ROLE.md"{guidance_file} "$ASSIGNMENT" | codex exec --json \\
+  --sandbox {sandbox} --skip-git-repo-check --color never \\
   --output-last-message "$OUT" -m "{worker['model']}" \\
-  -c 'model_reasoning_effort="{worker['effort']}"'
+  -c 'model_reasoning_effort="{worker['effort']}"'{extra} >> "$STREAM" || status=$?
+printf '{{"type":"kapso.exit","role":"%s","code":%s}}\\n' "$ROLE" "$status" >> "$STREAM"
+# The lead reads the worker's final message, not its event stream.
+cat "$OUT" 2>/dev/null
+exit "$status"
 """
         launcher_path = run_dir / "run-role.sh"
         launcher_path.write_text(launcher)
@@ -424,19 +542,19 @@ cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec \\
         reports = sorted(run_root.glob("lr_*/report.md"))
         return str(reports[-1]) if reports else None
 
-    def _build_lead(self, run_dir: Path):
+    def _build_lead(self, run_dir: Path, staged: StagedHarness):
         lead = self.crew_config["lead"]
         agent = self.agent_factory.create(CodingAgentConfig(
             agent_type=lead["cli"],
             model=lead["model"],
             debug_model=lead["model"],
-            agent_specific={
+            agent_specific=staged.merged_agent_specific({
                 "auth_mode": lead["auth_mode"],
                 "effort": lead["effort"],
                 "append_system_prompt":
                     (CREW_DIR / "append_system_prompt.md").read_text().strip(),
                 "streaming": True,
-            },
+            }),
         ))
         agent.initialize(str(run_dir))
         return agent
@@ -598,20 +716,28 @@ cat "role-prompts/$ROLE.md" "$ASSIGNMENT" | codex exec \\
     def _check_evidence(
         self, before: Bank, after: Bank, batch: List[Dict[str, str]]
     ) -> List[str]:
-        serving_records: Dict[str, Dict[str, Any]] = {}
+        # Exposure is the campaign's own pull log, archived in its bundle
+        # (the hindcast's serving record is availability, not exposure);
+        # a campaign that ran unserved has none, so a usage claim on it
+        # is a finding.
+        exposures: Dict[str, Dict[str, Dict[str, str]]] = {}
         for item in batch:
-            record_path = Path(item["hindcast_report"]).parent / "serving-record.yaml"
-            if record_path.is_file():
-                serving_records[item["trajectory"]] = yaml.safe_load(
-                    record_path.read_text()
-                )
+            # Through the store's resolver when the bundle is here or a
+            # remote store can bring it: a served campaign is never read
+            # as unserved for want of a local copy. A trap batch the
+            # gauntlet names without a bundle has no exposure.
+            trajectory = item["trajectory"]
+            if not (self.store.local / trajectory / MANIFEST_NAME).is_file() and self.store.remote is None:
+                continue
+            if PULL_LOG_REL in self.store.manifest(trajectory)["inventory"]["sha256"]:
+                exposures[trajectory] = exposure_ladder(self.store.resolve(trajectory, PULL_LOG_REL))
         findings: List[str] = []
         for name, card in after.cards.items():
             previous = before.cards.get(name)
             new_entries = card.evidence[len(previous.evidence) if previous else 0:]
             if new_entries:
                 findings += evidence_admission_findings(
-                    card, new_entries, self.store, serving_records
+                    card, new_entries, self.store, exposures
                 )
         return findings
 

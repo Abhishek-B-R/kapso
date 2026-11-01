@@ -1,0 +1,57 @@
+---
+title: "Experience: what a build is served that was measured before"
+sidebarTitle: "What experience is"
+description: "A build is served exactly the experience you load: your own bank of evidence-priced lessons, the hosted Leeroopedia gate, a bank another team shares, or a corpus you ingested. Nothing loaded, nothing served."
+keywords: ["Kapso experience", "lesson bank", "load_experience", "kapso experience", "Leeroopedia", "mine", "ingested corpus"]
+---
+
+Kapso runs the same campaign in every domain: propose a candidate, implement it on its own branch, measure it, judge it, keep the best. What a campaign starts out knowing is its experience: what was measured before, by you, by your team, or by others. A build is served exactly the experience it loads, and a build that loads nothing is served nothing.
+
+## The sources
+
+| Reference | What it is | Provenance in the intro |
+|---|---|---|
+| `mine` | Your own bank, the one [`learn()`](/docs/learn/what-learn-produces) writes: evidence-priced cards, each with its reliability and its evidence trail. Served under your harness's scope | measured by you (and your team, once the bank is shared) |
+| `mine:all` | The same bank, every card whatever the harness | the same |
+| `leeroopedia` | [Leeroopedia](https://leeroopedia.com), the hosted knowledge base of ML and AI frameworks, reached over MCP with one key in `.env` | reported by others |
+| a bank path or git reference | A bank another team shares: `./team/bank.git`, `acme/kapso-bank@v2`, `git+https://…@main`. Read, never written | measured by others |
+| an index name | A corpus you ingested with `kapso experience add --repo` or `--research`: a repository or a researched question turned into pages, searched by the `idea` and `code` tools | reported by others |
+
+The three verbs of the package are `kapso experience add`, which makes a source that must exist before it can be loaded, `list`, and `share`, which attaches a remote to your bank. Loading happens at the call: `kapso build --experience mine,leeroopedia`, the brief's `Experience` line, or `load_experience()` in Python. [Use experience on a build](/docs/experience/use) is the user's side; [Add a source](/docs/experience/add) and [Share a bank](/docs/experience/share) make the sources.
+
+## One rule
+
+**What is loaded is what is served.** There is no serving switch in the config, no retrieval the engine runs on your behalf, and no source a campaign reads that its records do not name. Each bank is pinned at its head for the campaign's whole life and each index at its id, the intro the sessions read names every source with its provenance, and the solution, the checkpoint, the launch record and the status file carry the same list, so a resume is served what the launch was and a different list is refused by name.
+
+## How a session reads it
+
+The engine does not pick cards and paste them into a prompt. The ideation and implementation sessions get an introduction under an `## Experience (measured before)` heading that says what they are served, then the tools: for a bank, `bank_index`, `bank_get_card` and `bank_get_card_with_evidence`, in reading order; for a corpus, `idea` and `code`; for Leeroopedia, its own tools. Selection belongs to the reading agent, and every read is logged, so a lesson can later be credited to the source it was read from. The judge never gets the bank: it scores what the evaluation printed, not what a card promised.
+
+## Scope
+
+A card learned under a [harness](/docs/harnesses) is scoped to it: `mine` under the trading harness lists and opens the cards measured under trading and the ones scoped to the whole domain, and `mine:all` lifts the rule. A bank you read, the hosted gate and an index serve everything they hold. The coordinate is the harness's name alone; a build with none is `none`.
+
+## Provenance
+
+Every card and every page a session reads says where it came from. The intro names each source with its provenance, as the table above does. A card of your bank carries its reliability with the rationale behind it and its evidence trail, the ledger of the runs that tested it; a card converted from a published source rather than measured by a campaign is served with a `reported by others` line, and its score is the source's, not a measurement of Kapso's. Every bank read is logged in the campaign's pull log (the bank tools' index calls and card reads, with their bank and depth), so a lesson that later proves out can be credited to the bank it was read from; a hosted gate's or an index's reads are in the session's own record, not in the pull log.
+
+## Where to go
+
+<CardGroup cols={2}>
+  <Card title="Use experience on a build" icon="play" href="/docs/experience/use">
+    The flag, the brief line, Python; what the sessions see; what the campaign records; a host session
+  </Card>
+  <Card title="Add a source" icon="plus" href="/docs/experience/add">
+    Your bank, the hosted gate, a repository or a question ingested into an index
+  </Card>
+  <Card title="Share a bank" icon="share-nodes" href="/docs/experience/share">
+    Attach a remote to your bank; read another team's; update what moved
+  </Card>
+  <Card title="Experience reference" icon="book" href="/docs/reference/experience">
+    The reference grammar, the scope rule, the records, the intro, the config keys
+  </Card>
+</CardGroup>
+
+Related pages: [Use experience on a build](/docs/experience/use) · [Add a source](/docs/experience/add) · [Share a bank](/docs/experience/share) · [Experience reference](/docs/reference/experience) · [What learn produces](/docs/learn/what-learn-produces)
+
+Kapso is an open-source framework by [Leeroo](https://leeroo.com) that builds software toward measurable goals through experiment campaigns. Source code: [github.com/Leeroo-AI/kapso](https://github.com/Leeroo-AI/kapso) · Install: `pip install leeroo-kapso` · Every page as plain text: [llms.txt](https://docs.leeroo.com/llms.txt).

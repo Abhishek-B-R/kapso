@@ -64,16 +64,6 @@ def validate_split(
         findings.append(f"store trajectory {trajectory_id} is not in the split")
     for trajectory_id in sorted(set(listed) - set(store_ids)):
         findings.append(f"split lists {trajectory_id} which is not in the store")
-    for trajectory_id, side in listed.items():
-        manifest = store_ids.get(trajectory_id)
-        if manifest is None:
-            continue
-        entry = next(e for e in split[side] if e["id"] == trajectory_id)
-        if manifest.get("dataset") and entry["family"] != manifest["dataset"]:
-            findings.append(
-                f"{trajectory_id}: split family {entry['family']!r} does not "
-                f"match the manifest dataset {manifest['dataset']!r}"
-            )
     return findings
 
 

@@ -11,7 +11,7 @@ ever rewritten, and no request carries a value. A later ``replied`` before
 ``continued`` replaces the answer, since no session has read it yet.
 
 Also the two small records that make a reply self-sufficient: the launch
-record (``.kapso/launch.json`` — the evolve arguments the checkpoint does
+record (``.kapso/launch.json`` — the build arguments the checkpoint does
 not hold) and the campaign registry (one line per launch, so ``kapso
 inbox`` with no campaign can list every campaign waiting on a person).
 
@@ -23,6 +23,7 @@ in a newline is an event: see ``_committed``.
 import fcntl
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,7 +38,7 @@ class InboxOpenError(RuntimeError):
 INBOX_RELATIVE_PATH = Path(".kapso") / "inbox.jsonl"
 LAUNCH_RELATIVE_PATH = Path(".kapso") / "launch.json"
 RESUME_LOCK_RELATIVE_PATH = Path(".kapso") / "resume.lock"
-LAUNCH_SCHEMA_VERSION = 1
+LAUNCH_SCHEMA_VERSION = 2
 
 # The fields a session supplies for one request (Appendix A.2). All are
 # required, all are non-empty strings.
@@ -317,9 +318,39 @@ def file_requests(
     return results
 
 
-def record_reply(path: str | Path, request_id: int, note: str) -> Request:
+# A reply that looks like a credential. Replies are stored in plain text
+# and handed to the coder as text, so the value belongs in the file the
+# fix names, never here. Shapes of common tokens — structural, not knobs.
+SECRET_SHAPES = (
+    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"hf_[A-Za-z0-9]{16,}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"xox[abp]-[A-Za-z0-9-]{20,}"),
+)
+
+
+def looks_like_a_secret(note: str) -> bool:
+    return any(shape.search(note) for shape in SECRET_SHAPES)
+
+
+def record_reply(
+    path: str | Path, request_id: int, note: str, *, allow_secret: bool = False
+) -> Request:
     """The person's answer. The request must exist, and a session must not
-    have been given an earlier answer yet: until then the latest one wins."""
+    have been given an earlier answer yet: until then the latest one wins.
+
+    A note shaped like a credential is refused unless the caller says it
+    knows (`allow_secret=True`, the CLI's --yes): the guard holds for every
+    caller — the CLI, a script, a host plugin — not only the command line.
+    """
+    if looks_like_a_secret(note) and not allow_secret:
+        raise ValueError(
+            "reply looks like a credential; replies are stored in plain text "
+            "and handed to the coder as text — put the value where the "
+            "request's fix says (usually the .env the run loaded) and reply "
+            "with a note, or pass allow_secret=True to store it anyway"
+        )
     path = Path(path)
     with _locked(path) as handle:
         requests = fold(_parse_events(handle.read(), str(path)))
@@ -358,6 +389,20 @@ def record_continued(
                 "node": node,
                 "session": session,
             }) + "\n")
+
+
+def continue_answered(path: str | Path, *, node: int, session: str) -> List[int]:
+    """The answered requests of ``node`` not yet continued, recorded as
+    continued by ``session`` — a restarted session that carries the
+    replies (the harness setup session, which the orchestrator runs again
+    rather than resuming). Their ids, in request order."""
+    pending = [
+        request.id for request in load_requests(path).values()
+        if request.node == node and not request.open and not request.continued
+    ]
+    if pending:
+        record_continued(path, pending, node=node, session=session)
+    return pending
 
 
 def new_requests_for_session(
@@ -452,15 +497,17 @@ def read_launch_record(workspace_dir: str | Path) -> Optional[Dict[str, Any]]:
 # the launch's, and one that names a bigger one is allowed (the checkpoint
 # does not fingerprint budgets).
 RESUME_FROM_RECORD = (
-    "mode", "coding_agent", "eval_dir", "data_dir", "additional_context",
-    "context", "serving_scope", "max_iterations", "time_budget_minutes",
-    "cost_budget", "finalization_reserve_minutes",
+    "host", "eval_dir", "data_dir", "experiments", "minutes", "usd", "reserve_minutes",
 )
 # The launch settings the checkpoint fingerprints. Changing one is refused
 # by the checkpoint with a fingerprint mismatch that names nothing; naming
 # the setting here is what the person needs.
-FINGERPRINTED_LAUNCH_KEYS = ("mode", "coding_agent", "eval_dir", "kg_index", "config_path")
-_PATH_LAUNCH_KEYS = ("eval_dir", "kg_index", "config_path")
+FINGERPRINTED_LAUNCH_KEYS = ("host", "eval_dir", "config_path", "experience")
+_PATH_LAUNCH_KEYS = ("eval_dir", "config_path")
+# The loaded experience is campaign identity by its references and scopes;
+# the heads are re-pinned from the record, so a bank that moved since the
+# launch is not a change (docs/plans/redesign/wp3-experience.md).
+_EXPERIENCE_LAUNCH_KEY = "experience"
 _RECORDED_PATH_KEYS = (*_PATH_LAUNCH_KEYS, "data_dir")
 
 
@@ -484,6 +531,8 @@ def launch_mismatches(record: Dict[str, Any], requested: Dict[str, Any]) -> Dict
     respelled directory is not a change."""
 
     def normal(key: str, value: Any) -> Any:
+        if key == _EXPERIENCE_LAUNCH_KEY:
+            return [(source["reference"], source["scope"]) for source in (value or [])]
         if value is None or key not in _PATH_LAUNCH_KEYS:
             return value
         return _resolved_path(value)
@@ -510,11 +559,43 @@ def register_campaign(registry_path: str | Path, workspace_dir: str | Path, goal
         fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def beside(campaign: Path, suffix: str) -> Path:
+    """The file that lies beside a campaign directory, named after it: the
+    log, the launch receipt, the learn log. The path is resolved first, so
+    a campaign named `.` or `..` (an empty name, which `with_name`
+    refuses) is the directory it stands for."""
+    resolved = Path(campaign).resolve()
+    return resolved.with_name(resolved.name + suffix)
+
+
+def launch_receipt_path(campaign: Path) -> Path:
+    """The detached launch's receipt, beside the log: the child's pid, the
+    log's path, the argv and the time, written before the child starts, so
+    `kapso watch` can tell a campaign that is starting from one that died
+    before writing its status (wp6-observability.md, change 7)."""
+    return beside(campaign, ".launch.json")
+
+
+def read_launch_receipt(campaign: Path) -> Optional[Dict[str, Any]]:
+    """The receipt of the last detached launch of `campaign`, or None
+    when it was never launched detached."""
+    path = launch_receipt_path(Path(campaign))
+    if not path.is_file():
+        return None
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(receipt, dict) or not isinstance(receipt.get("pid"), int) or "log" not in receipt:
+        raise ValueError(f"{path}: a launch receipt carries a pid and a log")
+    return receipt
+
+
 def list_registered_campaigns(registry_path: str | Path) -> List[Dict[str, Any]]:
-    """Registered campaigns whose directory still exists, newest first,
-    each path once under its latest launch (a campaign deleted and
-    launched again at the same path has two lines). Missing registry →
-    none; a malformed line raises."""
+    """Registered campaigns that still exist, newest first, each path once
+    under its latest launch (a campaign deleted and launched again at the
+    same path has two lines). A campaign exists when its directory does,
+    or when a launch receipt lies beside the path: a detached launch that
+    died at a launch check made no directory, and the receipt is what
+    `kapso watch` tells it by. Missing registry → none; a malformed line
+    raises."""
     path = Path(registry_path).expanduser()
     if not path.is_file():
         return []
@@ -523,7 +604,8 @@ def list_registered_campaigns(registry_path: str | Path) -> List[Dict[str, Any]]
         entry = json.loads(line)
         if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
             raise ValueError(f"{path}:{number}: registry line must carry a path")
-        if Path(entry["path"]).is_dir():
+        campaign = Path(entry["path"])
+        if campaign.is_dir() or launch_receipt_path(campaign).is_file():
             campaigns.pop(entry["path"], None)
             campaigns[entry["path"]] = entry
     return list(reversed(campaigns.values()))
@@ -606,7 +688,7 @@ def render_pause_block(
     first = requests[0].id if requests else 1
     reply_target = f" {first}" if len(requests) > 1 else ""
     return "\n".join([
-        "kapso evolve — waiting on you",
+        "kapso build — waiting on you",
         "",
         render_requests(requests, ideas),
         "",

@@ -11,7 +11,7 @@ Kapso is a set of pluggable components wired together by factories around a cent
 flowchart TB
     subgraph Entry["Entry Points"]
         API["Kapso API\n(src/kapso/kapso.py)"]
-        CLI["CLI\n(src/kapso/cli.py)"]
+        CLI["CLI\n(src/kapso/cli/, one module per verb)"]
         BENCH["Benchmarks\n(benchmarks/)"]
     end
 
@@ -66,16 +66,16 @@ flowchart TB
 
 ### Kapso (main API)
 
-The user-facing entry point that provides the four-pillar API:
+The user-facing entry point: the three verbs, and the two layers a verb runs with.
 
 ```python
 class Kapso:
-    def research(objective, mode, depth) -> ResearchFindings
-    def learn(source) -> LessonResult              # mine one finished campaign
-    def learn_knowledge(*sources, wiki_dir) -> PipelineResult  # ingest into the KG
-    def evolve(goal, ...) -> SolutionResult
-    def deploy(solution, strategy) -> Software
-    def index_kg(wiki_dir, save_to) -> str
+    def load_harness(ref) -> Harness                 # the domain layer a build runs with
+    def load_experience(ref) -> ExperienceSource     # what a build is served: mine, leeroopedia, a bank, an index
+    def add_experience(ref=None, *, repo=None, research=None, name=None) -> str   # make a source
+    def build(brief, ...) -> Solution
+    def learn(source) -> LessonResult                # mine one finished campaign into your bank
+    def deploy(solution, target) -> Software
 ```
 
 ### OrchestratorAgent
@@ -97,7 +97,7 @@ All major components are created via factories and can be swapped via configurat
 
 ```mermaid
 flowchart LR
-    YAML["config.yaml"] --> MODE["Mode Config"]
+    YAML["config.yaml + one override file"] --> MODE["the resolved config"]
     MODE --> SS["search_strategy"]
     MODE --> CA["coding_agent"]
     MODE --> KS["knowledge_search"]
@@ -140,12 +140,12 @@ src/kapso/
 │
 ├── execution/               # Execution layer
 │   ├── orchestrator.py      # OrchestratorAgent
-│   ├── solution.py          # SolutionResult dataclass
+│   └── ...
+│   handles.py               # Brief, Budget, Solution
 │   │
 │   ├── search_strategies/   # Solution exploration
 │   │   ├── base.py          # SearchStrategy ABC
 │   │   ├── factory.py       # SearchStrategyFactory
-│   │   ├── strategies.yaml  # Strategy presets
 │   │   └── generic/         # The shipped strategy
 │   │       ├── strategy.py
 │   │       ├── ideation.py / implementation.py
@@ -206,13 +206,12 @@ src/kapso/
 │   ├── presets.py           # Gate definitions + hosted server config (Leeroopedia)
 │   └── gates/
 │
-└── deployment/              # Deployment pipeline
-    ├── base.py              # Software, DeployConfig
-    ├── factory.py           # DeploymentFactory
-    ├── software.py          # DeployedSoftware
-    ├── selector/            # Strategy selection
-    ├── adapter/             # Code adaptation
-    └── strategies/          # Deployment strategies
+└── deployment/              # Deploy (docs/deploy/targets)
+    ├── session.py           # The deployment session and the engine's acceptance
+    ├── record.py            # The record under <campaign>/.kapso/deployments/<n>/
+    ├── handle.py            # Software: run, stop, start, health, logs
+    ├── worker.py            # The function kind's worker process
+    └── targets/             # The five bundled targets, each a skill with its scripts
         ├── local/
         ├── docker/
         ├── modal/
@@ -242,24 +241,30 @@ strategy = SearchStrategyFactory.create(
 )
 ```
 
-### Configuration modes
+### Configuration layers
 
-Configuration is organized into modes that bundle related settings:
+Two layers, one file of yours: the packaged `config.yaml` carries every
+default and is the schema at every depth, and an override file carries only
+what you change, merged over it key by key. The coding-agent CLIs a build may
+run on are the `hosts` table; the build's sessions are the roles under
+`search_strategy.params`, each resolving to a host:
 
 ```yaml
-modes:
-  GENERIC:
-    search_strategy:
-      type: "generic"
-      params: { ... }
-    coding_agent:
-      type: "claude_code"
-      model: "claude-opus-5"
-    knowledge_search:
-      type: "kg_graph_search"
-      enabled: true
-      preset: "DEFAULT"
+hosts:
+  claude_code: {model: claude-opus-5, auth_mode: oauth}
+  codex: {model: gpt-5.6-sol, effort: xhigh}
+search_strategy:
+  type: generic
+  params:
+    host: claude_code
+    ideation: {gates: [research, experiment_history, repo_memory], web: true}
+    implementation: {gates: [research, repo_memory], web: true}
+    judge: {}
+budget:
+  experiments: 10
 ```
+
+See [Configuration](/docs/reference/configuration).
 
 ### Git-based experiment isolation
 
