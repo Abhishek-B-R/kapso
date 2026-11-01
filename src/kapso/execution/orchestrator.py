@@ -271,7 +271,9 @@ class OrchestratorAgent:
         self._prior_cost = 0.0
         self._prior_elapsed_seconds = 0.0
         self._prior_cost_by_component: Dict[str, float] = {}
-        self._restored_node_count = 0
+        # {node id: {phase: USD}}: what the resume checkpoint's cumulative_cost
+        # already carries for each restored node.
+        self._restored_phase_costs: Dict[int, Dict[str, float]] = {}
 
         if workspace_dir is not None:
             self.checkpoint_store = RunCheckpointStore(workspace_dir)
@@ -342,12 +344,16 @@ class OrchestratorAgent:
                     "Could not restore search strategy state from the run "
                     "checkpoint"
                 ) from exc
-            # Nodes restored from the checkpoint already carried their agent
-            # spend into cumulative_cost; only nodes created after this point
-            # contribute live phase costs.
-            self._restored_node_count = len(
-                self.search_strategy.get_experiment_history()
-            )
+            # The checkpoint's cumulative_cost already carries what restored
+            # nodes had spent. Only what they spend from here on is live: a
+            # node the inbox continues is restored and still paying.
+            self._restored_phase_costs = {
+                node.node_id: {
+                    phase_name: phase_values.get("cost_usd", 0.0)
+                    for phase_name, phase_values in node.phase_telemetry.items()
+                }
+                for node in self.search_strategy.get_experiment_history()
+            }
 
         if self.checkpoint_store is None:
             self.checkpoint_store = RunCheckpointStore(
@@ -593,16 +599,15 @@ class OrchestratorAgent:
         return KnowledgeSearchFactory.create_null()
 
     def _live_phase_costs(self) -> Dict[str, float]:
-        """Attributed agent spend from nodes created in this process slice."""
+        """Attributed agent spend the resume checkpoint does not carry yet."""
         live: Dict[str, float] = {}
-        history = self.search_strategy.get_experiment_history()
-        for node in history[self._restored_node_count:]:
-            for phase_name, phase_values in getattr(
-                node, "phase_telemetry", {}
-            ).items():
+        for node in self.search_strategy.get_experiment_history():
+            carried = self._restored_phase_costs.get(node.node_id, {})
+            for phase_name, phase_values in node.phase_telemetry.items():
                 live[phase_name] = (
                     live.get(phase_name, 0.0)
                     + phase_values.get("cost_usd", 0.0)
+                    - carried.get(phase_name, 0.0)
                 )
         return live
 
