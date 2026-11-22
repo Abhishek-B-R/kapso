@@ -16,7 +16,7 @@ import subprocess
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # The package, not the trace: its names load on first use, so this module
 # stays free of the engine until an attempt is opened, and the trace can
@@ -70,36 +70,10 @@ class Budget:
     reserve_minutes: Optional[float] = None   # wall clock escrowed for the final checkout and evaluation
 
     def __post_init__(self) -> None:
-        for name in ("minutes", "usd", "reserve_minutes"):
-            value = getattr(self, name)
-            if value is None:
-                continue
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(value)
-                or value <= 0
-            ):
-                raise ValueError(
-                    f"Budget.{name} must be a positive finite number, got {value!r}"
-                )
-        if self.experiments is not None and (
-            isinstance(self.experiments, bool)
-            or not isinstance(self.experiments, int)
-            or self.experiments < 1
-        ):
-            raise ValueError(
-                f"Budget.experiments must be a positive integer, got {self.experiments!r}"
-            )
-        if (
-            self.minutes is not None
-            and self.reserve_minutes is not None
-            and self.reserve_minutes >= self.minutes
-        ):
-            raise ValueError(
-                f"Budget.reserve_minutes ({self.reserve_minutes}) must be smaller "
-                f"than Budget.minutes ({self.minutes})"
-            )
+        refusal = _budget_refusal(self.to_dict())
+        if refusal is not None:
+            name, why = refusal
+            raise ValueError(f"Budget.{name} {why}")
 
     @property
     def empty(self) -> bool:
@@ -130,6 +104,31 @@ class Budget:
             if value is not None:
                 parts.append(f"{name}={_number(value)}")
         return " ".join(parts)
+
+
+def _budget_refusal(values: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+    """The first field the engine cannot spend and why, or None. `Budget`
+    raises it as a ValueError, the brief parser at the field's line."""
+    for name in _BUDGET_FIELDS:
+        value = values.get(name)
+        if value is None:
+            continue
+        if name == "experiments":
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                return name, f"must be a positive integer, got {value!r}"
+        elif (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value <= 0
+        ):
+            return name, f"must be a positive finite number, got {value!r}"
+    minutes, reserve = values.get("minutes"), values.get("reserve_minutes")
+    if minutes is not None and reserve is not None and reserve >= minutes:
+        return "reserve_minutes", (
+            f"({_number(reserve)}) must be smaller than minutes ({_number(minutes)})"
+        )
+    return None
 
 
 def _number(value: Union[int, float]) -> str:
@@ -356,6 +355,7 @@ class _BriefParser:
         self.first_line: Dict[str, Optional[str]] = {}
         self.continuations: Dict[str, List[str]] = {}
         self.items: Dict[str, List[List[str]]] = {}
+        self.item_indent: Dict[str, int] = {}
         self.inline_items: Dict[str, List[str]] = {}
         self.budget_tokens: List[tuple] = []
         self.pending_blanks = 0
@@ -420,14 +420,20 @@ class _BriefParser:
 
     def _list_line(self, number: int, line: str, stripped: str) -> None:
         title = _FIELD_TITLES[self.current]
-        if stripped == "-":
+        indent = len(line) - len(line.lstrip())
+        # A `- ` line indented deeper than the item above continues it:
+        # a rule may hold a list of its own.
+        items = self.items[self.current]
+        nested = bool(items) and indent > self.item_indent[self.current]
+        if stripped == "-" and not nested:
             raise self.fail(number, f"empty item under {title}")
-        if stripped.startswith("- "):
+        if stripped.startswith("- ") and not nested:
             if self.current in self.inline_items:
                 raise self.fail(
                     number,
                     f"{title} is either one comma-separated line or `- ` items, not both",
                 )
+            self.item_indent[self.current] = indent
             self.items[self.current].append([stripped[2:].strip()])
             return
         if not self.items[self.current]:
@@ -479,6 +485,7 @@ class _BriefParser:
                 f"Budget needs name=value tokens, from {', '.join(_BUDGET_FIELDS)}",
             )
         values: Dict[str, Any] = {}
+        lines: Dict[str, int] = {}
         for number, token in self.budget_tokens:
             name, equals, text = token.partition("=")
             if not equals or name not in _BUDGET_FIELDS or not text:
@@ -499,6 +506,11 @@ class _BriefParser:
                 if not re.fullmatch(r"[0-9]+(\.[0-9]+)?", text):
                     raise self.fail(number, f"Budget {name} must be a number, got {text!r}")
                 values[name] = float(text)
+            lines[name] = number
+        refusal = _budget_refusal(values)
+        if refusal is not None:
+            name, why = refusal
+            raise self.fail(lines[name], f"Budget {name} {why}")
         return Budget(**values)
 
 

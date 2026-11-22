@@ -156,6 +156,30 @@ def test_a_list_item_may_continue_on_the_next_lines():
     assert brief.render() == text
 
 
+def test_a_list_inside_an_item_stays_in_that_item():
+    """A `- ` line indented past the items is the item's own list, not a
+    new item, so a rule with sub-bullets renders and parses back to
+    itself, which is what a resume and a detached build rely on."""
+    text = (
+        "Objective    a\n"
+        "Rules\n"
+        "  - leave these alone:\n"
+        "    - tests/\n"
+        "    -\n"
+        "  - no new dependencies\n"
+    )
+    brief = Brief.parse(text)
+    assert brief.rules == [
+        "leave these alone:\n- tests/\n-",
+        "no new dependencies",
+    ]
+    assert brief.render() == text
+    built = Brief(objective="a", experience=["mine\n- the harness only"])
+    assert Brief.parse(built.render()) == built
+    shallower = "Objective a\nRules\n    - first\n  - second\n   - inside second\n"
+    assert Brief.parse(shallower).rules == ["first", "second\n- inside second"]
+
+
 def test_experience_takes_items_too_and_renders_items_when_a_reference_holds_a_comma():
     assert Brief.parse("Objective a\nExperience\n  - mine\n  - acme/bank@v3\n").experience == ["mine", "acme/bank@v3"]
     brief = Brief(objective="a", experience=["one,two", "three"])
@@ -211,6 +235,13 @@ def test_what_the_grammar_rejects_and_how_it_says_so(text, message):
     ("Objective a\nRules\n", r"^kapso-brief.md:2: Rules has no items"),
     ("Objective a\nBudget\n", r"^kapso-brief.md:2: Budget needs name=value tokens"),
     ("Objective a\nBudget minutes=5\n       hours=2\n", r"^kapso-brief.md:3: Budget token 'hours=2'"),
+    # What the grammar reads but the engine cannot spend, refused at its line.
+    ("Objective a\nBudget minutes=45\n       experiments=0\n",
+     r"^kapso-brief.md:3: Budget experiments must be a positive integer"),
+    ("Objective a\nBudget usd=0.0\n", r"^kapso-brief.md:2: Budget usd must be a positive finite number"),
+    (f"Objective a\nBudget minutes=1{'0' * 400}\n", r"^kapso-brief.md:2: Budget minutes must be a positive finite"),
+    ("Objective a\nBudget minutes=45\n       reserve_minutes=60\n",
+     r"^kapso-brief.md:3: Budget reserve_minutes \(60\) must be smaller than minutes \(45\)"),
 ])
 def test_errors_name_the_file_and_the_line(text, message):
     with pytest.raises(BriefError, match=message):
