@@ -1291,41 +1291,37 @@ Only include pages that would actually help answer the query.
 
         connected = []
         
-        try:
-            with self._neo4j_driver.session() as session:
-                # Get outgoing connections
-                outgoing_query = """
-                    MATCH (p:WikiPage {id: $page_id, corpus: $corpus})-[r]->(target:WikiPage {corpus: $corpus})
-                    RETURN target.id AS id,
-                           target.page_type AS type, type(r) AS edge_type
-                """
-                result = session.run(outgoing_query, page_id=page_id, corpus=self.corpus)
-                for record in result:
-                    connected.append({
-                        "id": record["id"],
-                        "type": record["type"],
-                        "edge_type": record["edge_type"],
-                        "direction": "outgoing",
-                    })
-                
-                # Get incoming connections
-                incoming_query = """
-                    MATCH (source:WikiPage {corpus: $corpus})-[r]->(p:WikiPage {id: $page_id, corpus: $corpus})
-                    RETURN source.id AS id,
-                           source.page_type AS type, type(r) AS edge_type
-                """
-                result = session.run(incoming_query, page_id=page_id, corpus=self.corpus)
-                for record in result:
-                    connected.append({
-                        "id": record["id"],
-                        "type": record["type"],
-                        "edge_type": record["edge_type"],
-                        "direction": "incoming",
-                    })
-                    
-        except Exception as e:
-            logger.warning(f"Failed to get connected pages for {page_id}: {e}")
-        
+        with self._neo4j_driver.session() as session:
+            # Get outgoing connections
+            outgoing_query = """
+                MATCH (p:WikiPage {id: $page_id, corpus: $corpus})-[r]->(target:WikiPage {corpus: $corpus})
+                RETURN target.id AS id,
+                       target.page_type AS type, type(r) AS edge_type
+            """
+            result = session.run(outgoing_query, page_id=page_id, corpus=self.corpus)
+            for record in result:
+                connected.append({
+                    "id": record["id"],
+                    "type": record["type"],
+                    "edge_type": record["edge_type"],
+                    "direction": "outgoing",
+                })
+
+            # Get incoming connections
+            incoming_query = """
+                MATCH (source:WikiPage {corpus: $corpus})-[r]->(p:WikiPage {id: $page_id, corpus: $corpus})
+                RETURN source.id AS id,
+                       source.page_type AS type, type(r) AS edge_type
+            """
+            result = session.run(incoming_query, page_id=page_id, corpus=self.corpus)
+            for record in result:
+                connected.append({
+                    "id": record["id"],
+                    "type": record["type"],
+                    "edge_type": record["edge_type"],
+                    "direction": "incoming",
+                })
+
         return connected
     
     # =========================================================================
