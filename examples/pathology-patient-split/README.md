@@ -50,8 +50,9 @@ harness, so the command needs no `--harness`.
   patients it saw on both sides of that split.
 - `kapso trace campaign`: how each attempt validated and what the audit
   found. The harness's cv-protocol skill tells a session to group folds by
-  the repeated unit when the test holds unseen units, and its
-  leakage-auditor reports a fold that splits one.
+  the repeated unit when the test holds unseen units, its leakage-scan
+  reports the shipped `train_test_split` as an `ungrouped-split` advisory,
+  and its leakage-auditor reports a fold that splits one.
 - `solution.explain()` and `solution.diff()`: the delivered candidate, its
   measurement, and its code against the seed.
 

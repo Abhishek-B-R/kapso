@@ -3,18 +3,18 @@
 Every example is a task: a brief (`kapso-brief.md`), a starting repository
 (`repo/`, or the files that assemble it), the data or how to get it, and
 `run.py`, the same build the one command runs. `churn-first-build`,
-`pathology-patient-split` and `trading` carry a seeded data generator and
-a protected evaluator (`evaluation/`); `fraud-no-evaluator` carries the
-generator and lets the
-campaign build the evaluator from the brief's protocol. `dbt-snowflake` and
-`support-agent-harness` are full-size: a warehouse on Snowflake and a model
-on a GPU, each with its brief, its evaluation and a README that says what to
-bring and how to set it up. `torch-performance` and `gpu-kernels` run today
-with their evaluator inside the repository, where the judge protects it by
-rule; a harness for each is a follow-up. `harnesses/` holds the harnesses
-the trading, dbt and support-agent examples build on. Install Kapso and log
-the coding-agent CLIs in first (`kapso doctor build` must pass), then run
-from the example's directory.
+`pathology-patient-split` and `trading` carry a seeded data generator and a
+protected evaluator (`evaluation/`); `fraud-no-evaluator` carries the
+generator and lets the campaign build the evaluator from the brief's
+protocol. `dbt-snowflake` and `support-agent-harness` are full-size: a
+warehouse on Snowflake and a model on a GPU, each with its brief, its
+evaluation and a README that says what to bring and how to set it up.
+`torch-performance` and `gpu-kernels` run today with their evaluator inside
+the repository, where the judge protects it by rule; a harness for each is a
+follow-up. `harnesses/` holds the harnesses the trading, dbt and
+support-agent examples build on. Install Kapso and log the coding-agent CLIs
+in first (`kapso doctor build` must pass), then run from the example's
+directory.
 
 Every example runs the experimentation; `end-to-end`, `dbt-snowflake` and
 `support-agent-harness` add the deployment and the learning, and `trading`,
