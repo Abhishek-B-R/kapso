@@ -344,6 +344,12 @@ def test_a_dirty_campaign_and_bad_env_are_refused_before_any_record(solution, ag
         deploy(solution, agent, env={"A": "x\ny"})
     with pytest.raises(DeployError, match="env: the value of A holds a line break or a control character"):
         deploy(solution, agent, env={"A": "x\ry"})
+    # An option is exported as KAPSO_OPTION_<NAME>: a name that makes no
+    # variable, or two that make the same one, would never reach a script.
+    with pytest.raises(DeployError, match="option: 'allow-unaudited' does not make a variable name"):
+        deploy(solution, agent, options={"allow-unaudited": "yes"})
+    with pytest.raises(DeployError, match="options: 'cash' and 'CASH' are both KAPSO_OPTION_CASH"):
+        deploy(solution, agent, options={"cash": "1", "CASH": "2"})
     (solution.campaign / "predict.py").write_text("changed\n")
     with pytest.raises(DeployError, match=r"tracked files differ from the delivered commit \(predict.py\); restore the delivered tree \(`git -C .* checkout -- predict.py`\), or build again"):
         deploy(solution, agent)

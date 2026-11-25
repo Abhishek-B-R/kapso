@@ -115,7 +115,9 @@ docker target keeps `.env` out of its image. A solution that carries its
 own `.env` has it loaded the same way, `env` or not.
 
 `--option KEY=VALUE` (`options={...}`) are for the target's workflow:
-exported to its scripts as `KAPSO_OPTION_<KEY>`. The bundled targets read
+exported to its scripts as `KAPSO_OPTION_<KEY>`. A key that makes no
+variable name (`allow-unaudited`), or two keys that differ only in case,
+are refused before anything is deployed. The bundled targets read
 none; a harness target's skill says which it takes (`paper-trading` takes
 `schedule` and `cash`).
 

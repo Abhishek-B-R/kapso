@@ -64,6 +64,20 @@ def check_env(env: Dict[str, str]) -> None:
             raise DeployError(f"env: the value of {name} holds a line break or a control character, which no runtime's env file carries")
 
 
+def check_options(options: Dict[str, str]) -> None:
+    """Each option reaches the target's scripts as KAPSO_OPTION_<NAME>: a
+    name that makes no variable, or two that make the same one, is refused
+    rather than lost on the way."""
+    exported: Dict[str, str] = {}
+    for name in options:
+        variable = f"KAPSO_OPTION_{name.upper()}"
+        if not ENV_NAME.fullmatch(variable):
+            raise DeployError(f"option: {name!r} does not make a variable name ({variable}); use letters, digits and underscores")
+        if variable in exported:
+            raise DeployError(f"options: {exported[variable]!r} and {name!r} are both {variable}; pass one of them")
+        exported[variable] = name
+
+
 def write_env_file(workspace: Path, env: Dict[str, str]) -> Optional[Path]:
     """The caller's variables in `.env` at the workspace root, one
     `NAME=VALUE` per line with the value verbatim (the format docker's
@@ -392,6 +406,7 @@ def run_deployment(
     env = dict(env or {})
     options = {str(k): str(v) for k, v in (options or {}).items()}
     check_env(env)
+    check_options(options)
     if solution.chosen_attempt is None:
         refuse_dirty(campaign)   # a chosen attempt's tracked files come from its commit
     if harness is not None:
