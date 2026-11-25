@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 from kapso.core.config import load_config
 from kapso.core.env_file import load_env_file
 from kapso.kapso import Kapso
-from kapso.handles import Brief, Budget
+from kapso.handles import Brief, Budget, _budget_refusal
 from kapso.execution.inbox import launch_receipt_path, read_launch_record
 from kapso.execution.observability import OperationStatusView, TERMINAL_STATES, mark_failed, pid_alive
 from kapso.experience import recorded_reference
@@ -58,6 +58,7 @@ def cmd_build(args) -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+    budget = _flag_budget(args, brief)
 
     if args.detach:
         if not args.output:
@@ -120,16 +121,26 @@ def cmd_build(args) -> None:
         data=args.data,
         repo=args.repo,
         output=args.output,
-        budget=Budget(
-            minutes=args.budget_minutes,
-            experiments=args.budget_experiments,
-            usd=args.budget_usd,
-            reserve_minutes=args.budget_reserve_minutes,
-        ),
+        budget=budget,
         resume=args.resume,
         coding_agent=args.coding_agent,
     )
     _print_build_summary(solution)
+
+
+def _flag_budget(args, brief) -> Budget:
+    """The --budget-* flags as a Budget. One the engine cannot spend, alone
+    or over the brief's Budget line, is refused here by the flag's name,
+    before a detached launch hands over a child that would die on it."""
+    flags = {name: getattr(args, f"budget_{name}") for name in Budget().to_dict()}
+    line = brief.budget.to_dict() if isinstance(brief, Brief) and brief.budget else {}
+    refusal = _budget_refusal({name: line.get(name) if value is None else value for name, value in flags.items()})
+    if refusal is not None:
+        name, why = refusal
+        where = f"--budget-{name.replace('_', '-')}" if flags[name] is not None else f"the brief's Budget {name}"
+        print(f"Error: {where} {why}", file=sys.stderr)
+        sys.exit(1)
+    return Budget(**flags)
 
 
 def _stop(args) -> None:

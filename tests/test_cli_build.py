@@ -145,6 +145,33 @@ def test_a_log_inside_the_output_directory_is_refused(monkeypatch, capsys, tmp_p
     assert not (tmp_path / "campaign").exists()
 
 
+def test_an_unspendable_budget_flag_is_refused_before_the_fork(monkeypatch, capsys, tmp_path):
+    """A budget flag the engine cannot spend is one line naming the flag,
+    never a traceback, and refused before a detached launch reports a
+    child that would only die on it in its log. A flag over the brief's
+    Budget line is checked with it."""
+    _mock_facade(monkeypatch)
+    monkeypatch.setattr(build_cli, "_detach", lambda *args, **kwargs: pytest.fail("a child was started"))
+    brief = tmp_path / "kapso-brief.md"
+    brief.write_text("Objective    Raise AUC\nBudget       minutes=45\n")
+    reserved = tmp_path / "reserved.md"
+    reserved.write_text("Objective    Raise AUC\nBudget       minutes=45 reserve_minutes=30\n")
+    cases = [
+        (["--goal", "g", "--budget-minutes", "0"], "Error: --budget-minutes must be a positive finite number, got 0.0"),
+        (["--goal", "g", "--budget-usd", "nan"], "Error: --budget-usd must be a positive finite number, got nan"),
+        (["--goal", "g", "--budget-experiments", "-1"], "Error: --budget-experiments must be a positive integer, got -1"),
+        (["--brief", str(brief), "--budget-reserve-minutes", "60"],
+         "Error: --budget-reserve-minutes (60) must be smaller than minutes (45)"),
+        (["--brief", str(reserved), "--budget-minutes", "20"],
+         "Error: the brief's Budget reserve_minutes (30) must be smaller than minutes (20)"),
+    ]
+    for flags, message in cases:
+        with pytest.raises(SystemExit) as stop:
+            _run(monkeypatch, *flags, "--output", str(tmp_path / "campaign"), "--detach")
+        assert stop.value.code == 1
+        assert capsys.readouterr().err.strip() == message
+
+
 def test_the_brief_forms_exclude_each_other(monkeypatch, capsys, tmp_path):
     path = tmp_path / "kapso-brief.md"
     path.write_text("Objective a\n")
