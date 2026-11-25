@@ -348,7 +348,7 @@ Renders the status of a running `build`, `learn` or `experience` operation (an i
 |----------|--------------|---------|
 | `path` | Workspace, status file, or directory of status files; none lists | — |
 | `--json` | Print the status file once, as JSON; with no path, the listing as JSON | off |
-| `--follow` | Re-render on each heartbeat until the operation ends; needs a path | off |
+| `--follow` | Re-render on each heartbeat until the operation ends or its process is gone (`DEAD`), waiting through a detached resume that has not written its status yet; needs a path | off |
 | `--all` | With no path: every campaign the registry knows, with its state, not only the live ones | off |
 | `--config` | The config whose registry and status directory the listing reads | packaged `config.yaml` |
 

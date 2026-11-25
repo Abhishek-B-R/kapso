@@ -6,7 +6,11 @@ repo-memory bootstrap (one inference session, minutes): a watcher started
 right after the launch saw a traceback, and a plugin had nothing to show.
 """
 
+import json
+import os
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -16,6 +20,7 @@ import kapso.cli.watch as watch_cli
 from kapso.cli import main
 from kapso.execution.coding_agents.base import CodingAgentConfig
 from kapso.execution.coding_agents.factory import CodingAgentFactory
+from kapso.execution.inbox import launch_receipt_path
 from kapso.execution.memories.repo_memory import RepoMemoryManager
 from kapso.execution.observability import BuildStatus, OperationStatusView
 from kapso.execution.search_strategies.base import (
@@ -93,6 +98,56 @@ def test_watch_follow_waits_for_the_status_to_appear(tmp_path, monkeypatch, caps
     out = capsys.readouterr().out
     assert out.startswith("no status yet at")
     assert "DONE" in out
+
+
+def test_watch_follow_ends_when_the_writer_is_gone(tmp_path, monkeypatch, capsys):
+    """A campaign killed mid-run never writes `done` or `failed`; its
+    status stays `running` with a pid that is gone, so following it must
+    stop at the DEAD screen instead of redrawing it forever."""
+    campaign = tmp_path / "campaign"
+    (campaign / ".kapso").mkdir(parents=True)
+    status_file = campaign / ".kapso" / "status.json"
+    BuildStatus(status_file, heartbeat_seconds=60).phase("ideation")
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    data = json.loads(status_file.read_text())
+    data["pid"] = gone.pid
+    status_file.write_text(json.dumps(data))
+
+    def no_second_frame(seconds: float) -> None:
+        raise AssertionError("watch --follow kept waiting on a dead writer")
+
+    monkeypatch.setattr(watch_cli.time, "sleep", no_second_frame)
+    _run(monkeypatch, "watch", str(campaign), "--follow")
+    assert "DEAD" in capsys.readouterr().out
+
+
+def test_watch_follow_waits_through_a_detached_resume(tmp_path, monkeypatch, capsys):
+    """`kapso inbox reply --detach` hands over `kapso watch <c> --follow`
+    while the status on disk is still the paused run's `done`. Following
+    waits for the resumed run's own status instead of ending at the old one."""
+    campaign = tmp_path / "campaign"
+    (campaign / ".kapso").mkdir(parents=True)
+    status_file = campaign / ".kapso" / "status.json"
+    BuildStatus(status_file, phase="setup").done(stopped_reason="waiting_for_user")
+    receipt = launch_receipt_path(campaign)
+    receipt.write_text(json.dumps({
+        "pid": os.getpid(), "log": "campaign.log", "argv": [],
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }))
+    waits: List[float] = []
+
+    def the_resume_writes(seconds: float) -> None:
+        waits.append(seconds)
+        status = BuildStatus(status_file, phase="setup", best={"score": 0.9, "node": 2})
+        status.done(stopped_reason="max_iterations")
+        receipt.unlink()
+
+    monkeypatch.setattr(watch_cli.time, "sleep", the_resume_writes)
+    _run(monkeypatch, "watch", str(campaign), "--follow")
+    out = capsys.readouterr().out
+    assert waits and "starting again" in out
+    assert "best: 0.9  node 2" in out.split("\x1b[2J\x1b[H")[-1]
 
 
 # ---------------------------------------------------------- the strategy

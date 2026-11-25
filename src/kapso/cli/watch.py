@@ -89,8 +89,15 @@ def cmd_watch(args) -> None:
     while True:
         view = Kapso.status(args.path)
         print("\x1b[2J\x1b[H" + view.explain(), flush=True)
-        if view.state in ("done", "failed"):
-            return
+        # A killed writer never reaches a terminal state: DEAD ends it too,
+        # unless a detached resume is starting over this earlier status.
+        if view.state in ("done", "failed") or view.dead:
+            receipt = None if campaign.is_file() else read_launch_receipt(campaign)
+            if receipt is None or not _newer_than_status(receipt, args.path):
+                return
+            if launch_alive(receipt) is False:
+                _say_launch_state(receipt, campaign, args.json)
+                sys.exit(1)
         time.sleep(interval)
 
 
@@ -149,7 +156,10 @@ Examples:
     )
     watch_parser.add_argument(
         "--follow", action="store_true",
-        help="Re-render on each heartbeat until the operation ends",
+        help=(
+            "Re-render on each heartbeat until the operation ends "
+            "or its process is gone"
+        ),
     )
     watch_parser.add_argument(
         "--all", action="store_true",
